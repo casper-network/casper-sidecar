@@ -1,7 +1,7 @@
 use super::types::structs::{DeployProcessed, Fault, Step};
 use anyhow::{Context, Error};
 use casper_node::types::Block;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OpenFlags, named_params};
 use std::sync::{Arc, Mutex};
 use tracing::trace;
 
@@ -128,3 +128,125 @@ impl Database {
         .context("failed to save fault")
     }
 }
+
+#[derive(Clone)]
+pub struct ReadOnlyDatabase {
+    db: Arc<Mutex<Connection>>,
+}
+
+impl ReadOnlyDatabase {
+    pub fn new(path: &str) -> Result<ReadOnlyDatabase, Error> {
+        Ok(ReadOnlyDatabase {
+            db: Arc::new(Mutex::new(Connection::open_with_flags(
+                path,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )?)),
+        })
+    }
+
+    pub async fn get_latest_block(&self) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT * FROM blocks ORDER BY height DESC LIMIT 1")?;
+        let mut rows = stmt.query([])?;
+        let mut block: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            block = row.get(2)?;
+        }
+
+        block.ok_or(Error::msg("No latest block found"))
+    }
+
+    pub async fn get_block_by_height(&self, height: u64) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT block FROM blocks where height = :height")?;
+        let mut rows = stmt.query(named_params! { ":height": height })?;
+        let mut block: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            block = row.get(0)?;
+        }
+
+        block.ok_or(Error::msg(format!(
+            "Unable to find block at height: {}",
+            height
+        )))
+    }
+
+    pub async fn get_block_by_hash(&self, hash: &str) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT block FROM blocks where hash = :hash")?;
+        let mut rows = stmt.query(named_params! { ":hash": hash })?;
+        let mut block: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            block = row.get(0)?;
+        }
+
+        block.ok_or(Error::msg(format!(
+            "Unable to find block with hash: {}",
+            hash
+        )))
+    }
+
+    pub async fn get_latest_deploy(&self) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT * FROM deploys ORDER BY timestamp DESC LIMIT 1")?;
+        let mut rows = stmt.query([])?;
+        let mut deploy: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            deploy = row.get(2)?;
+        }
+
+        deploy.ok_or(Error::msg("No latest deploy found"))
+    }
+
+    pub async fn get_deploy_by_hash(&self, hash: &str) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT deploy FROM deploys where hash = :hash")?;
+        let mut rows = stmt.query(named_params! { ":hash": hash })?;
+        let mut deploy: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            deploy = row.get(0)?;
+        }
+
+        deploy.ok_or(Error::msg(format!(
+            "Unable to find deploy with hash: {}",
+            hash
+        )))
+    }
+
+    pub async fn get_step_by_era(&self, era_id: u64) -> Result<String, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT effect FROM steps where era_id = :era_id")?;
+        let mut rows = stmt.query(named_params! { ":era_id": era_id })?;
+        let mut step_effect: Option<String> = None;
+        while let Some(row) = rows.next()? {
+            step_effect = row.get(0)?;
+        }
+
+        step_effect.ok_or(Error::msg(format!(
+            "Unable to find step for era: {}",
+            era_id
+        )))
+    }
+
+    // TODO: Add fault retrieval
+}
+
+
