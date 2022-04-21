@@ -1,6 +1,7 @@
 extern crate core;
 
 mod sqlite_db;
+mod rest_server;
 pub mod types;
 
 use anyhow::Error;
@@ -12,6 +13,7 @@ use tracing::info;
 use tracing_subscriber;
 use types::structs::Config;
 use types::enums::{Event, Network};
+use rest_server::start_server as start_rest_server;
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path)?;
@@ -50,53 +52,71 @@ async fn main() -> Result<(), Error> {
     // Create DB and create tables
     let storage: Database = Database::new(&config.storage.db_path)?;
 
-    for (_index, event) in sse.receiver().iter().enumerate() {
-        let json = serde_json::from_str(&event.data)?;
+    let rest_server_handle = tokio::task::spawn(start_rest_server(
+        config.storage.db_path,
+        config.rest_server.port,
+    ));
 
-        match json {
-            Event::ApiVersion(version) => {
-                info!("API Version: {:?}", version);
-            }
-            Event::BlockAdded(block_added) => {
-                let json_block = block_added.block;
-                let block = Block::from(json_block);
-                info!(
-                    message = "Saving block:",
-                    hash = hex::encode(block.hash().inner()).as_str(),
-                    height = block.height()
-                );
-                storage.save_block(&block).await?;
-            }
-            Event::DeployAccepted(deploy_accepted) => {
-                // deploy is represented only by hash in this event.
-                // hence why the .deploy is actually just the hash.
-                info!(
-                    "Deploy Accepted: {}",
-                    hex::encode(deploy_accepted.deploy.value())
-                );
-            }
-            Event::DeployProcessed(deploy_processed) => {
-                info!(
-                    message = "Saving deploy:",
-                    hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
-                );
-                storage.save_deploy(&deploy_processed).await?;
-            }
-            Event::Step(step) => {
-                info!("\n\tStep reached for Era: {}", step.era_id);
-                storage.save_step(&step).await?;
-            }
-            Event::Fault(fault) => {
-                info!(
-                    "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
-                    fault.era_id,
-                    fault.public_key.to_hex(),
-                    fault.timestamp
-                );
-                storage.save_fault(&fault).await?;
+    let sse_receiver = async {
+        for (_index, event) in sse.receiver().iter().enumerate() {
+            let json = serde_json::from_str(&event.data)?;
+
+            match json {
+                Event::ApiVersion(version) => {
+                    info!("API Version: {:?}", version);
+                }
+                Event::BlockAdded(block_added) => {
+                    let json_block = block_added.block;
+                    let block = Block::from(json_block);
+                    info!(
+                        message = "Saving block:",
+                        hash = hex::encode(block.hash().inner()).as_str(),
+                        height = block.height()
+                    );
+                    storage.save_block(&block).await?;
+                }
+                Event::DeployAccepted(deploy_accepted) => {
+                    // deploy is represented only by hash in this event.
+                    // hence why the .deploy is actually just the hash.
+                    info!(
+                        "Deploy Accepted: {}",
+                        hex::encode(deploy_accepted.deploy.value())
+                    );
+                }
+                Event::DeployProcessed(deploy_processed) => {
+                    info!(
+                        message = "Saving deploy:",
+                        hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
+                    );
+                    storage.save_deploy(&deploy_processed).await?;
+                }
+                Event::Step(step) => {
+                    info!("\n\tStep reached for Era: {}", step.era_id);
+                    storage.save_step(&step).await?;
+                }
+                Event::Fault(fault) => {
+                    info!(
+                        "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
+                        fault.era_id,
+                        fault.public_key.to_hex(),
+                        fault.timestamp
+                    );
+                    storage.save_fault(&fault).await?;
+                }
             }
         }
-    }
+        Result::<_, Error>::Ok(())
+    };
+
+    tokio::select! {
+        _ = sse_receiver => {
+            info!("Receiver closed")
+        }
+
+        _ = rest_server_handle => {
+            info!("REST server closed")
+        }
+    };
 
     Ok(())
 }
