@@ -2,6 +2,7 @@ extern crate core;
 
 mod sqlite_db;
 mod balance_indexer;
+mod rest_server;
 pub mod types;
 pub mod kv_store;
 
@@ -15,6 +16,7 @@ use tracing::{info, warn};
 use tracing_subscriber;
 use types::structs::Config;
 use types::enums::{Event, Network};
+use rest_server::start_server as start_rest_server;
 use balance_indexer::{BalanceIndexer, parse_transfers_from_deploy};
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
@@ -57,6 +59,12 @@ async fn main() -> Result<(), Error> {
     // Create indexer instance
     let mut balance_indexer = BalanceIndexer::new(Path::new(&config.storage.kv_path), &node).await?;
 
+    let rest_server_handle = tokio::task::spawn(start_rest_server(
+        config.storage.db_path,
+        config.rest_server.port,
+    ));
+
+    let sse_receiver = async {
     for (_index, event) in sse.receiver().iter().enumerate() {
         let json = serde_json::from_str(&event.data)?;
 
@@ -111,10 +119,21 @@ async fn main() -> Result<(), Error> {
                     fault.public_key.to_hex(),
                     fault.timestamp
                 );
-                storage.save_fault(&fault).await?;
+                storage.save_fault(&fault).await?;}
             }
         }
-    }
+        Result::<_, Error>::Ok(())
+    };
+
+    tokio::select! {
+        _ = sse_receiver => {
+            info!("Receiver closed")
+        }
+
+        _ = rest_server_handle => {
+            info!("REST server closed")
+        }
+    };
 
     Ok(())
 }
