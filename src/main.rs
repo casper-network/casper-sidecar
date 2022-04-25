@@ -1,17 +1,21 @@
 extern crate core;
 
 mod sqlite_db;
+mod balance_indexer;
 pub mod types;
+pub mod kv_store;
 
+use std::path::Path;
 use anyhow::Error;
 use casper_node::types::Block;
 use casper_types::AsymmetricType;
 use sqlite_db::Database;
 use sse_client::EventSource;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber;
 use types::structs::Config;
 use types::enums::{Event, Network};
+use balance_indexer::{BalanceIndexer, parse_transfers_from_deploy};
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path)?;
@@ -50,6 +54,9 @@ async fn main() -> Result<(), Error> {
     // Create DB and create tables
     let storage: Database = Database::new(&config.storage.db_path)?;
 
+    // Create indexer instance
+    let mut balance_indexer = BalanceIndexer::new(Path::new(&config.storage.kv_path), &node).await?;
+
     for (_index, event) in sse.receiver().iter().enumerate() {
         let json = serde_json::from_str(&event.data)?;
 
@@ -81,6 +88,17 @@ async fn main() -> Result<(), Error> {
                     hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
                 );
                 storage.save_deploy(&deploy_processed).await?;
+                match parse_transfers_from_deploy(&deploy_processed) {
+                    None => info!("\t- No transfers in deploy"),
+                    Some(transfers) => {
+                        for transfer in &transfers {
+                            balance_indexer.commit_balances(transfer).await.unwrap_or_else(|err| {
+                                warn!("Error committing balances for transfer: {:?}", err);
+                            })
+                        }
+                        info!("Updated balances after transfer(s) from deploy");
+                    }
+                }
             }
             Event::Step(step) => {
                 info!("\n\tStep reached for Era: {}", step.era_id);
