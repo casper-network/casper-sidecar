@@ -51,7 +51,7 @@ pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
                 async move {
                     let serialised = cloned_storage.get_block_by_hash(hash.as_str()).await;
                     match serialised {
-                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x))),
+                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x).unwrap())),
                         Err(_e) => Err(warp::reject::not_found()),
                     }
                 }
@@ -65,9 +65,9 @@ pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
             .and_then(move |height: u64| {
                 let cloned_storage = cloned_storage.clone();
                 async move {
-                    let bytes = cloned_storage.get_block_by_height(height).await;
-                    match bytes {
-                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x))),
+                    let serialised = cloned_storage.get_block_by_height(height).await;
+                    match serialised {
+                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x).unwrap())),
                         Err(_e) => Err(warp::reject::not_found()),
                     }
                 }
@@ -85,7 +85,7 @@ pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
                     match bytes {
                         Ok(x) => Ok(format!(
                             "{:#?}\n",
-                            serde_json::from_str::<DeployProcessed>(&x)
+                            serde_json::from_str::<DeployProcessed>(&x).unwrap()
                         )),
                         Err(_e) => Err(warp::reject::not_found()),
                     }
@@ -101,7 +101,7 @@ pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
             async move {
                 let bytes = cloned_storage.get_step_by_era(era_id).await;
                 match bytes {
-                    Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Step>(&x))),
+                    Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Step>(&x).unwrap())),
                     Err(_e) => Err(warp::reject::not_found()),
                 }
             }
