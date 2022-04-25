@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::kv_store::{KVStore, RocksDB};
 use crate::types::structs::{
     BalanceRpcResult, DeployProcessed, NodeConfig, StateRootHashRpcResult,
@@ -15,8 +14,6 @@ pub struct BalanceIndexer {
     store: RocksDB,
     node_rpc_url: String,
     state_root_hash: String,
-    // Map of hex encoded account hashes against purse-urefs
-    pub purse_map: HashMap<String, String>
 }
 
 enum TransferDirection {
@@ -36,7 +33,6 @@ impl BalanceIndexer {
                         store,
                         node_rpc_url: formatted_url.clone(),
                         state_root_hash: retrieve_state_root_hash(&formatted_url).await?,
-                        purse_map: HashMap::new()
                     })
                 }
                 Err(e) => Err(Error::msg(e.to_string())),
@@ -98,10 +94,12 @@ impl BalanceIndexer {
                             info!("\tNew purse: <To field (AccountHash) not provided in transfer>")
                         }
                         Some(hash) => {
-                            self.purse_map.insert(hex::encode(hash.value()), purse_uref.to_string());
+                            let hash_hex = hex::encode(&hash.value());
+                            let key = format!("purse-of-{}", &hash_hex);
+                            self.store.save(&key, &purse_uref.to_string()).unwrap();
                             info!(
                                 "\tNew account: {}",
-                                truncate_long_string(hex::encode(&hash.value()).as_str())
+                                truncate_long_string(&hash_hex)
                             )
                         },
                     }

@@ -1,3 +1,4 @@
+use std::path::Path;
 use super::types::structs::{DeployProcessed, Fault, Step};
 use anyhow::{Context, Error};
 use casper_node::types::Block;
@@ -11,7 +12,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(path: &str) -> Result<Database, Error> {
+    pub fn new(path: &Path) -> Result<Database, Error> {
         let db = Connection::open(path)?;
 
         db.execute(
@@ -135,7 +136,7 @@ pub struct ReadOnlyDatabase {
 }
 
 impl ReadOnlyDatabase {
-    pub fn new(path: &str) -> Result<ReadOnlyDatabase, Error> {
+    pub fn new(path: &Path) -> Result<ReadOnlyDatabase, Error> {
         Ok(ReadOnlyDatabase {
             db: Arc::new(Mutex::new(Connection::open_with_flags(
                 path,

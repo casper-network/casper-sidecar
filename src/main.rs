@@ -54,72 +54,77 @@ async fn main() -> Result<(), Error> {
     );
 
     // Create DB and create tables
-    let storage: Database = Database::new(&config.storage.db_path)?;
+    let storage: Database = Database::new(Path::new(&config.storage.db_path))?;
 
     // Create indexer instance
     let mut balance_indexer = BalanceIndexer::new(Path::new(&config.storage.kv_path), &node).await?;
 
-    let rest_server_handle = tokio::task::spawn(start_rest_server(
-        config.storage.db_path,
-        config.rest_server.port,
-    ));
+    let rest_server_handle = tokio::task::spawn(
+        start_rest_server(
+            // TODO: can't get passing the config variables into the thread to work
+            Path::new("./db/storage.db3"),
+            Path::new("./db/kv_store"),
+            config.rest_server.port,
+        )
+    );
 
     let sse_receiver = async {
-    for (_index, event) in sse.receiver().iter().enumerate() {
-        let json = serde_json::from_str(&event.data)?;
+        for (_index, event) in sse.receiver().iter().enumerate() {
+            let json = serde_json::from_str(&event.data)?;
 
-        match json {
-            Event::ApiVersion(version) => {
-                info!("API Version: {:?}", version);
-            }
-            Event::BlockAdded(block_added) => {
-                let json_block = block_added.block;
-                let block = Block::from(json_block);
-                info!(
-                    message = "Saving block:",
-                    hash = hex::encode(block.hash().inner()).as_str(),
-                    height = block.height()
-                );
-                storage.save_block(&block).await?;
-            }
-            Event::DeployAccepted(deploy_accepted) => {
-                // deploy is represented only by hash in this event.
-                // hence why the .deploy is actually just the hash.
-                info!(
-                    "Deploy Accepted: {}",
-                    hex::encode(deploy_accepted.deploy.value())
-                );
-            }
-            Event::DeployProcessed(deploy_processed) => {
-                info!(
-                    message = "Saving deploy:",
-                    hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
-                );
-                storage.save_deploy(&deploy_processed).await?;
-                match parse_transfers_from_deploy(&deploy_processed) {
-                    None => info!("\t- No transfers in deploy"),
-                    Some(transfers) => {
-                        for transfer in &transfers {
-                            balance_indexer.commit_balances(transfer).await.unwrap_or_else(|err| {
-                                warn!("Error committing balances for transfer: {:?}", err);
-                            })
+            match json {
+                Event::ApiVersion(version) => {
+                    info!("API Version: {:?}", version);
+                }
+                Event::BlockAdded(block_added) => {
+                    let json_block = block_added.block;
+                    let block = Block::from(json_block);
+                    info!(
+                        message = "Saving block:",
+                        hash = hex::encode(block.hash().inner()).as_str(),
+                        height = block.height()
+                    );
+                    storage.save_block(&block).await?;
+                }
+                Event::DeployAccepted(deploy_accepted) => {
+                    // deploy is represented only by hash in this event.
+                    // hence why the .deploy is actually just the hash.
+                    info!(
+                        "Deploy Accepted: {}",
+                        hex::encode(deploy_accepted.deploy.value())
+                    );
+                }
+                Event::DeployProcessed(deploy_processed) => {
+                    info!(
+                        message = "Saving deploy:",
+                        hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
+                    );
+                    storage.save_deploy(&deploy_processed).await?;
+                    match parse_transfers_from_deploy(&deploy_processed) {
+                        None => info!("\t- No transfers in deploy"),
+                        Some(transfers) => {
+                            for transfer in &transfers {
+                                balance_indexer.commit_balances(transfer).await.unwrap_or_else(|err| {
+                                    warn!("Error committing balances for transfer: {:?}", err);
+                                })
+                            }
+                            info!("Updated balances after transfer(s) from deploy");
                         }
-                        info!("Updated balances after transfer(s) from deploy");
                     }
                 }
-            }
-            Event::Step(step) => {
-                info!("\n\tStep reached for Era: {}", step.era_id);
-                storage.save_step(&step).await?;
-            }
-            Event::Fault(fault) => {
-                info!(
-                    "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
-                    fault.era_id,
-                    fault.public_key.to_hex(),
-                    fault.timestamp
-                );
-                storage.save_fault(&fault).await?;}
+                Event::Step(step) => {
+                    info!("\n\tStep reached for Era: {}", step.era_id);
+                    storage.save_step(&step).await?;
+                }
+                Event::Fault(fault) => {
+                    info!(
+                        "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
+                        fault.era_id,
+                        fault.public_key.to_hex(),
+                        fault.timestamp
+                    );
+                    storage.save_fault(&fault).await?;
+                }
             }
         }
         Result::<_, Error>::Ok(())

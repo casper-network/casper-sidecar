@@ -1,15 +1,20 @@
 use crate::sqlite_db::ReadOnlyDatabase;
 use crate::types::structs::{DeployProcessed, Step};
+use crate::kv_store::{KVStore, RocksDB};
 use anyhow::Error;
 use casper_node::types::Block;
+use casper_types::{AsymmetricType, PublicKey, account::AccountHash};
 use serde::Serialize;
 use std::convert::Infallible;
+use std::fmt::{Display, Formatter};
+use std::path::Path;
 use tracing::error;
 use warp::http::StatusCode;
-use warp::{Filter, Rejection, Reply};
+use warp::{reject, Filter, Rejection, Reply};
 
-pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
+pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(), Error> {
     let storage = ReadOnlyDatabase::new(&db_path)?;
+    let kv_store = RocksDB::connect_read_only(kv_path)?;
 
     // GET / - return proper paths
     let root = warp::path::end().map(|| {
@@ -107,12 +112,107 @@ pub async fn start_server(db_path: String, port: u16) -> Result<(), Error> {
             }
         });
 
+    let balance_root = warp::path("balance");
+
+    // GET /balance/health-check
+    let cloned_kv_store = kv_store.clone();
+    let balance_health_check = balance_root
+        .and(warp::path("health-check"))
+        .and_then(move || {
+            let cloned_kv_store = cloned_kv_store.clone();
+            async move {
+                match cloned_kv_store.find("health-check") {
+                    Ok(status) => match status {
+                        None => Err(warp::reject::not_found()),
+                        Some(status) => Ok(format!("Status: {}", status)),
+                    },
+                    Err(_) => Err(warp::reject::not_found()),
+                }
+            }
+        });
+
+    // GET /balance/key/:string
+    let cloned_kv_store = kv_store.clone();
+    let balance_by_pub_key_hex = balance_root
+        .and(warp::path("key"))
+        .and(warp::path::param())
+        .and_then(move |pub_key_hex: String| {
+            let cloned_kv_store = cloned_kv_store.clone();
+            async move {
+                if !vec!["01", "02"].contains(&&pub_key_hex[0..2])
+                    && (pub_key_hex.len() == 64 || pub_key_hex.len() == 66)
+                {
+                    return Err(warp::reject::custom(ExpectedKeyGotHash));
+                }
+                match PublicKey::from_hex(pub_key_hex) {
+                    Ok(public_key) => {
+                        let account_hash = AccountHash::from(&public_key);
+                        let hash_hex = hex::encode(account_hash.value());
+                        let purse_query_key = format!("purse-of-{}", &hash_hex);
+                        let purse_uref = match cloned_kv_store.find(&purse_query_key) {
+                            Ok(opt_uref) => match opt_uref {
+                                None => return Err(warp::reject::not_found()),
+                                Some(uref) => uref
+                            }
+                            Err(_) => return Err(warp::reject::not_found()),
+                        };
+                        match cloned_kv_store.find(&purse_uref) {
+                            Ok(balance) => match balance {
+                                Some(balance_string) => Ok(format!(
+                                    "Balance Request\n\tAccountHash: {}\n\tBalance: {}\n",
+                                    hex::encode(account_hash.value()),
+                                    balance_string
+                                )),
+                                None => Err(reject::custom(BalanceNotFound)),
+                            },
+                            Err(_) => Err(warp::reject::custom(BalanceNotFound)),
+                        }
+                    }
+                    Err(_) => Err(warp::reject::not_found()),
+                }
+            }
+        });
+
+    // GET /balance/hash/:string
+    let cloned_kv_store = kv_store.clone();
+    let balance_by_account_hash = balance_root
+        .and(warp::path("hash"))
+        .and(warp::path::param())
+        .and_then(move |account_hash: String| {
+            let cloned_kv_store = cloned_kv_store.clone();
+            async move {
+                let purse_query_key = format!("purse-of-{}", &account_hash);
+                let purse_uref = match cloned_kv_store.find(&purse_query_key) {
+                    Ok(opt_uref) => match opt_uref {
+                        None => return Err(warp::reject::not_found()),
+                        Some(uref) => uref
+                    }
+                    Err(_) => return Err(warp::reject::not_found()),
+                };
+                match cloned_kv_store.find(&purse_uref) {
+                    Ok(balance) => {
+                        match balance {
+                            Some(balance_string) => Ok(format!(
+                                "Balance Request\n\tAccountHash: {}\n\tBalance: {}\n",
+                                account_hash, balance_string
+                            )),
+                            None => Err(reject::custom(BalanceNotFound)),
+                        }
+                    },
+                    Err(_) => Err(warp::reject::not_found()),
+                }
+            }
+        });
+
     let routes = warp::get().and(
         root.or(root_with_param)
             .or(block_by_hash)
             .or(block_by_height)
             .or(deploy_by_hash)
             .or(step_by_era)
+            .or(balance_health_check)
+            .or(balance_by_pub_key_hex)
+            .or(balance_by_account_hash)
             .recover(handle_rejection),
     );
 
@@ -147,6 +247,28 @@ async fn invalid_path() -> Result<String, Rejection> {
     Ok("SIDECAR :: Server: Invalid path provided. Please try calling the 'block' or 'deploy' API.\n".to_string())
 }
 
+#[derive(Debug)]
+struct BalanceNotFound;
+
+impl reject::Reject for BalanceNotFound {}
+
+impl Display for BalanceNotFound {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unable to find a balance for the given key/hash")
+    }
+}
+
+#[derive(Debug)]
+struct ExpectedKeyGotHash;
+
+impl reject::Reject for ExpectedKeyGotHash {}
+
+impl Display for ExpectedKeyGotHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "It looks like you might have used an account hash instead of a public key. Please try querying the /balance/hash/ endpoint instead.")
+    }
+}
+
 #[derive(Serialize)]
 struct ApiError {
     code: u16,
@@ -160,6 +282,12 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = String::from("Not found");
+    } else if let Some(BalanceNotFound) = err.find() {
+        code = StatusCode::NOT_FOUND;
+        message = format!("{}", BalanceNotFound);
+    } else if let Some(ExpectedKeyGotHash) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = format!("{}", ExpectedKeyGotHash);
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = String::from("Method not allowed");
