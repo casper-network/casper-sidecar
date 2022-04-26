@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
-use tracing::error;
+use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection, Reply};
 
@@ -124,7 +124,7 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
                 match cloned_kv_store.find("health-check") {
                     Ok(status) => match status {
                         None => Err(warp::reject::not_found()),
-                        Some(status) => Ok(format!("Status: {}", status)),
+                        Some(status) => Ok(format!("Status: {}\n", status)),
                     },
                     Err(_) => Err(warp::reject::not_found()),
                 }
@@ -149,6 +149,7 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
                         let account_hash = AccountHash::from(&public_key);
                         let hash_hex = hex::encode(account_hash.value());
                         let purse_query_key = format!("purse-of-{}", &hash_hex);
+                        info!("Query for {}", purse_query_key);
                         let purse_uref = match cloned_kv_store.find(&purse_query_key) {
                             Ok(opt_uref) => match opt_uref {
                                 None => return Err(warp::reject::not_found()),
@@ -188,7 +189,7 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
                         Some(uref) => uref
                     }
                     Err(_) => return Err(warp::reject::not_found()),
-                };
+                };qqqqqq
                 match cloned_kv_store.find(&purse_uref) {
                     Ok(balance) => {
                         match balance {

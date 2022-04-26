@@ -96,7 +96,8 @@ impl BalanceIndexer {
                         Some(hash) => {
                             let hash_hex = hex::encode(&hash.value());
                             let key = format!("purse-of-{}", &hash_hex);
-                            self.store.save(&key, &purse_uref.to_string()).unwrap();
+                            info!("New Mapping: {} to {}", key, &purse_uref.to_formatted_string());
+                            self.store.save(&key, &purse_uref.to_formatted_string()).unwrap();
                             info!(
                                 "\tNew account: {}",
                                 truncate_long_string(&hash_hex)
@@ -116,7 +117,7 @@ impl BalanceIndexer {
                         }
                     }
                     self.store
-                        .save(&purse_uref.to_string(), &new_balance.to_string())?;
+                        .save(&purse_uref.to_formatted_string(), &new_balance.to_string())?;
                     info!("\tCommitted balance: {} CSPR", motes_to_cspr(new_balance));
                     Ok(())
                 }
@@ -137,7 +138,7 @@ impl BalanceIndexer {
                         TransferDirection::Received => balance_from_store + amount,
                     };
                     self.store
-                        .save(&purse_uref.to_string(), &new_balance.to_string())?;
+                        .save(&purse_uref.to_formatted_string(), &new_balance.to_string())?;
                     info!(
                         "\tUpdating balance from {} CSPR -> {} CSPR",
                         motes_to_cspr(balance_from_store),

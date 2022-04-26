@@ -15,8 +15,8 @@ sse_port=18101
 rpc_port=11101
 
 [storage]
-db_path = "db/storage.db3"
-kv_path = "db/kv_store"
+db_path = "./db/storage.db3"
+kv_path = "./db/kv_store"
 
 [rest_server]
 run = true
