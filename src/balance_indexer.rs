@@ -7,8 +7,7 @@ use casper_client::{get_balance, get_state_root_hash, Error as ClientError};
 use casper_types::account::AccountHash;
 use casper_types::{ExecutionResult, Transfer, Transform, URef, U512};
 use std::path::Path;
-use std::str::FromStr;
-use tracing::info;
+use tracing::{error, info};
 
 pub struct BalanceIndexer {
     store: RocksDB,
@@ -85,7 +84,7 @@ impl BalanceIndexer {
         amount: U512,
         direction: TransferDirection,
     ) -> Result<(), Error> {
-        match self.store.find(&purse_uref.to_string()) {
+        match self.store.find(&purse_uref.to_formatted_string()) {
             Ok(res) => match res {
                 None => {
                     match account_hash {
@@ -96,29 +95,45 @@ impl BalanceIndexer {
                         Some(hash) => {
                             let hash_hex = hex::encode(&hash.value());
                             let key = format!("purse-of-{}", &hash_hex);
-                            info!("New Mapping: {} to {}", key, &purse_uref.to_formatted_string());
-                            self.store.save(&key, &purse_uref.to_formatted_string()).unwrap();
-                            info!(
-                                "\tNew account: {}",
-                                truncate_long_string(&hash_hex)
-                            )
-                        },
+                            info!("Mapped {} to {}", key, &purse_uref.to_formatted_string());
+                            self.store
+                                .save(&key, &purse_uref.to_formatted_string())
+                                .unwrap();
+                            info!("\tNew account: {}", truncate_long_string(&hash_hex))
+                        }
                     }
                     let balance_from_node = self.retrieve_balance(purse_uref).await?;
+                    // let new_balance= balance_from_node.unwrap_or(U512::zero());
                     let new_balance;
                     match balance_from_node {
                         // This assumes it's an account that has only just been initialised by the transfer.
-                        None => new_balance = amount,
+                        None => new_balance = Some(amount),
                         Some(balance) => {
+                            info!(
+                                "Reported balance for {} is {} CSPR",
+                                hex::encode(account_hash.unwrap().value()),
+                                motes_to_cspr(balance)
+                            );
                             new_balance = match direction {
-                                TransferDirection::Sent => balance - amount,
-                                TransferDirection::Received => balance + amount,
+                                TransferDirection::Sent => balance.checked_sub(amount),
+                                TransferDirection::Received => balance.checked_add(amount),
                             };
                         }
                     }
-                    self.store
-                        .save(&purse_uref.to_formatted_string(), &new_balance.to_string())?;
-                    info!("\tCommitted balance: {} CSPR", motes_to_cspr(new_balance));
+                    match new_balance {
+                        None => {
+                            error!(
+                                "Arithmetic overflow during balance update for {}",
+                                hex::encode(account_hash.unwrap().value())
+                            );
+                        }
+                        Some(balance) => {
+                            self.store
+                                .save(&purse_uref.to_formatted_string(), &balance.to_string())?;
+                            // info!("\tCommitted balance: {} CSPR", motes_to_cspr(balance));
+                            info!("Saved balance for {} : {}", &purse_uref.to_formatted_string(), motes_to_cspr(balance));
+                        }
+                    }
                     Ok(())
                 }
                 Some(x) => {
@@ -134,16 +149,28 @@ impl BalanceIndexer {
                     }
                     let balance_from_store = U512::from_str_radix(&x, 10)?;
                     let new_balance = match direction {
-                        TransferDirection::Sent => balance_from_store - amount,
-                        TransferDirection::Received => balance_from_store + amount,
+                        TransferDirection::Sent => balance_from_store.checked_sub(amount),
+                        TransferDirection::Received => balance_from_store.checked_add(amount),
                     };
-                    self.store
-                        .save(&purse_uref.to_formatted_string(), &new_balance.to_string())?;
-                    info!(
-                        "\tUpdating balance from {} CSPR -> {} CSPR",
-                        motes_to_cspr(balance_from_store),
-                        motes_to_cspr(new_balance)
-                    );
+                    match new_balance {
+                        None => {
+                            error!(
+                                "Arithmetic overflow during balance update for {}",
+                                hex::encode(account_hash.unwrap().value())
+                            );
+                        }
+                        Some(balance) => {
+                            self.store.save(
+                                &purse_uref.to_formatted_string(),
+                                &balance.to_string(),
+                            )?;
+                            info!(
+                                "\tUpdating balance from {} CSPR -> {} CSPR",
+                                motes_to_cspr(balance_from_store),
+                                motes_to_cspr(balance)
+                            );
+                        }
+                    }
                     Ok(())
                 }
             },
@@ -177,7 +204,7 @@ impl BalanceIndexer {
                     Err(serde_err) => Err(Error::from(serde_err)),
                     Ok(result) => {
                         // Parse balance into U512 if possible
-                        match U512::from_str(&result.balance_value) {
+                        match U512::from_str_radix(&result.balance_value, 10) {
                             Ok(balance) => Ok(Some(balance)),
                             Err(err) => Err(Error::from(err)),
                         }
@@ -243,11 +270,12 @@ fn motes_to_cspr(motes: U512) -> U512 {
 #[cfg(test)]
 mod tests {
     use crate::balance_indexer::{parse_transfers_from_deploy, BalanceIndexer};
+    use crate::kv_store::KVStore;
     use crate::types::structs::{DeployProcessed, New};
     use crate::{read_config, Config, Network};
-    use std::path::Path;
     use anyhow::Error;
-    use crate::kv_store::KVStore;
+    use std::path::Path;
+    use casper_types::U512;
 
     struct TestState {
         d_w_transfers: DeployProcessed,
@@ -336,14 +364,12 @@ mod tests {
         for transfer in transfers_with_to {
             let check = t_indexer.commit_balances(&transfer).await;
             assert!(check.is_ok());
-            let source_balance = t_indexer.retrieve_balance(&transfer.source).await;
+            let source_balance = t_indexer.store.find(&transfer.source.to_formatted_string());
             assert!(source_balance.is_ok());
             assert!(source_balance.unwrap().is_some());
-            let to_balance = t_indexer.retrieve_balance(&transfer.target).await;
-            assert_eq!(to_balance.unwrap().unwrap(), transfer.amount);
+            let to_balance = t_indexer.store.find(&transfer.target.to_formatted_string());
+            assert_eq!(U512::from_str_radix(&to_balance.unwrap().unwrap(), 10).unwrap(), transfer.amount);
         }
-
-
     }
 
     #[tokio::test]
@@ -373,5 +399,4 @@ mod tests {
             assert!(check.is_ok());
         }
     }
-
 }

@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection, Reply};
 
@@ -183,13 +183,18 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
             let cloned_kv_store = cloned_kv_store.clone();
             async move {
                 let purse_query_key = format!("purse-of-{}", &account_hash);
+                warn!("Querying for {}", purse_query_key);
                 let purse_uref = match cloned_kv_store.find(&purse_query_key) {
                     Ok(opt_uref) => match opt_uref {
-                        None => return Err(warp::reject::not_found()),
+                        None => {
+                            warn!("No uref found!");
+                            return Err(warp::reject::not_found())
+                        },
                         Some(uref) => uref
                     }
                     Err(_) => return Err(warp::reject::not_found()),
-                };qqqqqq
+                };
+                info!("Found this Uref: {}", purse_uref);
                 match cloned_kv_store.find(&purse_uref) {
                     Ok(balance) => {
                         match balance {
