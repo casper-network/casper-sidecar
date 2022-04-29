@@ -2,10 +2,7 @@ use crate::types::enums::Network;
 use casper_hashing::Digest;
 use casper_node::types::{BlockHash, JsonBlock, TimeDiff, Timestamp};
 use casper_types::account::AccountHash;
-use casper_types::{
-    AsymmetricType, DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey, Transfer,
-    TransferAddr, Transform, TransformEntry, U512,
-};
+use casper_types::{AccessRights, AsymmetricType, DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey, Transfer, TransferAddr, Transform, TransformEntry, U512, URef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -191,6 +188,11 @@ impl New for DeployProcessed {
         )
         .expect("should create public key from hex");
 
+        let purse_uref_a = URef::new([1u8; 32], AccessRights::default());
+        let purse_uref_b = URef::new([2u8; 32], AccessRights::default());
+        let purse_uref_c = URef::new([3u8; 32], AccessRights::default());
+        let purse_uref_d = URef::new([4u8; 32], AccessRights::default());
+
         let transforms = vec![
             TransformEntry {
                 key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
@@ -209,8 +211,8 @@ impl New for DeployProcessed {
                     deploy_hash: Default::default(),
                     from: Default::default(),
                     to: Some(AccountHash::from(&public_key)),
-                    source: Default::default(),
-                    target: Default::default(),
+                    source: purse_uref_a,
+                    target: purse_uref_b,
                     amount: U512::from(13042001),
                     gas: Default::default(),
                     id: None,
@@ -223,8 +225,8 @@ impl New for DeployProcessed {
                     deploy_hash: Default::default(),
                     from: Default::default(),
                     to: Some(AccountHash::from(&public_key)),
-                    source: Default::default(),
-                    target: Default::default(),
+                    source: purse_uref_c,
+                    target: purse_uref_d,
                     amount: U512::from(23041999),
                     gas: Default::default(),
                     id: None,
