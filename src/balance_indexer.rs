@@ -7,7 +7,7 @@ use casper_client::{get_balance, get_state_root_hash, Error as ClientError};
 use casper_types::account::AccountHash;
 use casper_types::{ExecutionResult, Transfer, Transform, URef, U512};
 use std::path::Path;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 pub struct BalanceIndexer {
     store: RocksDB,
@@ -95,11 +95,11 @@ impl BalanceIndexer {
                         Some(hash) => {
                             let hash_hex = hex::encode(&hash.value());
                             let key = format!("purse-of-{}", &hash_hex);
-                            info!("Mapped {} to {}", key, &purse_uref.to_formatted_string());
                             self.store
                                 .save(&key, &purse_uref.to_formatted_string())
                                 .unwrap();
-                            info!("\tNew account: {}", truncate_long_string(&hash_hex))
+                            let ret = self.store.find(&key).unwrap().unwrap();
+                            info!("\tNew account: {}", truncate_long_string(&hash_hex));
                         }
                     }
                     let balance_from_node = self.retrieve_balance(purse_uref).await?;
@@ -130,7 +130,6 @@ impl BalanceIndexer {
                         Some(balance) => {
                             self.store
                                 .save(&purse_uref.to_formatted_string(), &balance.to_string())?;
-                            // info!("\tCommitted balance: {} CSPR", motes_to_cspr(balance));
                             info!("Saved balance for {} : {}", &purse_uref.to_formatted_string(), motes_to_cspr(balance));
                         }
                     }
@@ -221,8 +220,6 @@ pub fn parse_transfers_from_deploy(deploy: &DeployProcessed) -> Option<Vec<Trans
         ExecutionResult::Success {
             effect, transfers, ..
         } => {
-            // This can be included again once I improve the test suite.
-            //
             if transfers.is_empty() {
                 return None;
             }
@@ -369,6 +366,14 @@ mod tests {
             assert!(source_balance.unwrap().is_some());
             let to_balance = t_indexer.store.find(&transfer.target.to_formatted_string());
             assert_eq!(U512::from_str_radix(&to_balance.unwrap().unwrap(), 10).unwrap(), transfer.amount);
+
+            let from_account_uref_mapping = format!("purse-of-{}", hex::encode(transfer.from.value()));
+            let to_account_uref_mapping = format!("purse-of-{}", hex::encode(transfer.to.unwrap().value()));
+
+            assert!(t_indexer.store.find(&from_account_uref_mapping).is_ok());
+            assert!(t_indexer.store.find(&from_account_uref_mapping).unwrap().is_some());
+            assert!(t_indexer.store.find(&to_account_uref_mapping).is_ok());
+            assert!(t_indexer.store.find(&to_account_uref_mapping).unwrap().is_some());
         }
     }
 
@@ -399,4 +404,5 @@ mod tests {
             assert!(check.is_ok());
         }
     }
+
 }

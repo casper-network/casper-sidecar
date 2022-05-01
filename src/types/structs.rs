@@ -183,8 +183,20 @@ impl New for DeployProcessed {
     }
 
     fn new_populated_transfers() -> Self {
-        let public_key = PublicKey::from_hex(
+        let public_key_a = PublicKey::from_hex(
             "01af29904f39610dc410844122e35a22d134fb199eaa82ca0f29324605ac2f47f2",
+        )
+        .expect("should create public key from hex");
+        let public_key_b = PublicKey::from_hex(
+            "01fe9f09d67ac6697d6617847697e45f549259152716830dad2cd7a1b7c3b8dd6f",
+        )
+        .expect("should create public key from hex");
+        let public_key_c = PublicKey::from_hex(
+            "01a124225ccefd31aed6669352635304acff29d426e5ce0ef0bbee2f147fb9d3d3",
+        )
+        .expect("should create public key from hex");
+        let public_key_d = PublicKey::from_hex(
+            "01926bdc35220afca31affa30fd5b6c176a2afce4d805caaf5f7aa8e7fd0c9d47a",
         )
         .expect("should create public key from hex");
 
@@ -209,8 +221,8 @@ impl New for DeployProcessed {
                     .to_string(),
                 transform: Transform::WriteTransfer(Transfer {
                     deploy_hash: Default::default(),
-                    from: Default::default(),
-                    to: Some(AccountHash::from(&public_key)),
+                    from: AccountHash::from(&public_key_a),
+                    to: Some(AccountHash::from(&public_key_b)),
                     source: purse_uref_a,
                     target: purse_uref_b,
                     amount: U512::from(13042001),
@@ -223,8 +235,8 @@ impl New for DeployProcessed {
                     .to_string(),
                 transform: Transform::WriteTransfer(Transfer {
                     deploy_hash: Default::default(),
-                    from: Default::default(),
-                    to: Some(AccountHash::from(&public_key)),
+                    from: AccountHash::from(&public_key_c),
+                    to: Some(AccountHash::from(&public_key_d)),
                     source: purse_uref_c,
                     target: purse_uref_d,
                     amount: U512::from(23041999),
@@ -244,7 +256,7 @@ impl New for DeployProcessed {
                 1u8;
                 32
             ])))),
-            account: Box::new(public_key),
+            account: Box::new(public_key_a),
             timestamp: Timestamp::now(),
             ttl: TimeDiff::default(),
             dependencies: Default::default(),

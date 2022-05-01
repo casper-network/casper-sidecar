@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
+use casper_types::bytesrepr::FromBytes;
 use tracing::{error, info, warn};
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection, Reply};
@@ -149,7 +150,6 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
                         let account_hash = AccountHash::from(&public_key);
                         let hash_hex = hex::encode(account_hash.value());
                         let purse_query_key = format!("purse-of-{}", &hash_hex);
-                        info!("Query for {}", purse_query_key);
                         let purse_uref = match cloned_kv_store.find(&purse_query_key) {
                             Ok(opt_uref) => match opt_uref {
                                 None => return Err(warp::reject::not_found()),
@@ -182,30 +182,54 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
         .and_then(move |account_hash: String| {
             let cloned_kv_store = cloned_kv_store.clone();
             async move {
-                let purse_query_key = format!("purse-of-{}", &account_hash);
-                warn!("Querying for {}", purse_query_key);
-                let purse_uref = match cloned_kv_store.find(&purse_query_key) {
-                    Ok(opt_uref) => match opt_uref {
-                        None => {
-                            warn!("No uref found!");
-                            return Err(warp::reject::not_found())
+                match hex::decode(&account_hash) {
+                    Ok(x) => match AccountHash::from_bytes(&x) {
+                            Ok(hash) => {
+                                assert_eq!(cloned_kv_store.find("health-check").unwrap().unwrap(), "healthy");
+                                let purse_query_key = format!("purse-of-{}", hex::encode(&hash.0.value()));
+                                let purse_uref = match cloned_kv_store.find(&purse_query_key) {
+                                    Ok(opt_uref) => match opt_uref {
+                                        None => {
+                                            warn!("No uref found!");
+                                            return Err(warp::reject::not_found())
+                                        },
+                                        Some(uref) => uref
+                                    }
+                                    Err(_) => return Err(warp::reject::not_found()),
+                                };
+                                match cloned_kv_store.find(&purse_uref) {
+                                    Ok(balance) => {
+                                        match balance {
+                                            Some(balance_string) => Ok(format!(
+                                                "Balance Request\n\tAccountHash: {}\n\tBalance: {}\n",
+                                                account_hash, balance_string
+                                            )),
+                                            None => Err(reject::custom(BalanceNotFound)),
+                                        }
+                                    },
+                                    Err(_) => Err(warp::reject::not_found()),
+                                }
+                            },
+                            Err(_) => Err(warp::reject::not_found())
                         },
-                        Some(uref) => uref
-                    }
-                    Err(_) => return Err(warp::reject::not_found()),
-                };
-                info!("Found this Uref: {}", purse_uref);
+                    Err(_) => Err(warp::reject::not_found())
+                }
+            }
+        });
+
+    let cloned_kv_store = kv_store.clone();
+    let raw_purse_query = balance_root
+        .and(warp::path("purse"))
+        .and(warp::path::param())
+        .and_then(move |purse_uref: String| {
+            let cloned_kv_store = cloned_kv_store.clone();
+            async move {
                 match cloned_kv_store.find(&purse_uref) {
-                    Ok(balance) => {
-                        match balance {
-                            Some(balance_string) => Ok(format!(
-                                "Balance Request\n\tAccountHash: {}\n\tBalance: {}\n",
-                                account_hash, balance_string
-                            )),
-                            None => Err(reject::custom(BalanceNotFound)),
-                        }
+                    Ok(maybe_balance) => match maybe_balance {
+                        None => Err(warp::reject::not_found()),
+                        Some(balance) => Ok(balance)
                     },
-                    Err(_) => Err(warp::reject::not_found()),
+                    Err(_) => Err(warp::reject::not_found())
                 }
             }
         });
@@ -219,6 +243,7 @@ pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(
             .or(balance_health_check)
             .or(balance_by_pub_key_hex)
             .or(balance_by_account_hash)
+            .or(raw_purse_query)
             .recover(handle_rejection),
     );
 
