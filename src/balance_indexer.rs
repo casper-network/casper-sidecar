@@ -98,7 +98,6 @@ impl BalanceIndexer {
                             self.store
                                 .save(&key, &purse_uref.to_formatted_string())
                                 .unwrap();
-                            let ret = self.store.find(&key).unwrap().unwrap();
                             info!("\tNew account: {}", truncate_long_string(&hash_hex));
                         }
                     }

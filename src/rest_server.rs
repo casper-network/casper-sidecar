@@ -7,15 +7,15 @@ use casper_types::{AsymmetricType, PublicKey, account::AccountHash};
 use serde::Serialize;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
-use std::path::Path;
+use std::path::PathBuf;
 use casper_types::bytesrepr::FromBytes;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection, Reply};
 
-pub async fn start_server(db_path: &Path, kv_path: &Path, port: u16) -> Result<(), Error> {
+pub async fn start_server(db_path: PathBuf, kv_path: PathBuf, port: u16) -> Result<(), Error> {
     let storage = ReadOnlyDatabase::new(&db_path)?;
-    let kv_store = RocksDB::connect_read_only(kv_path)?;
+    let kv_store = RocksDB::connect_read_only(&kv_path)?;
 
     // GET / - return proper paths
     let root = warp::path::end().map(|| {

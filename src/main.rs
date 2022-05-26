@@ -6,7 +6,7 @@ mod rest_server;
 pub mod types;
 pub mod kv_store;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use anyhow::Error;
 use casper_node::types::Block;
 use casper_types::AsymmetricType;
@@ -59,11 +59,12 @@ async fn main() -> Result<(), Error> {
     // Create indexer instance
     let mut balance_indexer = BalanceIndexer::new(Path::new(&config.storage.kv_path), &node).await?;
 
+    let db_path = PathBuf::from(config.storage.db_path);
+    let kv_path = PathBuf::from(config.storage.kv_path);
     let rest_server_handle = tokio::task::spawn(
         start_rest_server(
-            // TODO: can't get passing the config variables into the thread to work
-            Path::new("./db/storage.db3"),
-            Path::new("./db/kv_store"),
+            db_path,
+            kv_path,
             config.rest_server.port,
         )
     );
