@@ -1,5 +1,5 @@
 [connection]
-network = "Mainnet" # or Mainnet or Testnet
+network = "Mainnet" # or Testnet or Local
 sse_filter = "main"
 [connection.node.mainnet]
 ip_address = "65.108.78.120"
