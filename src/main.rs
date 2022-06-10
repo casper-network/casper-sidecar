@@ -2,6 +2,7 @@ extern crate core;
 
 mod sqlite_db;
 mod rest_server;
+mod event_stream_server;
 pub mod types;
 
 use std::path::{Path, PathBuf};

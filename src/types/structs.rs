@@ -1,6 +1,6 @@
 use crate::types::enums::Network;
-use casper_node::types::{BlockHash, JsonBlock, TimeDiff, Timestamp};
-use casper_types::{DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_node::types::{BlockHash, JsonBlock};
+use casper_types::{DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
