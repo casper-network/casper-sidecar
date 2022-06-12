@@ -21,6 +21,7 @@ pub struct ServerConfig {
 pub struct StorageConfig {
     pub db_path: String,
     pub kv_path: String,
+    pub sse_cache: String,
 }
 
 #[derive(Deserialize)]

@@ -29,7 +29,7 @@ mod sse_server;
 pub (crate) mod testing;
 mod utils;
 
-use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
@@ -56,12 +56,6 @@ use utils::ListeningError;
 /// We always want the broadcast channel size to be greater than the event stream buffer length so
 /// that a new client can retrieve the entire set of buffered events if desired.
 const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
-
-/// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
-/// work with.
-pub trait ReactorEventT: From<Event> + Send {}
-
-impl<REv> ReactorEventT for REv where REv: From<Event> + Send + 'static {}
 
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
@@ -138,7 +132,7 @@ impl EventStreamServer {
         let _ = self.sse_data_sender.send((event_index, sse_data));
     }
 
-    fn handle_event(&mut self, event: Event) {
+    pub(crate) fn handle_event(&mut self, event: Event) {
         match event {
             Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
@@ -163,7 +157,8 @@ impl EventStreamServer {
             }),
             Event::DeploysExpired(deploy_hashes) => deploy_hashes
                 .into_iter()
-                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                // todo ask about the fact that this used to be flat_map (which caused error `() is not an iterator`)
+                .map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
                 .collect(),
             Event::Fault {
                 era_id,

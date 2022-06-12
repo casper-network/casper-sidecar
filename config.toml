@@ -17,6 +17,7 @@ rpc_port=11101
 [storage]
 db_path = "./db/storage.db3"
 kv_path = "./db/kv_store"
+sse_cache = "./db/event_stream_server"
 
 [rest_server]
 run = true

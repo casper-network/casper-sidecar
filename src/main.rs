@@ -8,7 +8,7 @@ pub mod types;
 use std::path::{Path, PathBuf};
 use anyhow::Error;
 use casper_node::types::Block;
-use casper_types::AsymmetricType;
+use casper_types::{AsymmetricType, ProtocolVersion};
 use sqlite_db::Database;
 use sse_client::EventSource;
 use tracing::{info};
@@ -16,6 +16,7 @@ use tracing_subscriber;
 use types::structs::Config;
 use types::enums::{Event, Network};
 use rest_server::start_server as start_rest_server;
+use event_stream_server::{EventStreamServer, Config as SseConfig};
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path)?;
@@ -60,6 +61,12 @@ async fn main() -> Result<(), Error> {
             db_path,
             config.rest_server.port,
         )
+    );
+
+    let event_stream_server = EventStreamServer::new(
+        SseConfig::new(),
+        PathBuf::from(config.storage.sse_cache),
+        ProtocolVersion::from_parts(1,4,6)
     );
 
     let sse_receiver = async {

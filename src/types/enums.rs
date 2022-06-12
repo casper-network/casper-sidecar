@@ -1,15 +1,4 @@
-use super::structs::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step};
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Event {
-    ApiVersion(String),
-    BlockAdded(BlockAdded),
-    DeployAccepted(DeployAccepted),
-    DeployProcessed(DeployProcessed),
-    Step(Step),
-    Fault(Fault),
-}
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub enum Network {
