@@ -11,12 +11,14 @@ use casper_node::types::Block;
 use casper_types::{AsymmetricType, ProtocolVersion};
 use sqlite_db::Database;
 use sse_client::EventSource;
-use tracing::{info};
+use tracing::{warn, info};
 use tracing_subscriber;
 use types::structs::Config;
-use types::enums::{Event, Network};
+use types::enums::Network;
 use rest_server::start_server as start_rest_server;
 use event_stream_server::{EventStreamServer, Config as SseConfig};
+use crate::event_stream_server::SseData;
+
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path)?;
@@ -63,57 +65,82 @@ async fn main() -> Result<(), Error> {
         )
     );
 
-    let event_stream_server = EventStreamServer::new(
+    let mut event_stream_server = EventStreamServer::new(
         SseConfig::new(),
         PathBuf::from(config.storage.sse_cache),
         ProtocolVersion::from_parts(1,4,6)
-    );
+    ).unwrap_or_else(|err| {
+        panic!(err);
+    });
 
     let sse_receiver = async {
-        for (_index, event) in sse.receiver().iter().enumerate() {
-            let json = serde_json::from_str(&event.data)?;
+        for (_index, evt) in sse.receiver().iter().enumerate() {
 
-            match json {
-                Event::ApiVersion(version) => {
-                    info!("API Version: {:?}", version);
+            let cloned_evt = evt.clone();
+            let sse_data = serde_json::from_str(&cloned_evt.data)?;
+            event_stream_server.broadcast(sse_data);
+
+            let event = serde_json::from_str(&evt.data)?;
+
+            match event {
+                SseData::ApiVersion(version) => {
+                    info!("API Version: {:?}", version.to_string());
                 }
-                Event::BlockAdded(block_added) => {
-                    let json_block = block_added.block;
-                    let block = Block::from(json_block);
+                SseData::BlockAdded {block, block_hash} => {
+                    let block = Block::from(*block);
                     info!(
                         message = "Saving block:",
-                        hash = hex::encode(block.hash().inner()).as_str(),
+                        hash = block_hash.to_string().as_str(),
                         height = block.height()
                     );
                     storage.save_block(&block).await?;
                 }
-                Event::DeployAccepted(deploy_accepted) => {
-                    // deploy is represented only by hash in this event.
-                    // hence why the .deploy is actually just the hash.
+                SseData::DeployAccepted {deploy} => {
                     info!(
                         "Deploy Accepted: {}",
-                        hex::encode(deploy_accepted.deploy.value())
+                        deploy
                     );
                 }
-                Event::DeployProcessed(deploy_processed) => {
+                SseData::DeployExpired {deploy_hash} => {
+                    info!(
+                        message = "Deploy expired:",
+                        hash = hex::encode(deploy_hash.inner()).as_str()
+                    );
+                }
+                SseData::DeployProcessed {deploy_hash, ..} => {
+                    // let deploy_processed = DeployProcessed {
+                    //     account,
+                    //     block_hash,
+                    //     dependencies,
+                    //     deploy_hash,
+                    //     execution_result,
+                    //     ttl,
+                    //     timestamp
+                    // };
                     info!(
                         message = "Saving deploy:",
-                        hash = hex::encode(deploy_processed.deploy_hash.value()).as_str()
+                        hash = hex::encode(deploy_hash.inner()).as_str()
                     );
-                    storage.save_deploy(&deploy_processed).await?;
+                    // storage.save_deploy(&deploy_processed).await?;
                 }
-                Event::Step(step) => {
-                    info!("\n\tStep reached for Era: {}", step.era_id);
-                    storage.save_step(&step).await?;
-                }
-                Event::Fault(fault) => {
+                SseData::Fault {era_id, timestamp, public_key} => {
                     info!(
                         "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
-                        fault.era_id,
-                        fault.public_key.to_hex(),
-                        fault.timestamp
+                        era_id,
+                        public_key.to_hex(),
+                        timestamp
                     );
-                    storage.save_fault(&fault).await?;
+                    // storage.save_fault(&fault).await?;
+                }
+                SseData::FinalitySignature(fs) => {
+                    info!("Finality signature, {}", fs);
+                }
+                SseData::Step {era_id, ..} => {
+                    info!("\n\tStep reached for Era: {}", era_id);
+                    // storage.save_step(&step).await?;
+                }
+                SseData::Shutdown => {
+                    info!("Node is shutting down!");
                 }
             }
         }

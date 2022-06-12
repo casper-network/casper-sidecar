@@ -309,7 +309,7 @@ dependencies = [
  "tokio-stream",
  "toml",
  "tracing",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.11",
  "warp",
  "wheelbuf",
 ]
@@ -317,7 +317,7 @@ dependencies = [
 [[package]]
 name = "casper-execution-engine"
 version = "1.5.0"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "anyhow",
  "base16",
@@ -358,7 +358,7 @@ dependencies = [
 [[package]]
 name = "casper-hashing"
 version = "1.4.3"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "base16",
  "blake2",
@@ -376,7 +376,7 @@ dependencies = [
 [[package]]
 name = "casper-json-rpc"
 version = "0.1.0"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "bytes",
  "futures",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "casper-node"
 version = "1.4.5"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -464,7 +464,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-futures",
- "tracing-subscriber",
+ "tracing-subscriber 0.2.25",
  "uint",
  "uuid",
  "vergen",
@@ -475,7 +475,7 @@ dependencies = [
 [[package]]
 name = "casper-node-macros"
 version = "1.4.3"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -487,7 +487,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "1.5.0"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#27e8959072e5a9c7fb2aa82da432e3884841618a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#5327eae078cfa4e9279351444a0d754201682fa4"
 dependencies = [
  "base16",
  "base64",
@@ -2866,6 +2866,20 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bc28f93baff38037f64e6f43d34cfa1605f27a49c34e8a04c5e78b0babf2596"
+dependencies = [
+ "ansi_term",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]

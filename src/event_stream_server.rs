@@ -71,11 +71,13 @@ impl EventStreamServer {
         storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
+        println!("Attempting to start Event Stream Server");
+
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
-            warn!(
-                %error,
-                address=%config.address,
-                "failed to start event stream server, cannot parse address"
+            eprintln!(
+                // %error,
+                // address=%config.address,
+                "failed to start event stream server, cannot parse address: {}", config.address
             );
             ListeningError::ResolveAddress(error)
         })?;
@@ -107,7 +109,8 @@ impl EventStreamServer {
                     address: required_address,
                     error: Box::new(error),
                 })?;
-        info!(address=%listening_address, "started event stream server");
+        // info!(address=%listening_address, "started event stream server");
+        println!("Started event stream server on: {}", listening_address);
 
         tokio::spawn(http_server::run(
             config,
@@ -127,7 +130,7 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    fn broadcast(&mut self, sse_data: SseData) {
+    pub(crate) fn broadcast(&mut self, sse_data: SseData) {
         let event_index = self.event_indexer.next_index();
         let _ = self.sse_data_sender.send((event_index, sse_data));
     }
