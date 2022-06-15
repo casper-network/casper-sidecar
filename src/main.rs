@@ -112,11 +112,9 @@ async fn main() -> Result<(), Error> {
         SseConfig::new_on_port(config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
         api_version
-    ).unwrap_or_else(|err| {
-        panic!("{:?}", err);
-    });
+    )?;
 
-    // Adds space under setup logs before stream starts
+    // Adds space under setup logs before stream starts for readability
     println!("\n\n");
 
     // Task to manage incoming events from all three filters
