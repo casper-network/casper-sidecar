@@ -5,7 +5,7 @@ use anyhow::{Context, Error};
 use casper_node::types::Block;
 use rusqlite::{params, Connection, OpenFlags, named_params};
 use std::sync::{Arc, Mutex};
-use tracing::trace;
+use tracing::debug;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
 
@@ -30,7 +30,7 @@ impl Database {
             [],
         )
         .context("failed to create blocks table in database")?;
-        trace!("SQLite - Blocks table initialised");
+        debug!("SQLite - Blocks table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS deploys (
@@ -41,7 +41,7 @@ impl Database {
             [],
         )
         .context("failed to create deploys table in database")?;
-        trace!("SQLite - Deploys table initialised");
+        debug!("SQLite - Deploys table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS steps (
@@ -51,7 +51,7 @@ impl Database {
             [],
         )
         .context("failed to create steps table in database")?;
-        trace!("SQLite - Steps table initialised");
+        debug!("SQLite - Steps table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS faults (
@@ -63,7 +63,7 @@ impl Database {
             [],
         )
         .context("failed to create faults table in database")?;
-        trace!("SQLite - Faults table initialised");
+        debug!("SQLite - Faults table initialised");
 
         Ok(Database {
             db: Arc::new(Mutex::new(db)),

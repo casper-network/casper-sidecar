@@ -6,13 +6,13 @@ mod event_stream_server;
 pub mod types;
 
 use std::path::{Path, PathBuf};
-use anyhow::Error;
+use anyhow::{Context, Error};
 use casper_node::types::Block;
 use casper_types::AsymmetricType;
 use sqlite_db::Database;
 use sse_client::EventSource;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber;
 use types::structs::Config;
 use types::enums::Network;
@@ -22,8 +22,8 @@ use crate::event_stream_server::SseData;
 
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
-    let toml_content = std::fs::read_to_string(config_path)?;
-    Ok(toml::from_str(&toml_content)?)
+    let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
+    Ok(toml::from_str(&toml_content).context("Error parsing config into TOML format")?)
 }
 
 #[tokio::main]
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config("config.toml")?;
+    let config: Config = read_config("config.toml").context("Error constructing config")?;
     info!("Configuration loaded");
 
     let node = match config.connection.network {
@@ -44,13 +44,13 @@ async fn main() -> Result<(), Error> {
     let url_base = format!("http://{ip}:{port}/events", ip = node.ip_address, port = node.sse_port);
     let sse_main = EventSource::new(
         format!("{}/main", url_base).as_str(),
-    )?;
+    ).context("Error constructing EventSource for Main filter")?;
     let sse_deploys = EventSource::new(
         format!("{}/deploys", url_base).as_str(),
-    )?;
+    ).context("Error constructing EventSource for Deploys filter")?;
     let sse_sigs = EventSource::new(
         format!("{}/sigs", url_base).as_str(),
-    )?;
+    ).context("Error constructing EventSource for Signatures filter")?;
 
     // Create channels for each filter to funnel events to a single receiver.
     let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     let main_recv = sse_main.receiver();
     // // first event should always be the API version
     let first_event = main_recv.iter().next();
-    let first_event_data = serde_json::from_str::<SseData>(&first_event.unwrap().data)?;
+    let first_event_data = serde_json::from_str::<SseData>(&first_event.unwrap().data).context("Error parsing first SSE into API version")?;
 
     let api_version = match first_event_data {
       SseData::ApiVersion(version) => version,
@@ -97,7 +97,7 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(sse_sigs_receiver);
 
     // Instantiates SQLite database
-    let storage: Database = Database::new(Path::new(&config.storage.db_path))?;
+    let storage: Database = Database::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
 
     // Spin up Rest Server
     let rest_server_handle = tokio::spawn(
@@ -112,7 +112,7 @@ async fn main() -> Result<(), Error> {
         SseConfig::new_on_port(config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
         api_version
-    )?;
+    ).context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");
@@ -121,10 +121,10 @@ async fn main() -> Result<(), Error> {
     let sse_receiver = async {
         while let Some(evt) = sse_data_receiver.recv().await {
             let cloned_evt = evt.clone();
-            let sse_data = serde_json::from_str(&cloned_evt.data).unwrap();
+            let sse_data = serde_json::from_str(&cloned_evt.data).context("Error parsing SSE data")?;
             event_stream_server.broadcast(sse_data);
 
-            let event = serde_json::from_str(&evt.data).unwrap();
+            let event = serde_json::from_str(&evt.data).context("Error parsing SSE data")?;
 
             match event {
                 SseData::ApiVersion(version) => {
@@ -133,11 +133,11 @@ async fn main() -> Result<(), Error> {
                 SseData::BlockAdded {block, block_hash} => {
                     let block = Block::from(*block);
                     info!(
-                        message = "Saving block:",
+                        message = "Block Added:",
                         hash = block_hash.to_string().as_str(),
                         height = block.height()
                     );
-                    storage.save_block(&block).await.unwrap();
+                    storage.save_block(&block).await.context("Error saving block data")?;
                 }
                 SseData::DeployAccepted {deploy} => {
                     info!(
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Error> {
                     //     timestamp
                     // };
                     info!(
-                        message = "Saving deploy:",
+                        message = "Deploy Processed:",
                         hash = hex::encode(deploy_hash.inner()).as_str()
                     );
                     // storage.save_deploy(&deploy_processed).await?;
@@ -177,7 +177,7 @@ async fn main() -> Result<(), Error> {
                     // storage.save_fault(&fault).await?;
                 }
                 SseData::FinalitySignature(fs) => {
-                    info!("Finality signature, {}", fs);
+                    debug!("Finality signature, {}", fs.signature);
                 }
                 SseData::Step {era_id, ..} => {
                     info!("\n\tStep reached for Era: {}", era_id);
