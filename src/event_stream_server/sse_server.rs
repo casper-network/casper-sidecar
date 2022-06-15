@@ -83,6 +83,7 @@ pub enum SseData {
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
         #[schemars(with = "Deploy", description = "a deploy")]
+        #[serde(flatten)]
         // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
         deploy: Arc<Deploy>,
     },

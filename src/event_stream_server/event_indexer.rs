@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 const CACHE_FILENAME: &str = "sse_index";
 
@@ -14,6 +14,9 @@ pub(super) struct EventIndexer {
 
 impl EventIndexer {
     pub(super) fn new(storage_path: PathBuf) -> Self {
+        fs::create_dir_all(&storage_path).unwrap_or_else(|err| {
+            error!("Failed to create directory for sse cache: {}", err);
+        });
         let persistent_cache = storage_path.join(CACHE_FILENAME);
         let mut bytes = EventIndex::default().to_le_bytes();
         match fs::read(&persistent_cache) {

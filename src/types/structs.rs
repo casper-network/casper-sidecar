@@ -8,7 +8,7 @@ pub struct Config {
     pub connection: ConnectionConfig,
     pub storage: StorageConfig,
     pub rest_server: ServerConfig,
-    pub ws_server: ServerConfig,
+    pub sse_server: ServerConfig,
 }
 
 #[derive(Deserialize)]
@@ -20,7 +20,6 @@ pub struct ServerConfig {
 #[derive(Deserialize)]
 pub struct StorageConfig {
     pub db_path: String,
-    pub kv_path: String,
     pub sse_cache: String,
 }
 

@@ -21,7 +21,6 @@
 //! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
-mod inbound_event;
 mod event_indexer;
 pub(crate) mod logging;
 mod http_server;
@@ -29,7 +28,7 @@ mod sse_server;
 pub (crate) mod testing;
 mod utils;
 
-use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
@@ -39,9 +38,7 @@ use tracing::{info, warn};
 use warp::Filter;
 
 use casper_types::ProtocolVersion;
-use casper_node::types::JsonBlock;
 pub use config::Config;
-pub(crate) use inbound_event::Event;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
@@ -62,6 +59,8 @@ pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
     event_indexer: EventIndexer,
+    // This is linted as unused because in this implementation it is only printed to the output.
+    #[allow(unused)]
     listening_address: SocketAddr,
 }
 
@@ -71,13 +70,11 @@ impl EventStreamServer {
         storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
-        println!("Attempting to start Event Stream Server");
-
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
-            eprintln!(
-                // %error,
-                // address=%config.address,
-                "failed to start event stream server, cannot parse address: {}", config.address
+            warn!(
+                %error,
+                address=%config.address,
+                "failed to start event stream server, cannot parse address"
             );
             ListeningError::ResolveAddress(error)
         })?;
@@ -109,8 +106,7 @@ impl EventStreamServer {
                     address: required_address,
                     error: Box::new(error),
                 })?;
-        // info!(address=%listening_address, "started event stream server");
-        println!("Started event stream server on: {}", listening_address);
+        info!(address=%listening_address, "started event stream server");
 
         tokio::spawn(http_server::run(
             config,
@@ -133,54 +129,6 @@ impl EventStreamServer {
     pub(crate) fn broadcast(&mut self, sse_data: SseData) {
         let event_index = self.event_indexer.next_index();
         let _ = self.sse_data_sender.send((event_index, sse_data));
-    }
-
-    pub(crate) fn handle_event(&mut self, event: Event) {
-        match event {
-            Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
-                block_hash: *block.hash(),
-                block: Box::new(JsonBlock::new(*block, None)),
-            }),
-            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
-                deploy: Arc::new(*deploy),
-            }),
-            Event::DeployProcessed {
-                deploy_hash,
-                deploy_header,
-                block_hash,
-                execution_result,
-            } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash: Box::new(deploy_hash),
-                account: Box::new(deploy_header.account().clone()),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash: Box::new(block_hash),
-                execution_result,
-            }),
-            Event::DeploysExpired(deploy_hashes) => deploy_hashes
-                .into_iter()
-                // todo ask about the fact that this used to be flat_map (which caused error `() is not an iterator`)
-                .map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
-                .collect(),
-            Event::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            } => self.broadcast(SseData::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            }),
-            Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
-            Event::Step {
-                era_id,
-                execution_effect,
-            } => self.broadcast(SseData::Step {
-                era_id,
-                execution_effect,
-            }),
-        }
     }
 }
 

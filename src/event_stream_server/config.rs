@@ -35,6 +35,14 @@ impl Config {
             max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
         }
     }
+
+    pub fn new_on_port(port: u16) -> Self {
+        Config {
+            address: format!("0.0.0.0:{}", port),
+            event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
+            max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
+        }
+    }
 }
 
 impl Default for Config {
