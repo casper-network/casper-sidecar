@@ -13,7 +13,6 @@ pub struct Config {
 
 #[derive(Deserialize)]
 pub struct ServerConfig {
-    pub run: bool,
     pub port: u16,
 }
 
@@ -27,7 +26,6 @@ pub struct StorageConfig {
 pub struct ConnectionConfig {
     pub network: Network,
     pub node: Node,
-    pub sse_filter: String,
 }
 
 #[derive(Deserialize)]
@@ -41,7 +39,6 @@ pub struct Node {
 pub struct NodeConfig {
     pub ip_address: String,
     pub sse_port: u16,
-    pub rpc_port: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

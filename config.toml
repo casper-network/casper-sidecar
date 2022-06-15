@@ -1,27 +1,21 @@
 [connection]
 network = "Testnet" # or Mainnet or Local
-sse_filter = "main"
 [connection.node.mainnet]
 ip_address = "65.108.78.120"
 sse_port=9999
-rpc_port=7777
 [connection.node.testnet]
 ip_address="159.65.118.250"
 sse_port=9999
-rpc_port=7777
 [connection.node.local]
 ip_address="192.168.1.27"
 sse_port=18101
-rpc_port=11101
 
 [storage]
 db_path = "./target/storage"
 sse_cache = "./target/storage"
 
 [rest_server]
-run = true
 port = 3030
 
 [sse_server]
-run = true
 port = 19999

@@ -5,7 +5,7 @@ use anyhow::{Context, Error};
 use casper_node::types::Block;
 use rusqlite::{params, Connection, OpenFlags, named_params};
 use std::sync::{Arc, Mutex};
-use tracing::{trace, error};
+use tracing::trace;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
 
