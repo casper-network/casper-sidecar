@@ -2,23 +2,17 @@
 //!
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
+#[cfg(test)]
 pub(crate) mod test_clock;
 mod test_rng;
-#[cfg(test)]
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-#[cfg(test)]
 use casper_hashing::Digest;
-#[cfg(test)]
 use casper_types::testing::TestRng;
-#[cfg(test)]
 use casper_types::{runtime_args, TimeDiff, Timestamp, U512, RuntimeArgs, SecretKey};
-#[cfg(test)]
 use casper_node::types::{Deploy, DeployHash};
-#[cfg(test)]
 use rand::{Rng, RngCore};
 
 /// Creates a test deploy created at given instant and with given ttl.
-#[cfg(test)]
 pub(crate) fn create_test_deploy(
     created_ago: TimeDiff,
     ttl: TimeDiff,
@@ -33,7 +27,6 @@ pub(crate) fn create_test_deploy(
 }
 
 /// Creates a random deploy that is considered expired.
-#[cfg(test)]
 pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(
         TimeDiff::from_seconds(20),
@@ -44,7 +37,6 @@ pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> D
 }
 
 /// Generates a random instance but using the specified `timestamp` and `ttl`.
-#[cfg(test)]
 fn random_deploy_with_timestamp_and_ttl(
     rng: &mut TestRng,
     timestamp: Timestamp,

@@ -24,8 +24,9 @@ mod config;
 mod event_indexer;
 mod http_server;
 mod sse_server;
-pub (crate) mod testing;
 mod utils;
+#[cfg(test)]
+pub (crate) mod testing;
 #[cfg(test)]
 mod tests;
 
