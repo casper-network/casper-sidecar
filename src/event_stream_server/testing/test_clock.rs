@@ -7,25 +7,29 @@
 //! The [`TestClock`] is suitable for code written with "external" time passed in through its
 //! regular interfaces already in mind. Code that does not conform to this should use `FakeClock`
 //! and conditional compilation (`#[cfg(test)] ...`) instead.
-
+#[cfg(test)]
 use std::time::{Duration, Instant};
 
 /// How far back the test clock can go (roughly 10 years).
+#[cfg(test)]
 const TEST_CLOCK_LEEWAY: Duration = Duration::from_secs(315_569_520);
 
 /// A rewindable and forwardable clock for testing that does not tick on its own.
 #[derive(Debug)]
+#[cfg(test)]
 pub struct TestClock {
     /// The current time set on the clock.
     now: Instant,
 }
 
+#[cfg(test)]
 impl Default for TestClock {
     fn default() -> Self {
         TestClock::new()
     }
 }
 
+#[cfg(test)]
 impl TestClock {
     /// Creates a new testing clock.
     ///

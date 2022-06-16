@@ -22,11 +22,12 @@
 
 mod config;
 mod event_indexer;
-pub(crate) mod logging;
 mod http_server;
 mod sse_server;
 pub (crate) mod testing;
 mod utils;
+#[cfg(test)]
+mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 

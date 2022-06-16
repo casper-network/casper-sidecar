@@ -12,12 +12,11 @@ edition = "2018"
 
 # todo Remove unused dependencies
 [dependencies]
-ansi_term = "0.12.1"
 anyhow = {version = "1.0.44", default-features = false }
-assert-json-diff = "2.0.1"
-casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
-casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
+casper-types = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
+casper-hashing = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
+casper-execution-engine = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
 derive_more = "0.99.7"
 futures = "0.3.17"
 hex = "0.4.3"
@@ -44,7 +43,12 @@ warp = { version = "0.3.0", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [patch.crates-io]
-casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
+casper-execution-engine = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
+casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
+casper-hashing = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
+casper-types = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
+
+[dev-dependencies]
+casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature", features = ["testing"]}
+pretty_assertions = "0.7.2"
+reqwest = { version = "0.11.3", features = ["stream"] }

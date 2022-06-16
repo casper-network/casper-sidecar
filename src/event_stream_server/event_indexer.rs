@@ -84,12 +84,10 @@ impl Drop for EventIndexer {
 mod tests {
     use std::iter;
 
-    use crate::event_stream_server::logging;
     use super::*;
 
     #[test]
     fn should_persist_in_cache() {
-        let _ = logging::init();
         let tempdir = tempfile::tempdir().unwrap();
 
         // This represents a single session where five events are produced before the session ends.
@@ -113,7 +111,6 @@ mod tests {
 
     #[test]
     fn should_wrap() {
-        let _ = logging::init();
         let tempdir = tempfile::tempdir().unwrap();
 
         let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
@@ -125,7 +122,6 @@ mod tests {
 
     #[test]
     fn should_reset_index_on_cache_read_failure() {
-        let _ = logging::init();
         let tempdir = tempfile::tempdir().unwrap();
 
         // Create a folder with the same name as the cache file to cause reading to fail.
@@ -136,7 +132,6 @@ mod tests {
 
     #[test]
     fn should_reset_index_on_corrupt_cache() {
-        let _ = logging::init();
         let tempdir = tempfile::tempdir().unwrap();
 
         {

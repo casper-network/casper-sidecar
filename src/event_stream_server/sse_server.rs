@@ -557,7 +557,6 @@ mod tests {
     use casper_types::testing::TestRng;
 
     use super::*;
-    use crate::event_stream_server::logging;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
@@ -581,8 +580,7 @@ mod tests {
     /// `ApiVersion`) are filtered properly.
     #[tokio::test]
     async fn should_filter_events_with_valid_ids() {
-        let _ = logging::init();
-        let mut rng = TestRng::new_rng();
+        let mut rng = TestRng::new();
 
         let api_version = ServerSentEvent {
             id: None,
@@ -667,8 +665,7 @@ mod tests {
     /// `ApiVersion`) are filtered out.
     #[tokio::test]
     async fn should_filter_events_with_invalid_ids() {
-        let _ = logging::init();
-        let mut rng = TestRng::new_rng();
+        let mut rng = TestRng::new();
 
         let malformed_api_version = ServerSentEvent {
             id: Some(rng.gen()),
@@ -790,8 +787,7 @@ mod tests {
         // stream.
         const NUM_ONGOING_EVENTS: usize = 20;
 
-        let _ = logging::init();
-        let mut rng = TestRng::new_rng();
+        let mut rng = TestRng::new();
 
         let mut deploys = HashMap::new();
 
