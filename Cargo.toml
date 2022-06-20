@@ -10,6 +10,7 @@ edition = "2018"
 default = ["casper-mainnet"]
 casper-mainnet = ["casper-node/casper-mainnet"]
 
+# todo Remove unused dependencies
 [dependencies]
 casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
