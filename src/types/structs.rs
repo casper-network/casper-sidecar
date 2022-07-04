@@ -1,6 +1,6 @@
 use crate::types::enums::Network;
-use casper_node::types::{BlockHash, JsonBlock};
-use casper_types::{DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
+use casper_node::types::{BlockHash, DeployHash, JsonBlock};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -55,10 +55,10 @@ pub struct DeployAccepted {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeployProcessed {
     pub deploy_hash: Box<DeployHash>,
-    account: Box<PublicKey>,
+    pub account: Box<PublicKey>,
     pub timestamp: Timestamp,
-    ttl: TimeDiff,
-    dependencies: Vec<DeployHash>,
+    pub ttl: TimeDiff,
+    pub dependencies: Vec<DeployHash>,
     pub block_hash: Box<BlockHash>,
     pub execution_result: Box<ExecutionResult>,
 }

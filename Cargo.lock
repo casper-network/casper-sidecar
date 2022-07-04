@@ -285,6 +285,7 @@ dependencies = [
  "casper-types",
  "derive_more",
  "futures",
+ "futures-util",
  "hex",
  "hex-buffer-serde 0.3.0",
  "http",

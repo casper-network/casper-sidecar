@@ -1,21 +1,22 @@
 use crate::sqlite_db::ReadOnlyDatabase;
-use crate::types::structs::{DeployProcessed, Step};
 use anyhow::Error;
-use casper_node::types::Block;
-use serde::Serialize;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{Filter, Rejection, Reply};
+use serde::Serialize;
 
 pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
     let storage = ReadOnlyDatabase::new(&db_path)?;
 
     // GET / - return proper paths
-    let root = warp::path::end().map(|| {
-        "SIDECAR :: Server: Invalid Path /, please try calling the 'block' or 'deploy' API\n"
-            .to_string()
+    let root = warp::path::end()
+        .and_then(move || {
+            async move {
+                // todo I had to set the OK type to String to keep it happy - there is probably a better way to satisfy the constraint that it needs to impl Reply
+                Result::<String ,Rejection>::Err(warp::reject::custom(InvalidPath))
+            }
     });
 
     // GET /:String - checks for "block" or "deploy" routes
@@ -26,14 +27,7 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .and_then(move |root_path: String| {
                 let cloned_storage = cloned_storage.clone();
                 async move {
-                    let response = match root_path.as_str() {
-                        "block" | "deploy" => get_latest(root_path.as_str(), cloned_storage).await,
-                        _ => invalid_path().await,
-                    };
-                    match response {
-                        Ok(resp) => Ok(resp),
-                        Err(_e) => Err(warp::reject::not_found()),
-                    }
+                    get_latest(root_path.as_str(), cloned_storage).await
                 }
             });
 
@@ -50,10 +44,13 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .and_then(move |hash: String| {
                 let cloned_storage = cloned_storage.clone();
                 async move {
-                    let serialised = cloned_storage.get_block_by_hash(hash.as_str()).await;
-                    match serialised {
-                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x).unwrap())),
-                        Err(_e) => Err(warp::reject::not_found()),
+                    let serialized = cloned_storage.get_block_by_hash(hash.as_str()).await;
+                    match serialized {
+                        Ok(block) => match serde_json::to_string_pretty(&block) {
+                            Ok(pretty_json) => Ok(pretty_json),
+                            Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                        },
+                        Err(err) => Err(warp::reject::custom(StorageError(err)))
                     }
                 }
             });
@@ -66,10 +63,13 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .and_then(move |height: u64| {
                 let cloned_storage = cloned_storage.clone();
                 async move {
-                    let serialised = cloned_storage.get_block_by_height(height).await;
-                    match serialised {
-                        Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Block>(&x).unwrap())),
-                        Err(_e) => Err(warp::reject::not_found()),
+                    let serialized = cloned_storage.get_block_by_height(height).await;
+                    match serialized {
+                        Ok(block) => match serde_json::to_string_pretty(&block) {
+                            Ok(pretty_json) => Ok(pretty_json),
+                            Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                        },
+                        Err(err) => Err(warp::reject::custom(StorageError(err)))
                     }
                 }
             });
@@ -82,13 +82,13 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .and_then(move |hash: String| {
                 let cloned_storage = cloned_storage.clone();
                 async move {
-                    let bytes = cloned_storage.get_deploy_by_hash(hash.as_str()).await;
-                    match bytes {
-                        Ok(x) => Ok(format!(
-                            "{:#?}\n",
-                            serde_json::from_str::<DeployProcessed>(&x).unwrap()
-                        )),
-                        Err(_e) => Err(warp::reject::not_found()),
+                    let serialized = cloned_storage.get_deploy_by_hash(hash.as_str()).await;
+                    match serialized {
+                        Ok(deploy) => match serde_json::to_string_pretty(&deploy) {
+                            Ok(pretty_json) => Ok(pretty_json),
+                            Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                        },
+                        Err(err) => Err(warp::reject::custom(StorageError(err)))
                     }
                 }
             });
@@ -100,10 +100,32 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
         .and_then(move |era_id: u64| {
             let cloned_storage = cloned_storage.clone();
             async move {
-                let bytes = cloned_storage.get_step_by_era(era_id).await;
-                match bytes {
-                    Ok(x) => Ok(format!("{:#?}\n", serde_json::from_str::<Step>(&x).unwrap())),
-                    Err(_e) => Err(warp::reject::not_found()),
+                let serialized = cloned_storage.get_step_by_era(era_id).await;
+                match serialized {
+                    Ok(step) => match serde_json::to_string_pretty(&step) {
+                        Ok(pretty_json) => Ok(pretty_json),
+                        Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                    },
+                    Err(err) => Err(warp::reject::custom(StorageError(err)))
+                }
+            }
+        });
+
+    // GET /fault/public_key/:String
+    let cloned_storage = storage.clone();
+    let fault_by_public_key = warp::path("fault")
+        .and(warp::path("public_key"))
+        .and(warp::path::param())
+        .and_then(move |public_key: String| {
+            let cloned_storage = cloned_storage.clone();
+            async move {
+                let serialized = cloned_storage.get_fault_by_public_key(&public_key).await;
+                match serialized {
+                    Ok(fault) => match serde_json::to_string_pretty(&fault) {
+                        Ok(pretty_json) => Ok(pretty_json),
+                        Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                    },
+                    Err(err) => Err(warp::reject::custom(StorageError(err)))
                 }
             }
         });
@@ -114,6 +136,7 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .or(block_by_height)
             .or(deploy_by_hash)
             .or(step_by_era)
+            .or(fault_by_public_key)
             .recover(handle_rejection),
     );
 
@@ -125,27 +148,27 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
 }
 
 async fn get_latest(item: &str, storage: ReadOnlyDatabase) -> Result<String, Rejection> {
-    let bytes = match item {
-        "block" => storage.get_latest_block().await,
-        "deploy" => storage.get_latest_deploy().await,
-        _ => Err(Error::msg("Invalid item")),
-    };
-    match bytes {
-        Ok(x) => {
-            if item == "block" {
-                Ok(format!("{:#?}\r\nThis is the {path} API, calling /{path} returns the latest {path} as above.\nPlease try calling /{path}/hash/:String or /{path}/height/:u64\n", serde_json::from_str::<Block>(&x), path=item))
-            } else if item == "deploy" {
-                Ok(format!("{:#?}\r\nThis is the {path} API, calling /{path} returns the latest {path} as above.\nPlease try calling /{path}/hash/:String or /{path}/height/:u64\n", serde_json::from_str::<DeployProcessed>(&x), path=item))
-            } else {
-                Err(warp::reject::not_found())
+    match item {
+        "block" => {
+            return match storage.get_latest_block().await {
+                Ok(block) => match serde_json::to_string_pretty(&block) {
+                    Ok(pretty_json) => Ok(pretty_json),
+                    Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                },
+                Err(err) => Err(warp::reject::custom(StorageError(err)))
             }
-        }
-        Err(_e) => Err(warp::reject::not_found()),
+        },
+        "deploy" => {
+            return match storage.get_latest_deploy().await {
+                Ok(aggregate_deploy_info) => match serde_json::to_string_pretty(&aggregate_deploy_info) {
+                    Ok(pretty_json) => Ok(pretty_json),
+                    Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                }
+                Err(err) => Err(warp::reject::custom(StorageError(err)))
+            }
+        },
+        _ => Err(warp::reject::custom(InvalidPath))
     }
-}
-
-async fn invalid_path() -> Result<String, Rejection> {
-    Ok("SIDECAR :: Server: Invalid path provided. Please try calling the 'block' or 'deploy' API.\n".to_string())
 }
 
 #[derive(Serialize)]
@@ -154,13 +177,35 @@ struct ApiError {
     message: String,
 }
 
+#[derive(Debug)]
+struct InvalidPath;
+impl warp::reject::Reject for InvalidPath {}
+
+#[derive(Debug)]
+struct SerializationError(serde_json::error::Error);
+impl warp::reject::Reject for SerializationError {}
+
+#[derive(Debug)]
+struct StorageError(Error);
+impl warp::reject::Reject for StorageError {}
+
+
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
-        message = String::from("Not found");
+        message = String::from("No results");
+    } else if let Some(InvalidPath) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = String::from("Invalid request path provided");
+    } else if let Some(SerializationError(err)) = err.find() {
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = format!("Serialization Error: {}", err);
+    } else if let Some(StorageError(err)) = err.find() {
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = format!("Storage Error: {}", err);
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = String::from("Method not allowed");

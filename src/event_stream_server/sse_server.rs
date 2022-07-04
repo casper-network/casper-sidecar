@@ -134,7 +134,7 @@ impl SseData {
 #[cfg(test)]
 impl SseData {
     /// Returns a random `SseData::ApiVersion`.
-    pub(super) fn random_api_version(rng: &mut TestRng) -> Self {
+    pub fn random_api_version(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(0..10),
             rng.gen::<u8>() as u32,
@@ -144,7 +144,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::BlockAdded`.
-    pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
+    pub fn random_block_added(rng: &mut TestRng) -> Self {
         let block = Block::random(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
@@ -153,7 +153,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub(super) fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
+    pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
         let deploy = Deploy::random(rng);
         let event = SseData::DeployAccepted {
             deploy: Arc::new(deploy.clone()),
@@ -162,7 +162,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployProcessed`.
-    pub(super) fn random_deploy_processed(rng: &mut TestRng) -> Self {
+    pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
         SseData::DeployProcessed {
             deploy_hash: Box::new(*deploy.id()),
@@ -176,7 +176,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployExpired`
-    pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
+    pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
             deploy_hash: *deploy.id(),
@@ -184,7 +184,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::Fault`.
-    pub(super) fn random_fault(rng: &mut TestRng) -> Self {
+    pub fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
             era_id: EraId::new(rng.gen()),
             public_key: PublicKey::random(rng),
@@ -193,7 +193,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::FinalitySignature`.
-    pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
+    pub fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
@@ -201,7 +201,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::Step`.
-    pub(super) fn random_step(rng: &mut TestRng) -> Self {
+    pub fn random_step(rng: &mut TestRng) -> Self {
         let execution_effect = match rng.gen::<ExecutionResult>() {
             ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
                 effect

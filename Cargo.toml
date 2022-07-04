@@ -19,6 +19,7 @@ casper-hashing = { git = "https://github.com/Fraser999/casper-node", branch = "t
 casper-execution-engine = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
 derive_more = "0.99.7"
 futures = "0.3.17"
+futures-util = "0.3.21"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
 http = "0.2.1"
