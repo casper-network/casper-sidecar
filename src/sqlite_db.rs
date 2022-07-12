@@ -388,18 +388,18 @@ impl ReadOnlyDatabase {
             .db
             .lock()
             .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT * FROM deploys where hash = :hash")?;
+        let mut stmt = db.prepare("SELECT accepted FROM deploys where hash = :hash")?;
         let mut rows = stmt.query(named_params! { ":hash": hash })?;
 
         match rows.next()? {
             None => Err(Error::msg("No records found for query")),
             Some(row) => {
-                match extract_aggregate_deploy_info(row) {
-                    Err(err) => Err(Error::from(err)),
-                    Ok(aggregate) => match aggregate.accepted {
-                        None => Err(Error::msg("No records found for query")),
+                match row.get::<usize, Option<String>>(0) {
+                    Ok(data) => match data {
+                        None => Err(Error::msg("No accepted record found for deploy")),
                         Some(accepted) => deserialize_data::<Deploy>(&accepted)
-                    }
+                    },
+                    Err(err) => Err(Error::from(err))
                 }
             }
         }
@@ -410,18 +410,37 @@ impl ReadOnlyDatabase {
             .db
             .lock()
             .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT * FROM deploys where hash = :hash")?;
+        let mut stmt = db.prepare("SELECT processed FROM deploys where hash = :hash")?;
         let mut rows = stmt.query(named_params! { ":hash": hash })?;
 
         match rows.next()? {
             None => Err(Error::msg("No records found for query")),
             Some(row) => {
-                match extract_aggregate_deploy_info(row) {
-                    Err(err) => Err(Error::from(err)),
-                    Ok(aggregate) => match aggregate.processed {
-                        None => Err(Error::msg("No records found for query")),
+                match row.get::<usize, Option<String>>(0) {
+                    Ok(data) => match data {
+                        None => Err(Error::msg("No processed record found for deploy")),
                         Some(processed) => deserialize_data::<DeployProcessed>(&processed)
-                    }
+                    },
+                    Err(err) => Err(Error::from(err))
+                }
+            }
+        }
+    }
+
+    pub async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT expired FROM deploys where hash = :hash")?;
+        let mut rows = stmt.query(named_params! { ":hash": hash })?;
+
+        match rows.next()? {
+            None => Err(Error::msg("No records found for query")),
+            Some(row) => {
+                match row.get::<usize, u8>(0) {
+                    Ok(expired_status) => integer_to_bool(expired_status),
+                    Err(err) => Err(Error::from(err).context("Error getting expired field for deploy"))
                 }
             }
         }
@@ -494,14 +513,18 @@ fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo
         Ok(x) => x,
         Err(err) => return Err(Error::from(err))
     };
-    aggregate_deploy.expired = match deploy_row.get::<usize, i64>(4) {
-        Ok(x) => match x {
-            0 => false,
-            1 => true,
-            _ => return Err(Error::msg("Invalid bool number in DB"))
-        }
+    aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
+        Ok(x) => integer_to_bool(x)?,
         Err(err) => return Err(Error::from(err))
     };
 
     Ok(aggregate_deploy)
+}
+
+fn integer_to_bool(integer: u8) -> Result<bool, Error> {
+    match integer {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::msg("Invalid bool number in DB"))
+    }
 }

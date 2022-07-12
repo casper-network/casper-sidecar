@@ -6,6 +6,7 @@ use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{Filter, path, Rejection, Reply};
 use serde::Serialize;
+use serde_json::json;
 
 pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
     let storage = ReadOnlyDatabase::new(&db_path)?;
@@ -103,6 +104,21 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
                 }
             });
 
+    // GET /deploy/expired/:String
+    let cloned_storage = storage.clone();
+    let deploy_expired_by_hash =
+        deploy_root
+            .and(path("expired"))
+            .and(path::param())
+            .and_then(move |hash: String| {
+                let cloned_storage = cloned_storage.clone();
+                async move {
+                    match cloned_storage.get_deploy_expired_by_hash(&hash).await {
+                        Ok(expired_status) => Ok(json!({"expired": expired_status}).to_string()),
+                        Err(err) => Err(warp::reject::custom(StorageError(err)))                    }
+                }
+            });
+
     // GET /step/:u64
     let cloned_storage = storage.clone();
     let step_by_era = warp::path("step")
@@ -135,6 +151,7 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .or(deploy_by_hash)
             .or(deploy_accepted_by_hash)
             .or(deploy_processed_by_hash)
+            .or(deploy_expired_by_hash)
             .or(step_by_era)
             .or(fault_by_public_key)
             .recover(handle_rejection),
