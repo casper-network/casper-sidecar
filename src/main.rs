@@ -73,6 +73,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let first_event = main_recv.iter().next();
     let first_event_data = serde_json::from_str::<SseData>(&first_event.unwrap().data).context("Error parsing first SSE into API version")?;
 
+    // todo if the node's event stream is unavailable this check is the first to error so should add a check for the specific error and handle explicitly.
     let api_version = match first_event_data {
       SseData::ApiVersion(version) => version,
         _ => return Err(Error::msg("Unable to parse API version from event stream"))
@@ -128,131 +129,127 @@ async fn run(config: Config) -> Result<(), Error> {
     // Task to manage incoming events from all three filters
     let sse_receiver = async {
         while let Some(evt) = sse_data_receiver.recv().await {
-            let cloned_evt = evt.clone();
-            let sse_data = serde_json::from_str(&cloned_evt.data).context("Error parsing SSE data")?;
-            event_stream_server.broadcast(sse_data);
+            match serde_json::from_str::<SseData>(&evt.data) {
+                Ok(sse_data) => {
+                    event_stream_server.broadcast(sse_data.clone());
 
-            let event = serde_json::from_str(&evt.data).context("Error parsing SSE data")?;
+                    match sse_data {
+                        SseData::ApiVersion(version) => {
+                            info!("API Version: {:?}", version.to_string());
+                        }
+                        SseData::BlockAdded {block, ..} => {
+                            let block = Block::from(*block);
+                            info!(
+                                message = "Block Added:",
+                                hash = hex::encode(block.hash().inner()).as_str(),
+                                height = block.height()
+                            );
+                            let res = storage.save_block(block.clone()).await;
 
-            match event {
-                SseData::ApiVersion(version) => {
-                    info!("API Version: {:?}", version.to_string());
-                }
-                SseData::BlockAdded {block, block_hash} => {
-                    let block = Block::from(*block);
-                    info!(
-                        message = "Block Added:",
-                        hash = hex::encode(block.hash().inner()).as_str(),
-                        height = block.height()
-                    );
-                    let res = storage.save_block(block.clone()).await;
+                            if res.is_err() {
+                                warn!("Error saving block: {}", res.err().unwrap());
+                            }
+                        }
+                        SseData::DeployAccepted {deploy} => {
+                            info!(
+                                message = "Deploy Accepted:",
+                                hash = hex::encode(deploy.id().inner()).as_str()
+                            );
+                            let res = storage.save_or_update_deploy(DeployAtState::Accepted(deploy))
+                                .await;
 
-                    if res.is_err() {
-                        warn!("Error saving block: {}", res.err().unwrap());
-                    }
+                            if res.is_err() {
+                                warn!("Error saving deploy: {:?}", res.unwrap_err().to_string());
+                            }
+                        }
+                        SseData::DeployExpired {deploy_hash} => {
+                            info!(
+                                message = "Deploy expired:",
+                                hash = hex::encode(deploy_hash.inner()).as_str()
+                            );
+                            let res = storage.save_or_update_deploy(DeployAtState::Expired(deploy_hash))
+                                .await;
 
-                    // If the block contains deploys then we can update the Deploys table to reflect that they have been included in the block.
-                    let deploy_hashes = block.deploy_hashes().to_owned();
-                    if !deploy_hashes.is_empty() {
-                        let res = storage.save_or_update_deploy(DeployAtState::Added((deploy_hashes, block_hash)))
-                            .await;
+                            if res.is_err() {
+                                warn!("Error updating expired deploy: {}", res.err().unwrap());
+                            }
+                        }
+                        SseData::DeployProcessed {
+                            deploy_hash,
+                            account,
+                            timestamp,
+                            ttl,
+                            dependencies,
+                            block_hash,
+                            execution_result,
+                        } => {
+                            let deploy_processed = DeployProcessed {
+                                account,
+                                block_hash,
+                                dependencies,
+                                deploy_hash: deploy_hash.clone(),
+                                execution_result,
+                                ttl,
+                                timestamp
+                            };
+                            info!(
+                                message = "Deploy Processed:",
+                                hash = hex::encode(deploy_hash.inner()).as_str()
+                            );
+                            let res = storage.save_or_update_deploy(DeployAtState::Processed(deploy_processed))
+                                .await;
 
-                        if res.is_err() {
-                            warn!("Error updating added deploys: {}", res.err().unwrap());
+                            if res.is_err() {
+                                warn!("Error updating processed deploy: {}", res.err().unwrap());
+                            }
+                        }
+                        SseData::Fault {era_id, timestamp, public_key} => {
+                            let fault = Fault {
+                                era_id,
+                                public_key: public_key.clone(),
+                                timestamp
+                            };
+                            info!(
+                                "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
+                                era_id,
+                                public_key.to_hex(),
+                                timestamp
+                            );
+                            let res = storage.save_fault(fault).await;
+
+                            if res.is_err() {
+                                warn!("Error saving fault: {}", res.err().unwrap());
+                            }
+                        }
+                        SseData::FinalitySignature(fs) => {
+                            debug!("Finality signature, {}", fs.signature);
+                        }
+                        SseData::Step {era_id, execution_effect, } => {
+                            let step = Step {
+                                era_id,
+                                execution_effect
+                            };
+                            info!("\n\tStep reached for Era: {}", era_id);
+                            let res = storage.save_step(step).await;
+
+                            if res.is_err() {
+                                warn!("Error saving step: {}", res.err().unwrap());
+                            }
+                        }
+                        SseData::Shutdown => {
+                            warn!("Node is shutting down");
+                            break
                         }
                     }
                 }
-                SseData::DeployAccepted {deploy} => {
-                    let deploy_hash = hex::encode(deploy.id().inner());
-                    let timestamp = deploy.header().timestamp();
-                    info!(
-                        message = "Deploy Accepted:",
-                        hash = deploy_hash.as_str()
-                    );
-                    let res = storage.save_or_update_deploy(DeployAtState::Accepted((deploy.id().to_owned(), timestamp)))
-                        .await;
-
-                    if res.is_err() {
-                        warn!("Error saving deploy: {}", res.err().unwrap());
+                Err(err) => {
+                    println!("{:?}", evt);
+                    if err.to_string().contains("os error 11") {
+                        warn!("Connection to node lost...");
+                    } else {
+                        warn!("Error parsing SSE: {}, for data:\n{}\n", err.to_string(), &evt.data);
                     }
-                }
-                SseData::DeployExpired {deploy_hash} => {
-                    info!(
-                        message = "Deploy expired:",
-                        hash = hex::encode(deploy_hash.inner()).as_str()
-                    );
-                    let res = storage.save_or_update_deploy(DeployAtState::Expired(deploy_hash))
-                        .await;
-
-                    if res.is_err() {
-                        warn!("Error updating expired deploy: {}", res.err().unwrap());
-                    }
-                }
-                SseData::DeployProcessed {
-                    deploy_hash,
-                    account,
-                    timestamp,
-                    ttl,
-                    dependencies,
-                    block_hash,
-                    execution_result,
-                } => {
-                    let deploy_processed = DeployProcessed {
-                        account,
-                        block_hash,
-                        dependencies,
-                        deploy_hash: deploy_hash.clone(),
-                        execution_result,
-                        ttl,
-                        timestamp
-                    };
-                    info!(
-                        message = "Deploy Processed:",
-                        hash = hex::encode(deploy_hash.inner()).as_str()
-                    );
-                    let res = storage.save_or_update_deploy(DeployAtState::Processed(deploy_processed))
-                        .await;
-
-                    if res.is_err() {
-                        warn!("Error updating processed deploy: {}", res.err().unwrap());
-                    }
-                }
-                SseData::Fault {era_id, timestamp, public_key} => {
-                    let fault = Fault {
-                        era_id,
-                        public_key: public_key.clone(),
-                        timestamp
-                    };
-                    info!(
-                        "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
-                        era_id,
-                        public_key.to_hex(),
-                        timestamp
-                    );
-                    let res = storage.save_fault(fault).await;
-
-                    if res.is_err() {
-                        warn!("Error saving fault: {}", res.err().unwrap());
-                    }
-                }
-                SseData::FinalitySignature(fs) => {
-                    debug!("Finality signature, {}", fs.signature);
-                }
-                SseData::Step {era_id, execution_effect, } => {
-                    let step = Step {
-                        era_id,
-                        execution_effect
-                    };
-                    info!("\n\tStep reached for Era: {}", era_id);
-                    let res = storage.save_step(step).await;
-
-                    if res.is_err() {
-                        warn!("Error saving step: {}", res.err().unwrap());
-                    }
-                }
-                SseData::Shutdown => {
-                    warn!("Node is shutting down");
-                    break
+                    continue
                 }
             }
         }
@@ -261,7 +258,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
     tokio::select! {
         _ = sse_receiver => {
-            info!("Consumer process closed - there was likely an error processing the last event")
+            info!("Consumer process closed")
         }
 
         _ = rest_server_handle => {
@@ -278,7 +275,6 @@ fn send_events_discarding_first(event_source: EventSource, sender: UnboundedSend
     let receiver = event_source.receiver();
     let _ = receiver.iter().next();
     for event in receiver.iter() {
-        // warn!("{:?}", event);
         let _ = sender.send(event);
     }
 }

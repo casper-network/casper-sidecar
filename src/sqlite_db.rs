@@ -3,12 +3,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use super::types::structs::{Fault, Step};
 use anyhow::{Context, Error};
-use casper_node::types::Block;
+use casper_node::types::{Block, Deploy};
 use rusqlite::{params, named_params, Connection, OpenFlags, types::Value as SqlValue, Row};
 use std::sync::{Arc, Mutex};
 use casper_types::AsymmetricType;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, warn};
+use crate::DeployProcessed;
 use crate::types::enums::DeployAtState;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
@@ -30,7 +31,7 @@ impl Database {
         let db = Connection::open(&file_path)?;
 
         let block_columns: Vec<String> = ["height", "hash", "block"].map(|x| x.to_string()).into();
-        let deploy_columns: Vec<String> = ["hash", "timestamp", "accepted", "processed", "added", "expired"].map(|x| x.to_string()).into();
+        let deploy_columns: Vec<String> = ["hash", "timestamp", "accepted", "processed", "expired"].map(|x| x.to_string()).into();
         let step_columns: Vec<String> = ["era", "effect"].map(|x| x.to_string()).into();
         let fault_columns: Vec<String> = ["era", "public_key", "timestamp"].map(|x| x.to_string()).into();
 
@@ -52,27 +53,24 @@ impl Database {
         // For a deploy that completes it's lifecycle it should contain:
         //      hash ->The hex-encoded hash of the deploy
         //      timestamp ->The deploy's timestamp (used for ordering)
-        //      accepted -> A "boolean" value of 1 (accepted) or 0 (not accepted).
+        //      accepted -> The raw DeployAccepted event data.
         //      processed -> The raw DeployProcessed event data.
-        //      added -> The hex-encoded hash of the containing block.
         //      expired -> A "boolean" value of 1 (expired) or 0 (not expired).
         // +-----------+----------------+-----------------+
         // |  Column   | Initialised To |  Updated When   |
         // +-----------+----------------+-----------------+
         // | hash      | <Deploy Hash>  | DeployAccepted  |
         // | timestamp | Null           | DeployProcessed |
-        // | accepted  | 1              | DeployAccepted  |
+        // | accepted  | <Deploy>       | DeployAccepted  |
         // | processed | Null           | DeployProcessed |
-        // | added     | Null           | BlockAdded      |
         // | expired   | 0              | DeployExpired   |
         // +-----------+----------------+-----------------+
         db.execute(
             "CREATE TABLE IF NOT EXISTS deploys (
                 hash        STRING PRIMARY KEY,
                 timestamp   STRING,
-                accepted    INTEGER,
+                accepted    STRING,
                 processed   STRING,
-                added       STRING,
                 expired     INTEGER
             )",
             [],
@@ -148,47 +146,31 @@ impl Database {
                 let insert_command = create_insert_stmt(Table::Blocks, &self.block_columns);
 
                 // Interpolate the positional parameters into the above statement and execute
-                db_connection.execute(&insert_command, params![height, hash, block]).context("Error saving block")
+                db_connection.execute(&insert_command, params![height, hash, block])
+                    .map_err(|err| Error::from(err))
             }
 
             Entity::Deploy(deploy) => {
                 match deploy {
-                    DeployAtState::Accepted((deploy_hash, timestamp)) => {
-                        let hash = hex::encode(deploy_hash.inner());
-                        let timestamp = timestamp.to_string();
+                    DeployAtState::Accepted(deploy) => {
+                        let hash = hex::encode(deploy.id().inner());
+                        let timestamp = deploy.header().timestamp().to_string();
+                        let json_deploy = serde_json::to_string(&deploy)?;
 
                         let insert_command = create_insert_stmt(Table::Deploys, &self.deploy_columns);
 
-                        db_connection.execute(&insert_command, params![hash, timestamp, SqlValue::Integer(1), SqlValue::Null, SqlValue::Null, SqlValue::Integer(0)])
-                            .context("Error inserting deploy")
+                        // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
+                        db_connection.execute(&insert_command, params![hash, timestamp, json_deploy, SqlValue::Null, SqlValue::Integer(0)])
+                            .map_err(|err| Error::from(err))
                     }
                     DeployAtState::Processed(deploy_processed) => {
                         let hash = hex::encode(deploy_processed.deploy_hash.inner());
-                        let timestamp = deploy_processed.timestamp.to_string();
                         let json_deploy = serde_json::to_string(&deploy_processed)?;
 
-                        let update_command = "UPDATE deploys SET timestamp = ?, processed = ? WHERE hash = ?";
+                        let update_command = "UPDATE deploys SET processed = ? WHERE hash = ?";
 
-                        db_connection.execute(update_command,params![timestamp, json_deploy, hash])
-                            .context(format!("Error updating deploy: {}", hash))
-                    }
-                    DeployAtState::Added((deploy_hashes, block_hash)) => {
-                        let deploy_hashes: Vec<String> = deploy_hashes.iter().map(|x| {
-                            hex::encode(x.inner())
-                        }).collect();
-
-                        // todo handle case where the block contains deploys that the DB doesn't yet have. This would really only occur on initial connection to the stream.
-
-                        let block_hash = hex::encode(block_hash.inner());
-
-                        let update_command = "UPDATE deploys SET added = ? WHERE hash = ?";
-
-                        // todo check if there's a more efficient way to do this in a single query execution
-                        for deploy_hash in &deploy_hashes {
-                            db_connection.execute(&update_command,params![block_hash, deploy_hash])
-                                .context(format!("Error updating deploy: {}", deploy_hash))?;
-                        }
-                        Ok(deploy_hashes.len())
+                        db_connection.execute(update_command,params![json_deploy, hash])
+                            .map_err(|err| Error::from(err))
                     }
                     DeployAtState::Expired(deploy_hash) => {
                         let hash = hex::encode(deploy_hash.inner());
@@ -196,7 +178,7 @@ impl Database {
                         let update_command = format!("UPDATE deploys SET expired = {} WHERE hash = ?", 1i64);
 
                         db_connection.execute(&update_command, params![hash])
-                            .context("Error updating deploy")
+                            .map_err(|err| Error::from(err))
                     }
                 }
             }
@@ -207,7 +189,8 @@ impl Database {
 
                 let insert_command = create_insert_stmt(Table::Faults, &self.fault_columns);
 
-                db_connection.execute(&insert_command, params![era, public_key, timestamp]).context("Error saving deploy")
+                db_connection.execute(&insert_command, params![era, public_key, timestamp])
+                    .map_err(|err| Error::from(err))
             }
             Entity::Step(step) => {
                 let era = step.era_id.value().to_string();
@@ -215,7 +198,8 @@ impl Database {
 
                 let insert_command = create_insert_stmt(Table::Steps, &self.step_columns);
 
-                db_connection.execute(&insert_command, params![era, execution_effect]).context("Error saving step")
+                db_connection.execute(&insert_command, params![era, execution_effect])
+                    .map_err(|err| Error::from(err))
             }
         }
     }
@@ -287,12 +271,10 @@ fn check_create_insert_stmt() {
 #[derive(Debug, Serialize)]
 pub struct AggregateDeployInfo {
     deploy_hash: String,
-    accepted: bool,
-    // If processed it will contain a stringified JSON representation of the DeployProcessed event.
-    processed: Option<String>,
-    // If included in a block it will have the hex-encoded hash of the containing Block.
-    added: Option<String>,
-    expired: bool
+    pub(crate) accepted: Option<String>,
+    // Once processed it will contain a stringified JSON representation of the DeployProcessed event.
+    pub(crate) processed: Option<String>,
+    pub(crate) expired: bool
 }
 
 
@@ -401,6 +383,50 @@ impl ReadOnlyDatabase {
         }
     }
 
+    pub async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT * FROM deploys where hash = :hash")?;
+        let mut rows = stmt.query(named_params! { ":hash": hash })?;
+
+        match rows.next()? {
+            None => Err(Error::msg("No records found for query")),
+            Some(row) => {
+                match extract_aggregate_deploy_info(row) {
+                    Err(err) => Err(Error::from(err)),
+                    Ok(aggregate) => match aggregate.accepted {
+                        None => Err(Error::msg("No records found for query")),
+                        Some(accepted) => deserialize_data::<Deploy>(&accepted)
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|error| Error::msg(error.to_string()))?;
+        let mut stmt = db.prepare("SELECT * FROM deploys where hash = :hash")?;
+        let mut rows = stmt.query(named_params! { ":hash": hash })?;
+
+        match rows.next()? {
+            None => Err(Error::msg("No records found for query")),
+            Some(row) => {
+                match extract_aggregate_deploy_info(row) {
+                    Err(err) => Err(Error::from(err)),
+                    Ok(aggregate) => match aggregate.processed {
+                        None => Err(Error::msg("No records found for query")),
+                        Some(processed) => deserialize_data::<DeployProcessed>(&processed)
+                    }
+                }
+            }
+        }
+    }
+
     pub async fn get_step_by_era(&self, era_id: u64) -> Result<Step, Error> {
         let db = self
             .db
@@ -453,31 +479,22 @@ fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Error
 
 fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, Error> {
     let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
-        deploy_hash: "uninitialised".to_string(),
-        accepted: false,
+        deploy_hash: "".to_string(),
+        accepted: None,
         processed: None,
-        added: None,
         expired: false
     };
 
     aggregate_deploy.deploy_hash = deploy_row.get(0)?;
-    aggregate_deploy.accepted = match deploy_row.get::<usize, i64>(2) {
-        Ok(x) => match x {
-            0 => false,
-            1 => true,
-            _ => return Err(Error::msg("Invalid bool number in DB"))
-        }
+    aggregate_deploy.accepted = match deploy_row.get::<usize, Option<String>>(2) {
+        Ok(x) => x,
         Err(err) => return Err(Error::from(err))
     };
     aggregate_deploy.processed = match deploy_row.get::<usize, Option<String>>(3) {
         Ok(x) => x,
         Err(err) => return Err(Error::from(err))
     };
-    aggregate_deploy.added = match deploy_row.get::<usize, Option<String>>(4) {
-        Ok(x) => x,
-        Err(err) => return Err(Error::from(err))
-    };
-    aggregate_deploy.expired = match deploy_row.get::<usize, i64>(5) {
+    aggregate_deploy.expired = match deploy_row.get::<usize, i64>(4) {
         Ok(x) => match x {
             0 => false,
             1 => true,

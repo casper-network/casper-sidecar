@@ -1,13 +1,13 @@
 [connection]
-network = "Testnet" # or Mainnet or Local
+network = "Local" # or Mainnet or Local
 [connection.node.mainnet]
 ip_address = "65.108.78.120"
 sse_port=9999
 [connection.node.testnet]
-ip_address="65.108.73.113"
+ip_address="135.181.74.237"
 sse_port=9999
 [connection.node.local]
-ip_address="192.168.1.27"
+ip_address="127.0.0.1"
 sse_port=18101
 
 [storage]
