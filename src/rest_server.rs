@@ -8,6 +8,145 @@ use warp::{Filter, path, Rejection, Reply};
 use serde::Serialize;
 use serde_json::json;
 
+mod filters {
+    use std::convert::Infallible;
+    use warp::Filter;
+    use crate::rest_server::handlers;
+    use crate::sqlite_db::DatabaseReader;
+
+    pub fn block_filters<Db: DatabaseReader + Clone + Send>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        block_by_hash(db.clone())
+    }
+
+    fn block_by_hash<Db: DatabaseReader + Clone + Send>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("block" / String)
+            .and(warp::get())
+            .and(with_db(db.clone()))
+            .and_then(handlers::get_block_by_hash)
+    }
+
+    fn with_db<Db: DatabaseReader + Clone + Send>(db: Db) -> impl Filter<Extract=(Db,), Error=Infallible> + Clone {
+        warp::any().map(move || db.clone())
+    }
+}
+
+mod handlers {
+    use std::convert::Infallible;
+    use http::StatusCode;
+    use warp::Reply;
+    use crate::sqlite_db::DatabaseReader;
+
+    pub async fn get_block_by_hash<Db>(hash: String, db: Db) -> Result<impl Reply, Infallible>
+        where
+            Db: DatabaseReader + Clone + Send
+    {
+        match db.get_block_by_hash(&hash).await {
+            Ok(res) => Ok(warp::reply::with_status(format!("OK: Hello: {}", res.to_string()), StatusCode::OK).into_response()),
+            Err(err) => Ok(warp::reply::with_status(format!("Err: Hello: {}", err.to_string()), StatusCode::OK).into_response())
+        }
+    }
+}
+
+#[cfg(test)]
+pub(super) mod test_fixtures {
+    use std::path::Path;
+    use anyhow::Error;
+    use async_trait::async_trait;
+    use casper_node::types::{Block, Deploy};
+    use crate::{DeployProcessed, Fault, Step};
+    use crate::sqlite_db::{AggregateDeployInfo, DatabaseReader};
+
+    #[derive(Clone)]
+    pub struct MockDatabase;
+
+    impl MockDatabase {
+        pub fn new(path: &Path) -> MockDatabase {
+            MockDatabase
+        }
+    }
+
+    #[async_trait]
+    impl DatabaseReader for MockDatabase {
+        async fn get_latest_block(&self) -> Result<Block, Error> {
+            Err(Error::msg("!"))
+        }
+
+        async fn get_block_by_height(&self, height: u64) -> Result<Block, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_step_by_era(&self, era_id: u64) -> Result<Step, Error> {
+            Err(Error::msg("todo!"))
+        }
+
+        async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error> {
+            Err(Error::msg("todo!"))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use http::StatusCode;
+    use warp::test::request;
+    use crate::rest_server::filters;
+    use crate::rest_server::test_fixtures::MockDatabase;
+
+    #[tokio::test]
+    async fn check_block_endpoint() {
+        let db_path = Path::new("stubbed");
+        let db = MockDatabase::new(db_path);
+
+        let api = filters::block_filters(db);
+
+        let resp = request()
+            .path("/block/George")
+            .reply(&api)
+            .await;
+
+        assert_eq!(resp.status(), StatusCode::OK)
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
     let storage = SqliteDb::new_read_only(&db_path)?;
 
@@ -115,7 +254,8 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
                 async move {
                     match cloned_storage.get_deploy_expired_by_hash(&hash).await {
                         Ok(expired_status) => Ok(json!({"expired": expired_status}).to_string()),
-                        Err(err) => Err(warp::reject::custom(StorageError(err)))                    }
+                        Err(err) => Err(warp::reject::custom(StorageError(err)))
+                    }
                 }
             });
 
