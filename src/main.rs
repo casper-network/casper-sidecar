@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Error};
 use casper_node::types::Block;
 use casper_types::AsymmetricType;
-use sqlite_db::Database;
+use sqlite_db::SqliteDb;
 use sse_client::EventSource;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tracing::{debug, info, warn};
@@ -21,6 +21,7 @@ use types::enums::Network;
 use rest_server::start_server as start_rest_server;
 use event_stream_server::{EventStreamServer, Config as SseConfig};
 use crate::event_stream_server::SseData;
+use crate::sqlite_db::DatabaseWriter;
 use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
 
@@ -106,7 +107,7 @@ async fn run(config: Config) -> Result<(), Error> {
     tokio::spawn(sse_sigs_receiver);
 
     // Instantiates SQLite database
-    let storage: Database = Database::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
+    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
 
     // Spin up Rest Server
     let rest_server_handle = tokio::spawn(

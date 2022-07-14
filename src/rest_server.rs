@@ -1,4 +1,4 @@
-use crate::sqlite_db::ReadOnlyDatabase;
+use crate::sqlite_db::{SqliteDb, DatabaseReader};
 use anyhow::Error;
 use std::convert::Infallible;
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::json;
 
 pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
-    let storage = ReadOnlyDatabase::new(&db_path)?;
+    let storage = SqliteDb::new_read_only(&db_path)?;
 
     // GET / - return proper paths
     let root = path::end()
@@ -164,7 +164,7 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_latest(item: &str, storage: ReadOnlyDatabase) -> Result<String, Rejection> {
+async fn get_latest(item: &str, storage: SqliteDb) -> Result<String, Rejection> {
     match item {
         "block" => {
             let storage_result = storage.get_latest_block().await;
@@ -224,9 +224,16 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = format!("Serialization Error: {}", err);
     } else if let Some(StorageError(err)) = err.find() {
-        // todo this shouldn't always be a 500. Storage will also return an Err if the record isn't present which should be a 404.
-        code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("Storage Error: {}", err);
+        match err.to_string().as_str() {
+            "Query returned no rows" => {
+                code = StatusCode::NOT_FOUND;
+                message = format!("No results found for query");
+            }
+            _ => {
+                code = StatusCode::INTERNAL_SERVER_ERROR;
+                message = format!("Storage Error: {}", err);
+            }
+        }
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = String::from("Method not allowed");

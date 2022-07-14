@@ -4,36 +4,58 @@ use std::path::{Path, PathBuf};
 use super::types::structs::{Fault, Step};
 use anyhow::{Context, Error};
 use casper_node::types::{Block, Deploy};
-use rusqlite::{params, named_params, Connection, OpenFlags, types::Value as SqlValue, Row};
+use rusqlite::{params, Connection, OpenFlags, types::Value as SqlValue, Row};
 use std::sync::{Arc, Mutex};
-use casper_types::AsymmetricType;
+use casper_types::{AsymmetricType, ExecutionEffect, PublicKey, Timestamp};
 use serde::{Serialize, Deserialize};
-use tracing::{debug, warn};
+use tracing::debug;
 use crate::DeployProcessed;
 use crate::types::enums::DeployAtState;
+use async_trait::async_trait;
+use lazy_static::lazy_static;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
-
-#[derive(Clone)]
-pub struct Database {
-    db: Arc<Mutex<Connection>>,
-    pub file_path: PathBuf,
-    block_columns: Vec<String>,
-    deploy_columns: Vec<String>,
-    step_columns: Vec<String>,
-    fault_columns: Vec<String>
+lazy_static! {
+    static ref BLOCK_COLUMNS: Vec<String> = ["height", "hash", "block"].map(ToString::to_string).into();
+    static ref DEPLOY_COLUMNS: Vec<String> = ["hash", "timestamp", "accepted", "processed", "expired"].map(ToString::to_string).into();
+    static ref STEP_COLUMNS: Vec<String> = ["era", "effect"].map(ToString::to_string).into();
+    static ref FAULT_COLUMNS: Vec<String> = ["era", "public_key", "timestamp"].map(ToString::to_string).into();
 }
 
-impl Database {
-    pub fn new(path: &Path) -> Result<Database, Error> {
+#[derive(Clone)]
+pub struct SqliteDb {
+    db: Arc<Mutex<Connection>>,
+    pub file_path: PathBuf,
+}
+
+#[async_trait]
+pub trait DatabaseWriter {
+    async fn save_block(&self, block: Block) -> Result<usize, Error>;
+    async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error>;
+    async fn save_step(&self, step: Step) -> Result<usize, Error>;
+    async fn save_fault(&self, fault: Fault) -> Result<usize, Error>;
+}
+
+#[async_trait]
+pub trait DatabaseReader {
+    async fn get_latest_block(&self) -> Result<Block, Error>;
+    async fn get_block_by_height(&self, height: u64) -> Result<Block, Error>;
+    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error>;
+    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error>;
+    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error>;
+    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error>;
+    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error>;
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error>;
+    async fn get_step_by_era(&self, era_id: u64) -> Result<Step, Error>;
+    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error>;
+}
+
+
+impl SqliteDb {
+    pub fn new(path: &Path) -> Result<SqliteDb, Error> {
         fs::create_dir_all(path)?;
         let file_path = path.join(DB_FILENAME);
         let db = Connection::open(&file_path)?;
-
-        let block_columns: Vec<String> = ["height", "hash", "block"].map(|x| x.to_string()).into();
-        let deploy_columns: Vec<String> = ["hash", "timestamp", "accepted", "processed", "expired"].map(|x| x.to_string()).into();
-        let step_columns: Vec<String> = ["era", "effect"].map(|x| x.to_string()).into();
-        let fault_columns: Vec<String> = ["era", "public_key", "timestamp"].map(|x| x.to_string()).into();
 
         // todo: make these statements more programmatic by making the above COLUMNS Key-Values of Column Name and SQL Type
         // todo: and then interpolate them into the SQL Strings by iterating over the COLUMN vecs.
@@ -48,23 +70,6 @@ impl Database {
         .context("failed to create blocks table in database")?;
         debug!("SQLite - Blocks table initialised");
 
-
-        // The deploys table contains information on Deploys at all stages of their lifecycle.
-        // For a deploy that completes it's lifecycle it should contain:
-        //      hash ->The hex-encoded hash of the deploy
-        //      timestamp ->The deploy's timestamp (used for ordering)
-        //      accepted -> The raw DeployAccepted event data.
-        //      processed -> The raw DeployProcessed event data.
-        //      expired -> A "boolean" value of 1 (expired) or 0 (not expired).
-        // +-----------+----------------+-----------------+
-        // |  Column   | Initialised To |  Updated When   |
-        // +-----------+----------------+-----------------+
-        // | hash      | <Deploy Hash>  | DeployAccepted  |
-        // | timestamp | Null           | DeployProcessed |
-        // | accepted  | <Deploy>       | DeployAccepted  |
-        // | processed | Null           | DeployProcessed |
-        // | expired   | 0              | DeployExpired   |
-        // +-----------+----------------+-----------------+
         db.execute(
             "CREATE TABLE IF NOT EXISTS deploys (
                 hash        STRING PRIMARY KEY,
@@ -100,33 +105,26 @@ impl Database {
         .context("failed to create faults table in database")?;
         debug!("SQLite - Faults table initialised");
 
-        Ok(Database {
+        Ok(SqliteDb {
             db: Arc::new(Mutex::new(db)),
             file_path,
-            block_columns,
-            deploy_columns,
-            step_columns,
-            fault_columns
         })
     }
 
-    pub async fn save_block(&self, block: Block) -> Result<usize, Error> {
-        self.insert_data(Entity::Block(block))
+    pub fn new_read_only(path: &Path) -> Result<SqliteDb, Error> {
+        let db = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let file_path = path.join(DB_FILENAME);
+
+        Ok(SqliteDb {
+            db: Arc::new(Mutex::new(db)),
+            file_path
+        })
     }
 
-    pub async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error> {
-        self.insert_data(Entity::Deploy(deploy))
-    }
-
-    pub async fn save_step(&self, step: Step) -> Result<usize, Error> {
-        self.insert_data(Entity::Step(step))
-    }
-
-    pub async fn save_fault(&self, fault: Fault) -> Result<usize, Error> {
-        self.insert_data(Entity::Fault(fault))
-    }
-
-    // Catch-all Insert function - internal only - not exposed in the API to other components
+    // Helper for the DatabaseWriter for inserting / updating records - internal only - not to be exposed in the API to other components
     fn insert_data(&self, data: Entity) -> Result<usize, Error> {
         let db_connection = self.db.lock().map_err(|err| {
             Error::msg(err.to_string())
@@ -143,7 +141,7 @@ impl Database {
                 let block = serde_json::to_string(&block)?;
 
                 // Generate the SQL for INSERTing the new row
-                let insert_command = create_insert_stmt(Table::Blocks, &self.block_columns);
+                let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
 
                 // Interpolate the positional parameters into the above statement and execute
                 db_connection.execute(&insert_command, params![height, hash, block])
@@ -157,7 +155,7 @@ impl Database {
                         let timestamp = deploy.header().timestamp().to_string();
                         let json_deploy = serde_json::to_string(&deploy)?;
 
-                        let insert_command = create_insert_stmt(Table::Deploys, &self.deploy_columns);
+                        let insert_command = create_insert_stmt(Table::Deploys, &DEPLOY_COLUMNS);
 
                         // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
                         db_connection.execute(&insert_command, params![hash, timestamp, json_deploy, SqlValue::Null, SqlValue::Integer(0)])
@@ -187,7 +185,7 @@ impl Database {
                 let public_key = fault.public_key.to_hex();
                 let timestamp = fault.timestamp.to_string();
 
-                let insert_command = create_insert_stmt(Table::Faults, &self.fault_columns);
+                let insert_command = create_insert_stmt(Table::Faults, &FAULT_COLUMNS);
 
                 db_connection.execute(&insert_command, params![era, public_key, timestamp])
                     .map_err(|err| Error::from(err))
@@ -196,12 +194,183 @@ impl Database {
                 let era = step.era_id.value().to_string();
                 let execution_effect = serde_json::to_string(&step.execution_effect).context("Error serializing Execution Effect")?;
 
-                let insert_command = create_insert_stmt(Table::Steps, &self.step_columns);
+                let insert_command = create_insert_stmt(Table::Steps, &STEP_COLUMNS);
 
                 db_connection.execute(&insert_command, params![era, execution_effect])
                     .map_err(|err| Error::from(err))
             }
         }
+    }
+}
+
+#[async_trait]
+impl DatabaseWriter for SqliteDb {
+    async fn save_block(&self, block: Block) -> Result<usize, Error> {
+        self.insert_data(Entity::Block(block))
+    }
+
+    async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error> {
+        self.insert_data(Entity::Deploy(deploy))
+    }
+
+    async fn save_step(&self, step: Step) -> Result<usize, Error> {
+        self.insert_data(Entity::Step(step))
+    }
+
+    async fn save_fault(&self, fault: Fault) -> Result<usize, Error> {
+        self.insert_data(Entity::Fault(fault))
+    }
+}
+
+#[async_trait]
+impl DatabaseReader for SqliteDb {
+    async fn get_latest_block(&self) -> Result<Block, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT block FROM blocks ORDER BY height DESC LIMIT 1", [], |row| {
+            let block_string: String = row.get(0)?;
+            deserialize_data::<Block>(&block_string)
+        })
+    }
+
+    async fn get_block_by_height(&self, height: u64) -> Result<Block, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT block FROM blocks WHERE height = ?", [height], |row| {
+            let block_string: String = row.get(0)?;
+            deserialize_data::<Block>(&block_string)
+        })
+    }
+
+    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT block FROM blocks WHERE hash = ?", [hash], |row| {
+            let block_string: String = row.get(0)?;
+            deserialize_data::<Block>(&block_string)
+        })
+    }
+
+    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT * FROM deploys ORDER BY timestamp DESC LIMIT 1", [], |row| {
+            extract_aggregate_deploy_info(row)
+        })
+    }
+
+    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT * FROM deploys WHERE hash = ?", [hash], |row| {
+            extract_aggregate_deploy_info(row)
+        })
+    }
+
+    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT accepted FROM deploys WHERE hash = ?", [hash], |row| {
+            let deploy_string: String = row.get(0)?;
+            deserialize_data::<Deploy>(&deploy_string)
+        })
+    }
+
+    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT processed FROM deploys WHERE hash = ?", [hash], |row| {
+            let deploy_string: String = row.get(0)?;
+            deserialize_data::<DeployProcessed>(&deploy_string)
+        })
+    }
+
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT expired FROM deploys WHERE hash = ?", [hash], |row| {
+            let expired: u8 = row.get(0)?;
+            integer_to_bool(expired)
+        })
+    }
+
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT effect FROM steps WHERE era = ?", [era], |row| {
+            let effect_string: String = row.get(0)?;
+            let effect = deserialize_data::<ExecutionEffect>(&effect_string)?;
+            Ok(Step {
+                era_id: era.into(),
+                execution_effect: effect
+            })
+        })
+    }
+
+    // todo this should be taking a compound identifier maybe including Era to ensure it gets a single row
+    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error> {
+        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+
+        db.query_row_and_then("SELECT * FROM faults WHERE public_key = ?", [public_key], |row| {
+            let era: u64 = row.get(0)?;
+            let public_key = PublicKey::from_hex(public_key)?;
+            let timestamp_string: String = row.get(2)?;
+            let timestamp = deserialize_data::<Timestamp>(&timestamp_string)?;
+
+            Ok(Fault {
+                era_id: era.into(),
+                public_key,
+                timestamp
+            })
+        })
+    }
+}
+
+fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Error> {
+    serde_json::from_str::<T>(data).map_err(|err| {
+        Error::from(err)
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct AggregateDeployInfo {
+    deploy_hash: String,
+    pub(crate) accepted: Option<String>,
+    // Once processed it will contain a stringified JSON representation of the DeployProcessed event.
+    pub(crate) processed: Option<String>,
+    pub(crate) expired: bool
+}
+
+fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, Error> {
+    let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
+        deploy_hash: "".to_string(),
+        accepted: None,
+        processed: None,
+        expired: false
+    };
+
+    aggregate_deploy.deploy_hash = deploy_row.get(0)?;
+    aggregate_deploy.accepted = match deploy_row.get::<usize, Option<String>>(2) {
+        Ok(x) => x,
+        Err(err) => return Err(Error::from(err))
+    };
+    aggregate_deploy.processed = match deploy_row.get::<usize, Option<String>>(3) {
+        Ok(x) => x,
+        Err(err) => return Err(Error::from(err))
+    };
+    aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
+        Ok(x) => integer_to_bool(x)?,
+        Err(err) => return Err(Error::from(err))
+    };
+
+    Ok(aggregate_deploy)
+}
+
+fn integer_to_bool(integer: u8) -> Result<bool, Error> {
+    match integer {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::msg("Invalid bool number in DB"))
     }
 }
 
@@ -266,265 +435,4 @@ fn check_create_insert_stmt() {
     let result = create_insert_stmt(Table::Blocks, &parameters);
 
     assert_eq!(result, String::from("INSERT INTO blocks (first, second, third) VALUES (?1, ?2, ?3)"))
-}
-
-#[derive(Debug, Serialize)]
-pub struct AggregateDeployInfo {
-    deploy_hash: String,
-    pub(crate) accepted: Option<String>,
-    // Once processed it will contain a stringified JSON representation of the DeployProcessed event.
-    pub(crate) processed: Option<String>,
-    pub(crate) expired: bool
-}
-
-
-#[derive(Clone)]
-pub struct ReadOnlyDatabase {
-    db: Arc<Mutex<Connection>>,
-}
-
-impl ReadOnlyDatabase {
-    pub fn new(path: &Path) -> Result<ReadOnlyDatabase, Error> {
-        Ok(ReadOnlyDatabase {
-            db: Arc::new(Mutex::new(Connection::open_with_flags(
-                path,
-                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-            )?)),
-        })
-    }
-
-    pub async fn get_latest_block(&self) -> Result<Block, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT * FROM blocks ORDER BY height DESC LIMIT 1")?;
-        let mut rows = stmt.query([])?;
-        let mut maybe_block: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            // column 2 represents the block data itself
-            maybe_block = row.get(2)?;
-        }
-
-        match maybe_block {
-            None => Err(Error::msg("Failed to retrieve latest block")),
-            Some(block) => {
-                deserialize_data::<Block>(&block)
-            }
-        }
-    }
-
-    pub async fn get_block_by_height(&self, height: u64) -> Result<Block, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT block FROM blocks where height = :height")?;
-        let mut rows = stmt.query(named_params! { ":height": height })?;
-        let mut maybe_block: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            maybe_block = row.get(0)?;
-        }
-
-        match maybe_block {
-            None => Err(Error::msg(format!("Failed to retrieve block at height: {}", height))),
-            Some(block) => deserialize_data::<Block>(&block)
-        }
-    }
-
-    pub async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT block FROM blocks where hash = :hash")?;
-        let mut rows = stmt.query(named_params! { ":hash": hash })?;
-        let mut maybe_block: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            maybe_block = row.get(0)?;
-        }
-
-        match maybe_block {
-            None => Err(Error::msg(format!("Failed to retrieve block with hash: {}", hash))),
-            Some(block) => deserialize_data::<Block>(&block)
-        }
-    }
-
-    pub async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        // todo Double check that this does actually return the latest as expected
-        let mut stmt = db.prepare("SELECT * FROM deploys ORDER BY timestamp DESC LIMIT 1")?;
-        let mut rows = stmt.query([])?;
-
-        match rows.next()? {
-            None => Err(Error::msg("No records found for query")),
-            Some(row) => {
-                extract_aggregate_deploy_info(row)
-            }
-        }
-    }
-
-    pub async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT * FROM deploys where hash = :hash")?;
-        let mut rows = stmt.query(named_params! { ":hash": hash })?;
-
-        match rows.next()? {
-            None => Err(Error::msg("No records found for query")),
-            Some(row) => {
-                extract_aggregate_deploy_info(row)
-            }
-        }
-    }
-
-    pub async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT accepted FROM deploys where hash = :hash")?;
-        let mut rows = stmt.query(named_params! { ":hash": hash })?;
-
-        match rows.next()? {
-            None => Err(Error::msg("No records found for query")),
-            Some(row) => {
-                match row.get::<usize, Option<String>>(0) {
-                    Ok(data) => match data {
-                        None => Err(Error::msg("No accepted record found for deploy")),
-                        Some(accepted) => deserialize_data::<Deploy>(&accepted)
-                    },
-                    Err(err) => Err(Error::from(err))
-                }
-            }
-        }
-    }
-
-    pub async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT processed FROM deploys where hash = :hash")?;
-        let mut rows = stmt.query(named_params! { ":hash": hash })?;
-
-        match rows.next()? {
-            None => Err(Error::msg("No records found for query")),
-            Some(row) => {
-                match row.get::<usize, Option<String>>(0) {
-                    Ok(data) => match data {
-                        None => Err(Error::msg("No processed record found for deploy")),
-                        Some(processed) => deserialize_data::<DeployProcessed>(&processed)
-                    },
-                    Err(err) => Err(Error::from(err))
-                }
-            }
-        }
-    }
-
-    pub async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT expired FROM deploys where hash = :hash")?;
-        let mut rows = stmt.query(named_params! { ":hash": hash })?;
-
-        match rows.next()? {
-            None => Err(Error::msg("No records found for query")),
-            Some(row) => {
-                match row.get::<usize, u8>(0) {
-                    Ok(expired_status) => integer_to_bool(expired_status),
-                    Err(err) => Err(Error::from(err).context("Error getting expired field for deploy"))
-                }
-            }
-        }
-    }
-
-    pub async fn get_step_by_era(&self, era_id: u64) -> Result<Step, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT effect FROM steps where era_id = :era_id")?;
-        let mut rows = stmt.query(named_params! { ":era_id": era_id })?;
-        let mut maybe_step: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            maybe_step = row.get(0)?;
-        }
-
-        match maybe_step {
-            None => Err(Error::msg(format!("Failed to retrieve step at era: {}", era_id))),
-            Some(step) => deserialize_data::<Step>(&step)
-        }
-    }
-
-    pub async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error> {
-        let db = self
-            .db
-            .lock()
-            .map_err(|error| Error::msg(error.to_string()))?;
-        let mut stmt = db.prepare("SELECT * FROM faults where public_key = :public_key")?;
-        let mut rows = stmt.query(named_params! { ":public_key": public_key })?;
-        let mut maybe_fault: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            let era_id: u64 = row.get(0)?;
-            let timestamp: String = row.get(2)?;
-            let fault_string = format!("{{\"era_id\":{},\"public_key\":\"{}\",\"timestamp\":{}}}",
-                                      era_id,
-                                      public_key,
-                                      timestamp
-            );
-            warn!("{}", fault_string);
-            maybe_fault = Some(fault_string);
-        }
-
-        match maybe_fault {
-            None => Err(Error::msg(format!("Failed to retrieve faults with public key: {}", public_key))),
-            Some(fault) => deserialize_data::<Fault>(&fault)
-        }
-    }}
-
-fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Error> {
-    serde_json::from_str::<T>(data).map_err(|err| {
-        Error::from(err)
-    })
-}
-
-fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, Error> {
-    let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
-        deploy_hash: "".to_string(),
-        accepted: None,
-        processed: None,
-        expired: false
-    };
-
-    aggregate_deploy.deploy_hash = deploy_row.get(0)?;
-    aggregate_deploy.accepted = match deploy_row.get::<usize, Option<String>>(2) {
-        Ok(x) => x,
-        Err(err) => return Err(Error::from(err))
-    };
-    aggregate_deploy.processed = match deploy_row.get::<usize, Option<String>>(3) {
-        Ok(x) => x,
-        Err(err) => return Err(Error::from(err))
-    };
-    aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
-        Ok(x) => integer_to_bool(x)?,
-        Err(err) => return Err(Error::from(err))
-    };
-
-    Ok(aggregate_deploy)
-}
-
-fn integer_to_bool(integer: u8) -> Result<bool, Error> {
-    match integer {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(Error::msg("Invalid bool number in DB"))
-    }
 }

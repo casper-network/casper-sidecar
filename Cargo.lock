@@ -279,6 +279,7 @@ name = "casper-event-sidecar"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "casper-execution-engine",
  "casper-hashing",
  "casper-node",
@@ -291,6 +292,7 @@ dependencies = [
  "http",
  "hyper",
  "itertools",
+ "lazy_static",
  "once_cell",
  "pretty_assertions",
  "rand 0.8.5",
