@@ -2,7 +2,7 @@ use crate::sqlite_db::SqliteDb;
 use anyhow::Error;
 use std::convert::Infallible;
 use std::path::PathBuf;
-use tracing::error;
+use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 use serde::Serialize;
@@ -192,7 +192,8 @@ pub async fn run_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
 
     let api = filters::combined_filters(db);
 
-    warp::serve(api).run(([127, 0, 0, 1], port)).await;
+    info!("rest server started on 0.0.0.0:{}", port);
+    warp::serve(api).try_bind(([127, 0, 0, 1], port)).await;
 
     Ok(())
 }
