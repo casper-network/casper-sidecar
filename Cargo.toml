@@ -6,27 +6,21 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-#[features]
-#default = ["casper-mainnet"]
-#casper-mainnet = ["casper-node/casper-mainnet"]
-
 # todo Remove unused dependencies
 [dependencies]
 anyhow = {version = "1.0.44", default-features = false }
 async-trait = "0.1.56"
-casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
-casper-types = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
-casper-hashing = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
-casper-execution-engine = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature"}
+casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 derive_more = "0.99.7"
 futures = "0.3.17"
-futures-util = "0.3.21"
 hex = "0.4.3"
 hex-buffer-serde = "0.3.0"
 http = "0.2.1"
 hyper = "0.14.4"
 itertools = "0.10.3"
-lazy_static = "1.4.0"
 once_cell = "1"
 rand = "0.8.3"
 rusqlite = {version = "0.25.3", features = ["bundled"]}
@@ -46,14 +40,12 @@ warp = { version = "0.3.0", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [patch.crates-io]
-casper-execution-engine = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
-casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
-casper-hashing = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
-casper-types = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature" }
+casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
+casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
+casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
+casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
 
 [dev-dependencies]
-casper-node = { git = "https://github.com/Fraser999/casper-node", branch = "testing-feature", features = ["testing"]}
+casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev", features = ["testing"]}
 pretty_assertions = "0.7.2"
 reqwest = { version = "0.11.3", features = ["stream"] }
-bytes = "1.1.0"
-serial_test = "0.8.0"

@@ -24,6 +24,9 @@ use crate::sqlite_db::DatabaseWriter;
 use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
 
+const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
+const ADDRESS_IN_USE: &str = "Address already in use (os error 98)";
+
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
@@ -34,79 +37,86 @@ async fn main() -> Result<(), Error> {
     let config: Config = read_config("config.toml").context("Error constructing config")?;
     info!("Configuration loaded");
 
-    run(config).await
-}
-
-async fn run(config: Config) -> Result<(), Error> {
-    // Install global collector for tracing
-    tracing_subscriber::fmt::init();
-
-    let node = match config.connection.network {
+    let node_config = match config.connection.network {
         Network::Mainnet => config.connection.node.mainnet,
         Network::Testnet => config.connection.node.testnet,
         Network::Local => config.connection.node.local,
     };
 
     // Set URLs for each of the (from the node) Event Stream Server's filters
-    let url_base = format!("http://{ip}:{port}/events", ip = node.ip_address, port = node.sse_port);
-    let sse_main = EventSource::new(
+    let url_base = format!("http://{ip}:{port}/events", ip = node_config.ip_address, port = node_config.sse_port);
+
+    let main_event_source = EventSource::new(
         format!("{}/main", url_base).as_str(),
     ).context("Error constructing EventSource for Main filter")?;
-    let sse_deploys = EventSource::new(
+
+    let deploys_event_source = EventSource::new(
         format!("{}/deploys", url_base).as_str(),
     ).context("Error constructing EventSource for Deploys filter")?;
-    let sse_sigs = EventSource::new(
+
+    let sigs_event_source = EventSource::new(
         format!("{}/sigs", url_base).as_str(),
     ).context("Error constructing EventSource for Signatures filter")?;
 
-    // Create channels for each filter to funnel events to a single receiver.
-    let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
-    let sse_main_sender = sse_data_sender.clone();
-    let sse_deploys_sender = sse_data_sender.clone();
-    let sse_sigs_sender = sse_data_sender.clone();
+    // Channel for funnelling all event types into.
+    let (aggregate_events_tx, mut aggregate_events_rx) = unbounded_channel();
+    // Clone the aggregate sender for each event type. These will all feed into the aggregate receiver.
+    let main_events_tx = aggregate_events_tx.clone();
+    let deploy_events_tx = aggregate_events_tx.clone();
+    let sigs_event_tx = aggregate_events_tx.clone();
 
-    // This local var for `main_recv` needs to be there as calling .receiver() on the EventSource more than
+    // This local var for `main_recv` needs to be here as calling .receiver() on the EventSource more than
     // once will fail due to the resources being exhausted/dropped on the first call.
-    let main_recv = sse_main.receiver();
-    // // first event should always be the API version
-    let first_event = main_recv.iter().next();
-    let first_event_data = serde_json::from_str::<SseData>(&first_event.unwrap().data).context("Error parsing first SSE into API version")?;
+    let main_event_source_receiver = main_event_source.receiver();
 
-    let api_version = match first_event_data {
-      SseData::ApiVersion(version) => version,
-        _ => return Err(Error::msg("Unable to parse API version from event stream"))
-    };
-
-    // Loop over incoming events and send them along the channel
-    // The main receiver loop doesn't need to discard the first event because it has already been parsed out above.
-    let sse_main_receiver = async move {
-        for event in main_recv.iter() {
-            let _ = sse_main_sender.send(event);
+    // Parse the first event to see if the connection was successful
+    let api_version = match main_event_source_receiver.iter().next() {
+        None => return Err(Error::msg("First event was empty")),
+        Some(event) => match serde_json::from_str::<SseData>(&event.data) {
+            Ok(sse_data) => match sse_data {
+                SseData::ApiVersion(version) => version,
+                _ => return Err(Error::msg("First event should have been API Version"))
+            }
+            Err(serde_err) => {
+                println!("{}", event.data);
+                if event.data == CONNECTION_REFUSED {
+                    return Err(Error::msg("Connection refused: Please check network connection to node."))
+                }
+                return Err(Error::from(serde_err).context("First event was not of expected format"))
+            }
         }
-    };
-    let sse_deploys_receiver = async move {
-        send_events_discarding_first(sse_deploys, sse_deploys_sender);
-    };
-    let sse_sigs_receiver = async move {
-        send_events_discarding_first(sse_sigs, sse_sigs_sender);
     };
 
     info!(
-        message = "Connecting to SSE",
+        message = "Connected to SSE",
         network = config.connection.network.as_str(),
         api_version = api_version.to_string().as_str(),
-        node_ip_address = node.ip_address.as_str()
+        node_ip_address = node_config.ip_address.as_str()
     );
 
-    // Spin up each of the receivers
-    tokio::spawn(sse_main_receiver);
-    tokio::spawn(sse_deploys_receiver);
-    tokio::spawn(sse_sigs_receiver);
+    // Loop over incoming events and send them along the channel
+    // The main receiver loop doesn't need to discard the first event because it has already been parsed out above.
+    let main_events_sending_task = async move {
+        for event in main_event_source_receiver.iter() {
+            let _ = main_events_tx.send(event);
+        }
+    };
+    let deploy_events_sending_task = async move {
+        send_events_discarding_first(deploys_event_source, deploy_events_tx);
+    };
+    let sig_events_sending_task = async move {
+        send_events_discarding_first(sigs_event_source, sigs_event_tx);
+    };
+
+    // Spin up each of the sending tasks
+    tokio::spawn(main_events_sending_task);
+    tokio::spawn(deploy_events_sending_task);
+    tokio::spawn(sig_events_sending_task);
 
     // Instantiates SQLite database
     let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
 
-    // Spin up Rest Server
+    // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(
         start_rest_server(
             storage.file_path.clone(),
@@ -125,8 +135,8 @@ async fn run(config: Config) -> Result<(), Error> {
     println!("\n\n");
 
     // Task to manage incoming events from all three filters
-    let sse_receiver = async {
-        while let Some(evt) = sse_data_receiver.recv().await {
+    let sse_processing_task = async {
+        while let Some(evt) = aggregate_events_rx.recv().await {
             match serde_json::from_str::<SseData>(&evt.data) {
                 Ok(sse_data) => {
                     event_stream_server.broadcast(sse_data.clone());
@@ -242,7 +252,7 @@ async fn run(config: Config) -> Result<(), Error> {
                 }
                 Err(err) => {
                     println!("{:?}", evt);
-                    if err.to_string().contains("os error 11") {
+                    if err.to_string() == CONNECTION_REFUSED {
                         warn!("Connection to node lost...");
                     } else {
                         warn!("Error parsing SSE: {}, for data:\n{}\n", err.to_string(), &evt.data);
@@ -255,12 +265,12 @@ async fn run(config: Config) -> Result<(), Error> {
     };
 
     tokio::select! {
-        _ = sse_receiver => {
-            info!("Consumer process closed")
+        _ = sse_processing_task => {
+            info!("Stopped processing SSEs")
         }
 
         _ = rest_server_handle => {
-            info!("REST server closed")
+            info!("REST server stopped")
         }
     };
 
@@ -276,4 +286,3 @@ fn send_events_discarding_first(event_source: EventSource, sender: UnboundedSend
         let _ = sender.send(event);
     }
 }
-
