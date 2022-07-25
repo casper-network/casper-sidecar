@@ -270,9 +270,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "bytes"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+checksum = "f0b3de4a0c5e67e16066a0715723abd91edc2f9001d09c46e1dca929351e130e"
 
 [[package]]
 name = "casper-event-sidecar"
@@ -287,7 +287,6 @@ dependencies = [
  "casper-types",
  "derive_more",
  "futures",
- "futures-util",
  "hex",
  "hex-buffer-serde 0.3.0",
  "http",
@@ -318,8 +317,8 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.5.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+version = "2.0.0"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "anyhow",
  "base16",
@@ -360,7 +359,7 @@ dependencies = [
 [[package]]
 name = "casper-hashing"
 version = "1.4.3"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "base16",
  "blake2",
@@ -378,11 +377,12 @@ dependencies = [
 [[package]]
 name = "casper-json-rpc"
 version = "0.1.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "bytes",
  "futures",
  "http",
+ "itertools",
  "serde",
  "serde_json",
  "tracing",
@@ -391,8 +391,8 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.5"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+version = "1.4.6"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -477,7 +477,7 @@ dependencies = [
 [[package]]
 name = "casper-node-macros"
 version = "1.4.3"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -489,7 +489,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "1.5.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "base16",
  "base64",

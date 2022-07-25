@@ -15,6 +15,7 @@ use sqlite_db::SqliteDb;
 use sse_client::EventSource;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tracing::{debug, info, warn};
+use tracing_subscriber;
 use types::structs::{Config, DeployProcessed};
 use types::enums::Network;
 use rest_server::run_server as start_rest_server;
@@ -25,7 +26,6 @@ use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
-const ADDRESS_IN_USE: &str = "Address already in use (os error 98)";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
@@ -34,6 +34,9 @@ pub fn read_config(config_path: &str) -> Result<Config, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    // Install global collector for tracing
+    tracing_subscriber::fmt::init();
+
     let config: Config = read_config("config.toml").context("Error constructing config")?;
     info!("Configuration loaded");
 
@@ -77,18 +80,15 @@ async fn main() -> Result<(), Error> {
                 SseData::ApiVersion(version) => version,
                 _ => return Err(Error::msg("First event should have been API Version"))
             }
-            Err(serde_err) => {
-                println!("{}", event.data);
-                if event.data == CONNECTION_REFUSED {
-                    return Err(Error::msg("Connection refused: Please check network connection to node."))
-                }
-                return Err(Error::from(serde_err).context("First event was not of expected format"))
+            Err(serde_err) => return match event.data.as_str() {
+                CONNECTION_REFUSED => Err(Error::msg("Connection refused: Please check network connection to node.")),
+                _ => Err(Error::from(serde_err).context("First event was not of expected format"))
             }
         }
     };
 
     info!(
-        message = "Connected to SSE",
+        message = "Connected to node",
         network = config.connection.network.as_str(),
         api_version = api_version.to_string().as_str(),
         node_ip_address = node_config.ip_address.as_str()
