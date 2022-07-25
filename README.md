@@ -10,7 +10,7 @@ It will consume the node's event stream with the aim of providing:
 
 ### Running the Sidecar
 After cloning the code to your local machine you will need to tweak the Config (`/src/config.toml`).
-Set network to local:
+Set network to "Local":
 ```toml
 [connection]
 network = "Local"
