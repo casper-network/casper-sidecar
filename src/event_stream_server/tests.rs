@@ -21,6 +21,7 @@ use tokio::{
     time,
 };
 use tracing::debug;
+use serial_test::serial;
 
 use super::*;
 use sse_server::{
@@ -725,6 +726,7 @@ async fn should_serve_signature_events_with_query_for_future_event() {
 /// Checks that when a server is shut down (e.g. for a node upgrade), connected clients don't have
 /// an error while handling the HTTP response.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial]
 async fn server_exit_should_gracefully_shut_down_stream() {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);

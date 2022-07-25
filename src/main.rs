@@ -15,20 +15,18 @@ use sqlite_db::SqliteDb;
 use sse_client::EventSource;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tracing::{debug, info, warn};
-use tracing_subscriber;
 use types::structs::{Config, DeployProcessed};
 use types::enums::Network;
-use rest_server::start_server as start_rest_server;
+use rest_server::run_server as start_rest_server;
 use event_stream_server::{EventStreamServer, Config as SseConfig};
 use crate::event_stream_server::SseData;
 use crate::sqlite_db::DatabaseWriter;
 use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
 
-
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
-    Ok(toml::from_str(&toml_content).context("Error parsing config into TOML format")?)
+    toml::from_str(&toml_content).context("Error parsing config into TOML format")
 }
 
 #[tokio::main]
@@ -74,7 +72,6 @@ async fn run(config: Config) -> Result<(), Error> {
     let first_event = main_recv.iter().next();
     let first_event_data = serde_json::from_str::<SseData>(&first_event.unwrap().data).context("Error parsing first SSE into API version")?;
 
-    // todo if the node's event stream is unavailable this check is the first to error so should add a check for the specific error and handle explicitly.
     let api_version = match first_event_data {
       SseData::ApiVersion(version) => version,
         _ => return Err(Error::msg("Unable to parse API version from event stream"))
@@ -280,30 +277,3 @@ fn send_events_discarding_first(event_source: EventSource, sender: UnboundedSend
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-    use tokio::sync::oneshot;
-    use crate::testing::test_node::start_test_node;
-
-    use super::{read_config, run};
-
-    #[tokio::test(flavor="multi_thread", worker_threads=2)]
-    async fn should_consume_node_event_stream() {
-        let config = read_config("config_test.toml").expect("Error parsing test config");
-
-        let test_node_sse_port = config.connection.node.local.sse_port;
-
-        let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
-
-        tokio::spawn(start_test_node(test_node_sse_port, node_shutdown_rx));
-
-        // Allows server to boot up
-        // todo this method is brittle should really have a concrete and dynamic method for determining liveness of the server
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        let run_result = run(config).await;
-        assert!(run_result.is_ok());
-        let _ = node_shutdown_tx.send(());
-    }
-}

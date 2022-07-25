@@ -145,7 +145,7 @@ impl SqliteDb {
 
                 // Interpolate the positional parameters into the above statement and execute
                 db_connection.execute(&insert_command, params![height, hash, block])
-                    .map_err(|err| Error::from(err))
+                    .map_err(Error::from)
             }
 
             Entity::Deploy(deploy) => {
@@ -159,7 +159,7 @@ impl SqliteDb {
 
                         // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
                         db_connection.execute(&insert_command, params![hash, timestamp, json_deploy, SqlValue::Null, SqlValue::Integer(0)])
-                            .map_err(|err| Error::from(err))
+                            .map_err(Error::from)
                     }
                     DeployAtState::Processed(deploy_processed) => {
                         let hash = hex::encode(deploy_processed.deploy_hash.inner());
@@ -168,7 +168,7 @@ impl SqliteDb {
                         let update_command = "UPDATE deploys SET processed = ? WHERE hash = ?";
 
                         db_connection.execute(update_command,params![json_deploy, hash])
-                            .map_err(|err| Error::from(err))
+                            .map_err(Error::from)
                     }
                     DeployAtState::Expired(deploy_hash) => {
                         let hash = hex::encode(deploy_hash.inner());
@@ -176,7 +176,7 @@ impl SqliteDb {
                         let update_command = format!("UPDATE deploys SET expired = {} WHERE hash = ?", 1i64);
 
                         db_connection.execute(&update_command, params![hash])
-                            .map_err(|err| Error::from(err))
+                            .map_err(Error::from)
                     }
                 }
             }
@@ -188,7 +188,7 @@ impl SqliteDb {
                 let insert_command = create_insert_stmt(Table::Faults, &FAULT_COLUMNS);
 
                 db_connection.execute(&insert_command, params![era, public_key, timestamp])
-                    .map_err(|err| Error::from(err))
+                    .map_err(Error::from)
             }
             Entity::Step(step) => {
                 let era = step.era_id.value().to_string();
@@ -197,7 +197,7 @@ impl SqliteDb {
                 let insert_command = create_insert_stmt(Table::Steps, &STEP_COLUMNS);
 
                 db_connection.execute(&insert_command, params![era, execution_effect])
-                    .map_err(|err| Error::from(err))
+                    .map_err(Error::from)
             }
         }
     }
@@ -334,7 +334,7 @@ fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Error
 
 #[derive(Debug, Serialize)]
 pub struct AggregateDeployInfo {
-    deploy_hash: String,
+    pub(crate) deploy_hash: String,
     pub(crate) accepted: Option<String>,
     // Once processed it will contain a stringified JSON representation of the DeployProcessed event.
     pub(crate) processed: Option<String>,
@@ -374,6 +374,7 @@ fn integer_to_bool(integer: u8) -> Result<bool, Error> {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Entity {
     Block(Block),
     Deploy(DeployAtState),
@@ -399,7 +400,7 @@ impl Display for Table {
     }
 }
 
-fn create_insert_stmt(table: Table, keys: &Vec<String>) -> String {
+fn create_insert_stmt(table: Table, keys: &[String]) -> String {
     let mut keys_string = String::new();
     let mut indices = String::new();
 
@@ -407,7 +408,7 @@ fn create_insert_stmt(table: Table, keys: &Vec<String>) -> String {
     keys.iter().for_each(|key| {
         count += 1;
         if count == 1 {
-            keys_string = format!("{}", key);
+            keys_string = key.to_string();
             indices = format!("?{}", count);
         } else {
             keys_string = format!("{}, {}", keys_string, key);

@@ -1,17 +1,21 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
-use std::vec::IntoIter;
+// use std::vec::IntoIter;
 use casper_types::ProtocolVersion;
 use casper_types::testing::TestRng;
+#[allow(unused)]
 use futures_util::{stream, StreamExt, TryStreamExt};
+#[allow(unused)]
 use futures_util::stream::{Map, Zip, Iter, IntoStream};
 use sse_client::EventSource;
+#[allow(unused)]
 use tokio::time::{Instant, interval};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::IntervalStream;
 use warp::{sse::Event, Filter};
 use crate::SseData;
+use serial_test::serial;
 
 // fn build_event<I>(id: Option<I>, data: SseData) -> Result<Event, Infallible>
 //     where I: Into<String>,
@@ -45,7 +49,7 @@ fn enclose_events_data(data: &mut Vec<SseData>, add_shutdown: bool) -> Vec<SseDa
     data.to_owned()
 }
 
-pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>) -> SocketAddr {
+pub async fn start_test_node(port: u16, started_notification_sender: oneshot::Sender<()>, shutdown_receiver: oneshot::Receiver<()>) -> SocketAddr {
 
     let mut rng = TestRng::new();
 
@@ -53,13 +57,13 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
         (1..=NUM_OF_TEST_EVENTS).map(|_| {
         SseData::random_block_added(&mut rng)
     }).collect();
-    blocks_data = enclose_events_data(&mut blocks_data, false);
+    blocks_data = enclose_events_data(&mut blocks_data, true);
 
     let mut deploys_data: Vec<SseData> =
         (1..=NUM_OF_TEST_EVENTS).map(|_| {
             SseData::random_deploy_processed(&mut rng)
         }).collect();
-    deploys_data = enclose_events_data(&mut deploys_data, false);
+    deploys_data = enclose_events_data(&mut deploys_data, true);
 
     let mut sigs_data: Vec<SseData> =
         (1..=NUM_OF_TEST_EVENTS).map(|_| {
@@ -70,7 +74,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
     let event_root = warp::path("events");
 
     let main_channel = event_root.and(warp::path("main")).and(warp::path::end()).map(move || {
-        println!("Checking Main Channel");
 
         let cloned_data = blocks_data.clone();
 
@@ -81,7 +84,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
         let combined_stream = timer_stream.zip(data_stream);
 
         let event_stream = combined_stream.map(move |(_, data)| {
-            println!("Event: Main");
             let event = match counter {
                 0 => Event::default().json_data(data).expect("Error building Event"),
                 _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
@@ -94,7 +96,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
     });
 
     let deploys_channel = event_root.and(warp::path("deploys")).and(warp::path::end()).map(move || {
-        println!("Checking Deploys Channel");
 
         let cloned_data = deploys_data.clone();
 
@@ -105,7 +106,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
         let combined_stream = timer_stream.zip(data_stream);
 
         let event_stream = combined_stream.map(move |(_, data)| {
-            println!("Event: Deploy");
             let event = match counter {
                 0 => Event::default().json_data(data).expect("Error building Event"),
                 _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
@@ -118,7 +118,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
     });
 
     let sigs_channel = event_root.and(warp::path("sigs")).and(warp::path::end()).map(move || {
-        println!("Checking Sigs Channel");
 
         let cloned_data = sigs_data.clone();
 
@@ -129,7 +128,6 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
         let combined_stream = timer_stream.zip(data_stream);
 
         let event_stream = combined_stream.map(move |(_, data)| {
-            println!("Event: Sig");
             let event = match counter {
                 0 => Event::default().json_data(data).expect("Error building Event"),
                 _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
@@ -145,77 +143,117 @@ pub async fn start_test_node(port: u16, shutdown_receiver: oneshot::Receiver<()>
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(([127,0,0,1],port), async {
         shutdown_receiver.await.ok();
-        println!("Test Node shutting down");
+        println!("Test node shutting down");
     });
 
     tokio::spawn(async {
-        println!("Test Node starting...");
+        println!("Test node starting...");
+        let _ = started_notification_sender.send(());
         server.await
     });
 
     return addr;
 }
 
-#[tokio::test(flavor="multi_thread", worker_threads=2)]
-async fn check_node_output() {
+#[cfg(test)]
+async fn spawn_test_node_with_shutdown(port: u16) -> oneshot::Sender<()> {
+    let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
+    let (node_started_tx, node_started_rx) = oneshot::channel();
 
+    tokio::spawn(start_test_node(port, node_started_tx, node_shutdown_rx));
+
+    // Wait for the test node to report that it's live
+    let _ = node_started_rx.await;
+
+    node_shutdown_tx
+}
+
+#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[serial]
+async fn should_connect_then_gracefully_shutdown() {
     let test_node_port: u16 = 4444;
 
-    let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
+    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
 
-    tokio::spawn(start_test_node(test_node_port, node_shutdown_rx));
+    let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
+    let connection = EventSource::new(&test_node_url).unwrap();
 
-    // Allows server to boot up
-    // todo this method is brittle should really have a concrete and dynamic method for determining liveness of the server
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    let receiver = connection.receiver();
 
-    let url = format!("http://127.0.0.1:{}/events/{}", test_node_port, "main");
+    let first_event = receiver.iter().next().unwrap();
+    // High level assertions just to check that it has started up properly.
+    assert_eq!(first_event.type_, "message");
+    assert!(first_event.data.contains("ApiVersion"));
 
-    let sse_stream = EventSource::new(&url);
-    assert!(sse_stream.is_ok());
-    for (index, evt) in sse_stream.unwrap().receiver().iter().enumerate() {
-        let sse_data = serde_json::from_str::<SseData>(&evt.data).expect("Error parsing event data");
-        if index == 0 {
-            check_api_version_event(evt);
-        } else {
-            assert!(matches!(sse_data, SseData::BlockAdded {..}))
-        }
-        if index == NUM_OF_TEST_EVENTS { break; }
-    };
-
-    let url = format!("http://127.0.0.1:{}/events/{}", test_node_port, "deploys");
-
-    let sse_stream = EventSource::new(&url);
-    assert!(sse_stream.is_ok());
-    for (index, evt) in sse_stream.unwrap().receiver().iter().enumerate() {
-        let sse_data = serde_json::from_str::<SseData>(&evt.data).expect("Error parsing event data");
-        if index == 0 {
-            check_api_version_event(evt);
-        } else {
-            assert!(matches!(sse_data, SseData::DeployProcessed {..}))
-        }
-        if index == NUM_OF_TEST_EVENTS { break; }
-    };
-
-    let url = format!("http://127.0.0.1:{}/events/{}", test_node_port, "sigs");
-
-    let sse_stream = EventSource::new(&url);
-    assert!(sse_stream.is_ok());
-    for (index, evt) in sse_stream.unwrap().receiver().iter().enumerate() {
-        let sse_data = serde_json::from_str::<SseData>(&evt.data).expect("Error parsing event data");
-        if index == 0 {
-            check_api_version_event(evt);
-        } else {
-            assert!(matches!(sse_data, SseData::FinalitySignature {..}))
-        }
-        if index == NUM_OF_TEST_EVENTS { break; }
-    };
-
+    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
-fn check_api_version_event(event: sse_client::Event) {
-    assert!(event.id.is_empty());
-    let data = serde_json::from_str::<SseData>(&event.data).expect("Error parsing API event");
-    assert!(matches!(data, SseData::ApiVersion(..)));
+#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[serial]
+async fn main_filter_should_provide_valid_data() {
+    let test_node_port: u16 = 4444;
+
+    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+
+    let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
+    let connection = EventSource::new(&test_node_url).unwrap();
+
+    let receiver = connection.receiver();
+
+    for event in receiver.iter() {
+        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+        if matches!(sse, SseData::Shutdown) {
+            break
+        }
+    }
+
+    connection.close();
+    let _ = node_shutdown_tx.send(());
+}
+
+#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[serial]
+async fn deploys_filter_should_provide_valid_data() {
+    let test_node_port: u16 = 4444;
+
+    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+
+    let test_node_url = format!("http://127.0.0.1:{}/events/deploys", test_node_port);
+    let connection = EventSource::new(&test_node_url).unwrap();
+
+    let receiver = connection.receiver();
+
+    for event in receiver.iter() {
+        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+        if matches!(sse, SseData::Shutdown) {
+            break
+        }
+    }
+
+    connection.close();
+    let _ = node_shutdown_tx.send(());
+}
+
+#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[serial]
+async fn sigs_filter_should_provide_valid_data() {
+    let test_node_port: u16 = 4444;
+
+    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+
+    let test_node_url = format!("http://127.0.0.1:{}/events/sigs", test_node_port);
+    let connection = EventSource::new(&test_node_url).unwrap();
+
+    let receiver = connection.receiver();
+
+    for event in receiver.iter() {
+        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+        if matches!(sse, SseData::Shutdown) {
+            break
+        }
+    }
+
+    connection.close();
+    let _ = node_shutdown_tx.send(());
 }
