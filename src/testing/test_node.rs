@@ -143,11 +143,9 @@ pub async fn start_test_node(port: u16, started_notification_sender: oneshot::Se
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(([127,0,0,1],port), async {
         shutdown_receiver.await.ok();
-        println!("Test node shutting down");
     });
 
     tokio::spawn(async {
-        println!("Test node starting...");
         let _ = started_notification_sender.send(());
         server.await
     });

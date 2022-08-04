@@ -29,7 +29,7 @@ pub struct SqliteDb {
 }
 
 #[async_trait]
-pub trait DatabaseWriter {
+pub(crate) trait DatabaseWriter {
     async fn save_block(&self, block: Block) -> Result<usize, Error>;
     async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error>;
     async fn save_step(&self, step: Step) -> Result<usize, Error>;
@@ -37,17 +37,17 @@ pub trait DatabaseWriter {
 }
 
 #[async_trait]
-pub trait DatabaseReader {
-    async fn get_latest_block(&self) -> Result<Block, Error>;
-    async fn get_block_by_height(&self, height: u64) -> Result<Block, Error>;
-    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error>;
-    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error>;
-    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error>;
-    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error>;
-    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error>;
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error>;
-    async fn get_step_by_era(&self, era_id: u64) -> Result<Step, Error>;
-    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error>;
+pub(crate) trait DatabaseReader {
+    async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError>;
+    async fn get_block_by_height(&self, height: u64) -> Result<Block, DatabaseRequestError>;
+    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, DatabaseRequestError>;
+    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, DatabaseRequestError>;
+    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, DatabaseRequestError>;
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError>;
+    async fn get_step_by_era(&self, era_id: u64) -> Result<Step, DatabaseRequestError>;
+    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, DatabaseRequestError>;
 }
 
 
@@ -224,78 +224,99 @@ impl DatabaseWriter for SqliteDb {
 
 #[async_trait]
 impl DatabaseReader for SqliteDb {
-    async fn get_latest_block(&self) -> Result<Block, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT block FROM blocks ORDER BY height DESC LIMIT 1", [], |row| {
             let block_string: String = row.get(0)?;
             deserialize_data::<Block>(&block_string)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_block_by_height(&self, height: u64) -> Result<Block, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_block_by_height(&self, height: u64) -> Result<Block, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT block FROM blocks WHERE height = ?", [height], |row| {
             let block_string: String = row.get(0)?;
             deserialize_data::<Block>(&block_string)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, DatabaseRequestError> {
+        let hash_regex = regex::Regex::new("^([A-Fa-f0-9]){64}$").map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !hash_regex.is_match(hash) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!("Expected hex-encoded block hash (64 chars), received: {} (length: {})", hash, hash.len()))));
+        }
+
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT block FROM blocks WHERE hash = ?", [hash], |row| {
-            let block_string: String = row.get(0)?;
+            let block_string: String = row.get(0).map_err(DatabaseError::Rusqlite)?;
             deserialize_data::<Block>(&block_string)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT * FROM deploys ORDER BY timestamp DESC LIMIT 1", [], |row| {
             extract_aggregate_deploy_info(row)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_deploy_by_hash(&self, hash: &str) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+        let hash_regex = regex::Regex::new("^([0-9A-Fa-f]){64}$").map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !hash_regex.is_match(hash) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!("Expected hex-encoded deploy hash (64 chars), received: {} (length: {})", hash, hash.len()))));
+        }
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT * FROM deploys WHERE hash = ?", [hash], |row| {
             extract_aggregate_deploy_info(row)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_deploy_accepted_by_hash(&self, hash: &str) -> Result<Deploy, DatabaseRequestError> {
+        let hash_regex = regex::Regex::new("^([0-9A-Fa-f]){64}$").map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !hash_regex.is_match(hash) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!("Expected hex-encoded deploy hash (64 chars), received: {} (length: {})", hash, hash.len()))));
+        }
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT accepted FROM deploys WHERE hash = ?", [hash], |row| {
             let deploy_string: String = row.get(0)?;
             deserialize_data::<Deploy>(&deploy_string)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_deploy_processed_by_hash(&self, hash: &str) -> Result<DeployProcessed, DatabaseRequestError> {
+        let hash_regex = regex::Regex::new("^([0-9A-Fa-f]){64}$").map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !hash_regex.is_match(hash) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!("Expected hex-encoded deploy hash (64 chars), received: {} (length: {})", hash, hash.len()))));
+        }
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT processed FROM deploys WHERE hash = ?", [hash], |row| {
             let deploy_string: String = row.get(0)?;
             deserialize_data::<DeployProcessed>(&deploy_string)
-        })
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError> {
+        let hash_regex = regex::Regex::new("^([0-9A-Fa-f]){64}$").map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !hash_regex.is_match(hash) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!("Expected hex-encoded deploy hash (64 chars), received: {} (length: {})", hash, hash.len()))));
+        }
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT expired FROM deploys WHERE hash = ?", [hash], |row| {
             let expired: u8 = row.get(0)?;
-            integer_to_bool(expired)
-        })
+            integer_to_bool(expired).map_err(|err| DatabaseError::Internal(err))
+        }).map_err(wrap_query_error)
     }
 
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT effect FROM steps WHERE era = ?", [era], |row| {
             let effect_string: String = row.get(0)?;
@@ -304,16 +325,16 @@ impl DatabaseReader for SqliteDb {
                 era_id: era.into(),
                 execution_effect: effect
             })
-        })
+        }).map_err(wrap_query_error)
     }
 
     // todo this should be taking a compound identifier maybe including Era to ensure it gets a single row
-    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, Error> {
-        let db = self.db.lock().map_err(|error| Error::msg(error.to_string()))?;
+    async fn get_fault_by_public_key(&self, public_key: &str) -> Result<Fault, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string())))?;
 
         db.query_row_and_then("SELECT * FROM faults WHERE public_key = ?", [public_key], |row| {
             let era: u64 = row.get(0)?;
-            let public_key = PublicKey::from_hex(public_key)?;
+            let public_key = PublicKey::from_hex(public_key).map_err(|err| DatabaseError::Internal(Error::from(err)))?;
             let timestamp_string: String = row.get(2)?;
             let timestamp = deserialize_data::<Timestamp>(&timestamp_string)?;
 
@@ -322,14 +343,46 @@ impl DatabaseReader for SqliteDb {
                 public_key,
                 timestamp
             })
-        })
+        }).map_err(wrap_query_error)
     }
 }
 
-fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Error> {
-    serde_json::from_str::<T>(data).map_err(|err| {
-        Error::from(err)
-    })
+#[derive(Debug)]
+pub(crate) enum DatabaseRequestError {
+    DBConnectionFailed(Error),
+    NotFound,
+    InvalidParam(Error),
+    Serialisation(Error),
+    Unhandled(Error)
+}
+
+enum DatabaseError {
+    Rusqlite(rusqlite::Error),
+    SerdeJson(serde_json::Error),
+    Internal(Error)
+}
+
+impl From<rusqlite::Error> for DatabaseError {
+    fn from(error: rusqlite::Error) -> Self {
+        DatabaseError::Rusqlite(error)
+    }
+}
+
+fn wrap_query_error(error: DatabaseError) -> DatabaseRequestError {
+    match error {
+        DatabaseError::Rusqlite(err) => {
+            match err.to_string().as_str() {
+                "Query returned no rows" => DatabaseRequestError::NotFound,
+                _ => DatabaseRequestError::Unhandled(Error::from(err))
+            }
+        }
+        DatabaseError::SerdeJson(err) => DatabaseRequestError::Serialisation(Error::from(err)),
+        DatabaseError::Internal(err) => DatabaseRequestError::Unhandled(err)
+    }
+}
+
+fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, DatabaseError> {
+    serde_json::from_str::<T>(data).map_err(DatabaseError::SerdeJson)
 }
 
 #[derive(Debug, Serialize)]
@@ -341,7 +394,7 @@ pub struct AggregateDeployInfo {
     pub(crate) expired: bool
 }
 
-fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, Error> {
+fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, DatabaseError> {
     let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
         deploy_hash: "".to_string(),
         accepted: None,
@@ -350,17 +403,11 @@ fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo
     };
 
     aggregate_deploy.deploy_hash = deploy_row.get(0)?;
-    aggregate_deploy.accepted = match deploy_row.get::<usize, Option<String>>(2) {
-        Ok(x) => x,
-        Err(err) => return Err(Error::from(err))
-    };
-    aggregate_deploy.processed = match deploy_row.get::<usize, Option<String>>(3) {
-        Ok(x) => x,
-        Err(err) => return Err(Error::from(err))
-    };
+    aggregate_deploy.accepted = deploy_row.get::<usize, Option<String>>(2)?;
+    aggregate_deploy.processed = deploy_row.get::<usize, Option<String>>(3)?;
     aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
-        Ok(x) => integer_to_bool(x)?,
-        Err(err) => return Err(Error::from(err))
+        Ok(int) => integer_to_bool(int).map_err(DatabaseError::Internal)?,
+        Err(err) => return Err(DatabaseError::Rusqlite(err))
     };
 
     Ok(aggregate_deploy)

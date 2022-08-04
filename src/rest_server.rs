@@ -1,8 +1,8 @@
-use crate::sqlite_db::SqliteDb;
+use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
 use anyhow::Error;
 use std::convert::Infallible;
 use std::path::PathBuf;
-use tracing::error;
+use tracing::{error, warn};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 use serde::Serialize;
@@ -13,7 +13,7 @@ mod filters {
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
     use crate::sqlite_db::DatabaseReader;
 
-    pub fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
+    pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
         root_filter()
             .or(root_and_invalid_path())
             .or(block_filters(db.clone()))
@@ -23,7 +23,7 @@ mod filters {
             .recover(handle_rejection)
     }
 
-    pub fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path::end()
             .and_then(|| {
                 async {
@@ -42,13 +42,13 @@ mod filters {
             })
     }
 
-    pub fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         latest_block(db.clone())
             .or(block_by_hash(db.clone()))
             .or(block_by_height(db))
     }
 
-    pub fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         latest_deploy(db.clone())
             .or(deploy_by_hash(db.clone()))
             .or(deploy_accepted_by_hash(db.clone()))
@@ -197,7 +197,7 @@ pub async fn run_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
     Ok(())
 }
 
-fn serialize_or_reject_storage_result<T>(storage_result: Result<T, Error>) -> Result<impl Reply, Rejection>
+fn serialize_or_reject_storage_result<T>(storage_result: Result<T, DatabaseRequestError>) -> Result<impl Reply, Rejection>
     where T: Serialize
 {
     match storage_result {
@@ -229,7 +229,7 @@ struct SerializationError(serde_json::error::Error);
 impl warp::reject::Reject for SerializationError {}
 
 #[derive(Debug)]
-struct StorageError(Error);
+struct StorageError(DatabaseRequestError);
 impl warp::reject::Reject for StorageError {}
 
 
@@ -247,14 +247,27 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = format!("Serialization Error: {}", err);
     } else if let Some(StorageError(err)) = err.find() {
-        match err.to_string().as_str() {
-            "Query returned no rows" => {
-                code = StatusCode::NOT_FOUND;
-                message = "No results found for query".to_string();
-            }
-            _ => {
+        match err {
+            DatabaseRequestError::DBConnectionFailed(err) => {
+                warn!(message = format!("Sqlite DB error processing request: {}", err).as_str());
                 code = StatusCode::INTERNAL_SERVER_ERROR;
-                message = format!("Storage Error: {}", err);
+                message = format!("Failed to connect to DB instance: {}", err)
+            }
+            DatabaseRequestError::NotFound => {
+                code = StatusCode::NOT_FOUND;
+                message = "Query returned no data".to_string();
+            }
+            DatabaseRequestError::InvalidParam(err) => {
+                code = StatusCode::BAD_REQUEST;
+                message = format!("Invalid parameter in query: {}", err)
+            }
+            DatabaseRequestError::Serialisation(err) => {
+                code = StatusCode::INTERNAL_SERVER_ERROR;
+                message = format!("Error deserializing returned data: {}", err)
+            }
+            DatabaseRequestError::Unhandled(err) => {
+                code = StatusCode::INTERNAL_SERVER_ERROR;
+                message = format!("Unhandled error occurred in storage: {}", err)
             }
         }
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
@@ -277,21 +290,22 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use bytes::Bytes;
     use http::{StatusCode, Response};
     use warp::test::request;
     use crate::rest_server::filters;
-    use crate::testing::test_database::MockDatabase;
+    use crate::sqlite_db;
 
     // These are the codes that would be expected for a request to a valid path.
-    const RESP_CODES_FOR_VALID_REQ: [StatusCode; 3] = [
+    const RESP_CODES_FOR_VALID_PATH: [StatusCode; 2] = [
         StatusCode::OK,
         StatusCode::NOT_FOUND,
-        StatusCode::BAD_REQUEST
     ];
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
-        let db = MockDatabase;
+        let db_path = Path::new("target/storage");
+        let db = sqlite_db::SqliteDb::new(db_path).unwrap();
 
         let api = filters::combined_filters(db);
 
@@ -305,21 +319,50 @@ mod tests {
     async fn valid_paths_should_respond_with_correct_status() {
         let valid_paths = [
             "/block",
-            "/block/hash",
-            "/block/height",
+            "/block/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "/block/100",
             "/deploy",
-            "/deploy/hash",
-            "/deploy/accepted/hash",
-            "/deploy/processed/hash",
-            "/deploy/expired/hash",
-            "/step/era",
+            "/deploy/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "/deploy/accepted/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "/deploy/processed/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "/deploy/expired/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "/step/1",
             "/fault/publickey"
         ];
 
         for path in valid_paths {
             let response = get_response_from_path(path).await;
-            assert!(RESP_CODES_FOR_VALID_REQ.contains(&response.status()));
-            assert!(!response.body().is_empty())
+            assert!(RESP_CODES_FOR_VALID_PATH.contains(&response.status()));
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_paths_should_respond_with_correct_status() {
+        let invalid_paths = [
+            "/",
+            "/foo",
+        ];
+
+        for path in invalid_paths {
+            let response = get_response_from_path(path).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_params_should_respond_with_correct_status() {
+        let invalid_paths = [
+            "/block/notahexencodedblockhash",
+            "/deploy/notahexencodedblockhash",
+            "/deploy/accepted/notahexencodedblockhash",
+            "/deploy/processed/notahexencodedblockhash",
+            "/deploy/expired/notahexencodedblockhash",
+        ];
+
+        for path in invalid_paths {
+            let response = get_response_from_path(path).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert!(!response.body().is_empty());
         }
     }
 }
