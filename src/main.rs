@@ -26,6 +26,7 @@ use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
+const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
@@ -40,13 +41,17 @@ async fn main() -> Result<(), Error> {
     let config: Config = read_config("config.toml").context("Error constructing config")?;
     info!("Configuration loaded");
 
+    run(config).await
+}
+
+async fn run(config: Config) -> Result<(), Error> {
+
     let node_config = match config.connection.network {
         Network::Mainnet => config.connection.node.mainnet,
         Network::Testnet => config.connection.node.testnet,
         Network::Local => config.connection.node.local,
     };
 
-    // Set URLs for each of the (from the node) Event Stream Server's filters
     let url_base = format!("http://{ip}:{port}/events", ip = node_config.ip_address, port = node_config.sse_port);
 
     let main_event_source = EventSource::new(
@@ -81,7 +86,7 @@ async fn main() -> Result<(), Error> {
                 _ => return Err(Error::msg("First event should have been API Version"))
             }
             Err(serde_err) => return match event.data.as_str() {
-                CONNECTION_REFUSED => Err(Error::msg("Connection refused: Please check network connection to node.")),
+                CONNECTION_REFUSED => Err(Error::msg(&CONNECTION_ERR_MSG)),
                 _ => Err(Error::from(serde_err).context("First event was not of expected format"))
             }
         }
@@ -97,6 +102,7 @@ async fn main() -> Result<(), Error> {
     // Loop over incoming events and send them along the channel
     // The main receiver loop doesn't need to discard the first event because it has already been parsed out above.
     let main_events_sending_task = async move {
+        // arbitrary timeout
         for event in main_event_source_receiver.iter() {
             let _ = main_events_tx.send(event);
         }
@@ -116,13 +122,13 @@ async fn main() -> Result<(), Error> {
     // Instantiates SQLite database
     let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
 
-    // Prepare the REST server task - this will be executed later
-    let rest_server_handle = tokio::spawn(
-        start_rest_server(
-            storage.file_path.clone(),
-            config.rest_server.port,
-        )
-    );
+    // // Prepare the REST server task - this will be executed later
+    // let rest_server_handle = tokio::spawn(
+    //     start_rest_server(
+    //         storage.file_path.clone(),
+    //         config.rest_server.port,
+    //     )
+    // );
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
@@ -269,9 +275,9 @@ async fn main() -> Result<(), Error> {
             info!("Stopped processing SSEs")
         }
 
-        _ = rest_server_handle => {
-            info!("REST server stopped")
-        }
+        // _ = rest_server_handle => {
+        //     info!("REST server stopped")
+        // }
     };
 
     Ok(())
@@ -284,5 +290,45 @@ fn send_events_discarding_first(event_source: EventSource, sender: UnboundedSend
     let _ = receiver.iter().next();
     for event in receiver.iter() {
         let _ = sender.send(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lazy_static::lazy_static;
+    use serial_test::serial;
+    use super::*;
+    use crate::testing::test_node::start_test_node_with_shutdown;
+
+    const TEST_CONFIG_PATH: &str = "config_test.toml";
+
+    lazy_static! {
+        static ref TEST_CONFIG: Config = read_config(TEST_CONFIG_PATH).unwrap();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn should_return_helpful_error_if_node_unreachable() {
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        let result = run(test_config).await;
+
+        assert!(result.is_err());
+        if let Some(error) = result.err() {
+            assert_eq!(error.to_string(), CONNECTION_ERR_MSG)
+        }
+    }
+
+    #[tokio::test(flavor="multi_thread", worker_threads=8)]
+    #[serial]
+    async fn should_run() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        run(test_config).await.unwrap();
+
+        node_shutdown_tx.send(()).unwrap();
+        println!("ended");
     }
 }
