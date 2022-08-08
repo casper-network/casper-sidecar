@@ -5,10 +5,12 @@ use std::time::Duration;
 use casper_types::ProtocolVersion;
 use casper_types::testing::TestRng;
 #[allow(unused)]
-use futures_util::{stream, StreamExt, TryStreamExt};
+use futures::{Stream, StreamExt};
+use futures_util::stream;
 #[allow(unused)]
 use futures_util::stream::{Map, Zip, Iter, IntoStream};
-use sse_client::EventSource;
+#[allow(unused)]
+use eventsource_stream::{EventStream, Eventsource};
 #[allow(unused)]
 use tokio::time::{Instant, interval};
 use tokio::sync::oneshot;
@@ -174,16 +176,21 @@ async fn should_connect_then_gracefully_shutdown() {
     let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    let first_event = receiver.iter().next().unwrap();
-    // High level assertions just to check that it has started up properly.
-    assert_eq!(first_event.type_, "message");
+    let first_event = connection
+        .next()
+        .await
+        .unwrap()
+        .unwrap();
     assert!(first_event.data.contains("ApiVersion"));
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -195,18 +202,21 @@ async fn main_filter_should_provide_valid_data() {
     let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -218,18 +228,21 @@ async fn deploys_filter_should_provide_valid_data() {
     let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/deploys", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -241,17 +254,20 @@ async fn sigs_filter_should_provide_valid_data() {
     let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/sigs", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
