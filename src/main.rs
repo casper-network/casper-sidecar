@@ -323,6 +323,7 @@ async fn stream_events_to_channel(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
     use lazy_static::lazy_static;
     use serial_test::serial;
     use super::*;
@@ -350,11 +351,64 @@ mod tests {
     #[tokio::test(flavor="multi_thread", worker_threads=4)]
     #[serial]
     async fn should_connect_and_shutdown_cleanly() {
-        let node_shutdown_tx = start_test_node_with_shutdown(4444).await;
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
 
         let test_config = read_config(TEST_CONFIG_PATH).unwrap();
 
         run(test_config).await.unwrap();
+
+        node_shutdown_tx.send(()).unwrap();
+    }
+
+    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[serial]
+    async fn should_allow_client_connection() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        tokio::spawn(run(test_config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let mut main_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:19999/events/main")
+            .send()
+            .await
+            .map_err(parse_error_for_connection_refused)
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        while let Some(event) = main_event_stream.next().await {
+            event.unwrap();
+        }
+
+        node_shutdown_tx.send(()).unwrap();
+    }
+
+    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[serial]
+    async fn should_respond_to_rest_query() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        tokio::spawn(run(test_config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let response = reqwest::Client::new()
+            .get("http://127.0.0.1:17777/block")
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+        let content_type = response.headers().get("content-type").unwrap();
+        assert_eq!(content_type, "application/json");
 
         node_shutdown_tx.send(()).unwrap();
     }
