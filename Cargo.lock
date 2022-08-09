@@ -313,8 +313,8 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.5.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+version = "2.0.0"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "anyhow",
  "base16",
@@ -355,7 +355,7 @@ dependencies = [
 [[package]]
 name = "casper-hashing"
 version = "1.4.3"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "base16",
  "blake2",
@@ -373,11 +373,12 @@ dependencies = [
 [[package]]
 name = "casper-json-rpc"
 version = "0.1.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "bytes",
  "futures",
  "http",
+ "itertools",
  "serde",
  "serde_json",
  "tracing",
@@ -386,8 +387,8 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.5"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+version = "1.4.6"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -472,7 +473,7 @@ dependencies = [
 [[package]]
 name = "casper-node-macros"
 version = "1.4.3"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -484,7 +485,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "1.5.0"
-source = "git+https://github.com/Fraser999/casper-node?branch=testing-feature#a7c89280ebdffa6f6ac07788851103b2ab3a2791"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "base16",
  "base64",
