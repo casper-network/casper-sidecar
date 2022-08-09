@@ -5,7 +5,7 @@ use casper_node::types::Block;
 use serde::Serialize;
 use std::convert::Infallible;
 use std::path::PathBuf;
-use tracing::error;
+use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{Filter, Rejection, Reply};
 
@@ -117,7 +117,7 @@ pub async fn start_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
             .recover(handle_rejection),
     );
 
-    println!("\n\tSidecar running on localhost:{}\n\tTry querying for a block by hash: /block/<block hash>\n", port);
+    info!(message = "REST server starting", port=port);
 
     warp::serve(routes).run(([127, 0, 0, 1], port)).await;
 

@@ -1,6 +1,6 @@
 use crate::types::enums::Network;
-use casper_node::types::{BlockHash, JsonBlock, TimeDiff, Timestamp};
-use casper_types::{DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_node::types::{BlockHash, JsonBlock};
+use casper_types::{DeployHash, EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -8,26 +8,24 @@ pub struct Config {
     pub connection: ConnectionConfig,
     pub storage: StorageConfig,
     pub rest_server: ServerConfig,
-    pub ws_server: ServerConfig,
+    pub sse_server: ServerConfig,
 }
 
 #[derive(Deserialize)]
 pub struct ServerConfig {
-    pub run: bool,
     pub port: u16,
 }
 
 #[derive(Deserialize)]
 pub struct StorageConfig {
     pub db_path: String,
-    pub kv_path: String,
+    pub sse_cache: String,
 }
 
 #[derive(Deserialize)]
 pub struct ConnectionConfig {
     pub network: Network,
     pub node: Node,
-    pub sse_filter: String,
 }
 
 #[derive(Deserialize)]
@@ -41,7 +39,6 @@ pub struct Node {
 pub struct NodeConfig {
     pub ip_address: String,
     pub sse_port: u16,
-    pub rpc_port: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

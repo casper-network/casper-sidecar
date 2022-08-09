@@ -1,19 +1,25 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use super::types::structs::{DeployProcessed, Fault, Step};
 use anyhow::{Context, Error};
 use casper_node::types::Block;
 use rusqlite::{params, Connection, OpenFlags, named_params};
 use std::sync::{Arc, Mutex};
-use tracing::trace;
+use tracing::debug;
+
+const DB_FILENAME: &str = "raw_sse_data.db3";
 
 #[derive(Clone)]
 pub struct Database {
     db: Arc<Mutex<Connection>>,
+    pub file_path: PathBuf
 }
 
 impl Database {
     pub fn new(path: &Path) -> Result<Database, Error> {
-        let db = Connection::open(path)?;
+        fs::create_dir_all(path)?;
+        let file_path = path.join(DB_FILENAME);
+        let db = Connection::open(&file_path)?;
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS blocks (
@@ -24,7 +30,7 @@ impl Database {
             [],
         )
         .context("failed to create blocks table in database")?;
-        trace!("SQLite - Blocks table initialised");
+        debug!("SQLite - Blocks table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS deploys (
@@ -35,7 +41,7 @@ impl Database {
             [],
         )
         .context("failed to create deploys table in database")?;
-        trace!("SQLite - Deploys table initialised");
+        debug!("SQLite - Deploys table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS steps (
@@ -45,7 +51,7 @@ impl Database {
             [],
         )
         .context("failed to create steps table in database")?;
-        trace!("SQLite - Steps table initialised");
+        debug!("SQLite - Steps table initialised");
 
         db.execute(
             "CREATE TABLE IF NOT EXISTS faults (
@@ -57,10 +63,11 @@ impl Database {
             [],
         )
         .context("failed to create faults table in database")?;
-        trace!("SQLite - Faults table initialised");
+        debug!("SQLite - Faults table initialised");
 
         Ok(Database {
             db: Arc::new(Mutex::new(db)),
+            file_path
         })
     }
 
@@ -81,6 +88,7 @@ impl Database {
         .with_context(|| format!("failed to save block at height: {}", height))
     }
 
+    #[allow(unused)]
     pub async fn save_deploy(&self, deploy: &DeployProcessed) -> Result<usize, Error> {
         let hash = hex::encode(deploy.deploy_hash.value());
         let timestamp = deploy.timestamp.to_string();
@@ -97,6 +105,7 @@ impl Database {
         .context("failed to save deploy")
     }
 
+    #[allow(unused)]
     pub async fn save_step(&self, step: &Step) -> Result<usize, Error> {
         let serialised_effect =
             serde_json::to_string(&step.execution_effect).map_err(Error::msg)?;
@@ -111,6 +120,7 @@ impl Database {
         .context("failed to save step")
     }
 
+    #[allow(unused)]
     pub async fn save_fault(&self, fault: &Fault) -> Result<usize, Error> {
         // 'from' trait implementation is preferred to calling .value()
         let era = u64::from(fault.era_id);
