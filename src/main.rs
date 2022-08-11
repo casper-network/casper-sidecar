@@ -324,8 +324,10 @@ async fn stream_events_to_channel(
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+    use hex::encode;
     use lazy_static::lazy_static;
     use serial_test::serial;
+    use tokio::time::Instant;
     use super::*;
     use crate::testing::test_node::start_test_node_with_shutdown;
 
@@ -362,7 +364,7 @@ mod tests {
 
     #[tokio::test(flavor="multi_thread", worker_threads=4)]
     #[serial]
-    async fn should_allow_client_connection() {
+    async fn should_allow_client_connection_to_sse() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
         let test_config = read_config(TEST_CONFIG_PATH).unwrap();
@@ -407,9 +409,218 @@ mod tests {
             .unwrap();
 
         assert!(response.status().is_success());
-        let content_type = response.headers().get("content-type").unwrap();
-        assert_eq!(content_type, "application/json");
 
         node_shutdown_tx.send(()).unwrap();
+    }
+
+    #[derive(Clone)]
+    struct EventWithHash {
+        hash: String,
+        received_at: Instant
+    }
+
+    impl PartialEq for EventWithHash {
+        fn eq(&self, other: &Self) -> bool {
+            self.hash == other.hash
+        }
+    }
+
+    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[serial]
+    // This test needs NCTL running in the background
+    async fn check_delay_in_receiving_blocks() {
+        // let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let config = read_config("config.toml").unwrap();
+
+        tokio::spawn(run(config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let node_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:18101/events/main")
+            .send()
+            .await
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        let sidecar_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:19999/events/main")
+            .send()
+            .await
+            .map_err(parse_error_for_connection_refused)
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        let node_task_handle = tokio::spawn(push_timestamped_block_events_to_vecs(
+            node_event_stream
+        ));
+
+        let sidecar_task_handle = tokio::spawn(push_timestamped_block_events_to_vecs(
+            sidecar_event_stream
+        ));
+
+        let (node_task_result, sidecar_task_result) = tokio::join!(
+            node_task_handle,
+            sidecar_task_handle
+        );
+
+        let block_events_from_node = node_task_result.unwrap();
+        let block_events_from_sidecar = sidecar_task_result.unwrap();
+
+        let block_time_diffs = extract_time_diffs(block_events_from_node, block_events_from_sidecar);
+
+        let block_time_diff_millis = block_time_diffs.iter().map(|time_diff| {
+            time_diff.as_millis()
+        }).collect::<Vec<u128>>();
+
+        let average_delay: u128 = block_time_diff_millis.iter().sum::<u128>().checked_div(block_time_diff_millis.len() as u128).unwrap();
+
+        println!("RESULT: ave. delay for blocks: {} ms", average_delay);
+
+        assert!(average_delay < 20);
+    }
+
+    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[serial]
+    // This test needs NCTL running in the background with deploys being sent
+    async fn check_delay_in_receiving_deploys() {
+        // let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let config = read_config("config.toml").unwrap();
+
+        tokio::spawn(run(config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let node_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:18101/events/deploys")
+            .send()
+            .await
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        let sidecar_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:19999/events/deploys")
+            .send()
+            .await
+            .map_err(parse_error_for_connection_refused)
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        let node_task_handle = tokio::spawn(push_timestamped_deploy_events_to_vecs(
+            node_event_stream
+        ));
+
+        let sidecar_task_handle = tokio::spawn(push_timestamped_deploy_events_to_vecs(
+            sidecar_event_stream
+        ));
+
+        let (node_task_result, sidecar_task_result) = tokio::join!(
+            node_task_handle,
+            sidecar_task_handle
+        );
+
+        let deploy_events_from_node = node_task_result.unwrap();
+        let deploy_events_from_sidecar = sidecar_task_result.unwrap();
+
+        let deploy_time_diffs = extract_time_diffs(deploy_events_from_node, deploy_events_from_sidecar);
+
+        let deploy_time_diff_millis = deploy_time_diffs.iter().map(|time_diff| {
+            time_diff.as_millis()
+        }).collect::<Vec<u128>>();
+
+        let average_delay: u128 = deploy_time_diff_millis.iter().sum::<u128>().checked_div(deploy_time_diff_millis.len() as u128).unwrap();
+
+        println!("RESULT: ave. delay for deploys: {} ms", average_delay);
+
+        assert!(average_delay < 10);
+    }
+
+    async fn push_timestamped_block_events_to_vecs(
+        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>
+    ) -> Vec<EventWithHash> {
+
+        let mut events_vec = Vec::new();
+
+        let mut event_count = 0u8;
+
+        while let Some(event) = event_stream.next().await {
+            if event_count > 12 {
+                break
+            }
+            event_count += 1;
+
+            let received_timestamp = Instant::now();
+            let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+            match data {
+                SseData::BlockAdded { block_hash, .. } => {
+                    let hash = encode(block_hash.inner());
+                    events_vec.push(EventWithHash {
+                        hash,
+                        received_at: received_timestamp
+                    });
+                }
+                _ => {}
+            }
+
+        }
+        events_vec
+    }
+
+    async fn push_timestamped_deploy_events_to_vecs(
+        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>
+    ) -> Vec<EventWithHash> {
+
+        let mut events_vec = Vec::new();
+
+        let mut event_count = 0u8;
+
+        while let Some(event) = event_stream.next().await {
+            if event_count > 12 {
+                break
+            }
+            event_count += 1;
+
+            let received_timestamp = Instant::now();
+            let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+            match data {
+                SseData::DeployAccepted { deploy } => {
+                    let hash = encode(*deploy.id());
+                    events_vec.push(EventWithHash {
+                        hash,
+                        received_at: received_timestamp
+                    })
+                }
+                _ => {}
+            }
+
+        }
+        events_vec
+    }
+
+    fn extract_time_diffs(events_from_node: Vec<EventWithHash>, events_from_sidecar: Vec<EventWithHash>) -> Vec<Duration> {
+        events_from_node.iter().map(|event_from_node| {
+            let cloned_events_from_sidecar = events_from_sidecar.clone();
+            cloned_events_from_sidecar.iter().map(|event_from_sidecar| {
+                if event_from_sidecar.eq(&event_from_node) {
+                    let time_difference = event_from_sidecar.received_at - event_from_node.received_at;
+                    return Some(time_difference)
+                }
+                return None
+            }).reduce(|previous, current| {
+                if current.is_some() { current } else { previous }
+            }).map(|reduced| {
+                reduced.unwrap()
+            })
+        }).map(|opt_time_difference| {
+            opt_time_difference.unwrap()
+        }).collect::<Vec<Duration>>()
     }
 }
