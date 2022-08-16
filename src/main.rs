@@ -39,7 +39,8 @@ fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
 }
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
-    let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
+    let toml_content =
+        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
 }
 
@@ -55,14 +56,17 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
-
     let node_config = match config.connection.network {
         Network::Mainnet => config.connection.node.mainnet,
         Network::Testnet => config.connection.node.testnet,
         Network::Local => config.connection.node.local,
     };
 
-    let url_base = format!("http://{ip}:{port}/events", ip = node_config.ip_address, port = node_config.sse_port);
+    let url_base = format!(
+        "http://{ip}:{port}/events",
+        ip = node_config.ip_address,
+        port = node_config.sse_port
+    );
 
     let mut main_event_stream = reqwest::Client::new()
         .get(format!("{}/main", url_base).as_str())
@@ -96,21 +100,21 @@ async fn run(config: Config) -> Result<(), Error> {
     let sigs_event_tx = aggregate_events_tx.clone();
 
     // Parse the first event to see if the connection was successful
-    let api_version =
-        match main_event_stream.next().await {
-            None => return Err(Error::msg("First event was empty")),
-            Some(Err(error)) => {
-                return Err(Error::msg(format!("failed to get first event: {}", error)))
-            }
-            Some(Ok(event)) => match serde_json::from_str::<SseData>(&event.data) {
-                Ok(sse_data) => match sse_data {
-                    SseData::ApiVersion(version) => version,
-                    _ => return Err(Error::msg("First event should have been API Version")),
-                },
-                Err(serde_err) => return Err(Error::from(serde_err)
-                    .context("First event was not of expected format")),
+    let api_version = match main_event_stream.next().await {
+        None => return Err(Error::msg("First event was empty")),
+        Some(Err(error)) => {
+            return Err(Error::msg(format!("failed to get first event: {}", error)))
+        }
+        Some(Ok(event)) => match serde_json::from_str::<SseData>(&event.data) {
+            Ok(sse_data) => match sse_data {
+                SseData::ApiVersion(version) => version,
+                _ => return Err(Error::msg("First event should have been API Version")),
             },
-        };
+            Err(serde_err) => {
+                return Err(Error::from(serde_err).context("First event was not of expected format"))
+            }
+        },
+    };
 
     info!(
         message = "Connected to node",
@@ -126,36 +130,36 @@ async fn run(config: Config) -> Result<(), Error> {
     tokio::spawn(stream_events_to_channel(
         main_event_stream,
         main_events_tx,
-        false
+        false,
     ));
     tokio::spawn(stream_events_to_channel(
         deploys_event_stream,
         deploy_events_tx,
-        true
+        true,
     ));
     tokio::spawn(stream_events_to_channel(
         sigs_event_stream,
         sigs_event_tx,
-        true
+        true,
     ));
 
     // Instantiates SQLite database
-    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
+    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path))
+        .context("Error instantiating database")?;
 
     // // Prepare the REST server task - this will be executed later
-    let rest_server_handle = tokio::spawn(
-        start_rest_server(
-            storage.file_path.clone(),
-            config.rest_server.port,
-        )
-    );
+    let rest_server_handle = tokio::spawn(start_rest_server(
+        storage.file_path.clone(),
+        config.rest_server.port,
+    ));
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
         SseConfig::new_on_port(config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
-        api_version
-    ).context("Error starting EventStreamServer")?;
+        api_version,
+    )
+    .context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");
@@ -171,7 +175,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::ApiVersion(version) => {
                             info!("API Version: {:?}", version.to_string());
                         }
-                        SseData::BlockAdded {block, ..} => {
+                        SseData::BlockAdded { block, .. } => {
                             let block = Block::from(*block);
                             info!(
                                 message = "Block Added:",
@@ -184,24 +188,26 @@ async fn run(config: Config) -> Result<(), Error> {
                                 warn!("Error saving block: {}", res.err().unwrap());
                             }
                         }
-                        SseData::DeployAccepted {deploy} => {
+                        SseData::DeployAccepted { deploy } => {
                             info!(
                                 message = "Deploy Accepted:",
                                 hash = hex::encode(deploy.id().inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Accepted(deploy))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Accepted(deploy))
                                 .await;
 
                             if res.is_err() {
                                 warn!("Error saving deploy: {:?}", res.unwrap_err().to_string());
                             }
                         }
-                        SseData::DeployExpired {deploy_hash} => {
+                        SseData::DeployExpired { deploy_hash } => {
                             info!(
                                 message = "Deploy expired:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Expired(deploy_hash))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Expired(deploy_hash))
                                 .await;
 
                             if res.is_err() {
@@ -224,24 +230,29 @@ async fn run(config: Config) -> Result<(), Error> {
                                 deploy_hash: deploy_hash.clone(),
                                 execution_result,
                                 ttl,
-                                timestamp
+                                timestamp,
                             };
                             info!(
                                 message = "Deploy Processed:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Processed(deploy_processed))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Processed(deploy_processed))
                                 .await;
 
                             if res.is_err() {
                                 warn!("Error updating processed deploy: {}", res.err().unwrap());
                             }
                         }
-                        SseData::Fault {era_id, timestamp, public_key} => {
+                        SseData::Fault {
+                            era_id,
+                            timestamp,
+                            public_key,
+                        } => {
                             let fault = Fault {
                                 era_id,
                                 public_key: public_key.clone(),
-                                timestamp
+                                timestamp,
                             };
                             info!(
                                 "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
@@ -258,10 +269,13 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::FinalitySignature(fs) => {
                             debug!("Finality signature, {}", fs.signature);
                         }
-                        SseData::Step {era_id, execution_effect, } => {
+                        SseData::Step {
+                            era_id,
+                            execution_effect,
+                        } => {
                             let step = Step {
                                 era_id,
-                                execution_effect
+                                execution_effect,
                             };
                             info!("\n\tStep reached for Era: {}", era_id);
                             let res = storage.save_step(step).await;
@@ -272,7 +286,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::Shutdown => {
                             warn!("Node is shutting down");
-                            break
+                            break;
                         }
                     }
                 }
@@ -281,9 +295,13 @@ async fn run(config: Config) -> Result<(), Error> {
                     if err.to_string() == CONNECTION_REFUSED {
                         warn!("Connection to node lost...");
                     } else {
-                        warn!("Error parsing SSE: {}, for data:\n{}\n", err.to_string(), &evt.data);
+                        warn!(
+                            "Error parsing SSE: {}, for data:\n{}\n",
+                            err.to_string(),
+                            &evt.data
+                        );
                     }
-                    continue
+                    continue;
                 }
             }
         }
@@ -306,7 +324,7 @@ async fn run(config: Config) -> Result<(), Error> {
 async fn stream_events_to_channel(
     mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
     sender: UnboundedSender<eventsource_stream::Event>,
-    discard_first: bool
+    discard_first: bool,
 ) {
     if discard_first {
         let _ = event_stream.next().await;
@@ -323,13 +341,11 @@ async fn stream_events_to_channel(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-    use hex::encode;
-    use lazy_static::lazy_static;
-    use serial_test::serial;
-    use tokio::time::Instant;
     use super::*;
     use crate::testing::test_node::start_test_node_with_shutdown;
+    use lazy_static::lazy_static;
+    use serial_test::serial;
+    use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
 
@@ -350,7 +366,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
     async fn should_connect_and_shutdown_cleanly() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
@@ -362,7 +378,7 @@ mod tests {
         node_shutdown_tx.send(()).unwrap();
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
     async fn should_allow_client_connection_to_sse() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
@@ -390,7 +406,7 @@ mod tests {
         node_shutdown_tx.send(()).unwrap();
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
     async fn should_respond_to_rest_query() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
@@ -412,11 +428,20 @@ mod tests {
 
         node_shutdown_tx.send(()).unwrap();
     }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    use hex::encode;
+    use serial_test::serial;
+    use std::time::Duration;
+    use tokio::time::Instant;
 
     #[derive(Clone)]
     struct EventWithHash {
         hash: String,
-        received_at: Instant
+        received_at: Instant,
     }
 
     impl PartialEq for EventWithHash {
@@ -425,12 +450,12 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    const EVENT_COUNT: u8 = 30;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        // let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-
         let config = read_config("config.toml").unwrap();
 
         tokio::spawn(run(config));
@@ -455,41 +480,61 @@ mod tests {
             .bytes_stream()
             .eventsource();
 
-        let node_task_handle = tokio::spawn(push_timestamped_block_events_to_vecs(
-            node_event_stream
-        ));
+        let node_task_handle =
+            tokio::spawn(push_timestamped_block_events_to_vecs(node_event_stream));
 
-        let sidecar_task_handle = tokio::spawn(push_timestamped_block_events_to_vecs(
-            sidecar_event_stream
-        ));
+        let sidecar_task_handle =
+            tokio::spawn(push_timestamped_block_events_to_vecs(sidecar_event_stream));
 
-        let (node_task_result, sidecar_task_result) = tokio::join!(
-            node_task_handle,
-            sidecar_task_handle
+        let (node_task_result, sidecar_task_result) =
+            tokio::join!(node_task_handle, sidecar_task_handle);
+
+        let (block_events_from_node, node_overall_duration) = node_task_result.unwrap();
+        let (block_events_from_sidecar, sidecar_overall_duration) = sidecar_task_result.unwrap();
+
+        let block_time_diffs =
+            extract_time_diffs(block_events_from_node, block_events_from_sidecar);
+
+        let block_time_diff_millis = block_time_diffs
+            .iter()
+            .map(|time_diff| {
+                println!(
+                    "Block Time Diff: {} micros / {} ms",
+                    time_diff.as_micros(),
+                    time_diff.as_millis()
+                );
+                time_diff.as_millis()
+            })
+            .collect::<Vec<u128>>();
+
+        let average_delay: u128 = block_time_diff_millis
+            .iter()
+            .sum::<u128>()
+            .checked_div(block_time_diff_millis.len() as u128)
+            .unwrap();
+
+        println!(
+            "\n\tBLOCKS RESULT:\n\
+            \tAverage delay taken over {} matching block diffs = {} ms\n\
+            \tOverall difference in time to receive {} events = {}ms\t (sidecar: {}s, node: {}s)\n",
+            block_time_diff_millis.len(),
+            average_delay,
+            EVENT_COUNT,
+            sidecar_overall_duration
+                .as_millis()
+                .checked_sub(node_overall_duration.as_millis())
+                .unwrap(),
+            sidecar_overall_duration.as_secs(),
+            node_overall_duration.as_secs()
         );
-
-        let block_events_from_node = node_task_result.unwrap();
-        let block_events_from_sidecar = sidecar_task_result.unwrap();
-
-        let block_time_diffs = extract_time_diffs(block_events_from_node, block_events_from_sidecar);
-
-        let block_time_diff_millis = block_time_diffs.iter().map(|time_diff| {
-            time_diff.as_millis()
-        }).collect::<Vec<u128>>();
-
-        let average_delay: u128 = block_time_diff_millis.iter().sum::<u128>().checked_div(block_time_diff_millis.len() as u128).unwrap();
-
-        println!("RESULT: ave. delay for blocks: {} ms", average_delay);
 
         assert!(average_delay < 20);
     }
 
-    #[tokio::test(flavor="multi_thread", worker_threads=4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        // let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-
         let config = read_config("config.toml").unwrap();
 
         tokio::spawn(run(config));
@@ -514,113 +559,153 @@ mod tests {
             .bytes_stream()
             .eventsource();
 
-        let node_task_handle = tokio::spawn(push_timestamped_deploy_events_to_vecs(
-            node_event_stream
-        ));
+        let node_task_handle =
+            tokio::spawn(push_timestamped_deploy_events_to_vecs(node_event_stream));
 
-        let sidecar_task_handle = tokio::spawn(push_timestamped_deploy_events_to_vecs(
-            sidecar_event_stream
-        ));
+        let sidecar_task_handle =
+            tokio::spawn(push_timestamped_deploy_events_to_vecs(sidecar_event_stream));
 
-        let (node_task_result, sidecar_task_result) = tokio::join!(
-            node_task_handle,
-            sidecar_task_handle
+        let (node_task_result, sidecar_task_result) =
+            tokio::join!(node_task_handle, sidecar_task_handle);
+
+        let (deploy_events_from_node, node_overall_duration) = node_task_result.unwrap();
+        let (deploy_events_from_sidecar, sidecar_overall_duration) = sidecar_task_result.unwrap();
+
+        let deploy_time_diffs =
+            extract_time_diffs(deploy_events_from_node, deploy_events_from_sidecar);
+
+        let deploy_time_diff_millis = deploy_time_diffs
+            .iter()
+            .map(|time_diff| {
+                println!(
+                    "Deploy Time Diff: {} micros / {} ms",
+                    time_diff.as_micros(),
+                    time_diff.as_millis()
+                );
+                time_diff.as_millis()
+            })
+            .collect::<Vec<u128>>();
+
+        let average_delay: u128 = deploy_time_diff_millis
+            .iter()
+            .sum::<u128>()
+            .checked_div(deploy_time_diff_millis.len() as u128)
+            .unwrap();
+
+        println!(
+            "\n\tDEPLOYS RESULT:\n\
+            \tAverage delay taken over {} matching deploy diffs = {} ms\n\
+            \tOverall difference in time to receive {} events = {}ms\t (sidecar: {}s, node: {}s)\n",
+            deploy_time_diff_millis.len(),
+            average_delay,
+            EVENT_COUNT,
+            sidecar_overall_duration
+                .as_millis()
+                .checked_sub(node_overall_duration.as_millis())
+                .unwrap(),
+            sidecar_overall_duration.as_secs(),
+            node_overall_duration.as_secs()
         );
-
-        let deploy_events_from_node = node_task_result.unwrap();
-        let deploy_events_from_sidecar = sidecar_task_result.unwrap();
-
-        let deploy_time_diffs = extract_time_diffs(deploy_events_from_node, deploy_events_from_sidecar);
-
-        let deploy_time_diff_millis = deploy_time_diffs.iter().map(|time_diff| {
-            time_diff.as_millis()
-        }).collect::<Vec<u128>>();
-
-        let average_delay: u128 = deploy_time_diff_millis.iter().sum::<u128>().checked_div(deploy_time_diff_millis.len() as u128).unwrap();
-
-        println!("RESULT: ave. delay for deploys: {} ms", average_delay);
 
         assert!(average_delay < 10);
     }
 
     async fn push_timestamped_block_events_to_vecs(
-        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>
-    ) -> Vec<EventWithHash> {
-
+        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
+    ) -> (Vec<EventWithHash>, Duration) {
         let mut events_vec = Vec::new();
 
-        let mut event_count = 0u8;
+        let mut events_read = 0u8;
+
+        let before = Instant::now();
 
         while let Some(event) = event_stream.next().await {
-            if event_count > 12 {
-                break
-            }
-            event_count += 1;
-
             let received_timestamp = Instant::now();
             let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
             match data {
                 SseData::BlockAdded { block_hash, .. } => {
+                    events_read += 1;
                     let hash = encode(block_hash.inner());
                     events_vec.push(EventWithHash {
                         hash,
-                        received_at: received_timestamp
+                        received_at: received_timestamp,
                     });
                 }
                 _ => {}
             }
-
+            if events_read > EVENT_COUNT {
+                break;
+            }
         }
-        events_vec
+
+        let after = Instant::now();
+
+        (events_vec, after.duration_since(before))
     }
 
     async fn push_timestamped_deploy_events_to_vecs(
-        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>
-    ) -> Vec<EventWithHash> {
-
+        mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
+    ) -> (Vec<EventWithHash>, Duration) {
         let mut events_vec = Vec::new();
 
-        let mut event_count = 0u8;
+        let mut events_read = 0u8;
+
+        let before = Instant::now();
 
         while let Some(event) = event_stream.next().await {
-            if event_count > 12 {
-                break
-            }
-            event_count += 1;
-
             let received_timestamp = Instant::now();
             let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
             match data {
                 SseData::DeployAccepted { deploy } => {
+                    events_read += 1;
                     let hash = encode(*deploy.id());
                     events_vec.push(EventWithHash {
                         hash,
-                        received_at: received_timestamp
+                        received_at: received_timestamp,
                     })
                 }
                 _ => {}
             }
-
+            if events_read > EVENT_COUNT {
+                break;
+            }
         }
-        events_vec
+
+        let after = Instant::now();
+
+        (events_vec, after.duration_since(before))
     }
 
-    fn extract_time_diffs(events_from_node: Vec<EventWithHash>, events_from_sidecar: Vec<EventWithHash>) -> Vec<Duration> {
-        events_from_node.iter().map(|event_from_node| {
-            let cloned_events_from_sidecar = events_from_sidecar.clone();
-            cloned_events_from_sidecar.iter().map(|event_from_sidecar| {
-                if event_from_sidecar.eq(&event_from_node) {
-                    let time_difference = event_from_sidecar.received_at - event_from_node.received_at;
-                    return Some(time_difference)
-                }
-                return None
-            }).reduce(|previous, current| {
-                if current.is_some() { current } else { previous }
-            }).map(|reduced| {
-                reduced.unwrap()
+    fn extract_time_diffs(
+        events_from_node: Vec<EventWithHash>,
+        events_from_sidecar: Vec<EventWithHash>,
+    ) -> Vec<Duration> {
+        events_from_node
+            .iter()
+            .map(|event_from_node| {
+                let cloned_events_from_sidecar = events_from_sidecar.clone();
+                cloned_events_from_sidecar
+                    .iter()
+                    .map(|event_from_sidecar| {
+                        if event_from_sidecar.eq(&event_from_node) {
+                            let time_difference =
+                                event_from_sidecar.received_at - event_from_node.received_at;
+                            return Some(time_difference);
+                        }
+                        return None;
+                    })
+                    .reduce(
+                        |previous, current| {
+                            if current.is_some() {
+                                current
+                            } else {
+                                previous
+                            }
+                        },
+                    )
+                    .map(|reduced| reduced.unwrap())
             })
-        }).map(|opt_time_difference| {
-            opt_time_difference.unwrap()
-        }).collect::<Vec<Duration>>()
+            .map(|opt_time_difference| opt_time_difference.unwrap())
+            .collect::<Vec<Duration>>()
     }
 }
