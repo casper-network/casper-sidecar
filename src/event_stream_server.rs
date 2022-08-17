@@ -24,9 +24,8 @@ mod config;
 mod event_indexer;
 mod http_server;
 mod sse_server;
-mod utils;
 #[cfg(test)]
-pub (crate) mod testing;
+pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
@@ -39,12 +38,12 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
+use crate::utils::{resolve_address, ListeningError};
 use casper_types::ProtocolVersion;
 pub use config::Config;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
-use utils::ListeningError;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -72,7 +71,7 @@ impl EventStreamServer {
         storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
-        let required_address = utils::resolve_address(&config.address).map_err(|error| {
+        let required_address = resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
                 address=%config.address,

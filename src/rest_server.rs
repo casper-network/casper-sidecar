@@ -1,19 +1,22 @@
 use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
+use crate::utils::resolve_address;
 use anyhow::Error;
+use serde::Serialize;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use tracing::{error, warn};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
-use serde::Serialize;
 
 mod filters {
-    use std::convert::Infallible;
-    use warp::Filter;
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
     use crate::sqlite_db::DatabaseReader;
+    use std::convert::Infallible;
+    use warp::Filter;
 
-    pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
+    pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
         root_filter()
             .or(root_and_invalid_path())
             .or(block_filters(db.clone()))
@@ -23,32 +26,33 @@ mod filters {
             .recover(handle_rejection)
     }
 
-    pub(super) fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-        warp::path::end()
-            .and_then(|| {
-                async {
-                    Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
-                }
-            })
+    pub(super) fn root_filter(
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path::end().and_then(|| async {
+            Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
+        })
     }
 
-    pub fn root_and_invalid_path() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub fn root_and_invalid_path(
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path::param()
             .and(warp::path::end())
-            .and_then(|_param: String| {
-                async {
-                    Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
-                }
+            .and_then(|_param: String| async {
+                Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
             })
     }
 
-    pub(super) fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         latest_block(db.clone())
             .or(block_by_hash(db.clone()))
             .or(block_by_height(db))
     }
 
-    pub(super) fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         latest_deploy(db.clone())
             .or(deploy_by_hash(db.clone()))
             .or(deploy_accepted_by_hash(db.clone()))
@@ -56,161 +60,214 @@ mod filters {
             .or(deploy_expired_by_hash(db))
     }
 
-    pub(super) fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("block")
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_latest_block)
     }
 
-    pub(super) fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("block" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_block_by_hash)
     }
 
-    pub(super) fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("block" / u64)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_block_by_height)
     }
 
-    pub(super) fn latest_deploy<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn latest_deploy<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("deploy")
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_latest_deploy)
     }
 
-    pub(super) fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("deploy" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_deploy_by_hash)
     }
 
-    pub(super) fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("deploy" / "accepted" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_deploy_accepted_by_hash)
     }
 
-    pub(super) fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("deploy" / "processed" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_deploy_processed_by_hash)
     }
 
-    pub(super) fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("deploy" / "expired" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_deploy_expired_by_hash)
     }
 
-    pub(super) fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("step" / u64)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_step_by_era)
     }
 
-    pub(super) fn fault_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    pub(super) fn fault_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("fault" / String)
             .and(warp::get())
             .and(with_db(db))
             .and_then(handlers::get_fault_by_public_key)
     }
 
-    fn with_db<Db: DatabaseReader + Clone + Send>(db: Db) -> impl Filter<Extract=(Db,), Error=Infallible> + Clone {
+    fn with_db<Db: DatabaseReader + Clone + Send>(
+        db: Db,
+    ) -> impl Filter<Extract = (Db,), Error = Infallible> + Clone {
         warp::any().map(move || db.clone())
     }
 }
 
 mod handlers {
-    use warp::{Rejection, Reply};
     use crate::rest_server::serialize_or_reject_storage_result;
     use crate::sqlite_db::DatabaseReader;
+    use warp::{Rejection, Reply};
 
-    pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(db: Db) ->  Result<impl Reply, Rejection> {
+    pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_latest_block().await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_block_by_hash<Db: DatabaseReader + Clone + Send>(hash: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_block_by_hash<Db: DatabaseReader + Clone + Send>(
+        hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_block_by_hash(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(height: u64, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
+        height: u64,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_block_by_height(height).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(db: Db) ->  Result<impl Reply, Rejection> {
+    pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_latest_deploy().await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(hash: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(
+        hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_by_hash(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(hash: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
+        hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_accepted_by_hash(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_deploy_processed_by_hash<Db: DatabaseReader + Clone + Send>(hash: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_deploy_processed_by_hash<Db: DatabaseReader + Clone + Send>(
+        hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_processed_by_hash(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_deploy_expired_by_hash<Db: DatabaseReader + Clone + Send>(hash: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_deploy_expired_by_hash<Db: DatabaseReader + Clone + Send>(
+        hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_expired_by_hash(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_step_by_era<Db: DatabaseReader + Clone + Send>(era_id: u64, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_step_by_era<Db: DatabaseReader + Clone + Send>(
+        era_id: u64,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_step_by_era(era_id).await;
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_fault_by_public_key<Db: DatabaseReader + Clone + Send>(public_key: String, db: Db) -> Result<impl Reply, Rejection> {
+    pub(super) async fn get_fault_by_public_key<Db: DatabaseReader + Clone + Send>(
+        public_key: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_fault_by_public_key(&public_key).await;
         serialize_or_reject_storage_result(db_result)
     }
 }
 
-pub async fn run_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
+pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<(), Error> {
     let db = SqliteDb::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
 
-    warp::serve(api).run(([127, 0, 0, 1], port)).await;
+    let address = format!("{}:{}", ip_address, port);
+    let socket_address = resolve_address(&address)?;
+
+    warp::serve(api).run(socket_address).await;
 
     Ok(())
 }
 
-fn serialize_or_reject_storage_result<T>(storage_result: Result<T, DatabaseRequestError>) -> Result<impl Reply, Rejection>
-    where T: Serialize
+fn serialize_or_reject_storage_result<T>(
+    storage_result: Result<T, DatabaseRequestError>,
+) -> Result<impl Reply, Rejection>
+where
+    T: Serialize,
 {
     match storage_result {
         Ok(data) => match serde_json::to_string_pretty(&data) {
             Ok(pretty_json) => {
-                Ok(warp::reply::with_status(
-                    pretty_json,
-                    StatusCode::OK
-                ).into_response())
-            },
-            Err(err) => Err(warp::reject::custom(SerializationError(err)))
+                Ok(warp::reply::with_status(pretty_json, StatusCode::OK).into_response())
+            }
+            Err(err) => Err(warp::reject::custom(SerializationError(err))),
         },
-        Err(err) => Err(warp::reject::custom(StorageError(err)))
+        Err(err) => Err(warp::reject::custom(StorageError(err))),
     }
 }
 
@@ -231,7 +288,6 @@ impl warp::reject::Reject for SerializationError {}
 #[derive(Debug)]
 struct StorageError(DatabaseRequestError);
 impl warp::reject::Reject for StorageError {}
-
 
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
@@ -287,21 +343,17 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     Ok(warp::reply::with_status(json, code))
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use bytes::Bytes;
-    use http::{StatusCode, Response};
-    use warp::test::request;
     use crate::rest_server::filters;
     use crate::sqlite_db;
+    use bytes::Bytes;
+    use http::{Response, StatusCode};
+    use std::path::Path;
+    use warp::test::request;
 
     // These are the codes that would be expected for a request to a valid path.
-    const RESP_CODES_FOR_VALID_PATH: [StatusCode; 2] = [
-        StatusCode::OK,
-        StatusCode::NOT_FOUND,
-    ];
+    const RESP_CODES_FOR_VALID_PATH: [StatusCode; 2] = [StatusCode::OK, StatusCode::NOT_FOUND];
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
         let db_path = Path::new("target/storage");
@@ -309,10 +361,7 @@ mod tests {
 
         let api = filters::combined_filters(db);
 
-        request()
-            .path(path)
-            .reply(&api)
-            .await
+        request().path(path).reply(&api).await
     }
 
     #[tokio::test]
@@ -327,7 +376,7 @@ mod tests {
             "/deploy/processed/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "/deploy/expired/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "/step/1",
-            "/fault/publickey"
+            "/fault/publickey",
         ];
 
         for path in valid_paths {
@@ -338,10 +387,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_paths_should_respond_with_correct_status() {
-        let invalid_paths = [
-            "/",
-            "/foo",
-        ];
+        let invalid_paths = ["/", "/foo"];
 
         for path in invalid_paths {
             let response = get_response_from_path(path).await;

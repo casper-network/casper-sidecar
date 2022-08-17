@@ -1,34 +1,36 @@
 extern crate core;
 
-mod sqlite_db;
-mod rest_server;
 mod event_stream_server;
-pub mod types;
+mod rest_server;
+mod sqlite_db;
 #[cfg(test)]
 mod testing;
+pub mod types;
+mod utils;
 
-use std::path::{Path, PathBuf};
-use anyhow::{Context, Error};
-use casper_node::types::Block;
-use casper_types::AsymmetricType;
-use sqlite_db::SqliteDb;
-use sse_client::EventSource;
-use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use tracing::{debug, info, warn};
-use tracing_subscriber;
-use types::structs::{Config, DeployProcessed};
-use types::enums::Network;
-use rest_server::run_server as start_rest_server;
-use event_stream_server::{EventStreamServer, Config as SseConfig};
 use crate::event_stream_server::SseData;
 use crate::sqlite_db::DatabaseWriter;
 use crate::types::enums::DeployAtState;
 use crate::types::structs::{Fault, Step};
+use anyhow::{Context, Error};
+use casper_node::types::Block;
+use casper_types::AsymmetricType;
+use event_stream_server::{Config as SseConfig, EventStreamServer};
+use rest_server::run_server as start_rest_server;
+use sqlite_db::SqliteDb;
+use sse_client::EventSource;
+use std::path::{Path, PathBuf};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tracing::{debug, info, warn};
+use tracing_subscriber;
+use types::enums::Network;
+use types::structs::{Config, DeployProcessed};
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
-    let toml_content = std::fs::read_to_string(config_path).context("Error reading config file contents")?;
+    let toml_content =
+        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
 }
 
@@ -47,19 +49,20 @@ async fn main() -> Result<(), Error> {
     };
 
     // Set URLs for each of the (from the node) Event Stream Server's filters
-    let url_base = format!("http://{ip}:{port}/events", ip = node_config.ip_address, port = node_config.sse_port);
+    let url_base = format!(
+        "http://{ip}:{port}/events",
+        ip = node_config.ip_address,
+        port = node_config.sse_port
+    );
 
-    let main_event_source = EventSource::new(
-        format!("{}/main", url_base).as_str(),
-    ).context("Error constructing EventSource for Main filter")?;
+    let main_event_source = EventSource::new(format!("{}/main", url_base).as_str())
+        .context("Error constructing EventSource for Main filter")?;
 
-    let deploys_event_source = EventSource::new(
-        format!("{}/deploys", url_base).as_str(),
-    ).context("Error constructing EventSource for Deploys filter")?;
+    let deploys_event_source = EventSource::new(format!("{}/deploys", url_base).as_str())
+        .context("Error constructing EventSource for Deploys filter")?;
 
-    let sigs_event_source = EventSource::new(
-        format!("{}/sigs", url_base).as_str(),
-    ).context("Error constructing EventSource for Signatures filter")?;
+    let sigs_event_source = EventSource::new(format!("{}/sigs", url_base).as_str())
+        .context("Error constructing EventSource for Signatures filter")?;
 
     // Channel for funnelling all event types into.
     let (aggregate_events_tx, mut aggregate_events_rx) = unbounded_channel();
@@ -73,19 +76,25 @@ async fn main() -> Result<(), Error> {
     let main_event_source_receiver = main_event_source.receiver();
 
     // Parse the first event to see if the connection was successful
-    let api_version = match main_event_source_receiver.iter().next() {
-        None => return Err(Error::msg("First event was empty")),
-        Some(event) => match serde_json::from_str::<SseData>(&event.data) {
-            Ok(sse_data) => match sse_data {
-                SseData::ApiVersion(version) => version,
-                _ => return Err(Error::msg("First event should have been API Version"))
-            }
-            Err(serde_err) => return match event.data.as_str() {
-                CONNECTION_REFUSED => Err(Error::msg("Connection refused: Please check network connection to node.")),
-                _ => Err(Error::from(serde_err).context("First event was not of expected format"))
-            }
-        }
-    };
+    let api_version =
+        match main_event_source_receiver.iter().next() {
+            None => return Err(Error::msg("First event was empty")),
+            Some(event) => match serde_json::from_str::<SseData>(&event.data) {
+                Ok(sse_data) => match sse_data {
+                    SseData::ApiVersion(version) => version,
+                    _ => return Err(Error::msg("First event should have been API Version")),
+                },
+                Err(serde_err) => {
+                    return match event.data.as_str() {
+                        CONNECTION_REFUSED => Err(Error::msg(
+                            "Connection refused: Please check network connection to node.",
+                        )),
+                        _ => Err(Error::from(serde_err)
+                            .context("First event was not of expected format")),
+                    }
+                }
+            },
+        };
 
     info!(
         message = "Connected to node",
@@ -114,22 +123,23 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(sig_events_sending_task);
 
     // Instantiates SQLite database
-    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path)).context("Error instantiating database")?;
+    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path))
+        .context("Error instantiating database")?;
 
     // Prepare the REST server task - this will be executed later
-    let rest_server_handle = tokio::spawn(
-        start_rest_server(
-            storage.file_path.clone(),
-            config.rest_server.port,
-        )
-    );
+    let rest_server_handle = tokio::spawn(start_rest_server(
+        storage.file_path.clone(),
+        config.rest_server.ip_address,
+        config.rest_server.port,
+    ));
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_port(config.sse_server.port),
+        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
-        api_version
-    ).context("Error starting EventStreamServer")?;
+        api_version,
+    )
+    .context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");
@@ -145,7 +155,7 @@ async fn main() -> Result<(), Error> {
                         SseData::ApiVersion(version) => {
                             info!("API Version: {:?}", version.to_string());
                         }
-                        SseData::BlockAdded {block, ..} => {
+                        SseData::BlockAdded { block, .. } => {
                             let block = Block::from(*block);
                             info!(
                                 message = "Block Added:",
@@ -158,24 +168,26 @@ async fn main() -> Result<(), Error> {
                                 warn!("Error saving block: {}", res.err().unwrap());
                             }
                         }
-                        SseData::DeployAccepted {deploy} => {
+                        SseData::DeployAccepted { deploy } => {
                             info!(
                                 message = "Deploy Accepted:",
                                 hash = hex::encode(deploy.id().inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Accepted(deploy))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Accepted(deploy))
                                 .await;
 
                             if res.is_err() {
                                 warn!("Error saving deploy: {:?}", res.unwrap_err().to_string());
                             }
                         }
-                        SseData::DeployExpired {deploy_hash} => {
+                        SseData::DeployExpired { deploy_hash } => {
                             info!(
                                 message = "Deploy expired:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Expired(deploy_hash))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Expired(deploy_hash))
                                 .await;
 
                             if res.is_err() {
@@ -198,24 +210,29 @@ async fn main() -> Result<(), Error> {
                                 deploy_hash: deploy_hash.clone(),
                                 execution_result,
                                 ttl,
-                                timestamp
+                                timestamp,
                             };
                             info!(
                                 message = "Deploy Processed:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage.save_or_update_deploy(DeployAtState::Processed(deploy_processed))
+                            let res = storage
+                                .save_or_update_deploy(DeployAtState::Processed(deploy_processed))
                                 .await;
 
                             if res.is_err() {
                                 warn!("Error updating processed deploy: {}", res.err().unwrap());
                             }
                         }
-                        SseData::Fault {era_id, timestamp, public_key} => {
+                        SseData::Fault {
+                            era_id,
+                            timestamp,
+                            public_key,
+                        } => {
                             let fault = Fault {
                                 era_id,
                                 public_key: public_key.clone(),
-                                timestamp
+                                timestamp,
                             };
                             info!(
                                 "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
@@ -232,10 +249,13 @@ async fn main() -> Result<(), Error> {
                         SseData::FinalitySignature(fs) => {
                             debug!("Finality signature, {}", fs.signature);
                         }
-                        SseData::Step {era_id, execution_effect, } => {
+                        SseData::Step {
+                            era_id,
+                            execution_effect,
+                        } => {
                             let step = Step {
                                 era_id,
-                                execution_effect
+                                execution_effect,
                             };
                             info!("\n\tStep reached for Era: {}", era_id);
                             let res = storage.save_step(step).await;
@@ -246,7 +266,7 @@ async fn main() -> Result<(), Error> {
                         }
                         SseData::Shutdown => {
                             warn!("Node is shutting down");
-                            break
+                            break;
                         }
                     }
                 }
@@ -255,9 +275,13 @@ async fn main() -> Result<(), Error> {
                     if err.to_string() == CONNECTION_REFUSED {
                         warn!("Connection to node lost...");
                     } else {
-                        warn!("Error parsing SSE: {}, for data:\n{}\n", err.to_string(), &evt.data);
+                        warn!(
+                            "Error parsing SSE: {}, for data:\n{}\n",
+                            err.to_string(),
+                            &evt.data
+                        );
                     }
-                    continue
+                    continue;
                 }
             }
         }
@@ -277,7 +301,10 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn send_events_discarding_first(event_source: EventSource, sender: UnboundedSender<sse_client::Event>) {
+fn send_events_discarding_first(
+    event_source: EventSource,
+    sender: UnboundedSender<sse_client::Event>,
+) {
     // This local var for `receiver` needs to be there as calling .receiver() on the EventSource more than
     // once will fail due to the resources being exhausted/dropped on the first call.
     let receiver = event_source.receiver();
