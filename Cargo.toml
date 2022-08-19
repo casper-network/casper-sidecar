@@ -9,6 +9,7 @@ edition = "2018"
 # todo Remove unused dependencies
 [dependencies]
 anyhow = {version = "1.0.44", default-features = false }
+async-trait = "0.1.56"
 casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
@@ -20,8 +21,10 @@ hex-buffer-serde = "0.3.0"
 http = "0.2.1"
 hyper = "0.14.4"
 itertools = "0.10.3"
+lazy_static = "1.4.0"
 once_cell = "1"
 rand = "0.8.3"
+regex = "1.6.0"
 rusqlite = {version = "0.25.3", features = ["bundled"]}
 schemars = { version = "=0.8.5", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1.0", features = ["derive"]}
@@ -45,6 +48,9 @@ casper-hashing = { git = "https://github.com/casper-network/casper-node", branch
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
 
 [dev-dependencies]
+bytes = "1.2.0"
 casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev", features = ["testing"]}
+futures-util = "0.3.21"
 pretty_assertions = "0.7.2"
 reqwest = { version = "0.11.3", features = ["stream"] }
+serial_test = "0.8.0"
