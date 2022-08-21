@@ -101,27 +101,28 @@ async fn run(config: Config) -> Result<(), Error> {
     let sigs_event_tx = aggregate_events_tx.clone();
 
     // Parse the first event to see if the connection was successful
-    let api_version = match main_event_stream.next().await {
-        None => return Err(Error::msg("First event was empty")),
-        Some(Err(error)) => {
-            return Err(Error::msg(format!("failed to get first event: {}", error)))
-        }
-        Some(Ok(event)) => match serde_json::from_str::<SseData>(&event.data) {
-            Ok(sse_data) => match sse_data {
-                SseData::ApiVersion(version) => version,
-                _ => return Err(Error::msg("First event should have been API Version")),
-            },
-            Err(serde_err) => {
-                return match event.data.as_str() {
-                    CONNECTION_REFUSED => Err(Error::msg(
-                        "Connection refused: Please check network connection to node.",
-                    )),
-                    _ => Err(Error::from(serde_err)
-                        .context("First event was not of expected format")),
-                }
+    let api_version =
+        match main_event_stream.next().await {
+            None => return Err(Error::msg("First event was empty")),
+            Some(Err(error)) => {
+                return Err(Error::msg(format!("failed to get first event: {}", error)))
             }
-        },
-    };
+            Some(Ok(event)) => match serde_json::from_str::<SseData>(&event.data) {
+                Ok(sse_data) => match sse_data {
+                    SseData::ApiVersion(version) => version,
+                    _ => return Err(Error::msg("First event should have been API Version")),
+                },
+                Err(serde_err) => {
+                    return match event.data.as_str() {
+                        CONNECTION_REFUSED => Err(Error::msg(
+                            "Connection refused: Please check network connection to node.",
+                        )),
+                        _ => Err(Error::from(serde_err)
+                            .context("First event was not of expected format")),
+                    }
+                }
+            },
+        };
 
     info!(
         message = "Connected to node",
