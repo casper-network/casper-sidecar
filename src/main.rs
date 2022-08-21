@@ -6,6 +6,7 @@ mod sqlite_db;
 #[cfg(test)]
 mod testing;
 pub mod types;
+mod utils;
 
 use crate::event_stream_server::SseData;
 use crate::sqlite_db::DatabaseWriter;
@@ -111,7 +112,13 @@ async fn run(config: Config) -> Result<(), Error> {
                 _ => return Err(Error::msg("First event should have been API Version")),
             },
             Err(serde_err) => {
-                return Err(Error::from(serde_err).context("First event was not of expected format"))
+                return match event.data.as_str() {
+                    CONNECTION_REFUSED => Err(Error::msg(
+                        "Connection refused: Please check network connection to node.",
+                    )),
+                    _ => Err(Error::from(serde_err)
+                        .context("First event was not of expected format")),
+                }
             }
         },
     };
@@ -147,15 +154,16 @@ async fn run(config: Config) -> Result<(), Error> {
     let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path))
         .context("Error instantiating database")?;
 
-    // // Prepare the REST server task - this will be executed later
+    // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
         storage.file_path.clone(),
+        config.rest_server.ip_address,
         config.rest_server.port,
     ));
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_port(config.sse_server.port),
+        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
         api_version,
     )

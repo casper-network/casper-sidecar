@@ -13,6 +13,7 @@ pub struct Config {
 
 #[derive(Deserialize)]
 pub struct ServerConfig {
+    pub ip_address: String,
     pub port: u16,
 }
 
