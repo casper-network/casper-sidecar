@@ -296,9 +296,6 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = String::from("No results");
-    } else if let Some(InvalidPath) = err.find() {
-        code = StatusCode::BAD_REQUEST;
-        message = String::from("Invalid request path provided");
     } else if let Some(SerializationError(err)) = err.find() {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = format!("Serialization Error: {}", err);
@@ -326,6 +323,9 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
                 message = format!("Unhandled error occurred in storage: {}", err)
             }
         }
+    } else if let Some(InvalidPath) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = String::from("Invalid request path provided");
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = "Method not allowed".to_string();
