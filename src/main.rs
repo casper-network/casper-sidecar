@@ -6,6 +6,7 @@ mod event_stream_server;
 pub mod types;
 #[cfg(test)]
 mod testing;
+mod utils;
 
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Error};
@@ -120,13 +121,17 @@ async fn main() -> Result<(), Error> {
     let rest_server_handle = tokio::spawn(
         start_rest_server(
             storage.file_path.clone(),
+            config.rest_server.ip_address,
             config.rest_server.port,
         )
     );
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_port(config.sse_server.port),
+        SseConfig::new_on_specified(
+            config.sse_server.ip_address,
+            config.sse_server.port
+        ),
         PathBuf::from(config.storage.sse_cache),
         api_version
     ).context("Error starting EventStreamServer")?;

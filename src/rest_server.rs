@@ -6,6 +6,7 @@ use tracing::{error, info};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 use serde::Serialize;
+use crate::utils;
 
 mod filters {
     use std::convert::Infallible;
@@ -187,13 +188,17 @@ mod handlers {
     }
 }
 
-pub async fn run_server(db_path: PathBuf, port: u16) -> Result<(), Error> {
+pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<(), Error> {
     let db = SqliteDb::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
 
-    info!("rest server started on 0.0.0.0:{}", port);
-    warp::serve(api).try_bind(([127, 0, 0, 1], port)).await;
+    let addr_string = format!("{}:{}", ip_address, port);
+    let bind_address = utils::resolve_address(&addr_string)?;
+    info!(message = "starting REST server", address = %bind_address);
+
+    warp::serve(api)
+        .try_bind(bind_address).await;
 
     Ok(())
 }

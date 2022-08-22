@@ -36,9 +36,9 @@ impl Config {
         }
     }
 
-    pub fn new_on_port(port: u16) -> Self {
+    pub fn new_on_specified(ip_address: String, port: u16) -> Self {
         Config {
-            address: format!("0.0.0.0:{}", port),
+            address: format!("{}:{}", ip_address, port),
             event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
             max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
         }
