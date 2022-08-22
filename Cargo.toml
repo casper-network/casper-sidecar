@@ -52,3 +52,18 @@ futures-util = "0.3.21"
 pretty_assertions = "0.7.2"
 reqwest = { version = "0.11.3", features = ["stream"] }
 serial_test = "0.8.0"
+
+[package.metadata.deb]
+revision = "0"
+assets = [
+    ["./target/release/casper-event-sidecar", "/usr/bin/casper-event-sidecar", "755"],
+    ["./resources/VAR_LIB_README.md", "/var/lib/casper/event-sidecar/README.md", "755"],
+    ["./resources/ETC_README.md", "/etc/casper/event-sidecar/README.md", "755"],
+    ["./resources/config.toml", "/etc/casper/event-sidecar/config.toml", "755"]
+]
+maintainer-scripts = "./resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper Node Launcher
+
+For information on using package, see https://github.com/CasperLabs/casper-node-launcher
+"""
