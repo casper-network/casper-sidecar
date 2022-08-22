@@ -385,7 +385,7 @@ fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Datab
     serde_json::from_str::<T>(data).map_err(DatabaseError::SerdeJson)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AggregateDeployInfo {
     pub(crate) deploy_hash: String,
     pub(crate) accepted: Option<String>,

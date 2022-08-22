@@ -346,17 +346,29 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 #[cfg(test)]
 mod tests {
     use crate::rest_server::filters;
-    use crate::sqlite_db;
+    use crate::{DeployProcessed, sqlite_db, Step};
+    use crate::sqlite_db::AggregateDeployInfo;
     use bytes::Bytes;
+    use casper_node::types::{Block, Deploy};
     use http::{Response, StatusCode};
     use std::path::Path;
     use warp::test::request;
 
-    // These are the codes that would be expected for a request to a valid path.
-    const RESP_CODES_FOR_VALID_PATH: [StatusCode; 2] = [StatusCode::OK, StatusCode::NOT_FOUND];
+    const NOT_STORED_HASH: &str =
+        "0bcd71363b01c1c147c1603d2cc945930dcceecd869275beeee61dfc83b27a2c";
+    const NOT_STORED_HEIGHT: u64 = 2304;
+    const STORED_BLOCK_HASH: &str =
+        "d17f834afbc8a675e42f0ee3af9aed5e6759a79a3bc4bd4bd7acc3c8d9332b5a";
+    const STORED_BLOCK_HEIGHT: u64 = 23;
+    const STORED_DEPLOY_HASH: &str =
+        "5e1f28c650e371ae912616ea409e438123a7f0fcceaa1b67d543c7c9d181288d";
+    const STORED_STEP_ERA_ID: u64 = 3;
+    const NOT_STORED_STEP_ERA_ID: u64 = 2304;
+    const VALID_PUBLIC_KEY: &str = "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
+    const INVALID_HASH: &str = "notablockhash";
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
-        let db_path = Path::new("target/storage");
+        let db_path = Path::new("src/testing/");
         let db = sqlite_db::SqliteDb::new(db_path).unwrap();
 
         let api = filters::combined_filters(db);
@@ -365,50 +377,209 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn valid_paths_should_respond_with_correct_status() {
-        let valid_paths = [
-            "/block",
-            "/block/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "/block/100",
-            "/deploy",
-            "/deploy/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "/deploy/accepted/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "/deploy/processed/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "/deploy/expired/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "/step/1",
-            "/fault/publickey",
-        ];
-
-        for path in valid_paths {
-            let response = get_response_from_path(path).await;
-            assert!(RESP_CODES_FOR_VALID_PATH.contains(&response.status()));
-        }
+    async fn block_root_should_return_valid_data() {
+        let response = get_response_from_path("/block").await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Block>(&body);
+        assert!(value.is_ok());
     }
 
     #[tokio::test]
-    async fn invalid_paths_should_respond_with_correct_status() {
-        let invalid_paths = ["/", "/foo"];
-
-        for path in invalid_paths {
-            let response = get_response_from_path(path).await;
-            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        }
+    async fn block_by_hash_should_return_valid_data() {
+        let path = format!("/block/{}", STORED_BLOCK_HASH);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Block>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            hex::encode(value.unwrap().hash().inner()),
+            STORED_BLOCK_HASH
+        );
     }
 
     #[tokio::test]
-    async fn invalid_params_should_respond_with_correct_status() {
-        let invalid_paths = [
-            "/block/notahexencodedblockhash",
-            "/deploy/notahexencodedblockhash",
-            "/deploy/accepted/notahexencodedblockhash",
-            "/deploy/processed/notahexencodedblockhash",
-            "/deploy/expired/notahexencodedblockhash",
-        ];
+    async fn block_by_height_should_return_valid_data() {
+        let path = format!("/block/{}", STORED_BLOCK_HEIGHT);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Block>(&body);
+        assert!(value.is_ok());
+        assert_eq!(value.unwrap().height(), STORED_BLOCK_HEIGHT);
+    }
 
-        for path in invalid_paths {
-            let response = get_response_from_path(path).await;
-            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-            assert!(!response.body().is_empty());
-        }
+    #[tokio::test]
+    async fn deploy_root_should_return_valid_data() {
+        let response = get_response_from_path("/deploy").await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<AggregateDeployInfo>(&body);
+        assert!(value.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deploy_by_hash_should_return_valid_data() {
+        let path = format!("/deploy/{}", STORED_DEPLOY_HASH);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<AggregateDeployInfo>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            value.unwrap().deploy_hash,
+            STORED_DEPLOY_HASH
+        );
+    }
+
+    #[tokio::test]
+    async fn deploy_accepted_by_hash_should_return_valid_data() {
+        let path = format!("/deploy/accepted/{}", STORED_DEPLOY_HASH);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Deploy>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            hex::encode(value.unwrap().id()),
+            STORED_DEPLOY_HASH
+        );
+    }
+
+    #[tokio::test]
+    async fn deploy_processed_by_hash_should_return_valid_data() {
+        let path = format!("/deploy/processed/{}", STORED_DEPLOY_HASH);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<DeployProcessed>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            hex::encode(*value.unwrap().deploy_hash),
+            STORED_DEPLOY_HASH
+        );
+    }
+
+    #[tokio::test]
+    async fn deploy_expired_by_hash_should_return_valid_data() {
+        let path = format!("/deploy/expired/{}", STORED_DEPLOY_HASH);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<bool>(&body);
+        assert!(value.is_ok());
+        assert_eq!(value.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn step_by_era_should_return_valid_data() {
+        let path = format!("/step/{}", STORED_STEP_ERA_ID);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Step>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            value.unwrap().era_id.value(),
+            STORED_STEP_ERA_ID
+        );
+    }
+
+    #[tokio::test]
+    async fn fault_should_return_valid_data() {
+        // todo - need to add a fault to the fixture data set.
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn block_by_invalid_hash_should_return_400() {
+        let path = format!("/block/{}", INVALID_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn block_by_hash_of_not_stored_should_return_404() {
+        let path = format!("/block/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn block_by_height_of_not_stored_should_return_404() {
+        let path = format!("/block/{}", NOT_STORED_HEIGHT);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deploy_by_hash_of_not_stored_should_return_404() {
+        let path = format!("/deploy/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deploy_accepted_by_hash_of_not_stored_should_return_404() {
+        let path = format!("/deploy/accepted/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deploy_processed_by_hash_of_not_stored_should_return_404() {
+        let path = format!("/deploy/processed/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deploy_expired_by_hash_of_not_stored_should_return_404() {
+        let path = format!("/deploy/expired/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deploy_by_hash_of_invalid_should_return_400() {
+        let path = format!("/deploy/{}", INVALID_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn deploy_accepted_by_hash_of_invalid_should_return_400() {
+        let path = format!("/deploy/accepted/{}", INVALID_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn deploy_processed_by_hash_of_invalid_should_return_400() {
+        let path = format!("/deploy/processed/{}", INVALID_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn deploy_expired_by_hash_of_invalid_should_return_400() {
+        let path = format!("/deploy/expired/{}", INVALID_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn step_by_era_of_not_stored_should_return_404() {
+        let path = format!("/step/{}", NOT_STORED_STEP_ERA_ID);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn fault_of_not_stored_should_return_404() {
+        let path = format!("/fault/{}", VALID_PUBLIC_KEY);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
