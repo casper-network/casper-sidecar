@@ -1,0 +1,15 @@
+[connection]
+ip_address = "127.0.0.1"
+sse_port=9999
+
+[storage]
+db_path = "/var/lib/casper/event-sidecar"
+sse_cache = "/var/lib/casper/event-sidecar"
+
+[rest_server]
+ip_address = "127.0.0.1"
+port = 17777
+
+[sse_server]
+ip_address = "127.0.0.1"
+port = 19999

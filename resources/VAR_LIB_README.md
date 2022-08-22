@@ -1,0 +1,1 @@
+Database location for the casper-event-sidecar storage and cache.
