@@ -5,10 +5,12 @@ use std::time::Duration;
 use casper_types::ProtocolVersion;
 use casper_types::testing::TestRng;
 #[allow(unused)]
-use futures_util::{stream, StreamExt, TryStreamExt};
+use futures::{Stream, StreamExt};
+use futures_util::stream;
 #[allow(unused)]
 use futures_util::stream::{Map, Zip, Iter, IntoStream};
-use sse_client::EventSource;
+#[allow(unused)]
+use eventsource_stream::{EventStream, Eventsource};
 #[allow(unused)]
 use tokio::time::{Instant, interval};
 use tokio::sync::oneshot;
@@ -38,7 +40,7 @@ use serial_test::serial;
 // }
 
 // Number of events to send excluding the first (API) and last (Shutdown) events.
-const NUM_OF_TEST_EVENTS: usize = 8;
+const DEFAULT_NUM_OF_TEST_EVENTS: usize = 8;
 const TEST_API_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 fn enclose_events_data(data: &mut Vec<SseData>, add_shutdown: bool) -> Vec<SseData> {
@@ -49,24 +51,24 @@ fn enclose_events_data(data: &mut Vec<SseData>, add_shutdown: bool) -> Vec<SseDa
     data.to_owned()
 }
 
-pub async fn start_test_node(port: u16, started_notification_sender: oneshot::Sender<()>, shutdown_receiver: oneshot::Receiver<()>) -> SocketAddr {
+async fn start_test_node(port: u16, started_notification_sender: oneshot::Sender<()>, shutdown_receiver: oneshot::Receiver<()>, num_events: usize) -> SocketAddr {
 
     let mut rng = TestRng::new();
 
     let mut blocks_data: Vec<SseData> =
-        (1..=NUM_OF_TEST_EVENTS).map(|_| {
+        (1..=num_events).map(|_| {
         SseData::random_block_added(&mut rng)
     }).collect();
     blocks_data = enclose_events_data(&mut blocks_data, true);
 
     let mut deploys_data: Vec<SseData> =
-        (1..=NUM_OF_TEST_EVENTS).map(|_| {
+        (1..=num_events).map(|_| {
             SseData::random_deploy_processed(&mut rng)
         }).collect();
     deploys_data = enclose_events_data(&mut deploys_data, true);
 
     let mut sigs_data: Vec<SseData> =
-        (1..=NUM_OF_TEST_EVENTS).map(|_| {
+        (1..=num_events).map(|_| {
             SseData::random_finality_signature(&mut rng)
         }).collect();
     sigs_data = enclose_events_data(&mut sigs_data, true);
@@ -143,11 +145,9 @@ pub async fn start_test_node(port: u16, started_notification_sender: oneshot::Se
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(([127,0,0,1],port), async {
         shutdown_receiver.await.ok();
-        println!("Test node shutting down");
     });
 
     tokio::spawn(async {
-        println!("Test node starting...");
         let _ = started_notification_sender.send(());
         server.await
     });
@@ -155,12 +155,13 @@ pub async fn start_test_node(port: u16, started_notification_sender: oneshot::Se
     return addr;
 }
 
-#[cfg(test)]
-async fn spawn_test_node_with_shutdown(port: u16) -> oneshot::Sender<()> {
+pub(crate) async fn start_test_node_with_shutdown(port: u16, num_events: Option<usize>) -> oneshot::Sender<()> {
     let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
     let (node_started_tx, node_started_rx) = oneshot::channel();
 
-    tokio::spawn(start_test_node(port, node_started_tx, node_shutdown_rx));
+    let num_events = num_events.unwrap_or_else(|| { DEFAULT_NUM_OF_TEST_EVENTS });
+
+    tokio::spawn(start_test_node(port, node_started_tx, node_shutdown_rx, num_events));
 
     // Wait for the test node to report that it's live
     let _ = node_started_rx.await;
@@ -173,19 +174,24 @@ async fn spawn_test_node_with_shutdown(port: u16) -> oneshot::Sender<()> {
 async fn should_connect_then_gracefully_shutdown() {
     let test_node_port: u16 = 4444;
 
-    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    let first_event = receiver.iter().next().unwrap();
-    // High level assertions just to check that it has started up properly.
-    assert_eq!(first_event.type_, "message");
+    let first_event = connection
+        .next()
+        .await
+        .unwrap()
+        .unwrap();
     assert!(first_event.data.contains("ApiVersion"));
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -194,21 +200,24 @@ async fn should_connect_then_gracefully_shutdown() {
 async fn main_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
-    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -217,21 +226,24 @@ async fn main_filter_should_provide_valid_data() {
 async fn deploys_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
-    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/deploys", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }
 
@@ -240,20 +252,23 @@ async fn deploys_filter_should_provide_valid_data() {
 async fn sigs_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
-    let node_shutdown_tx = spawn_test_node_with_shutdown(test_node_port).await;
+    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
 
     let test_node_url = format!("http://127.0.0.1:{}/events/sigs", test_node_port);
-    let connection = EventSource::new(&test_node_url).unwrap();
+    let mut connection = reqwest::Client::new()
+        .get(&test_node_url)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream()
+        .eventsource();
 
-    let receiver = connection.receiver();
-
-    for event in receiver.iter() {
-        let sse = serde_json::from_str::<SseData>(&event.data).unwrap();
+    while let Some(event) = connection.next().await {
+        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
             break
         }
     }
 
-    connection.close();
     let _ = node_shutdown_tx.send(());
 }

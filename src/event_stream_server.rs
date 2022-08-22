@@ -25,7 +25,7 @@ mod event_indexer;
 mod http_server;
 mod sse_server;
 #[cfg(test)]
-pub (crate) mod testing;
+pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
