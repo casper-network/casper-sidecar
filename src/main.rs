@@ -156,11 +156,13 @@ async fn run(config: Config) -> Result<(), Error> {
         .context("Error instantiating database")?;
 
     // Prepare the REST server task - this will be executed later
-    let rest_server_handle = tokio::spawn(start_rest_server(
+    let rest_server_future = start_rest_server(
         storage.file_path.clone(),
         config.rest_server.ip_address,
-        config.rest_server.port,
-    ));
+       config.rest_server.port,
+    ).await?;
+
+    let rest_server_handle = tokio::spawn(rest_server_future);
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
