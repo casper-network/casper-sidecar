@@ -1,10 +1,12 @@
 use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
-use crate::utils::resolve_address;
+use crate::utils::{ListeningError, resolve_address};
 use anyhow::Error;
 use serde::Serialize;
 use std::convert::Infallible;
+use std::future::Future;
 use std::path::PathBuf;
-use tracing::{error, warn};
+use tokio::sync::oneshot;
+use tracing::{error, info, warn};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 
@@ -241,17 +243,29 @@ mod handlers {
     }
 }
 
-pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<(), Error> {
+pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<impl Future<Output=()> + Sized, Error> {
     let db = SqliteDb::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
 
-    let address = format!("{}:{}", ip_address, port);
-    let socket_address = resolve_address(&address)?;
+    let addr_string = format!("{}:{}", ip_address, port);
+    let bind_address = resolve_address(&addr_string)?;
+    info!(message = "starting REST server", address = %bind_address);
 
-    warp::serve(api).run(socket_address).await;
+    let (_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-    Ok(())
+    let (listening_address, server_with_shutdown) =
+        warp::serve(api)
+            .try_bind_with_graceful_shutdown(bind_address, async {
+                shutdown_receiver.await.ok();
+            })
+            .map_err(|error| ListeningError::Listen {
+                address:bind_address,
+                error: Box::new(error),
+            })?;
+    info!(address=%listening_address, "started REST server");
+
+    Ok(server_with_shutdown)
 }
 
 fn serialize_or_reject_storage_result<T>(
@@ -296,9 +310,6 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = String::from("No results");
-    } else if let Some(InvalidPath) = err.find() {
-        code = StatusCode::BAD_REQUEST;
-        message = String::from("Invalid request path provided");
     } else if let Some(SerializationError(err)) = err.find() {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = format!("Serialization Error: {}", err);
@@ -326,6 +337,9 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
                 message = format!("Unhandled error occurred in storage: {}", err)
             }
         }
+    } else if let Some(InvalidPath) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = String::from("Invalid request path provided");
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = "Method not allowed".to_string();
