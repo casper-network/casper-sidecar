@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 use warp::http::StatusCode;
-use warp::{Rejection, Reply};
+use warp::{cors, Rejection, Reply};
 
 mod filters {
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
@@ -258,14 +258,15 @@ pub async fn run_server(
 
     let (_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-    let (listening_address, server_with_shutdown) = warp::serve(api)
-        .try_bind_with_graceful_shutdown(bind_address, async {
-            shutdown_receiver.await.ok();
-        })
-        .map_err(|error| ListeningError::Listen {
-            address: bind_address,
-            error: Box::new(error),
-        })?;
+    let (listening_address, server_with_shutdown) =
+        warp::serve(api.with(cors().allow_any_origin()))
+            .try_bind_with_graceful_shutdown(bind_address, async {
+                shutdown_receiver.await.ok();
+            })
+            .map_err(|error| ListeningError::Listen {
+                address: bind_address,
+                error: Box::new(error),
+            })?;
     info!(address=%listening_address, "started REST server");
 
     Ok(server_with_shutdown)
