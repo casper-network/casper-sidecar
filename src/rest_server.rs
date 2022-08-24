@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 use warp::http::StatusCode;
-use warp::{cors, Rejection, Reply};
+use warp::{cors, Filter, Rejection, Reply};
 
 mod filters {
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
@@ -281,7 +281,8 @@ where
     match storage_result {
         Ok(data) => match serde_json::to_string_pretty(&data) {
             Ok(pretty_json) => {
-                Ok(warp::reply::with_status(pretty_json, StatusCode::OK).into_response())
+                let json = warp::reply::json(&pretty_json);
+                Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
             }
             Err(err) => Err(warp::reject::custom(SerializationError(err))),
         },
@@ -496,7 +497,7 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<bool>(&body);
         assert!(value.is_ok());
-        assert_eq!(value.unwrap(), false);
+        assert!(!value.unwrap());
     }
 
     #[tokio::test]
@@ -614,8 +615,17 @@ mod tests {
 
     #[tokio::test]
     async fn fault_of_invalid_public_key_should_return_400() {
-        let path = format!("/fault/notapublickey");
+        let path = "/fault/notapublickey".to_string();
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn should_have_correct_content_type() {
+        let response = get_response_from_path("/block").await;
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/json"
+        );
     }
 }
