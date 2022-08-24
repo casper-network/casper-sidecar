@@ -159,7 +159,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let rest_server_future = start_rest_server(
         storage.file_path.clone(),
         config.rest_server.ip_address,
-       config.rest_server.port,
+        config.rest_server.port,
     ).await?;
 
     let rest_server_handle = tokio::spawn(rest_server_future);
