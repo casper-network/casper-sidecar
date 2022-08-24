@@ -346,10 +346,11 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 #[cfg(test)]
 mod tests {
     use crate::rest_server::filters;
-    use crate::{DeployProcessed, sqlite_db, Step};
     use crate::sqlite_db::AggregateDeployInfo;
+    use crate::{sqlite_db, DeployProcessed, Fault, Step};
     use bytes::Bytes;
     use casper_node::types::{Block, Deploy};
+    use casper_types::AsymmetricType;
     use http::{Response, StatusCode};
     use std::path::Path;
     use warp::test::request;
@@ -357,14 +358,19 @@ mod tests {
     const NOT_STORED_HASH: &str =
         "0bcd71363b01c1c147c1603d2cc945930dcceecd869275beeee61dfc83b27a2c";
     const NOT_STORED_HEIGHT: u64 = 2304;
+    const NOT_STORED_STEP_ERA_ID: u64 = 2304;
+
     const STORED_BLOCK_HASH: &str =
         "d17f834afbc8a675e42f0ee3af9aed5e6759a79a3bc4bd4bd7acc3c8d9332b5a";
     const STORED_BLOCK_HEIGHT: u64 = 23;
     const STORED_DEPLOY_HASH: &str =
         "5e1f28c650e371ae912616ea409e438123a7f0fcceaa1b67d543c7c9d181288d";
     const STORED_STEP_ERA_ID: u64 = 3;
-    const NOT_STORED_STEP_ERA_ID: u64 = 2304;
-    const VALID_PUBLIC_KEY: &str = "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
+    const STORED_FAULT_PUBLIC_KEY: &str =
+        "01a9bde8aee48a1a47d00c0892f5a25a2cda366d7df14147827e42920e48842785";
+
+    const VALID_PUBLIC_KEY: &str =
+        "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
     const INVALID_HASH: &str = "notablockhash";
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
@@ -374,6 +380,18 @@ mod tests {
         let api = filters::combined_filters(db);
 
         request().path(path).reply(&api).await
+    }
+
+    #[tokio::test]
+    async fn root_should_return_400() {
+        let response = get_response_from_path("/").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn root_with_invalid_path_should_return_400() {
+        let response = get_response_from_path("/notblockordeploy").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -427,10 +445,7 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<AggregateDeployInfo>(&body);
         assert!(value.is_ok());
-        assert_eq!(
-            value.unwrap().deploy_hash,
-            STORED_DEPLOY_HASH
-        );
+        assert_eq!(value.unwrap().deploy_hash, STORED_DEPLOY_HASH);
     }
 
     #[tokio::test]
@@ -441,10 +456,7 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<Deploy>(&body);
         assert!(value.is_ok());
-        assert_eq!(
-            hex::encode(value.unwrap().id()),
-            STORED_DEPLOY_HASH
-        );
+        assert_eq!(hex::encode(value.unwrap().id()), STORED_DEPLOY_HASH);
     }
 
     #[tokio::test]
@@ -455,10 +467,7 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<DeployProcessed>(&body);
         assert!(value.is_ok());
-        assert_eq!(
-            hex::encode(*value.unwrap().deploy_hash),
-            STORED_DEPLOY_HASH
-        );
+        assert_eq!(hex::encode(*value.unwrap().deploy_hash), STORED_DEPLOY_HASH);
     }
 
     #[tokio::test]
@@ -480,16 +489,18 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<Step>(&body);
         assert!(value.is_ok());
-        assert_eq!(
-            value.unwrap().era_id.value(),
-            STORED_STEP_ERA_ID
-        );
+        assert_eq!(value.unwrap().era_id.value(), STORED_STEP_ERA_ID);
     }
 
     #[tokio::test]
     async fn fault_should_return_valid_data() {
-        // todo - need to add a fault to the fixture data set.
-        assert!(true);
+        let path = format!("/fault/{}", STORED_FAULT_PUBLIC_KEY);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Fault>(&body);
+        assert!(value.is_ok());
+        assert_eq!(value.unwrap().public_key.to_hex(), STORED_FAULT_PUBLIC_KEY);
     }
 
     #[tokio::test]
@@ -581,5 +592,12 @@ mod tests {
         let path = format!("/fault/{}", VALID_PUBLIC_KEY);
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn fault_of_invalid_public_key_should_return_400() {
+        let path = format!("/fault/notapublickey");
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
