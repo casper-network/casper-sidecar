@@ -1,5 +1,5 @@
 use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
-use crate::utils::{ListeningError, resolve_address};
+use crate::utils::{resolve_address, ListeningError};
 use anyhow::Error;
 use serde::Serialize;
 use std::convert::Infallible;
@@ -243,7 +243,11 @@ mod handlers {
     }
 }
 
-pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<impl Future<Output=()> + Sized, Error> {
+pub async fn run_server(
+    db_path: PathBuf,
+    ip_address: String,
+    port: u16,
+) -> Result<impl Future<Output = ()> + Sized, Error> {
     let db = SqliteDb::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
@@ -254,15 +258,14 @@ pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Resu
 
     let (_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-    let (listening_address, server_with_shutdown) =
-        warp::serve(api)
-            .try_bind_with_graceful_shutdown(bind_address, async {
-                shutdown_receiver.await.ok();
-            })
-            .map_err(|error| ListeningError::Listen {
-                address:bind_address,
-                error: Box::new(error),
-            })?;
+    let (listening_address, server_with_shutdown) = warp::serve(api)
+        .try_bind_with_graceful_shutdown(bind_address, async {
+            shutdown_receiver.await.ok();
+        })
+        .map_err(|error| ListeningError::Listen {
+            address: bind_address,
+            error: Box::new(error),
+        })?;
     info!(address=%listening_address, "started REST server");
 
     Ok(server_with_shutdown)
