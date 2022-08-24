@@ -8,25 +8,27 @@ mod testing;
 pub mod types;
 mod utils;
 
-use crate::event_stream_server::SseData;
-use crate::sqlite_db::DatabaseWriter;
-use crate::types::enums::DeployAtState;
-use crate::types::structs::{Fault, Step};
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context, Error};
 use bytes::Bytes;
-use casper_node::types::Block;
-use casper_types::AsymmetricType;
-use event_stream_server::{Config as SseConfig, EventStreamServer};
 use eventsource_stream::{EventStream, Eventsource};
 use futures::{Stream, StreamExt};
-use rest_server::run_server as start_rest_server;
-use sqlite_db::SqliteDb;
-use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
-use tracing_subscriber;
-use types::enums::Network;
-use types::structs::{Config, DeployProcessed};
+
+use casper_node::types::Block;
+use casper_types::AsymmetricType;
+
+use crate::{
+    event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
+    rest_server::run_server as start_rest_server,
+    sqlite_db::{DatabaseWriter, SqliteDb},
+    types::{
+        enums::{DeployAtState, Network},
+        structs::{Config, DeployProcessed, Fault, Step},
+    },
+};
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
@@ -160,19 +162,18 @@ async fn run(config: Config) -> Result<(), Error> {
         storage.file_path.clone(),
         config.rest_server.ip_address,
         config.rest_server.port,
-    ).await?;
+    )
+    .await?;
 
     let rest_server_handle = tokio::spawn(rest_server_future);
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_specified(
-            config.sse_server.ip_address,
-            config.sse_server.port
-        ),
+        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
-        api_version
-    ).context("Error starting EventStreamServer")?;
+        api_version,
+    )
+    .context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");

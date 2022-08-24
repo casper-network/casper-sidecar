@@ -1,7 +1,9 @@
-use crate::types::enums::Network;
+use serde::{Deserialize, Serialize};
+
 use casper_node::types::{BlockHash, DeployHash, JsonBlock};
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
-use serde::{Deserialize, Serialize};
+
+use crate::types::enums::Network;
 
 #[derive(Deserialize)]
 pub struct Config {

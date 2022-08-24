@@ -1,7 +1,10 @@
 use std::sync::Arc;
-use casper_node::types::{Deploy, DeployHash};
+
 use serde::Deserialize;
-use crate::DeployProcessed;
+
+use casper_node::types::{Deploy, DeployHash};
+
+use crate::types::structs::DeployProcessed;
 
 #[derive(Deserialize)]
 pub enum Network {
@@ -23,5 +26,5 @@ impl Network {
 pub enum DeployAtState {
     Accepted(Arc<Deploy>),
     Processed(DeployProcessed),
-    Expired(DeployHash)
+    Expired(DeployHash),
 }
