@@ -59,11 +59,14 @@ assets = [
     ["./target/release/casper-event-sidecar", "/usr/bin/casper-event-sidecar", "755"],
     ["./resources/VAR_LIB_README.md", "/var/lib/casper/event-sidecar/README.md", "755"],
     ["./resources/ETC_README.md", "/etc/casper/event-sidecar/README.md", "755"],
-    ["./resources/config.toml", "/etc/casper/event-sidecar/config.toml", "755"]
+    ["./resources/default_config.toml", "/etc/casper/event-sidecar/config.toml", "755"]
 ]
 maintainer-scripts = "./resources/maintainer_scripts/debian"
 extended-description = """
-Package for Casper Node Launcher
-
-For information on using package, see https://github.com/CasperLabs/casper-node-launcher
+Package for Casper Event Sidecar
 """
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "./resources/maintainer_scripts/casper_event_sidecar"
+restart-after-upgrade = false
+
