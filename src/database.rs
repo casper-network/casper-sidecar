@@ -38,8 +38,10 @@ pub(crate) trait DatabaseReader {
     async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError>;
     async fn get_block_by_height(&self, height: u64) -> Result<Block, DatabaseRequestError>;
     async fn get_block_by_hash(&self, hash: &str) -> Result<Block, DatabaseRequestError>;
-    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, DatabaseRequestError>;
-    async fn get_deploy_by_hash(
+    async fn get_latest_deploy_aggregate(
+        &self,
+    ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    async fn get_deploy_by_hash_aggregate(
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError>;

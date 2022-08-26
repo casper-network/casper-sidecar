@@ -8,13 +8,41 @@ use casper_node::types::{Block, Deploy};
 use casper_types::{AsymmetricType, ExecutionEffect, PublicKey, Timestamp};
 use lazy_static::lazy_static;
 use rusqlite::{named_params, params, types::Value as SqlValue, Connection, OpenFlags, Row};
+use sea_query::{
+    BlobSize, ColumnDef, ForeignKey, ForeignKeyAction, Iden, SqliteQueryBuilder, Table,
+};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
+
+enum TableBlockAdded {
+    Name,
+    Height,
+    BlockHash,
+    Raw,
+    EventLogId,
+}
+
+impl Iden for TableBlockAdded {
+    fn unquoted(&self, s: &mut dyn Write) {
+        write!(
+            s,
+            "{}",
+            match self {
+                TableBlockAdded::Name => "BlockAdded",
+                TableBlockAdded::Height => "height",
+                TableBlockAdded::BlockHash => "block_hash",
+                TableBlockAdded::Raw => "raw",
+                TableBlockAdded::EventLogId => "event_log_id",
+            }
+        )
+        .unwrap();
+    }
+}
 
 enum Tables {
     EventLog,
@@ -28,6 +56,7 @@ enum Tables {
     AggregateDeployInfo,
     Step,
     Fault,
+    FinalitySignature,
 }
 
 impl Display for Tables {
@@ -44,6 +73,7 @@ impl Display for Tables {
             Tables::AggregateDeployInfo => "agg_DeployInfo",
             Tables::Step => "Step",
             Tables::Fault => "Fault",
+            Tables::FinalitySignature => "FinalitySignature",
         };
         write!(f, "{}", string_repr)
     }
@@ -68,66 +98,52 @@ pub struct SqliteDb {
     pub file_path: PathBuf,
 }
 
-struct DbColumn {
-    name: &'static str,
-    sql_type: &'static str,
-    constraints: Option<&'static str>,
-}
-
-fn create_table_statement_generator(name: String, columns: Vec<DbColumn>) -> String {
-    let mut statement = format!("CREATE TABLE IF NOT EXISTS {} (", name);
-    for (index, column) in columns.iter().enumerate() {
-        statement = format!(
-            "{previous}{col_name} {col_type} {col_constraints}, ",
-            previous = statement,
-            col_name = column.name,
-            col_type = column.sql_type,
-            col_constraints = column.constraints.unwrap_or("")
-        );
-        if index == columns.len() - 1 {
-            // removes the trailing whitespace
-            statement = statement.trim().to_string();
-            // removes the trailing comma
-            statement.pop();
-        }
-    }
-    statement = format!("{})", statement);
-
-    statement
-}
-
-fn create_db_column(
-    name: &'static str,
-    sql_type: &'static str,
-    constraints: Option<&'static str>,
-) -> DbColumn {
-    DbColumn {
-        name,
-        sql_type,
-        constraints,
-    }
-}
-
-#[test]
-fn should_create_valid_sql_for_table_generation() {
-    let columns = Vec::from([
-        create_db_column("height", "INTEGER", Some("PRIMARY KEY")),
-        create_db_column("hash", "STRING", Some("NOT NULL")),
-        create_db_column("block", "BLOB", Some("NOT NULL")),
-    ]);
-
-    let generated_stmt = create_table_statement_generator(Tables::BlockAdded.to_string(), columns);
-
-    assert_eq!(generated_stmt, "CREATE TABLE IF NOT EXISTS BlockAdded (height INTEGER PRIMARY KEY, hash STRING NOT NULL, block BLOB NOT NULL)");
-}
-
-#[test]
-fn should_create_connection() {
-    let path_to_storage = Path::new("./target/storage");
-    SqliteDb::new(path_to_storage).unwrap();
-}
-
 impl SqliteDb {
+    pub fn ref_new(path: &Path) -> Result<SqliteDb, Error> {
+        fs::create_dir_all(path)?;
+        let file_path = path.join(DB_FILENAME);
+        let connection = Connection::open(&file_path)?;
+    }
+
+    fn create_block_added_table(connection: &Connection) -> rusqlite::Result<usize> {
+        let table_stmt = Table::create()
+            .table(TableBlockAdded::Name)
+            .if_not_exists()
+            .col(
+                ColumnDef::new(TableBlockAdded::Height)
+                    .integer()
+                    .not_null()
+                    .primary_key(),
+            )
+            .col(
+                ColumnDef::new(TableBlockAdded::BlockHash)
+                    .string()
+                    .not_null()
+                    .unique_key(),
+            )
+            // todo investigate boundaries of the blobsize variants.
+            .col(
+                ColumnDef::new(TableBlockAdded::Raw)
+                    .blob(BlobSize::Tiny)
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(TableBlockAdded::EventLogId)
+                    .integer()
+                    .not_null(),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("FK_event_log_id")
+                    .from(TableBlockAdded::Name, TableBlockAdded::EventLogId)
+                    .to("event_log", "event_log_id")
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Restrict),
+            );
+
+        connection.execute(&table_stmt.to_string(SqliteQueryBuilder), [])
+    }
+
     pub fn new(path: &Path) -> Result<SqliteDb, Error> {
         fs::create_dir_all(path)?;
         let file_path = path.join(DB_FILENAME);
@@ -741,62 +757,8 @@ enum Entity {
     Step(Step),
 }
 
-enum Table {
-    Blocks,
-    Deploys,
-    Faults,
-    Steps,
-}
-
-impl Display for Table {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Table::Blocks => write!(f, "blocks"),
-            Table::Deploys => write!(f, "deploys"),
-            Table::Faults => write!(f, "faults"),
-            Table::Steps => write!(f, "steps"),
-        }
-    }
-}
-
-fn create_insert_stmt(table: Table, keys: &[String]) -> String {
-    let mut keys_string = String::new();
-    let mut indices = String::new();
-
-    let mut count = 0;
-    keys.iter().for_each(|key| {
-        count += 1;
-        if count == 1 {
-            keys_string = key.to_string();
-            indices = format!("?{}", count);
-        } else {
-            keys_string = format!("{}, {}", keys_string, key);
-            indices = format!("{}, ?{}", indices, count);
-        }
-    });
-
-    let insert_command = format!(
-        "INSERT INTO {table} ({keys}) VALUES ({indices})",
-        table = table,
-        keys = keys_string,
-        indices = indices
-    );
-
-    insert_command
-}
-
 #[test]
-fn check_create_insert_stmt() {
-    let parameters = vec![
-        String::from("first"),
-        String::from("second"),
-        String::from("third"),
-    ];
-
-    let result = create_insert_stmt(Table::Blocks, &parameters);
-
-    assert_eq!(
-        result,
-        String::from("INSERT INTO blocks (first, second, third) VALUES (?1, ?2, ?3)")
-    )
+fn should_successfully_create_connection() {
+    let path_to_storage = Path::new("./target/storage");
+    SqliteDb::new(path_to_storage).unwrap();
 }
