@@ -1,4 +1,5 @@
 use super::types::structs::{Fault, Step};
+use crate::database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter};
 use crate::types::enums::DeployAtState;
 use crate::DeployProcessed;
 use anyhow::{Context, Error};
@@ -12,7 +13,6 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tracing::debug;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
 
@@ -20,6 +20,8 @@ enum Tables {
     EventLog,
     EventType,
     EventSource,
+    EventEventSource,
+    DeployEvent,
     BlockAdded,
     DeployAccepted,
     DeployProcessed,
@@ -31,9 +33,11 @@ enum Tables {
 impl Display for Tables {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string_repr = match self {
-            Tables::EventLog => "EventLog",
-            Tables::EventType => "EventType",
-            Tables::EventSource => "EventSource",
+            Tables::EventLog => "event_log",
+            Tables::EventType => "event_type",
+            Tables::EventSource => "event_source",
+            Tables::EventEventSource => "event_event_source",
+            Tables::DeployEvent => "deploy_event",
             Tables::BlockAdded => "BlockAdded",
             Tables::DeployAccepted => "DeployAccepted",
             Tables::DeployProcessed => "DeployProcessed",
@@ -64,138 +68,254 @@ pub struct SqliteDb {
     pub file_path: PathBuf,
 }
 
-#[async_trait]
-pub(crate) trait DatabaseWriter {
-    async fn save_block(&self, block: Block) -> Result<usize, Error>;
-    async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error>;
-    async fn save_step(&self, step: Step) -> Result<usize, Error>;
-    async fn save_fault(&self, fault: Fault) -> Result<usize, Error>;
+struct DbColumn {
+    name: &'static str,
+    sql_type: &'static str,
+    constraints: Option<&'static str>,
 }
 
-#[async_trait]
-pub(crate) trait DatabaseReader {
-    async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError>;
-    async fn get_block_by_height(&self, height: u64) -> Result<Block, DatabaseRequestError>;
-    async fn get_block_by_hash(&self, hash: &str) -> Result<Block, DatabaseRequestError>;
-    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, DatabaseRequestError>;
-    async fn get_deploy_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
-    async fn get_deploy_accepted_by_hash(&self, hash: &str)
-        -> Result<Deploy, DatabaseRequestError>;
-    async fn get_deploy_processed_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<DeployProcessed, DatabaseRequestError>;
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError>;
-    async fn get_step_by_era(&self, era_id: u64) -> Result<Step, DatabaseRequestError>;
-    async fn get_fault_by_public_key(
-        &self,
-        public_key: &str,
-    ) -> Result<Fault, DatabaseRequestError>;
+fn create_table_statement_generator(name: String, columns: Vec<DbColumn>) -> String {
+    let mut statement = format!("CREATE TABLE IF NOT EXISTS {} (", name);
+    for (index, column) in columns.iter().enumerate() {
+        statement = format!(
+            "{previous}{col_name} {col_type} {col_constraints}, ",
+            previous = statement,
+            col_name = column.name,
+            col_type = column.sql_type,
+            col_constraints = column.constraints.unwrap_or("")
+        );
+        if index == columns.len() - 1 {
+            // removes the trailing whitespace
+            statement = statement.trim().to_string();
+            // removes the trailing comma
+            statement.pop();
+        }
+    }
+    statement = format!("{})", statement);
+
+    statement
+}
+
+fn create_db_column(
+    name: &'static str,
+    sql_type: &'static str,
+    constraints: Option<&'static str>,
+) -> DbColumn {
+    DbColumn {
+        name,
+        sql_type,
+        constraints,
+    }
+}
+
+#[test]
+fn should_create_valid_sql_for_table_generation() {
+    let columns = Vec::from([
+        create_db_column("height", "INTEGER", Some("PRIMARY KEY")),
+        create_db_column("hash", "STRING", Some("NOT NULL")),
+        create_db_column("block", "BLOB", Some("NOT NULL")),
+    ]);
+
+    let generated_stmt = create_table_statement_generator(Tables::BlockAdded.to_string(), columns);
+
+    assert_eq!(generated_stmt, "CREATE TABLE IF NOT EXISTS BlockAdded (height INTEGER PRIMARY KEY, hash STRING NOT NULL, block BLOB NOT NULL)");
+}
+
+#[test]
+fn should_create_connection() {
+    let path_to_storage = Path::new("./target/storage");
+    SqliteDb::new(path_to_storage).unwrap();
 }
 
 impl SqliteDb {
     pub fn new(path: &Path) -> Result<SqliteDb, Error> {
         fs::create_dir_all(path)?;
         let file_path = path.join(DB_FILENAME);
-        let db = Connection::open(&file_path)?;
+        let connection = Connection::open(&file_path)?;
 
-        let table_creation_stmt = "CREATE TABLE IF NOT EXISTS blocks_table_name (
-            height      INTEGER PRIMARY KEY,
-            hash        STRING NOT NULL,
-            block       STRING NOT NULL
-        )
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS event_log (
+                    event_log_key   INTEGER NOT NULL PRIMARY KEY,
+                    event_type_id   INTEGER NOT NULL,
+                    event_source_id INTEGER NOT NULL,
+                    event_id        INTEGER NOT NULL,
+                    timestamp       DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (event_type_id)
+                        REFERENCES event_type (event_type_id)
+                            ON UPDATE RESTRICT
+                            ON DELETE RESTRICT
+                    FOREIGN KEY (event_source_id)
+                        REFERENCES event_source (event_source_id)
+                            ON UPDATE RESTRICT
+                            ON DELETE RESTRICT                        
+                )",
+                [],
+            )
+            .context("Error creating event_log table")?;
 
-        CREATE TABLE IF NOT EXISTS deploys_table_name (
-            hash        STRING PRIMARY KEY,
-            timestamp   STRING,
-            accepted    STRING,
-            processed   STRING,
-            expired     INTEGER    
-        )
-        
-        CREATE TABLE IF NOT EXISTS steps_table_name (
-            era         INTEGER PRIMARY KEY,
-            effect      STRING NOT NULL
-        )
-        
-        CREATE TABLE IF NOT EXISTS faults_table_name (
-            era         INTEGER,
-            public_key  STRING NOT NULL,
-            timestamp   STRING NOT NULL,
-            PRIMARY KEY (era, public_key)
-        )
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS event_type (
+                    event_type_id   INTEGER NOT NULL PRIMARY KEY,
+                    event_type_name      VARCHAR(255) NOT NULL
+            )",
+                [],
+            )
+            .context("Error creating event_type table")?;
 
-        VALUES (
-            :blocks_table_name,
-            :deploys_table_name,
-            :steps_table_name,
-            :faults_table_name
-        )
-        ";
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS event_source (
+                    event_source_id   INTEGER NOT NULL PRIMARY KEY,
+                    event_source      VARCHAR(255) NOT NULL
+            )",
+                [],
+            )
+            .context("Error creating event_source table")?;
 
-        db.execute(
-            table_creation_stmt,
-            named_params! {
-                ":blocks_table_name": "blocks", // Tables::BlockAdded.to_string(),
-                ":deploys_table_name": "deploys", // Tables::AggregateDeployInfo.to_string(),
-                ":steps_table_name": "steps", // Tables::Step.to_string(),
-                ":faults_table_name": "faults", // Tables::Fault.to_string()
-            },
-        )?;
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS event_event_source (
+                event_id            INTEGER NOT NULL PRIMARY KEY,
+                event_source_id     INTEGER NOT NULL
+            )",
+                [],
+            )
+            .context("Error creating event_event_source table")?;
 
-        // todo: make these statements more programmatic by making the above COLUMNS Key-Values of Column Name and SQL Type
-        // todo: and then interpolate them into the SQL Strings by iterating over the COLUMN vecs.
-        // db.execute(
-        //     "CREATE TABLE IF NOT EXISTS blocks (
-        //         height      INTEGER PRIMARY KEY,
-        //         hash        STRING NOT NULL,
-        //         block       STRING NOT NULL
-        //     )",
-        //     [],
-        // )
-        // .context("failed to create blocks table in database")?;
-        // debug!("SQLite - Blocks table initialised");
-        //
-        // db.execute(
-        //     "CREATE TABLE IF NOT EXISTS deploys (
-        //         hash        STRING PRIMARY KEY,
-        //         timestamp   STRING,
-        //         accepted    STRING,
-        //         processed   STRING,
-        //         expired     INTEGER
-        //     )",
-        //     [],
-        // )
-        // .context("failed to create deploys table in database")?;
-        // debug!("SQLite - Deploys table initialised");
-        //
-        // db.execute(
-        //     "CREATE TABLE IF NOT EXISTS steps (
-        //         era      INTEGER PRIMARY KEY,
-        //         effect      STRING NOT NULL
-        // )",
-        //     [],
-        // )
-        // .context("failed to create steps table in database")?;
-        // debug!("SQLite - Steps table initialised");
-        //
-        // db.execute(
-        //     "CREATE TABLE IF NOT EXISTS faults (
-        //         era      INTEGER,
-        //         public_key  STRING NOT NULL,
-        //         timestamp   STRING NOT NULL,
-        //         PRIMARY KEY (era, public_key)
-        // )",
-        //     [],
-        // )
-        // .context("failed to create faults table in database")?;
-        // debug!("SQLite - Faults table initialised");
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS deploy_event (
+                event_log_id    INTEGER NOT NULL,
+                deploy_hash     VARCHAR(255) NOT NULL
+            )",
+                [],
+            )
+            .context("Error creating deploy_event table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS deploy_event_type (
+                deploy_event_type_id    INTEGER NOT NULL,
+                deploy_event_type       VARCHAR(255) NOT NULL
+            )",
+                [],
+            )
+            .context("Error creating deploy_event_type table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS BlockAdded (
+                height          INTEGER NOT NULL PRIMARY KEY,
+                block_hash      VARCHAR(255) NOT NULL,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT
+            )",
+                [],
+            )
+            .context("Error creating BlockAdded table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS DeployProcessed (
+                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT                
+            )",
+                [],
+            )
+            .context("Error creating DeployProcessed table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS DeployAccepted (
+                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT                
+            )",
+                [],
+            )
+            .context("Error creating DeployAccepted table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS DeployExpired (
+                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT                
+            )",
+                [],
+            )
+            .context("Error creating DeployExpired table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS Step (
+                era             INTEGER NOT NULL PRIMARY KEY,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT    
+        )",
+                [],
+            )
+            .context("Error creating Step table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS Fault (
+                era             INTEGER NOT NULL PRIMARY KEY,
+                public_key      VARCHAR(255) NOT NULL,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                PRIMARY KEY (era, public_key),
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT 
+
+        )",
+                [],
+            )
+            .context("Error creating Fault table")?;
+
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS FinalitySignature (
+                block_hash      VARCHAR(255) NOT NULL,
+                public_key      VARCHAR(255) NOT NULL,
+                raw             BLOB NOT NULL,
+                event_log_id    INTEGER NOT NULL,
+                FOREIGN KEY (event_log_id)
+                    REFERENCES event_log (event_log_id)
+                        ON UPDATE RESTRICT
+                        ON DELETE RESTRICT 
+            )",
+                [],
+            )
+            .context("Error creating FinalitySignature table")?;
 
         Ok(SqliteDb {
-            db: Arc::new(Mutex::new(db)),
+            db: Arc::new(Mutex::new(connection)),
             file_path,
         })
     }
@@ -309,8 +429,22 @@ impl SqliteDb {
 
 #[async_trait]
 impl DatabaseWriter for SqliteDb {
-    async fn save_block(&self, block: Block) -> Result<usize, Error> {
-        self.insert_data(Entity::Block(block))
+    async fn save_block_added(&self, block: Block) -> Result<usize, Error> {
+        let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
+
+        // self.insert_data(Entity::Block(block))
+        // Extract and format the data for each column
+        let height = block.height().to_string();
+        let hash = hex::encode(block.hash().inner());
+        let block = serde_json::to_string(&block)?;
+
+        // Generate the SQL for INSERTing the new row
+        let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
+
+        // Interpolate the positional parameters into the above statement and execute
+        db_connection
+            .execute(&insert_command, params![height, hash, block])
+            .map_err(Error::from)
     }
 
     async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error> {
@@ -376,7 +510,7 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then("SELECT block FROM blocks WHERE hash = ?", [hash], |row| {
-            let block_string: String = row.get(0).map_err(DatabaseError::Rusqlite)?;
+            let block_string: String = row.get(0).map_err(SqliteDbError::Rusqlite)?;
             deserialize_data::<Block>(&block_string)
         })
         .map_err(wrap_query_error)
@@ -493,7 +627,7 @@ impl DatabaseReader for SqliteDb {
             [hash],
             |row| {
                 let expired: u8 = row.get(0)?;
-                integer_to_bool(expired).map_err(|err| DatabaseError::Internal(err))
+                integer_to_bool(expired).map_err(|err| SqliteDbError::Internal(err))
             },
         )
         .map_err(wrap_query_error)
@@ -530,7 +664,7 @@ impl DatabaseReader for SqliteDb {
             |row| {
                 let era: u64 = row.get(0)?;
                 let public_key = PublicKey::from_hex(public_key)
-                    .map_err(|err| DatabaseError::Internal(Error::from(err)))?;
+                    .map_err(|err| SqliteDbError::Internal(Error::from(err)))?;
                 let timestamp_string: String = row.get(2)?;
                 let timestamp = deserialize_data::<Timestamp>(&timestamp_string)?;
 
@@ -545,65 +679,47 @@ impl DatabaseReader for SqliteDb {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum DatabaseRequestError {
-    DBConnectionFailed(Error),
-    NotFound,
-    InvalidParam(Error),
-    Serialisation(Error),
-    Unhandled(Error),
-}
-
-enum DatabaseError {
+enum SqliteDbError {
     Rusqlite(rusqlite::Error),
     SerdeJson(serde_json::Error),
     Internal(Error),
 }
 
-impl From<rusqlite::Error> for DatabaseError {
+impl From<rusqlite::Error> for SqliteDbError {
     fn from(error: rusqlite::Error) -> Self {
-        DatabaseError::Rusqlite(error)
+        SqliteDbError::Rusqlite(error)
     }
 }
 
-fn wrap_query_error(error: DatabaseError) -> DatabaseRequestError {
+fn wrap_query_error(error: SqliteDbError) -> DatabaseRequestError {
     match error {
-        DatabaseError::Rusqlite(err) => match err.to_string().as_str() {
+        SqliteDbError::Rusqlite(err) => match err.to_string().as_str() {
             "Query returned no rows" => DatabaseRequestError::NotFound,
             _ => DatabaseRequestError::Unhandled(Error::from(err)),
         },
-        DatabaseError::SerdeJson(err) => DatabaseRequestError::Serialisation(Error::from(err)),
-        DatabaseError::Internal(err) => DatabaseRequestError::Unhandled(err),
+        SqliteDbError::SerdeJson(err) => DatabaseRequestError::Serialisation(Error::from(err)),
+        SqliteDbError::Internal(err) => DatabaseRequestError::Unhandled(err),
     }
 }
 
-fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, DatabaseError> {
-    serde_json::from_str::<T>(data).map_err(DatabaseError::SerdeJson)
+fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
+    serde_json::from_str::<T>(data).map_err(SqliteDbError::SerdeJson)
 }
 
-#[derive(Debug, Serialize)]
-pub struct AggregateDeployInfo {
-    pub(crate) deploy_hash: String,
-    pub(crate) accepted: Option<String>,
-    // Once processed it will contain a stringified JSON representation of the DeployProcessed event.
-    pub(crate) processed: Option<String>,
-    pub(crate) expired: bool,
-}
-
-fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, DatabaseError> {
+fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, SqliteDbError> {
     let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
         deploy_hash: "".to_string(),
-        accepted: None,
-        processed: None,
-        expired: false,
+        deploy_accepted: None,
+        deploy_processed: None,
+        deploy_expired: false,
     };
 
     aggregate_deploy.deploy_hash = deploy_row.get(0)?;
     aggregate_deploy.accepted = deploy_row.get::<usize, Option<String>>(2)?;
     aggregate_deploy.processed = deploy_row.get::<usize, Option<String>>(3)?;
     aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
-        Ok(int) => integer_to_bool(int).map_err(DatabaseError::Internal)?,
-        Err(err) => return Err(DatabaseError::Rusqlite(err)),
+        Ok(int) => integer_to_bool(int).map_err(SqliteDbError::Internal)?,
+        Err(err) => return Err(SqliteDbError::Rusqlite(err)),
     };
 
     Ok(aggregate_deploy)

@@ -1,10 +1,12 @@
 extern crate core;
 
+mod database;
 mod event_stream_server;
 mod rest_server;
 mod sqlite_db;
 #[cfg(test)]
 mod testing;
+mod types;
 mod utils;
 
 use crate::event_stream_server::SseData;

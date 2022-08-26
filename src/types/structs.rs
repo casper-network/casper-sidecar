@@ -65,6 +65,12 @@ pub struct DeployProcessed {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct DeployExpired {
+    // todo check this is correct struct for the event
+    pub deploy: DeployHash,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Step {
     pub era_id: EraId,
     pub execution_effect: ExecutionEffect,
