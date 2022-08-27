@@ -1,5 +1,5 @@
 use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
-use crate::utils::{ListeningError, resolve_address};
+use crate::utils::{resolve_address, ListeningError};
 use anyhow::Error;
 use serde::Serialize;
 use std::convert::Infallible;
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 use warp::http::StatusCode;
-use warp::{Rejection, Reply};
+use warp::{cors, Filter, Rejection, Reply};
 
 mod filters {
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
@@ -243,7 +243,11 @@ mod handlers {
     }
 }
 
-pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<impl Future<Output=()> + Sized, Error> {
+pub async fn run_server(
+    db_path: PathBuf,
+    ip_address: String,
+    port: u16,
+) -> Result<impl Future<Output = ()> + Sized, Error> {
     let db = SqliteDb::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
@@ -255,12 +259,12 @@ pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Resu
     let (_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
     let (listening_address, server_with_shutdown) =
-        warp::serve(api)
+        warp::serve(api.with(cors().allow_any_origin()))
             .try_bind_with_graceful_shutdown(bind_address, async {
                 shutdown_receiver.await.ok();
             })
             .map_err(|error| ListeningError::Listen {
-                address:bind_address,
+                address: bind_address,
                 error: Box::new(error),
             })?;
     info!(address=%listening_address, "started REST server");
@@ -277,7 +281,8 @@ where
     match storage_result {
         Ok(data) => match serde_json::to_string_pretty(&data) {
             Ok(pretty_json) => {
-                Ok(warp::reply::with_status(pretty_json, StatusCode::OK).into_response())
+                let json = warp::reply::json(&pretty_json);
+                Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
             }
             Err(err) => Err(warp::reject::custom(SerializationError(err))),
         },
@@ -492,7 +497,7 @@ mod tests {
         let body = response.into_body();
         let value = serde_json::from_slice::<bool>(&body);
         assert!(value.is_ok());
-        assert_eq!(value.unwrap(), false);
+        assert!(!value.unwrap());
     }
 
     #[tokio::test]
@@ -610,8 +615,17 @@ mod tests {
 
     #[tokio::test]
     async fn fault_of_invalid_public_key_should_return_400() {
-        let path = format!("/fault/notapublickey");
+        let path = "/fault/notapublickey".to_string();
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn should_have_correct_content_type() {
+        let response = get_response_from_path("/block").await;
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/json"
+        );
     }
 }
