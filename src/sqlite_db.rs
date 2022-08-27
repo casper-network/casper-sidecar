@@ -447,11 +447,22 @@ impl DatabaseReader for SqliteDb {
         .map_err(wrap_query_error)
     }
 
-    // todo this should be taking a compound identifier maybe including Era to ensure it gets a single row
+    // This will only ever return one result even if there were multiple faults.
+    // todo Add another query/rest interface for specifying era as well as public key.
     async fn get_fault_by_public_key(
         &self,
         public_key: &str,
     ) -> Result<Fault, DatabaseRequestError> {
+        let public_key_regex = regex::Regex::new("^([0-9A-Fa-f]{2}){33,34}$")
+            .map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
+        if !public_key_regex.is_match(public_key) {
+            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!(
+                "Expected hex-encoded public key (66/68 chars), received: {} (length: {})",
+                public_key,
+                public_key.len()
+            ))));
+        }
+
         let db = self.db.lock().map_err(|error| {
             DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
         })?;
@@ -513,7 +524,7 @@ fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Datab
     serde_json::from_str::<T>(data).map_err(DatabaseError::SerdeJson)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AggregateDeployInfo {
     pub(crate) deploy_hash: String,
     pub(crate) accepted: Option<String>,
