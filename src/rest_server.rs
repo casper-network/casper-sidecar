@@ -1,4 +1,5 @@
-use crate::sqlite_db::{DatabaseRequestError, SqliteDb};
+use crate::database::DatabaseRequestError;
+use crate::sqlite_db::SqliteDb;
 use crate::utils::resolve_address;
 use anyhow::Error;
 use serde::Serialize;
@@ -9,8 +10,8 @@ use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 
 mod filters {
+    use crate::database::DatabaseReader;
     use crate::rest_server::{handle_rejection, handlers, InvalidPath};
-    use crate::sqlite_db::DatabaseReader;
     use std::convert::Infallible;
     use warp::Filter;
 
@@ -158,8 +159,8 @@ mod filters {
 }
 
 mod handlers {
+    use crate::database::DatabaseReader;
     use crate::rest_server::serialize_or_reject_storage_result;
-    use crate::sqlite_db::DatabaseReader;
     use warp::{Rejection, Reply};
 
     pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
@@ -188,7 +189,7 @@ mod handlers {
     pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(
         db: Db,
     ) -> Result<impl Reply, Rejection> {
-        let db_result = db.get_latest_deploy().await;
+        let db_result = db.get_latest_deploy_aggregate().await;
         serialize_or_reject_storage_result(db_result)
     }
 
@@ -196,7 +197,7 @@ mod handlers {
         hash: String,
         db: Db,
     ) -> Result<impl Reply, Rejection> {
-        let db_result = db.get_deploy_by_hash(&hash).await;
+        let db_result = db.get_deploy_by_hash_aggregate(&hash).await;
         serialize_or_reject_storage_result(db_result)
     }
 
@@ -357,7 +358,7 @@ mod tests {
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
         let db_path = Path::new("target/storage");
-        let db = sqlite_db::SqliteDb::new(db_path).unwrap();
+        let db = sqlite_db::SqliteDb::new(db_path, "127.0.0.1".to_string()).unwrap();
 
         let api = filters::combined_filters(db);
 

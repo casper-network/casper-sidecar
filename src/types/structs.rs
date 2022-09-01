@@ -1,7 +1,8 @@
 use crate::types::enums::Network;
-use casper_node::types::{BlockHash, DeployHash, JsonBlock};
+use casper_node::types::{BlockHash, Deploy, DeployHash, JsonBlock};
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, TimeDiff, Timestamp};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -44,13 +45,13 @@ pub struct NodeConfig {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BlockAdded {
-    pub block_hash: String,
+    pub block_hash: BlockHash,
     pub block: JsonBlock,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeployAccepted {
-    pub deploy: DeployHash,
+    pub deploy: Arc<Deploy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -66,8 +67,7 @@ pub struct DeployProcessed {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeployExpired {
-    // todo check this is correct struct for the event
-    pub deploy: DeployHash,
+    pub deploy_hash: DeployHash,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

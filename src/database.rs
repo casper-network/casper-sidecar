@@ -17,8 +17,13 @@ pub struct AggregateDeployInfo {
 }
 
 #[async_trait]
-pub(crate) trait DatabaseWriter {
-    async fn save_block_added(&self, block_added: BlockAdded) -> Result<usize, Error>;
+pub trait DatabaseWriter {
+    async fn save_block_added(
+        &self,
+        block_added: BlockAdded,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error>;
     async fn save_deploy_accepted(&self, deploy_accepted: DeployAccepted) -> Result<usize, Error>;
     async fn save_deploy_processed(
         &self,
@@ -34,7 +39,7 @@ pub(crate) trait DatabaseWriter {
 }
 
 #[async_trait]
-pub(crate) trait DatabaseReader {
+pub trait DatabaseReader {
     async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError>;
     async fn get_block_by_height(&self, height: u64) -> Result<Block, DatabaseRequestError>;
     async fn get_block_by_hash(&self, hash: &str) -> Result<Block, DatabaseRequestError>;
@@ -60,7 +65,7 @@ pub(crate) trait DatabaseReader {
 }
 
 #[derive(Debug)]
-pub(crate) enum DatabaseRequestError {
+pub enum DatabaseRequestError {
     DBConnectionFailed(Error),
     NotFound,
     InvalidParam(Error),

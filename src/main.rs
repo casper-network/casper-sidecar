@@ -3,16 +3,17 @@ extern crate core;
 mod database;
 mod event_stream_server;
 mod rest_server;
+mod sql;
 mod sqlite_db;
 #[cfg(test)]
 mod testing;
 mod types;
 mod utils;
 
+use crate::database::DatabaseWriter;
 use crate::event_stream_server::SseData;
-use crate::sqlite_db::DatabaseWriter;
 use crate::types::enums::DeployAtState;
-use crate::types::structs::{Fault, Step};
+use crate::types::structs::{BlockAdded, DeployAccepted, DeployExpired, Fault, Step};
 use anyhow::{Context, Error};
 use bytes::Bytes;
 use casper_node::types::Block;
@@ -25,7 +26,6 @@ use sqlite_db::SqliteDb;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
-use tracing_subscriber;
 use types::enums::Network;
 use types::structs::{Config, DeployProcessed};
 
@@ -147,8 +147,9 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // Instantiates SQLite database
-    let storage: SqliteDb = SqliteDb::new(Path::new(&config.storage.db_path))
-        .context("Error instantiating database")?;
+    let storage: SqliteDb =
+        SqliteDb::new(Path::new(&config.storage.db_path), node_config.ip_address)
+            .context("Error instantiating database")?;
 
     // // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
@@ -171,6 +172,12 @@ async fn run(config: Config) -> Result<(), Error> {
     // Task to manage incoming events from all three filters
     let sse_processing_task = async {
         while let Some(evt) = aggregate_events_rx.recv().await {
+            let event_id: u64 = evt
+                .id
+                .as_str()
+                .parse()
+                .map_err(|parse_err| Error::from(parse_err))?;
+
             match serde_json::from_str::<SseData>(&evt.data) {
                 Ok(sse_data) => {
                     event_stream_server.broadcast(sse_data.clone());
@@ -179,14 +186,22 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::ApiVersion(version) => {
                             info!("API Version: {:?}", version.to_string());
                         }
-                        SseData::BlockAdded { block, .. } => {
-                            let block = Block::from(*block);
+                        SseData::BlockAdded { block, block_hash } => {
                             info!(
                                 message = "Block Added:",
-                                hash = hex::encode(block.hash().inner()).as_str(),
-                                height = block.height()
+                                hash = hex::encode(block_hash.inner()).as_str(),
+                                height = block.header.height,
                             );
-                            let res = storage.save_block(block.clone()).await;
+                            let res = storage
+                                .save_block_added(
+                                    BlockAdded {
+                                        block: *block,
+                                        block_hash,
+                                    },
+                                    event_id,
+                                    "127.0.0.1".to_string(),
+                                )
+                                .await;
 
                             if res.is_err() {
                                 warn!("Error saving block: {}", res.err().unwrap());
@@ -198,7 +213,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 hash = hex::encode(deploy.id().inner()).as_str()
                             );
                             let res = storage
-                                .save_or_update_deploy(DeployAtState::Accepted(deploy))
+                                .save_deploy_accepted(DeployAccepted { deploy })
                                 .await;
 
                             if res.is_err() {
@@ -211,7 +226,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
                             let res = storage
-                                .save_or_update_deploy(DeployAtState::Expired(deploy_hash))
+                                .save_deploy_expired(DeployExpired { deploy_hash })
                                 .await;
 
                             if res.is_err() {
@@ -240,9 +255,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 message = "Deploy Processed:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage
-                                .save_or_update_deploy(DeployAtState::Processed(deploy_processed))
-                                .await;
+                            let res = storage.save_deploy_processed(deploy_processed).await;
 
                             if res.is_err() {
                                 warn!("Error updating processed deploy: {}", res.err().unwrap());

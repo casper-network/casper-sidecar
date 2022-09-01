@@ -1,11 +1,15 @@
 use super::types::structs::{Fault, Step};
 use crate::database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter};
+use crate::sql::tables;
+use crate::sql::tables::event_type::EventTypeId;
 use crate::types::enums::DeployAtState;
+use crate::types::structs::{BlockAdded, DeployAccepted, DeployExpired};
 use crate::DeployProcessed;
 use anyhow::{Context, Error};
 use async_trait::async_trait;
-use casper_node::types::{Block, Deploy};
+use casper_node::types::{Block, Deploy, FinalitySignature};
 use casper_types::{AsymmetricType, ExecutionEffect, PublicKey, Timestamp};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use rusqlite::{named_params, params, types::Value as SqlValue, Connection, OpenFlags, Row};
 use sea_query::{
@@ -16,6 +20,7 @@ use std::fmt::{Display, Formatter, Write};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use tracing::info;
 
 const DB_FILENAME: &str = "raw_sse_data.db3";
 
@@ -99,236 +104,60 @@ pub struct SqliteDb {
 }
 
 impl SqliteDb {
-    pub fn ref_new(path: &Path) -> Result<SqliteDb, Error> {
-        fs::create_dir_all(path)?;
-        let file_path = path.join(DB_FILENAME);
-        let connection = Connection::open(&file_path)?;
-    }
-
-    fn create_block_added_table(connection: &Connection) -> rusqlite::Result<usize> {
-        let table_stmt = Table::create()
-            .table(TableBlockAdded::Name)
-            .if_not_exists()
-            .col(
-                ColumnDef::new(TableBlockAdded::Height)
-                    .integer()
-                    .not_null()
-                    .primary_key(),
-            )
-            .col(
-                ColumnDef::new(TableBlockAdded::BlockHash)
-                    .string()
-                    .not_null()
-                    .unique_key(),
-            )
-            // todo investigate boundaries of the blobsize variants.
-            .col(
-                ColumnDef::new(TableBlockAdded::Raw)
-                    .blob(BlobSize::Tiny)
-                    .not_null(),
-            )
-            .col(
-                ColumnDef::new(TableBlockAdded::EventLogId)
-                    .integer()
-                    .not_null(),
-            )
-            .foreign_key(
-                ForeignKey::create()
-                    .name("FK_event_log_id")
-                    .from(TableBlockAdded::Name, TableBlockAdded::EventLogId)
-                    .to("event_log", "event_log_id")
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Restrict),
-            );
-
-        connection.execute(&table_stmt.to_string(SqliteQueryBuilder), [])
-    }
-
-    pub fn new(path: &Path) -> Result<SqliteDb, Error> {
+    pub fn new(path: &Path, node_ip_address: String) -> Result<SqliteDb, Error> {
         fs::create_dir_all(path)?;
         let file_path = path.join(DB_FILENAME);
         let connection = Connection::open(&file_path)?;
 
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS event_log (
-                    event_log_key   INTEGER NOT NULL PRIMARY KEY,
-                    event_type_id   INTEGER NOT NULL,
-                    event_source_id INTEGER NOT NULL,
-                    event_id        INTEGER NOT NULL,
-                    timestamp       DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (event_type_id)
-                        REFERENCES event_type (event_type_id)
-                            ON UPDATE RESTRICT
-                            ON DELETE RESTRICT
-                    FOREIGN KEY (event_source_id)
-                        REFERENCES event_source (event_source_id)
-                            ON UPDATE RESTRICT
-                            ON DELETE RESTRICT                        
-                )",
-                [],
-            )
-            .context("Error creating event_log table")?;
+        // Synthetic table creation statements
+        let create_table_sql_event_type = tables::event_type::create_table_stmt();
+        let create_table_sql_event_log = tables::event_log::create_table_stmt();
+        let create_table_sql_event_source = tables::event_source::create_table_stmt();
+        let create_table_sql_event_source_of_event =
+            tables::event_source_of_event::create_table_stmt();
+
+        // Raw Event table creation statements
+        let create_table_sql_block_added = tables::block_added::create_table_stmt();
+        let create_table_sql_deploy_accepted = tables::deploy_accepted::create_table_stmt();
+        let create_table_sql_deploy_processed = tables::deploy_processed::create_table_stmt();
+        let create_table_sql_deploy_expired = tables::deploy_expired::create_table_stmt();
+        let create_table_sql_fault = tables::fault::create_table_stmt();
+        let create_table_sql_step = tables::step::create_table_stmt();
+
+        let batched_created_table = vec![
+            create_table_sql_event_type,
+            create_table_sql_event_source,
+            create_table_sql_event_source_of_event,
+            create_table_sql_event_log,
+            create_table_sql_block_added,
+            create_table_sql_deploy_accepted,
+            create_table_sql_deploy_expired,
+            create_table_sql_deploy_processed,
+            create_table_sql_fault,
+            create_table_sql_step,
+        ]
+        .iter()
+        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .join(";");
 
         connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS event_type (
-                    event_type_id   INTEGER NOT NULL PRIMARY KEY,
-                    event_type_name      VARCHAR(255) NOT NULL
-            )",
-                [],
-            )
-            .context("Error creating event_type table")?;
+            .execute_batch(&batched_created_table)
+            .context("Error creating tables")?;
+
+        // Initialisation statements
+        let initialise_sql_event_type = tables::event_type::create_initialise_stmt()?;
+        let initialise_sql_event_source =
+            tables::event_source::create_insert_stmt(node_ip_address)?;
+
+        let batched_initialise_tables =
+            vec![initialise_sql_event_type, initialise_sql_event_source]
+                .iter()
+                .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+                .join(";");
 
         connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS event_source (
-                    event_source_id   INTEGER NOT NULL PRIMARY KEY,
-                    event_source      VARCHAR(255) NOT NULL
-            )",
-                [],
-            )
-            .context("Error creating event_source table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS event_event_source (
-                event_id            INTEGER NOT NULL PRIMARY KEY,
-                event_source_id     INTEGER NOT NULL
-            )",
-                [],
-            )
-            .context("Error creating event_event_source table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS deploy_event (
-                event_log_id    INTEGER NOT NULL,
-                deploy_hash     VARCHAR(255) NOT NULL
-            )",
-                [],
-            )
-            .context("Error creating deploy_event table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS deploy_event_type (
-                deploy_event_type_id    INTEGER NOT NULL,
-                deploy_event_type       VARCHAR(255) NOT NULL
-            )",
-                [],
-            )
-            .context("Error creating deploy_event_type table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS BlockAdded (
-                height          INTEGER NOT NULL PRIMARY KEY,
-                block_hash      VARCHAR(255) NOT NULL,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT
-            )",
-                [],
-            )
-            .context("Error creating BlockAdded table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS DeployProcessed (
-                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT                
-            )",
-                [],
-            )
-            .context("Error creating DeployProcessed table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS DeployAccepted (
-                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT                
-            )",
-                [],
-            )
-            .context("Error creating DeployAccepted table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS DeployExpired (
-                deploy_hash     VARCHAR(255) NOT NULL PRIMARY KEY,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT                
-            )",
-                [],
-            )
-            .context("Error creating DeployExpired table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS Step (
-                era             INTEGER NOT NULL PRIMARY KEY,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT    
-        )",
-                [],
-            )
-            .context("Error creating Step table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS Fault (
-                era             INTEGER NOT NULL PRIMARY KEY,
-                public_key      VARCHAR(255) NOT NULL,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                PRIMARY KEY (era, public_key),
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT 
-
-        )",
-                [],
-            )
-            .context("Error creating Fault table")?;
-
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS FinalitySignature (
-                block_hash      VARCHAR(255) NOT NULL,
-                public_key      VARCHAR(255) NOT NULL,
-                raw             BLOB NOT NULL,
-                event_log_id    INTEGER NOT NULL,
-                FOREIGN KEY (event_log_id)
-                    REFERENCES event_log (event_log_id)
-                        ON UPDATE RESTRICT
-                        ON DELETE RESTRICT 
-            )",
-                [],
-            )
-            .context("Error creating FinalitySignature table")?;
+            .execute_batch(&batched_initialise_tables)
+            .context("Error creating tables")?;
 
         Ok(SqliteDb {
             db: Arc::new(Mutex::new(connection)),
@@ -350,129 +179,190 @@ impl SqliteDb {
     }
 
     // Helper for the DatabaseWriter for inserting / updating records - internal only - not to be exposed in the API to other components
-    fn insert_data(&self, data: Entity) -> Result<usize, Error> {
-        let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
-
-        return match data {
-            Entity::Block(block) => {
-                // The same pattern is used for each entity, I have therefore only
-                // commented on it once - here.
-
-                // Extract and format the data for each column
-                let height = block.height().to_string();
-                let hash = hex::encode(block.hash().inner());
-                let block = serde_json::to_string(&block)?;
-
-                // Generate the SQL for INSERTing the new row
-                let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
-
-                // Interpolate the positional parameters into the above statement and execute
-                db_connection
-                    .execute(&insert_command, params![height, hash, block])
-                    .map_err(Error::from)
-            }
-
-            Entity::Deploy(deploy) => {
-                match deploy {
-                    DeployAtState::Accepted(deploy) => {
-                        let hash = hex::encode(deploy.id().inner());
-                        let timestamp = deploy.header().timestamp().to_string();
-                        let json_deploy = serde_json::to_string(&deploy)?;
-
-                        let insert_command = create_insert_stmt(Table::Deploys, &DEPLOY_COLUMNS);
-
-                        // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
-                        db_connection
-                            .execute(
-                                &insert_command,
-                                params![
-                                    hash,
-                                    timestamp,
-                                    json_deploy,
-                                    SqlValue::Null,
-                                    SqlValue::Integer(0)
-                                ],
-                            )
-                            .map_err(Error::from)
-                    }
-                    DeployAtState::Processed(deploy_processed) => {
-                        let hash = hex::encode(deploy_processed.deploy_hash.inner());
-                        let json_deploy = serde_json::to_string(&deploy_processed)?;
-
-                        let update_command = "UPDATE deploys SET processed = ? WHERE hash = ?";
-
-                        db_connection
-                            .execute(update_command, params![json_deploy, hash])
-                            .map_err(Error::from)
-                    }
-                    DeployAtState::Expired(deploy_hash) => {
-                        let hash = hex::encode(deploy_hash.inner());
-
-                        let update_command =
-                            format!("UPDATE deploys SET expired = {} WHERE hash = ?", 1i64);
-
-                        db_connection
-                            .execute(&update_command, params![hash])
-                            .map_err(Error::from)
-                    }
-                }
-            }
-            Entity::Fault(fault) => {
-                let era = fault.era_id.value().to_string();
-                let public_key = fault.public_key.to_hex();
-                let timestamp = fault.timestamp.to_string();
-
-                let insert_command = create_insert_stmt(Table::Faults, &FAULT_COLUMNS);
-
-                db_connection
-                    .execute(&insert_command, params![era, public_key, timestamp])
-                    .map_err(Error::from)
-            }
-            Entity::Step(step) => {
-                let era = step.era_id.value().to_string();
-                let execution_effect = serde_json::to_string(&step.execution_effect)
-                    .context("Error serializing Execution Effect")?;
-
-                let insert_command = create_insert_stmt(Table::Steps, &STEP_COLUMNS);
-
-                db_connection
-                    .execute(&insert_command, params![era, execution_effect])
-                    .map_err(Error::from)
-            }
-        };
-    }
+    // fn insert_data(&self, data: Entity) -> Result<usize, Error> {
+    //     let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
+    //
+    //     return match data {
+    //         Entity::Block(block) => {
+    //             // The same pattern is used for each entity, I have therefore only
+    //             // commented on it once - here.
+    //
+    //             // Extract and format the data for each column
+    //             let height = block.height().to_string();
+    //             let hash = hex::encode(block.hash().inner());
+    //             let block = serde_json::to_string(&block)?;
+    //
+    //             // Generate the SQL for INSERTing the new row
+    //             let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
+    //
+    //             // Interpolate the positional parameters into the above statement and execute
+    //             db_connection
+    //                 .execute(&insert_command, params![height, hash, block])
+    //                 .map_err(Error::from)
+    //         }
+    //
+    //         Entity::Deploy(deploy) => {
+    //             match deploy {
+    //                 DeployAtState::Accepted(deploy) => {
+    //                     let hash = hex::encode(deploy.id().inner());
+    //                     let timestamp = deploy.header().timestamp().to_string();
+    //                     let json_deploy = serde_json::to_string(&deploy)?;
+    //
+    //                     let insert_command = create_insert_stmt(Table::Deploys, &DEPLOY_COLUMNS);
+    //
+    //                     // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
+    //                     db_connection
+    //                         .execute(
+    //                             &insert_command,
+    //                             params![
+    //                                 hash,
+    //                                 timestamp,
+    //                                 json_deploy,
+    //                                 SqlValue::Null,
+    //                                 SqlValue::Integer(0)
+    //                             ],
+    //                         )
+    //                         .map_err(Error::from)
+    //                 }
+    //                 DeployAtState::Processed(deploy_processed) => {
+    //                     let hash = hex::encode(deploy_processed.deploy_hash.inner());
+    //                     let json_deploy = serde_json::to_string(&deploy_processed)?;
+    //
+    //                     let update_command = "UPDATE deploys SET processed = ? WHERE hash = ?";
+    //
+    //                     db_connection
+    //                         .execute(update_command, params![json_deploy, hash])
+    //                         .map_err(Error::from)
+    //                 }
+    //                 DeployAtState::Expired(deploy_hash) => {
+    //                     let hash = hex::encode(deploy_hash.inner());
+    //
+    //                     let update_command =
+    //                         format!("UPDATE deploys SET expired = {} WHERE hash = ?", 1i64);
+    //
+    //                     db_connection
+    //                         .execute(&update_command, params![hash])
+    //                         .map_err(Error::from)
+    //                 }
+    //             }
+    //         }
+    //         Entity::Fault(fault) => {
+    //             let era = fault.era_id.value().to_string();
+    //             let public_key = fault.public_key.to_hex();
+    //             let timestamp = fault.timestamp.to_string();
+    //
+    //             let insert_command = create_insert_stmt(Table::Faults, &FAULT_COLUMNS);
+    //
+    //             db_connection
+    //                 .execute(&insert_command, params![era, public_key, timestamp])
+    //                 .map_err(Error::from)
+    //         }
+    //         Entity::Step(step) => {
+    //             let era = step.era_id.value().to_string();
+    //             let execution_effect = serde_json::to_string(&step.execution_effect)
+    //                 .context("Error serializing Execution Effect")?;
+    //
+    //             let insert_command = create_insert_stmt(Table::Steps, &STEP_COLUMNS);
+    //
+    //             db_connection
+    //                 .execute(&insert_command, params![era, execution_effect])
+    //                 .map_err(Error::from)
+    //         }
+    //     };
+    // }
 }
 
 #[async_trait]
 impl DatabaseWriter for SqliteDb {
-    async fn save_block_added(&self, block: Block) -> Result<usize, Error> {
+    async fn save_block_added(
+        &self,
+        block_added: BlockAdded,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error> {
         let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
 
-        // self.insert_data(Entity::Block(block))
-        // Extract and format the data for each column
-        let height = block.height().to_string();
-        let hash = hex::encode(block.hash().inner());
-        let block = serde_json::to_string(&block)?;
+        info!("Db connected");
 
-        // Generate the SQL for INSERTing the new row
-        let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
+        let serialised_data = serde_json::to_string(&block_added)?;
+        let encoded_hash = hex::encode(block_added.block_hash.inner());
 
-        // Interpolate the positional parameters into the above statement and execute
+        info!("Data parsed for {}", encoded_hash);
+
+        let stmt = tables::event_source::create_select_id_by_address_stmt(event_source_address);
+        let event_source_id =
+            db_connection.query_row_and_then(&stmt.to_string(SqliteQueryBuilder), [], |row| {
+                row.get::<&str, u8>("event_source_id")
+            })?;
+
+        info!("Event Source ID: {}", event_source_id);
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::BlockAdded as u8,
+            event_source_id,
+            event_id,
+        )
+        .context("Error constructing SQL statement")?;
+
         db_connection
-            .execute(&insert_command, params![height, hash, block])
+            .execute(&insert_to_event_log_stmt.to_string(SqliteQueryBuilder), [])
+            .map_err(Error::from)?;
+
+        let get_max_id_stmt = tables::event_log::create_get_max_id_stmt();
+
+        let id: u64 = db_connection.query_row_and_then(
+            &get_max_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| {
+                row.get("event_log_id")
+                    .map_err(|err| Error::msg(err.to_string()))
+            },
+        )?;
+
+        let insert_to_block_added_stmt = tables::block_added::create_insert_stmt(
+            block_added.block.header.height,
+            encoded_hash,
+            serialised_data,
+            id,
+        )
+        .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(
+                &insert_to_block_added_stmt.to_string(SqliteQueryBuilder),
+                [],
+            )
             .map_err(Error::from)
     }
 
-    async fn save_or_update_deploy(&self, deploy: DeployAtState) -> Result<usize, Error> {
-        self.insert_data(Entity::Deploy(deploy))
+    async fn save_deploy_accepted(&self, deploy_accepted: DeployAccepted) -> Result<usize, Error> {
+        Ok(2)
+    }
+
+    async fn save_deploy_processed(
+        &self,
+        deploy_processed: DeployProcessed,
+    ) -> Result<usize, Error> {
+        Ok(2)
+    }
+
+    async fn save_deploy_expired(&self, deploy_expired: DeployExpired) -> Result<usize, Error> {
+        Ok(2)
     }
 
     async fn save_step(&self, step: Step) -> Result<usize, Error> {
-        self.insert_data(Entity::Step(step))
+        Ok(2)
     }
 
     async fn save_fault(&self, fault: Fault) -> Result<usize, Error> {
-        self.insert_data(Entity::Fault(fault))
+        Ok(2)
+    }
+
+    async fn save_finality_signature(
+        &self,
+        finality_signature: FinalitySignature,
+    ) -> Result<usize, Error> {
+        Ok(2)
     }
 }
 
@@ -532,7 +422,9 @@ impl DatabaseReader for SqliteDb {
         .map_err(wrap_query_error)
     }
 
-    async fn get_latest_deploy(&self) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+    async fn get_latest_deploy_aggregate(
+        &self,
+    ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
         let db = self.db.lock().map_err(|error| {
             DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
         })?;
@@ -545,7 +437,7 @@ impl DatabaseReader for SqliteDb {
         .map_err(wrap_query_error)
     }
 
-    async fn get_deploy_by_hash(
+    async fn get_deploy_by_hash_aggregate(
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
@@ -731,9 +623,9 @@ fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo
     };
 
     aggregate_deploy.deploy_hash = deploy_row.get(0)?;
-    aggregate_deploy.accepted = deploy_row.get::<usize, Option<String>>(2)?;
-    aggregate_deploy.processed = deploy_row.get::<usize, Option<String>>(3)?;
-    aggregate_deploy.expired = match deploy_row.get::<usize, u8>(4) {
+    aggregate_deploy.deploy_accepted = deploy_row.get::<usize, Option<String>>(2)?;
+    aggregate_deploy.deploy_processed = deploy_row.get::<usize, Option<String>>(3)?;
+    aggregate_deploy.deploy_expired = match deploy_row.get::<usize, u8>(4) {
         Ok(int) => integer_to_bool(int).map_err(SqliteDbError::Internal)?,
         Err(err) => return Err(SqliteDbError::Rusqlite(err)),
     };
@@ -759,6 +651,6 @@ enum Entity {
 
 #[test]
 fn should_successfully_create_connection() {
-    let path_to_storage = Path::new("./target/storage");
-    SqliteDb::new(path_to_storage).unwrap();
+    let path_to_storage = Path::new("./target/test");
+    SqliteDb::new(path_to_storage, "127.0.0.1".to_string()).unwrap();
 }
