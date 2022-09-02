@@ -79,7 +79,7 @@ pub fn create_get_by_hash_stmt(block_hash: String) -> SelectStatement {
         .to_owned()
 }
 
-pub fn create_get_by_height_stmt(height: u16) -> SelectStatement {
+pub fn create_get_by_height_stmt(height: u64) -> SelectStatement {
     Query::select()
         .column(BlockAdded::Raw)
         .from(BlockAdded::Table)

@@ -282,20 +282,14 @@ impl DatabaseWriter for SqliteDb {
     ) -> Result<usize, Error> {
         let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
 
-        info!("Db connected");
-
         let serialised_data = serde_json::to_string(&block_added)?;
         let encoded_hash = hex::encode(block_added.block_hash.inner());
-
-        info!("Data parsed for {}", encoded_hash);
 
         let stmt = tables::event_source::create_select_id_by_address_stmt(event_source_address);
         let event_source_id =
             db_connection.query_row_and_then(&stmt.to_string(SqliteQueryBuilder), [], |row| {
                 row.get::<&str, u8>("event_source_id")
             })?;
-
-        info!("Event Source ID: {}", event_source_id);
 
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
             EventTypeId::BlockAdded as u8,
@@ -366,6 +360,11 @@ impl DatabaseWriter for SqliteDb {
     }
 }
 
+fn parse_block_from_row(row: &Row) -> Result<Block, SqliteDbError> {
+    let raw_data = row.get::<&str, String>("raw")?;
+    deserialize_data::<BlockAdded>(&raw_data).map(|block_added| block_added.block.into())
+}
+
 #[async_trait]
 impl DatabaseReader for SqliteDb {
     async fn get_latest_block(&self) -> Result<Block, DatabaseRequestError> {
@@ -374,12 +373,9 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then(
-            "SELECT block FROM blocks ORDER BY height DESC LIMIT 1",
+            &tables::block_added::create_get_latest_stmt().to_string(SqliteQueryBuilder),
             [],
-            |row| {
-                let block_string: String = row.get(0)?;
-                deserialize_data::<Block>(&block_string)
-            },
+            parse_block_from_row,
         )
         .map_err(wrap_query_error)
     }
@@ -390,12 +386,9 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then(
-            "SELECT block FROM blocks WHERE height = ?",
-            [height],
-            |row| {
-                let block_string: String = row.get(0)?;
-                deserialize_data::<Block>(&block_string)
-            },
+            &tables::block_added::create_get_by_height_stmt(height).to_string(SqliteQueryBuilder),
+            [],
+            parse_block_from_row,
         )
         .map_err(wrap_query_error)
     }
@@ -415,10 +408,12 @@ impl DatabaseReader for SqliteDb {
             DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
         })?;
 
-        db.query_row_and_then("SELECT block FROM blocks WHERE hash = ?", [hash], |row| {
-            let block_string: String = row.get(0).map_err(SqliteDbError::Rusqlite)?;
-            deserialize_data::<Block>(&block_string)
-        })
+        db.query_row_and_then(
+            &tables::block_added::create_get_by_hash_stmt(hash.to_string())
+                .to_string(SqliteQueryBuilder),
+            [],
+            parse_block_from_row,
+        )
         .map_err(wrap_query_error)
     }
 
