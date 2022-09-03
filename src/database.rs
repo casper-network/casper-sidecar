@@ -5,7 +5,7 @@ use serde::Serialize;
 use casper_node::types::{Block, Deploy, FinalitySignature};
 
 use crate::types::structs::{
-    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Step,
+    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Faults, Step,
 };
 
 #[derive(Debug, Serialize)]
@@ -24,12 +24,24 @@ pub trait DatabaseWriter {
         event_id: u64,
         event_source_address: String,
     ) -> Result<usize, Error>;
-    async fn save_deploy_accepted(&self, deploy_accepted: DeployAccepted) -> Result<usize, Error>;
+    async fn save_deploy_accepted(
+        &self,
+        deploy_accepted: DeployAccepted,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error>;
     async fn save_deploy_processed(
         &self,
         deploy_processed: DeployProcessed,
+        event_id: u64,
+        event_source_address: String,
     ) -> Result<usize, Error>;
-    async fn save_deploy_expired(&self, deploy_expired: DeployExpired) -> Result<usize, Error>;
+    async fn save_deploy_expired(
+        &self,
+        deploy_expired: DeployExpired,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error>;
     async fn save_step(&self, step: Step) -> Result<usize, Error>;
     async fn save_fault(&self, fault: Fault) -> Result<usize, Error>;
     async fn save_finality_signature(
@@ -58,10 +70,11 @@ pub trait DatabaseReader {
     ) -> Result<DeployProcessed, DatabaseRequestError>;
     async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError>;
     async fn get_step_by_era(&self, era_id: u64) -> Result<Step, DatabaseRequestError>;
-    async fn get_fault_by_public_key(
+    async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Fault, DatabaseRequestError>;
+    ) -> Result<Faults, DatabaseRequestError>;
+    async fn get_faults_by_era(&self, era: u64) -> Result<Faults, DatabaseRequestError>;
 }
 
 #[derive(Debug)]

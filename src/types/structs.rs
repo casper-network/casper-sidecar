@@ -37,7 +37,7 @@ pub struct Node {
     pub local: NodeConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct NodeConfig {
     pub ip_address: String,
     pub sse_port: u16,
@@ -81,4 +81,13 @@ pub struct Fault {
     pub era_id: EraId,
     pub public_key: PublicKey,
     pub timestamp: Timestamp,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Faults(Vec<Fault>);
+
+impl From<Vec<Fault>> for Faults {
+    fn from(vec_faults: Vec<Fault>) -> Self {
+        Self(vec_faults)
+    }
 }

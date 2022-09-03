@@ -23,7 +23,8 @@ mod filters {
             .or(block_filters(db.clone()))
             .or(deploy_filters(db.clone()))
             .or(step_by_era(db.clone()))
-            .or(fault_by_public_key(db))
+            .or(faults_by_public_key(db.clone()))
+            .or(faults_by_era(db))
             .recover(handle_rejection)
     }
 
@@ -142,13 +143,22 @@ mod filters {
             .and_then(handlers::get_step_by_era)
     }
 
-    pub(super) fn fault_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
+    pub(super) fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
         db: Db,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("fault" / String)
             .and(warp::get())
             .and(with_db(db))
-            .and_then(handlers::get_fault_by_public_key)
+            .and_then(handlers::get_faults_by_public_key)
+    }
+
+    pub(super) fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("fault" / u64)
+            .and(warp::get())
+            .and(with_db(db))
+            .and_then(handlers::get_faults_by_era)
     }
 
     fn with_db<Db: DatabaseReader + Clone + Send>(
@@ -233,11 +243,19 @@ mod handlers {
         serialize_or_reject_storage_result(db_result)
     }
 
-    pub(super) async fn get_fault_by_public_key<Db: DatabaseReader + Clone + Send>(
+    pub(super) async fn get_faults_by_public_key<Db: DatabaseReader + Clone + Send>(
         public_key: String,
         db: Db,
     ) -> Result<impl Reply, Rejection> {
-        let db_result = db.get_fault_by_public_key(&public_key).await;
+        let db_result = db.get_faults_by_public_key(&public_key).await;
+        serialize_or_reject_storage_result(db_result)
+    }
+
+    pub(super) async fn get_faults_by_era<Db: DatabaseReader + Clone + Send>(
+        era: u64,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
+        let db_result = db.get_faults_by_era(era).await;
         serialize_or_reject_storage_result(db_result)
     }
 }

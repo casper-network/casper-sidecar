@@ -10,7 +10,6 @@ pub(super) enum EventType {
     EventTypeName,
 }
 
-// There is a disconnect between this enum and the auto_increment_values
 pub enum EventTypeId {
     BlockAdded = 1,
     DeployAccepted = 2,

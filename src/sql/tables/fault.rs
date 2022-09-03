@@ -51,3 +51,19 @@ pub fn create_insert_stmt(
         ])
         .map(|stmt| stmt.to_owned())
 }
+
+pub fn create_get_faults_by_public_key_stmt(public_key: String) -> SelectStatement {
+    Query::select()
+        .column(Fault::Raw)
+        .from(Fault::Table)
+        .and_where(Expr::col(Fault::PublicKey).eq(public_key))
+        .to_owned()
+}
+
+pub fn create_get_faults_by_era_stmt(era: u64) -> SelectStatement {
+    Query::select()
+        .column(Fault::Raw)
+        .from(Fault::Table)
+        .and_where(Expr::col(Fault::Era).eq(era))
+        .to_owned()
+}

@@ -1,4 +1,4 @@
-use super::types::structs::{Fault, Step};
+use super::types::structs::{Fault, Faults, Step};
 use crate::database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter};
 use crate::sql::tables;
 use crate::sql::tables::event_type::EventTypeId;
@@ -18,6 +18,8 @@ use sea_query::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Write};
 use std::fs;
+use std::hash::Hash;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::info;
@@ -115,6 +117,7 @@ impl SqliteDb {
         let create_table_sql_event_source = tables::event_source::create_table_stmt();
         let create_table_sql_event_source_of_event =
             tables::event_source_of_event::create_table_stmt();
+        let create_table_sql_deploy_event_type = tables::deploy_event_type::create_table_stmt();
 
         // Raw Event table creation statements
         let create_table_sql_block_added = tables::block_added::create_table_stmt();
@@ -126,6 +129,7 @@ impl SqliteDb {
 
         let batched_created_table = vec![
             create_table_sql_event_type,
+            create_table_sql_deploy_event_type,
             create_table_sql_event_source,
             create_table_sql_event_source_of_event,
             create_table_sql_event_log,
@@ -146,14 +150,18 @@ impl SqliteDb {
 
         // Initialisation statements
         let initialise_sql_event_type = tables::event_type::create_initialise_stmt()?;
+        let initialise_sql_deploy_event_type = tables::deploy_event_type::create_initialise_stmt()?;
         let initialise_sql_event_source =
             tables::event_source::create_insert_stmt(node_ip_address)?;
 
-        let batched_initialise_tables =
-            vec![initialise_sql_event_type, initialise_sql_event_source]
-                .iter()
-                .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-                .join(";");
+        let batched_initialise_tables = vec![
+            initialise_sql_event_type,
+            initialise_sql_deploy_event_type,
+            initialise_sql_event_source,
+        ]
+        .iter()
+        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .join(";");
 
         connection
             .execute_batch(&batched_initialise_tables)
@@ -307,10 +315,7 @@ impl DatabaseWriter for SqliteDb {
         let id: u64 = db_connection.query_row_and_then(
             &get_max_id_stmt.to_string(SqliteQueryBuilder),
             [],
-            |row| {
-                row.get("event_log_id")
-                    .map_err(|err| Error::msg(err.to_string()))
-            },
+            |row| row.get("event_log_id").map_err(Error::from),
         )?;
 
         let insert_to_block_added_stmt = tables::block_added::create_insert_stmt(
@@ -329,19 +334,153 @@ impl DatabaseWriter for SqliteDb {
             .map_err(Error::from)
     }
 
-    async fn save_deploy_accepted(&self, deploy_accepted: DeployAccepted) -> Result<usize, Error> {
-        Ok(2)
+    async fn save_deploy_accepted(
+        &self,
+        deploy_accepted: DeployAccepted,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error> {
+        let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
+
+        let serialised_data = serde_json::to_string(&deploy_accepted)?;
+        let encoded_hash = hex::encode(deploy_accepted.deploy.id().inner());
+
+        let get_event_source_id_stmt =
+            tables::event_source::create_select_id_by_address_stmt(event_source_address);
+        let event_source_id = db_connection.query_row_and_then(
+            &get_event_source_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get::<&str, u8>("event_source_id"),
+        )?;
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::DeployAccepted as u8,
+            event_source_id,
+            event_id,
+        )
+        .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(&insert_to_event_log_stmt.to_string(SqliteQueryBuilder), [])
+            .map_err(Error::from)?;
+
+        let get_max_id_stmt = tables::event_log::create_get_max_id_stmt();
+
+        let id: u64 = db_connection.query_row_and_then(
+            &get_max_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get("event_log_id").map_err(Error::from),
+        )?;
+
+        let insert_to_deploy_accepted_stmt =
+            tables::deploy_accepted::create_insert_stmt(encoded_hash, serialised_data, id)
+                .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(
+                &insert_to_deploy_accepted_stmt.to_string(SqliteQueryBuilder),
+                [],
+            )
+            .map_err(Error::from)
     }
 
     async fn save_deploy_processed(
         &self,
         deploy_processed: DeployProcessed,
+        event_id: u64,
+        event_source_address: String,
     ) -> Result<usize, Error> {
-        Ok(2)
+        let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
+
+        let serialised_data = serde_json::to_string(&deploy_processed)?;
+        let encoded_hash = hex::encode(deploy_processed.deploy_hash.inner());
+
+        let get_event_source_id_stmt =
+            tables::event_source::create_select_id_by_address_stmt(event_source_address);
+        let event_source_id = db_connection.query_row_and_then(
+            &get_event_source_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get::<&str, u8>("event_source_id"),
+        )?;
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::DeployProcessed as u8,
+            event_source_id,
+            event_id,
+        )
+        .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(&insert_to_event_log_stmt.to_string(SqliteQueryBuilder), [])
+            .map_err(Error::from)?;
+
+        let get_max_id_stmt = tables::event_log::create_get_max_id_stmt();
+
+        let id: u64 = db_connection.query_row_and_then(
+            &get_max_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get("event_log_id").map_err(Error::from),
+        )?;
+
+        let insert_to_deploy_processed_stmt =
+            tables::deploy_processed::create_insert_stmt(encoded_hash, serialised_data, id)
+                .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(
+                &insert_to_deploy_processed_stmt.to_string(SqliteQueryBuilder),
+                [],
+            )
+            .map_err(Error::from)
     }
 
-    async fn save_deploy_expired(&self, deploy_expired: DeployExpired) -> Result<usize, Error> {
-        Ok(2)
+    async fn save_deploy_expired(
+        &self,
+        deploy_expired: DeployExpired,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error> {
+        let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
+
+        let encoded_hash = hex::encode(deploy_expired.deploy_hash.inner());
+
+        let get_event_source_id_stmt =
+            tables::event_source::create_select_id_by_address_stmt(event_source_address);
+        let event_source_id = db_connection.query_row_and_then(
+            &get_event_source_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get::<&str, u8>("event_source_id"),
+        )?;
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::DeployExpired as u8,
+            event_source_id,
+            event_id,
+        )
+        .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(&insert_to_event_log_stmt.to_string(SqliteQueryBuilder), [])
+            .map_err(Error::from)?;
+
+        let get_max_id_stmt = tables::event_log::create_get_max_id_stmt();
+
+        let id: u64 = db_connection.query_row_and_then(
+            &get_max_id_stmt.to_string(SqliteQueryBuilder),
+            [],
+            |row| row.get("event_log_id").map_err(Error::from),
+        )?;
+
+        let insert_to_deploy_expired_stmt =
+            tables::deploy_expired::create_insert_stmt(encoded_hash, id)
+                .context("Error constructing SQL statement")?;
+
+        db_connection
+            .execute(
+                &insert_to_deploy_expired_stmt.to_string(SqliteQueryBuilder),
+                [],
+            )
+            .map_err(Error::from)
     }
 
     async fn save_step(&self, step: Step) -> Result<usize, Error> {
@@ -473,11 +612,13 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then(
-            "SELECT accepted FROM deploys WHERE hash = ?",
-            [hash],
+            &tables::deploy_accepted::create_get_by_hash_stmt(hash.to_string())
+                .to_string(SqliteQueryBuilder),
+            [],
             |row| {
-                let deploy_string: String = row.get(0)?;
-                deserialize_data::<Deploy>(&deploy_string)
+                let raw = row.get::<&str, String>("raw")?;
+                deserialize_data::<DeployAccepted>(&raw)
+                    .map(|deploy_accepted| deploy_accepted.deploy.deref().to_owned())
             },
         )
         .map_err(wrap_query_error)
@@ -501,11 +642,12 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then(
-            "SELECT processed FROM deploys WHERE hash = ?",
-            [hash],
+            &tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
+                .to_string(SqliteQueryBuilder),
+            [],
             |row| {
-                let deploy_string: String = row.get(0)?;
-                deserialize_data::<DeployProcessed>(&deploy_string)
+                let raw = row.get::<&str, String>("raw")?;
+                deserialize_data::<DeployProcessed>(&raw)
             },
         )
         .map_err(wrap_query_error)
@@ -526,11 +668,12 @@ impl DatabaseReader for SqliteDb {
         })?;
 
         db.query_row_and_then(
-            "SELECT expired FROM deploys WHERE hash = ?",
-            [hash],
+            &tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
+                .to_string(SqliteQueryBuilder),
+            [],
             |row| {
-                let expired: u8 = row.get(0)?;
-                integer_to_bool(expired).map_err(|err| SqliteDbError::Internal(err))
+                let deploy_hash = row.get::<&str, String>("deploy_hash")?;
+                Ok(deploy_hash.eq(hash))
             },
         )
         .map_err(wrap_query_error)
@@ -541,44 +684,69 @@ impl DatabaseReader for SqliteDb {
             DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
         })?;
 
-        db.query_row_and_then("SELECT effect FROM steps WHERE era = ?", [era], |row| {
-            let effect_string: String = row.get(0)?;
-            let effect = deserialize_data::<ExecutionEffect>(&effect_string)?;
-            Ok(Step {
-                era_id: era.into(),
-                execution_effect: effect,
-            })
-        })
+        db.query_row_and_then(
+            &tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder),
+            [],
+            |row| {
+                let raw = row.get::<&str, String>("raw")?;
+                deserialize_data::<Step>(&raw)
+            },
+        )
         .map_err(wrap_query_error)
     }
 
-    // todo this should be taking a compound identifier maybe including Era to ensure it gets a single row
-    async fn get_fault_by_public_key(
+    async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Fault, DatabaseRequestError> {
+    ) -> Result<Faults, DatabaseRequestError> {
         let db = self.db.lock().map_err(|error| {
             DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
         })?;
 
-        db.query_row_and_then(
-            "SELECT * FROM faults WHERE public_key = ?",
-            [public_key],
-            |row| {
-                let era: u64 = row.get(0)?;
-                let public_key = PublicKey::from_hex(public_key)
-                    .map_err(|err| SqliteDbError::Internal(Error::from(err)))?;
-                let timestamp_string: String = row.get(2)?;
-                let timestamp = deserialize_data::<Timestamp>(&timestamp_string)?;
+        let stmt_string =
+            tables::fault::create_get_faults_by_public_key_stmt(public_key.to_string())
+                .to_string(SqliteQueryBuilder);
+        let mut statement = db
+            .prepare(&stmt_string)
+            .map_err(|err| wrap_query_error(err.into()))?;
 
-                Ok(Fault {
-                    era_id: era.into(),
-                    public_key,
-                    timestamp,
-                })
-            },
-        )
-        .map_err(wrap_query_error)
+        let rows = statement
+            .query_map([], |row| row.get::<&str, String>("raw"))
+            .map_err(|err| wrap_query_error(err.into()))?;
+
+        let mut faults = Vec::new();
+        for fault_result in rows {
+            let ok_val = fault_result.map_err(|err| wrap_query_error(err.into()))?;
+            let fault = deserialize_data::<Fault>(&ok_val).map_err(wrap_query_error)?;
+            faults.push(fault);
+        }
+
+        Ok(faults.into())
+    }
+
+    async fn get_faults_by_era(&self, era: u64) -> Result<Faults, DatabaseRequestError> {
+        let db = self.db.lock().map_err(|error| {
+            DatabaseRequestError::DBConnectionFailed(Error::msg(error.to_string()))
+        })?;
+
+        let stmt_string =
+            tables::fault::create_get_faults_by_era_stmt(era).to_string(SqliteQueryBuilder);
+        let mut statement = db
+            .prepare(&stmt_string)
+            .map_err(|err| wrap_query_error(err.into()))?;
+
+        let rows = statement
+            .query_map([], |row| row.get::<&str, String>("raw"))
+            .map_err(|err| wrap_query_error(err.into()))?;
+
+        let mut faults = Vec::new();
+        for fault_result in rows {
+            let ok_val = fault_result.map_err(|err| wrap_query_error(err.into()))?;
+            let fault = deserialize_data::<Fault>(&ok_val).map_err(wrap_query_error)?;
+            faults.push(fault);
+        }
+
+        Ok(faults.into())
     }
 }
 

@@ -10,7 +10,6 @@ enum DeployExpired {
     #[iden = "DeployExpired"]
     Table,
     DeployHash,
-    Raw,
     EventLogId,
 }
 
@@ -23,11 +22,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .string()
                 .not_null()
                 .primary_key(),
-        )
-        .col(
-            ColumnDef::new(DeployExpired::Raw)
-                .blob(BlobSize::Tiny)
-                .not_null(),
         )
         .col(
             ColumnDef::new(DeployExpired::EventLogId)
@@ -45,25 +39,17 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_insert_stmt(
-    deploy_hash: String,
-    raw: String,
-    event_log_id: u64,
-) -> SqResult<InsertStatement> {
+pub fn create_insert_stmt(deploy_hash: String, event_log_id: u64) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(DeployExpired::Table)
-        .columns([
-            DeployExpired::DeployHash,
-            DeployExpired::Raw,
-            DeployExpired::EventLogId,
-        ])
-        .values(vec![deploy_hash.into(), raw.into(), event_log_id.into()])
+        .columns([DeployExpired::DeployHash, DeployExpired::EventLogId])
+        .values(vec![deploy_hash.into(), event_log_id.into()])
         .map(|stmt| stmt.to_owned())
 }
 
 pub fn create_get_by_hash_stmt(deploy_hash: String) -> SelectStatement {
     Query::select()
-        .column(DeployExpired::Raw)
+        .column(DeployExpired::DeployHash)
         .from(DeployExpired::Table)
         .and_where(Expr::col(DeployExpired::DeployHash).eq(deploy_hash))
         .to_owned()

@@ -147,9 +147,11 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // Instantiates SQLite database
-    let storage: SqliteDb =
-        SqliteDb::new(Path::new(&config.storage.db_path), node_config.ip_address)
-            .context("Error instantiating database")?;
+    let storage: SqliteDb = SqliteDb::new(
+        Path::new(&config.storage.db_path),
+        node_config.ip_address.clone(),
+    )
+    .context("Error instantiating database")?;
 
     // // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
@@ -169,14 +171,12 @@ async fn run(config: Config) -> Result<(), Error> {
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");
 
+    let node_ip_address = node_config.ip_address.clone();
     // Task to manage incoming events from all three filters
     let sse_processing_task = async {
         while let Some(evt) = aggregate_events_rx.recv().await {
-            let event_id: u64 = evt
-                .id
-                .as_str()
-                .parse()
-                .map_err(|parse_err| Error::from(parse_err))?;
+            let event_id: u64 = evt.id.as_str().parse().map_err(Error::from)?;
+            let event_source_address = node_ip_address.clone();
 
             match serde_json::from_str::<SseData>(&evt.data) {
                 Ok(sse_data) => {
@@ -199,7 +199,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                         block_hash,
                                     },
                                     event_id,
-                                    "127.0.0.1".to_string(),
+                                    event_source_address,
                                 )
                                 .await;
 
@@ -213,7 +213,11 @@ async fn run(config: Config) -> Result<(), Error> {
                                 hash = hex::encode(deploy.id().inner()).as_str()
                             );
                             let res = storage
-                                .save_deploy_accepted(DeployAccepted { deploy })
+                                .save_deploy_accepted(
+                                    DeployAccepted { deploy },
+                                    event_id,
+                                    event_source_address,
+                                )
                                 .await;
 
                             if res.is_err() {
@@ -226,7 +230,11 @@ async fn run(config: Config) -> Result<(), Error> {
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
                             let res = storage
-                                .save_deploy_expired(DeployExpired { deploy_hash })
+                                .save_deploy_expired(
+                                    DeployExpired { deploy_hash },
+                                    event_id,
+                                    event_source_address,
+                                )
                                 .await;
 
                             if res.is_err() {
@@ -255,7 +263,13 @@ async fn run(config: Config) -> Result<(), Error> {
                                 message = "Deploy Processed:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage.save_deploy_processed(deploy_processed).await;
+                            let res = storage
+                                .save_deploy_processed(
+                                    deploy_processed,
+                                    event_id,
+                                    event_source_address,
+                                )
+                                .await;
 
                             if res.is_err() {
                                 warn!("Error updating processed deploy: {}", res.err().unwrap());

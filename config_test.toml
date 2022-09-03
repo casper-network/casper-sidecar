@@ -15,7 +15,9 @@ db_path = "./target/test_storage"
 sse_cache = "./target/test_storage"
 
 [rest_server]
+ip_address = "127.0.0.1"
 port = 17777
 
 [sse_server]
+ip_address = "127.0.0.1"
 port = 19999
