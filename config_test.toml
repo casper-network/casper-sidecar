@@ -8,7 +8,7 @@ ip_address="0.0.0.0"
 sse_port=9999
 [connection.node.local]
 ip_address="127.0.0.1"
-sse_port=9998
+sse_port=4444
 
 [storage]
 db_path = "./target/test_storage"
