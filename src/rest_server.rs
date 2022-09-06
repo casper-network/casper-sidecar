@@ -367,8 +367,8 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 
 #[cfg(test)]
 mod tests {
+    use crate::database::AggregateDeployInfo;
     use crate::rest_server::filters;
-    use crate::sqlite_db::AggregateDeployInfo;
     use crate::{sqlite_db, DeployProcessed, Fault, Step};
     use bytes::Bytes;
     use casper_node::types::{Block, Deploy};

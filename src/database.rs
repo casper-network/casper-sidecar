@@ -1,6 +1,6 @@
 use anyhow::Error;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use casper_node::types::{Block, Deploy, FinalitySignature};
 
@@ -8,7 +8,7 @@ use crate::types::structs::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Faults, Step,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AggregateDeployInfo {
     pub(crate) deploy_hash: String,
     pub(crate) deploy_accepted: Option<String>,

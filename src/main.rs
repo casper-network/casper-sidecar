@@ -12,11 +12,9 @@ mod utils;
 
 use crate::database::DatabaseWriter;
 use crate::event_stream_server::SseData;
-use crate::types::enums::DeployAtState;
 use crate::types::structs::{BlockAdded, DeployAccepted, DeployExpired, Fault, Step};
 use anyhow::{Context, Error};
 use bytes::Bytes;
-use casper_node::types::Block;
 use casper_types::AsymmetricType;
 use event_stream_server::{Config as SseConfig, EventStreamServer};
 use eventsource_stream::{EventStream, Eventsource};

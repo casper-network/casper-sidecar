@@ -11,7 +11,9 @@ use casper_node::types::{Block, Deploy, FinalitySignature};
 use casper_types::{AsymmetricType, ExecutionEffect, PublicKey, Timestamp};
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use rusqlite::{named_params, params, types::Value as SqlValue, Connection, OpenFlags, Row};
+use rusqlite::{
+    named_params, params, types::Value as SqlValue, Connection, OpenFlags, OptionalExtension, Row,
+};
 use sea_query::{
     BlobSize, ColumnDef, ForeignKey, ForeignKeyAction, Iden, SqliteQueryBuilder, Table,
 };
@@ -148,24 +150,38 @@ impl SqliteDb {
             .execute_batch(&batched_created_table)
             .context("Error creating tables")?;
 
+        // Check if node_ip_address is already in the DB to avoid duplicating the IP under different event_source_id's
+        let check_for_node_ip_stmt =
+            tables::event_source::create_select_id_by_address_stmt(node_ip_address.clone());
+        let node_ip_not_stored = connection
+            .query_row(
+                &check_for_node_ip_stmt.to_string(SqliteQueryBuilder),
+                [],
+                |row| row.get::<&str, u8>("event_source_id"),
+            )
+            .optional()?
+            .is_none();
+
+        if node_ip_not_stored {
+            connection.execute(
+                &tables::event_source::create_insert_stmt(node_ip_address)?
+                    .to_string(SqliteQueryBuilder),
+                [],
+            )?;
+        }
+
         // Initialisation statements
         let initialise_sql_event_type = tables::event_type::create_initialise_stmt()?;
         let initialise_sql_deploy_event_type = tables::deploy_event_type::create_initialise_stmt()?;
-        let initialise_sql_event_source =
-            tables::event_source::create_insert_stmt(node_ip_address)?;
 
-        let batched_initialise_tables = vec![
-            initialise_sql_event_type,
-            initialise_sql_deploy_event_type,
-            initialise_sql_event_source,
-        ]
-        .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-        .join(";");
+        let batched_initialise_tables =
+            vec![initialise_sql_event_type, initialise_sql_deploy_event_type]
+                .iter()
+                .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+                .join(";");
 
-        connection
-            .execute_batch(&batched_initialise_tables)
-            .context("Error creating tables")?;
+        // The error is swallowed because this call may fail if the tables were already created and populated.
+        let _ = connection.execute_batch(&batched_initialise_tables);
 
         Ok(SqliteDb {
             db: Arc::new(Mutex::new(connection)),
@@ -185,99 +201,6 @@ impl SqliteDb {
             file_path,
         })
     }
-
-    // Helper for the DatabaseWriter for inserting / updating records - internal only - not to be exposed in the API to other components
-    // fn insert_data(&self, data: Entity) -> Result<usize, Error> {
-    //     let db_connection = self.db.lock().map_err(|err| Error::msg(err.to_string()))?;
-    //
-    //     return match data {
-    //         Entity::Block(block) => {
-    //             // The same pattern is used for each entity, I have therefore only
-    //             // commented on it once - here.
-    //
-    //             // Extract and format the data for each column
-    //             let height = block.height().to_string();
-    //             let hash = hex::encode(block.hash().inner());
-    //             let block = serde_json::to_string(&block)?;
-    //
-    //             // Generate the SQL for INSERTing the new row
-    //             let insert_command = create_insert_stmt(Table::Blocks, &BLOCK_COLUMNS);
-    //
-    //             // Interpolate the positional parameters into the above statement and execute
-    //             db_connection
-    //                 .execute(&insert_command, params![height, hash, block])
-    //                 .map_err(Error::from)
-    //         }
-    //
-    //         Entity::Deploy(deploy) => {
-    //             match deploy {
-    //                 DeployAtState::Accepted(deploy) => {
-    //                     let hash = hex::encode(deploy.id().inner());
-    //                     let timestamp = deploy.header().timestamp().to_string();
-    //                     let json_deploy = serde_json::to_string(&deploy)?;
-    //
-    //                     let insert_command = create_insert_stmt(Table::Deploys, &DEPLOY_COLUMNS);
-    //
-    //                     // Params are DeployHash, Timestamp, DeployAccepted, DeployProcessed, Expired
-    //                     db_connection
-    //                         .execute(
-    //                             &insert_command,
-    //                             params![
-    //                                 hash,
-    //                                 timestamp,
-    //                                 json_deploy,
-    //                                 SqlValue::Null,
-    //                                 SqlValue::Integer(0)
-    //                             ],
-    //                         )
-    //                         .map_err(Error::from)
-    //                 }
-    //                 DeployAtState::Processed(deploy_processed) => {
-    //                     let hash = hex::encode(deploy_processed.deploy_hash.inner());
-    //                     let json_deploy = serde_json::to_string(&deploy_processed)?;
-    //
-    //                     let update_command = "UPDATE deploys SET processed = ? WHERE hash = ?";
-    //
-    //                     db_connection
-    //                         .execute(update_command, params![json_deploy, hash])
-    //                         .map_err(Error::from)
-    //                 }
-    //                 DeployAtState::Expired(deploy_hash) => {
-    //                     let hash = hex::encode(deploy_hash.inner());
-    //
-    //                     let update_command =
-    //                         format!("UPDATE deploys SET expired = {} WHERE hash = ?", 1i64);
-    //
-    //                     db_connection
-    //                         .execute(&update_command, params![hash])
-    //                         .map_err(Error::from)
-    //                 }
-    //             }
-    //         }
-    //         Entity::Fault(fault) => {
-    //             let era = fault.era_id.value().to_string();
-    //             let public_key = fault.public_key.to_hex();
-    //             let timestamp = fault.timestamp.to_string();
-    //
-    //             let insert_command = create_insert_stmt(Table::Faults, &FAULT_COLUMNS);
-    //
-    //             db_connection
-    //                 .execute(&insert_command, params![era, public_key, timestamp])
-    //                 .map_err(Error::from)
-    //         }
-    //         Entity::Step(step) => {
-    //             let era = step.era_id.value().to_string();
-    //             let execution_effect = serde_json::to_string(&step.execution_effect)
-    //                 .context("Error serializing Execution Effect")?;
-    //
-    //             let insert_command = create_insert_stmt(Table::Steps, &STEP_COLUMNS);
-    //
-    //             db_connection
-    //                 .execute(&insert_command, params![era, execution_effect])
-    //                 .map_err(Error::from)
-    //         }
-    //     };
-    // }
 }
 
 #[async_trait]
