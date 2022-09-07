@@ -3,6 +3,7 @@ name = "casper-event-sidecar"
 authors = ["George Williamson <george@casperlabs.io>"]
 version = "0.1.0"
 edition = "2018"
+readme = "README.md"
 
 # todo Remove unused dependencies
 [dependencies]
@@ -57,9 +58,9 @@ serial_test = "0.8.0"
 revision = "0"
 assets = [
     ["./target/release/casper-event-sidecar", "/usr/bin/casper-event-sidecar", "755"],
-    ["./resources/VAR_LIB_README.md", "/var/lib/casper/event-sidecar/README.md", "755"],
-    ["./resources/ETC_README.md", "/etc/casper/event-sidecar/README.md", "755"],
-    ["./resources/default_config.toml", "/etc/casper/event-sidecar/config.toml", "755"]
+    ["./README.md", "/var/lib/casper/event-sidecar/README.md", "644"],
+    ["./resources/ETC_README.md", "/etc/casper/event-sidecar/README.md", "644"],
+    ["./resources/default_config.toml", "/etc/casper/event-sidecar/config.toml", "644"]
 ]
 maintainer-scripts = "./resources/maintainer_scripts/debian"
 extended-description = """
@@ -70,3 +71,10 @@ Package for Casper Event Sidecar
 unit-scripts = "./resources/maintainer_scripts/casper_event_sidecar"
 restart-after-upgrade = false
 
+[package.metadata.deb.variants.bionic]
+name = "casper-client"
+revision = "0+bionic"
+
+[package.metadata.deb.variants.focal]
+name = "casper-client"
+revision = "0+focal"
