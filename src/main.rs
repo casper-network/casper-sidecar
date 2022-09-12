@@ -32,7 +32,7 @@ const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to
 
 fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
     if error.to_string().contains(CONNECTION_REFUSED) {
-        Error::msg(&CONNECTION_ERR_MSG)
+        Error::msg(CONNECTION_ERR_MSG)
     } else {
         Error::from(error)
     }
