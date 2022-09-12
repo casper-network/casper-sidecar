@@ -1,0 +1,55 @@
+---
+name: ci-casper-event-sidecar
+
+on:
+  push:
+    branches:
+      - "dev"
+      - "feat-*"
+      - "release-*"
+    paths-ignore:
+      - '**.md'
+
+  pull_request:
+    branches:
+      - "dev"
+      - "feat-*"
+      - "release-*"
+    paths-ignore:
+      - '**.md'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, ubuntu-20.04, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+      - uses: Swatinem/rust-cache@cb2cf0cc7c5198d3364b9630e2c3d457f160790c #v1.4.0
+
+      - name: update toolchain
+        run: rustup update nightly
+
+      - name: fmt
+        run: cargo +nightly fmt -- --check
+
+      - name: clippy
+        run: cargo +nightly clippy -- --deny warnings
+
+      - name: audit
+        run: cargo +nightly audit --deny warnings
+
+      - name: test
+        run: cargo +nightly test
+
+      - name: install cargo packaging tools
+        run: |
+          cargo install cargo-deb
+
+      - name: deb
+        run: cargo +nightly deb
