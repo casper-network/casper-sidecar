@@ -36,13 +36,13 @@ jobs:
         run: rustup update nightly
 
       - name: fmt
-        run: cargo +nightly fmt -- --check
+        run: cargo fmt -- --check
 
       - name: clippy
-        run: cargo +nightly clippy -- --deny warnings
+        run: cargo clippy -- --deny warnings
 
       - name: audit
-        run: cargo +nightly audit --deny warnings
+        run: cargo audit --deny warnings
 
       - name: test
         run: cargo +nightly test
