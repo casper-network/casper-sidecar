@@ -33,23 +33,23 @@ jobs:
       - uses: Swatinem/rust-cache@cb2cf0cc7c5198d3364b9630e2c3d457f160790c #v1.4.0
 
       - name: update toolchain
-        run: rustup update nightly
+        run: rustup update
 
       - name: fmt
         run: cargo fmt -- --check
 
       - name: clippy
-        run: cargo +nightly clippy -- --deny warnings
+        run: cargo clippy -- --deny warnings
 
       - name: audit
         run: cargo audit --deny warnings
 
       - name: test
-        run: cargo +nightly test
+        run: cargo test
 
       - name: install cargo packaging tools
         run: |
           cargo install cargo-deb
 
       - name: deb
-        run: cargo +nightly deb
+        run: cargo deb
