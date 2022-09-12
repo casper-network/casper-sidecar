@@ -24,7 +24,6 @@ use sqlite_db::SqliteDb;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
-use tracing_subscriber;
 use types::enums::Network;
 use types::structs::{Config, DeployProcessed};
 

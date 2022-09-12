@@ -316,7 +316,7 @@ impl DatabaseReader for SqliteDb {
         db.query_row_and_then(
             "SELECT * FROM deploys ORDER BY timestamp DESC LIMIT 1",
             [],
-            |row| extract_aggregate_deploy_info(row),
+            extract_aggregate_deploy_info,
         )
         .map_err(wrap_query_error)
     }
@@ -419,7 +419,7 @@ impl DatabaseReader for SqliteDb {
             [hash],
             |row| {
                 let expired: u8 = row.get(0)?;
-                integer_to_bool(expired).map_err(|err| DatabaseError::Internal(err))
+                integer_to_bool(expired).map_err(DatabaseError::Internal)
             },
         )
         .map_err(wrap_query_error)

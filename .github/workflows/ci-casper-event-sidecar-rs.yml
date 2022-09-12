@@ -39,7 +39,7 @@ jobs:
         run: cargo fmt -- --check
 
       - name: clippy
-        run: cargo clippy -- --deny warnings
+        run: cargo +nightly clippy -- --deny warnings
 
       - name: audit
         run: cargo audit --deny warnings
