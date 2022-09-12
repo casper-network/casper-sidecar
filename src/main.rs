@@ -160,19 +160,18 @@ async fn run(config: Config) -> Result<(), Error> {
         storage.file_path.clone(),
         config.rest_server.ip_address,
         config.rest_server.port,
-    ).await?;
+    )
+    .await?;
 
     let rest_server_handle = tokio::spawn(rest_server_future);
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_specified(
-            config.sse_server.ip_address,
-            config.sse_server.port
-        ),
+        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
         PathBuf::from(config.storage.sse_cache),
-        api_version
-    ).context("Error starting EventStreamServer")?;
+        api_version,
+    )
+    .context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");

@@ -10,8 +10,9 @@ use wheelbuf::WheelBuf;
 use casper_types::ProtocolVersion;
 
 use super::{
+    config::Config,
+    event_indexer::EventIndex,
     sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent, SseData},
-    config::Config, event_indexer::EventIndex,
 };
 
 /// Run the HTTP server.

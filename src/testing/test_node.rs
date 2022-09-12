@@ -2,22 +2,22 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
 // use std::vec::IntoIter;
-use casper_types::ProtocolVersion;
+use crate::SseData;
 use casper_types::testing::TestRng;
+use casper_types::ProtocolVersion;
+#[allow(unused)]
+use eventsource_stream::{EventStream, Eventsource};
 #[allow(unused)]
 use futures::{Stream, StreamExt};
 use futures_util::stream;
 #[allow(unused)]
-use futures_util::stream::{Map, Zip, Iter, IntoStream};
-#[allow(unused)]
-use eventsource_stream::{EventStream, Eventsource};
-#[allow(unused)]
-use tokio::time::{Instant, interval};
+use futures_util::stream::{IntoStream, Iter, Map, Zip};
+use serial_test::serial;
 use tokio::sync::oneshot;
+#[allow(unused)]
+use tokio::time::{interval, Instant};
 use tokio_stream::wrappers::IntervalStream;
 use warp::{sse::Event, Filter};
-use crate::SseData;
-use serial_test::serial;
 
 // fn build_event<I>(id: Option<I>, data: SseData) -> Result<Event, Infallible>
 //     where I: Into<String>,
@@ -51,101 +51,124 @@ fn enclose_events_data(data: &mut Vec<SseData>, add_shutdown: bool) -> Vec<SseDa
     data.to_owned()
 }
 
-async fn start_test_node(port: u16, started_notification_sender: oneshot::Sender<()>, shutdown_receiver: oneshot::Receiver<()>, num_events: usize) -> SocketAddr {
-
+async fn start_test_node(
+    port: u16,
+    started_notification_sender: oneshot::Sender<()>,
+    shutdown_receiver: oneshot::Receiver<()>,
+    num_events: usize,
+) -> SocketAddr {
     let mut rng = TestRng::new();
 
-    let mut blocks_data: Vec<SseData> =
-        (1..=num_events).map(|_| {
-        SseData::random_block_added(&mut rng)
-    }).collect();
+    let mut blocks_data: Vec<SseData> = (1..=num_events)
+        .map(|_| SseData::random_block_added(&mut rng))
+        .collect();
     blocks_data = enclose_events_data(&mut blocks_data, true);
 
-    let mut deploys_data: Vec<SseData> =
-        (1..=num_events).map(|_| {
-            SseData::random_deploy_processed(&mut rng)
-        }).collect();
+    let mut deploys_data: Vec<SseData> = (1..=num_events)
+        .map(|_| SseData::random_deploy_processed(&mut rng))
+        .collect();
     deploys_data = enclose_events_data(&mut deploys_data, true);
 
-    let mut sigs_data: Vec<SseData> =
-        (1..=num_events).map(|_| {
-            SseData::random_finality_signature(&mut rng)
-        }).collect();
+    let mut sigs_data: Vec<SseData> = (1..=num_events)
+        .map(|_| SseData::random_finality_signature(&mut rng))
+        .collect();
     sigs_data = enclose_events_data(&mut sigs_data, true);
 
     let event_root = warp::path("events");
 
-    let main_channel = event_root.and(warp::path("main")).and(warp::path::end()).map(move || {
+    let main_channel = event_root
+        .and(warp::path("main"))
+        .and(warp::path::end())
+        .map(move || {
+            let cloned_data = blocks_data.clone();
 
-        let cloned_data = blocks_data.clone();
+            let mut counter: u8 = 0;
+            let interval = interval(Duration::from_millis(500));
+            let timer_stream = IntervalStream::new(interval);
+            let data_stream = stream::iter(cloned_data);
+            let combined_stream = timer_stream.zip(data_stream);
 
-        let mut counter: u8 = 0;
-        let interval = interval(Duration::from_millis(500));
-        let timer_stream = IntervalStream::new(interval);
-        let data_stream = stream::iter(cloned_data);
-        let combined_stream = timer_stream.zip(data_stream);
+            let event_stream = combined_stream.map(move |(_, data)| {
+                let event = match counter {
+                    0 => Event::default()
+                        .json_data(data)
+                        .expect("Error building Event"),
+                    _ => Event::default()
+                        .id(counter.to_string())
+                        .json_data(data)
+                        .expect("Error building Event"),
+                };
+                counter += 1;
+                Result::<Event, Infallible>::Ok(event)
+            });
 
-        let event_stream = combined_stream.map(move |(_, data)| {
-            let event = match counter {
-                0 => Event::default().json_data(data).expect("Error building Event"),
-                _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
-            };
-            counter += 1;
-            Result::<Event, Infallible>::Ok(event)
+            warp::sse::reply(event_stream)
         });
 
-        warp::sse::reply(event_stream)
-    });
+    let deploys_channel = event_root
+        .and(warp::path("deploys"))
+        .and(warp::path::end())
+        .map(move || {
+            let cloned_data = deploys_data.clone();
 
-    let deploys_channel = event_root.and(warp::path("deploys")).and(warp::path::end()).map(move || {
+            let mut counter: u8 = 0;
+            let interval = interval(Duration::from_millis(500));
+            let timer_stream = IntervalStream::new(interval);
+            let data_stream = stream::iter(cloned_data);
+            let combined_stream = timer_stream.zip(data_stream);
 
-        let cloned_data = deploys_data.clone();
+            let event_stream = combined_stream.map(move |(_, data)| {
+                let event = match counter {
+                    0 => Event::default()
+                        .json_data(data)
+                        .expect("Error building Event"),
+                    _ => Event::default()
+                        .id(counter.to_string())
+                        .json_data(data)
+                        .expect("Error building Event"),
+                };
+                counter += 1;
+                Result::<Event, Infallible>::Ok(event)
+            });
 
-        let mut counter: u8 = 0;
-        let interval = interval(Duration::from_millis(500));
-        let timer_stream = IntervalStream::new(interval);
-        let data_stream = stream::iter(cloned_data);
-        let combined_stream = timer_stream.zip(data_stream);
-
-        let event_stream = combined_stream.map(move |(_, data)| {
-            let event = match counter {
-                0 => Event::default().json_data(data).expect("Error building Event"),
-                _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
-            };
-            counter += 1;
-            Result::<Event, Infallible>::Ok(event)
+            warp::sse::reply(event_stream)
         });
 
-        warp::sse::reply(event_stream)
-    });
+    let sigs_channel = event_root
+        .and(warp::path("sigs"))
+        .and(warp::path::end())
+        .map(move || {
+            let cloned_data = sigs_data.clone();
 
-    let sigs_channel = event_root.and(warp::path("sigs")).and(warp::path::end()).map(move || {
+            let mut counter: u8 = 0;
+            let interval = interval(Duration::from_millis(500));
+            let timer_stream = IntervalStream::new(interval);
+            let data_stream = stream::iter(cloned_data);
+            let combined_stream = timer_stream.zip(data_stream);
 
-        let cloned_data = sigs_data.clone();
+            let event_stream = combined_stream.map(move |(_, data)| {
+                let event = match counter {
+                    0 => Event::default()
+                        .json_data(data)
+                        .expect("Error building Event"),
+                    _ => Event::default()
+                        .id(counter.to_string())
+                        .json_data(data)
+                        .expect("Error building Event"),
+                };
+                counter += 1;
+                Result::<Event, Infallible>::Ok(event)
+            });
 
-        let mut counter: u8 = 0;
-        let interval = interval(Duration::from_millis(500));
-        let timer_stream = IntervalStream::new(interval);
-        let data_stream = stream::iter(cloned_data);
-        let combined_stream = timer_stream.zip(data_stream);
-
-        let event_stream = combined_stream.map(move |(_, data)| {
-            let event = match counter {
-                0 => Event::default().json_data(data).expect("Error building Event"),
-                _ => Event::default().id(counter.to_string()).json_data(data).expect("Error building Event"),
-            };
-            counter += 1;
-            Result::<Event, Infallible>::Ok(event)
+            warp::sse::reply(event_stream)
         });
-
-        warp::sse::reply(event_stream)
-    });
 
     let routes = main_channel.or(deploys_channel).or(sigs_channel);
 
-    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(([127,0,0,1],port), async {
-        shutdown_receiver.await.ok();
-    });
+    let (addr, server) =
+        warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], port), async {
+            shutdown_receiver.await.ok();
+        });
 
     tokio::spawn(async {
         let _ = started_notification_sender.send(());
@@ -155,13 +178,21 @@ async fn start_test_node(port: u16, started_notification_sender: oneshot::Sender
     return addr;
 }
 
-pub(crate) async fn start_test_node_with_shutdown(port: u16, num_events: Option<usize>) -> oneshot::Sender<()> {
+pub(crate) async fn start_test_node_with_shutdown(
+    port: u16,
+    num_events: Option<usize>,
+) -> oneshot::Sender<()> {
     let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
     let (node_started_tx, node_started_rx) = oneshot::channel();
 
-    let num_events = num_events.unwrap_or_else(|| { DEFAULT_NUM_OF_TEST_EVENTS });
+    let num_events = num_events.unwrap_or_else(|| DEFAULT_NUM_OF_TEST_EVENTS);
 
-    tokio::spawn(start_test_node(port, node_started_tx, node_shutdown_rx, num_events));
+    tokio::spawn(start_test_node(
+        port,
+        node_started_tx,
+        node_shutdown_rx,
+        num_events,
+    ));
 
     // Wait for the test node to report that it's live
     let _ = node_started_rx.await;
@@ -169,7 +200,7 @@ pub(crate) async fn start_test_node_with_shutdown(port: u16, num_events: Option<
     node_shutdown_tx
 }
 
-#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
 async fn should_connect_then_gracefully_shutdown() {
     let test_node_port: u16 = 4444;
@@ -185,17 +216,13 @@ async fn should_connect_then_gracefully_shutdown() {
         .bytes_stream()
         .eventsource();
 
-    let first_event = connection
-        .next()
-        .await
-        .unwrap()
-        .unwrap();
+    let first_event = connection.next().await.unwrap().unwrap();
     assert!(first_event.data.contains("ApiVersion"));
 
     let _ = node_shutdown_tx.send(());
 }
 
-#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
 async fn main_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
@@ -214,14 +241,14 @@ async fn main_filter_should_provide_valid_data() {
     while let Some(event) = connection.next().await {
         let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
-            break
+            break;
         }
     }
 
     let _ = node_shutdown_tx.send(());
 }
 
-#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
 async fn deploys_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
@@ -240,14 +267,14 @@ async fn deploys_filter_should_provide_valid_data() {
     while let Some(event) = connection.next().await {
         let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
-            break
+            break;
         }
     }
 
     let _ = node_shutdown_tx.send(());
 }
 
-#[tokio::test(flavor="multi_thread", worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
 async fn sigs_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
@@ -266,7 +293,7 @@ async fn sigs_filter_should_provide_valid_data() {
     while let Some(event) = connection.next().await {
         let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
         if matches!(sse, SseData::Shutdown) {
-            break
+            break;
         }
     }
 
