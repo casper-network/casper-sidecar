@@ -1,5 +1,5 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, Iden, InsertStatement, Order, Query,
+    error::Result as SqResult, ColumnDef, Expr, Iden, InsertStatement, Query,
     SelectStatement, Table, TableCreateStatement,
 };
 

@@ -1,7 +1,7 @@
 use super::event_source::EventSource;
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Order, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, InsertStatement,
+    Query, Table, TableCreateStatement,
 };
 
 #[derive(Iden)]
@@ -36,6 +36,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
+#[allow(unused)]
 pub fn create_insert_stmt(event_id: u64, event_source_id: u8) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(EventSourceOfEvent::Table)

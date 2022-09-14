@@ -1,14 +1,9 @@
 use crate::sql::tables::event_source::EventSource;
-use crate::sql::tables::event_type::EventTypeId;
-use crate::SqliteDb;
+
 use sea_query::{
-    error::Result as SqResult, ColumnDef, ColumnRef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, QueryStatementBuilder, SelectStatement, SimpleExpr, SqliteQueryBuilder,
-    Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
+    InsertStatement, Query, QueryStatementBuilder, SimpleExpr, Table, TableCreateStatement,
 };
-use std::io::Error;
-use std::path::Path;
-use tracing::error;
 
 use super::event_type::EventType;
 
@@ -58,16 +53,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-//Query::insert()
-//     .into_table(Glyph::Table)
-//     .columns([Glyph::Aspect, Glyph::Image])
-//     .exprs([Expr::val(1).into(), SimpleExpr::SubQuery(Box::new( // Or, `exprs_panic`
-//         Query::select()
-//         .column(Glyph::Aspect)
-//         .from(Glyph::Table)
-//         .to_owned()
-//         .into_sub_query_statement()))])
-
 pub fn create_insert_stmt(
     event_type_id: u8,
     event_source_address: &str,
@@ -95,21 +80,4 @@ pub fn create_insert_stmt(
         .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
 
     Ok(insert_stmt)
-
-    // format!(
-    //     r#"INSERT INTO "event_log" ("event_type_id", "event_source_id", "event_id") VALUES ({}, (SELECT "event_source_id" FROM "event_source" WHERE "event_source_address" = "{}"), {}) RETURNING "event_log_id""#,
-    //     event_type_id, event_source_address, event_id
-    // )
-}
-
-pub fn create_get_latest_deploy_event_log_id() -> SelectStatement {
-    Query::select()
-        .column(EventLog::EventLogId)
-        .and_where(Expr::col(EventLog::EventTypeId).is_in(vec![
-            EventTypeId::DeployAccepted as u8,
-            EventTypeId::DeployProcessed as u8,
-            EventTypeId::DeployExpired as u8,
-        ]))
-        .limit(1)
-        .to_owned()
 }

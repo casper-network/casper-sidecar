@@ -1,15 +1,15 @@
 use crate::database::DatabaseRequestError;
 use crate::sqlite_db::SqliteDb;
-use crate::utils::{resolve_address, ListeningError};
+use crate::utils::resolve_address;
 use anyhow::Error;
 use serde::Serialize;
 use std::convert::Infallible;
-use std::future::Future;
+
 use std::path::PathBuf;
-use tokio::sync::oneshot;
-use tracing::{error, info, warn};
+
+use tracing::error;
 use warp::http::StatusCode;
-use warp::{cors, Filter, Rejection, Reply};
+use warp::{Rejection, Reply};
 
 mod filters {
     use crate::database::DatabaseReader;
@@ -320,11 +320,6 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
         message = format!("Serialization Error: {}", err);
     } else if let Some(StorageError(err)) = err.find() {
         match err {
-            DatabaseRequestError::DBConnectionFailed(err) => {
-                warn!(message = format!("Sqlite DB error processing request: {}", err).as_str());
-                code = StatusCode::INTERNAL_SERVER_ERROR;
-                message = format!("Failed to connect to DB instance: {}", err)
-            }
             DatabaseRequestError::NotFound => {
                 code = StatusCode::NOT_FOUND;
                 message = "Query returned no data".to_string();
@@ -368,10 +363,10 @@ mod tests {
     use crate::rest_server::filters;
     use crate::sqlite_db::SqliteDb;
     use crate::types::sse_events::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step};
-    use crate::DatabaseWriter;
+
     use bytes::Bytes;
-    use casper_node::types::{Block, Deploy};
-    use casper_types::{AsymmetricType, EraId, PublicKey, Timestamp};
+
+    use casper_types::AsymmetricType;
     use http::{Response, StatusCode};
     use std::path::Path;
     use warp::test::request;
@@ -386,6 +381,8 @@ mod tests {
     const STORED_BLOCK_HEIGHT: u64 = 49;
     const STORED_ACCEPTED_PROCESSED_DEPLOY_HASH: &str =
         "ce0e3468df750d3b4297f1510e6c0770a355374d70ac040c5ea7e72680d1b785";
+    const STORED_EXPIRED_DEPLOY_HASH: &str =
+        "339980e662fed93e6d54f5832208ca75cb1a219c6efabb2e442681ba74c11c3d";
     const STORED_STEP_ERA_ID: u64 = 5;
     const STORED_FAULT_PUBLIC_KEY: &str =
         "014d3f346385e22857737177c27326affbe696f621536ba14c73c0b81b9e94e61c";
@@ -508,7 +505,7 @@ mod tests {
 
     #[tokio::test]
     async fn deploy_expired_by_hash_should_return_valid_data() {
-        let path = format!("/deploy/expired/{}", STORED_ACCEPTED_PROCESSED_DEPLOY_HASH);
+        let path = format!("/deploy/expired/{}", STORED_EXPIRED_DEPLOY_HASH);
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();

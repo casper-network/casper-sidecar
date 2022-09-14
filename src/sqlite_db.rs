@@ -4,27 +4,23 @@ use crate::sql::tables::event_type::EventTypeId;
 use crate::types::sse_events::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
 };
-use crate::SseData;
-use anyhow::{Context, Error};
+
+use anyhow::Error;
 use async_trait::async_trait;
-use casper_node::types::Deploy;
+
 use casper_types::AsymmetricType;
-use futures_util::{StreamExt, TryStreamExt};
+use futures_util::StreamExt;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
-use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteError, SqliteJournalMode, SqliteQueryResult, SqliteRow,
-};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteQueryResult, SqliteRow};
 use sqlx::{
-    pool::PoolConnection,
     sqlite::{SqlitePool, SqlitePoolOptions},
-    ConnectOptions, Executor, Row, Sqlite,
+    ConnectOptions, Executor, Row,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 
 const MAX_WRITE_CONNECTIONS: u32 = 10;
 const MAX_READ_CONNECTIONS: u32 = 100;
@@ -147,6 +143,18 @@ fn handle_sqlite_result(result: Result<SqliteQueryResult, sqlx::Error>) -> Resul
         .map(|sqlite_res| sqlite_res.rows_affected() as usize)
 }
 
+async fn execute_many_with_error_check(
+    connection: &SqlitePool,
+    batched_stmts: String,
+) -> Result<(), Error> {
+    while let Some(result) = connection.execute_many(batched_stmts.as_str()).next().await {
+        if let Err(sqlite_err) = result {
+            return Err(Error::from(sqlite_err));
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl DatabaseWriter for SqliteDb {
     async fn save_block_added(
@@ -224,17 +232,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        while let Some(result) = db_connection
-            .execute_many(batched_insert_stmts.as_str())
-            .next()
-            .await
-        {
-            if let Err(sqlite_err) = result {
-                return Err(Error::from(sqlite_err));
-            }
-        }
-
-        Ok(())
+        execute_many_with_error_check(db_connection, batched_insert_stmts).await
     }
 
     async fn save_deploy_processed(
@@ -272,17 +270,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        while let Some(result) = db_connection
-            .execute_many(batched_insert_stmts.as_str())
-            .next()
-            .await
-        {
-            if let Err(sqlite_err) = result {
-                return Err(Error::from(sqlite_err));
-            }
-        }
-
-        Ok(())
+        execute_many_with_error_check(db_connection, batched_insert_stmts).await
     }
 
     async fn save_deploy_expired(
@@ -315,17 +303,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        while let Some(result) = db_connection
-            .execute_many(batched_insert_stmts.as_str())
-            .next()
-            .await
-        {
-            if let Err(sqlite_err) = result {
-                return Err(Error::from(sqlite_err));
-            }
-        }
-
-        Ok(())
+        execute_many_with_error_check(db_connection, batched_insert_stmts).await
     }
 
     async fn save_step(
@@ -391,7 +369,7 @@ impl DatabaseWriter for SqliteDb {
 
     async fn save_finality_signature(
         &self,
-        finality_signature: FinalitySignature,
+        _finality_signature: FinalitySignature,
     ) -> Result<usize, Error> {
         Err(Error::msg("Not implemented yet"))
     }
@@ -404,6 +382,20 @@ fn parse_block_from_row(row: SqliteRow) -> Result<BlockAdded, DatabaseRequestErr
     deserialize_data::<BlockAdded>(&raw_data).map_err(wrap_query_error)
 }
 
+async fn fetch_optional_with_error_check(
+    connection: &SqlitePool,
+    stmt: String,
+) -> Result<SqliteRow, DatabaseRequestError> {
+    connection
+        .fetch_optional(stmt.as_str())
+        .await
+        .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+        .and_then(|maybe_row| match maybe_row {
+            None => Err(DatabaseRequestError::NotFound),
+            Some(row) => Ok(row),
+        })
+}
+
 #[async_trait]
 impl DatabaseReader for SqliteDb {
     async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError> {
@@ -411,14 +403,9 @@ impl DatabaseReader for SqliteDb {
 
         let stmt = tables::block_added::create_get_latest_stmt().to_string(SqliteQueryBuilder);
 
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
-                Some(row) => parse_block_from_row(row),
-            })
+        let row = fetch_optional_with_error_check(db_connection, stmt).await?;
+
+        parse_block_from_row(row)
     }
 
     async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseRequestError> {
@@ -427,14 +414,9 @@ impl DatabaseReader for SqliteDb {
         let stmt =
             tables::block_added::create_get_by_height_stmt(height).to_string(SqliteQueryBuilder);
 
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
-                Some(row) => parse_block_from_row(row),
-            })
+        let row = fetch_optional_with_error_check(db_connection, stmt).await?;
+
+        parse_block_from_row(row)
     }
 
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError> {
@@ -476,7 +458,7 @@ impl DatabaseReader for SqliteDb {
             .await
             .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => return Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseRequestError::NotFound),
                 Some(row) => row
                     .try_get::<String, &str>("deploy_hash")
                     .map_err(|sqlx_err| wrap_query_error(sqlx_err.into())),
@@ -583,7 +565,7 @@ impl DatabaseReader for SqliteDb {
 
         let db_connection = &self.connection_pool;
 
-        let stmt = tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
+        let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
             .to_string(SqliteQueryBuilder);
 
         db_connection
@@ -694,7 +676,6 @@ fn check_public_key_is_correct_format(public_key_hex: &str) -> Result<(), Databa
 enum SqliteDbError {
     Sqlx(sqlx::Error),
     SerdeJson(serde_json::Error),
-    Internal(Error),
 }
 
 impl From<sqlx::Error> for SqliteDbError {
@@ -710,37 +691,9 @@ fn wrap_query_error(error: SqliteDbError) -> DatabaseRequestError {
             _ => DatabaseRequestError::Unhandled(Error::from(err)),
         },
         SqliteDbError::SerdeJson(err) => DatabaseRequestError::Serialisation(Error::from(err)),
-        SqliteDbError::Internal(err) => DatabaseRequestError::Unhandled(err),
     }
 }
 
 fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
     serde_json::from_str::<T>(data).map_err(SqliteDbError::SerdeJson)
-}
-
-// fn extract_aggregate_deploy_info(deploy_row: &Row) -> Result<AggregateDeployInfo, SqliteDbError> {
-//     let mut aggregate_deploy: AggregateDeployInfo = AggregateDeployInfo {
-//         deploy_hash: "".to_string(),
-//         deploy_accepted: None,
-//         deploy_processed: None,
-//         deploy_expired: false,
-//     };
-//
-//     aggregate_deploy.deploy_hash = deploy_row.get(0)?;
-//     aggregate_deploy.deploy_accepted = deploy_row.get::<usize, Option<String>>(2)?;
-//     aggregate_deploy.deploy_processed = deploy_row.get::<usize, Option<String>>(3)?;
-//     aggregate_deploy.deploy_expired = match deploy_row.get::<usize, u8>(4) {
-//         Ok(int) => integer_to_bool(int).map_err(SqliteDbError::Internal)?,
-//         Err(err) => return Err(SqliteDbError::Rusqlite(err)),
-//     };
-//
-//     Ok(aggregate_deploy)
-// }
-
-fn integer_to_bool(integer: u8) -> Result<bool, Error> {
-    match integer {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(Error::msg("Invalid bool number in DB")),
-    }
 }

@@ -89,7 +89,6 @@ pub trait DatabaseReader {
 
 #[derive(Debug)]
 pub enum DatabaseRequestError {
-    DBConnectionFailed(Error),
     NotFound,
     InvalidParam(Error),
     Serialisation(Error),

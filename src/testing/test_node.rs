@@ -175,7 +175,7 @@ async fn start_test_node(
         server.await
     });
 
-    return addr;
+    addr
 }
 
 pub(crate) async fn start_test_node_with_shutdown(
@@ -185,7 +185,7 @@ pub(crate) async fn start_test_node_with_shutdown(
     let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
     let (node_started_tx, node_started_rx) = oneshot::channel();
 
-    let num_events = num_events.unwrap_or_else(|| DEFAULT_NUM_OF_TEST_EVENTS);
+    let num_events = num_events.unwrap_or(DEFAULT_NUM_OF_TEST_EVENTS);
 
     tokio::spawn(start_test_node(
         port,

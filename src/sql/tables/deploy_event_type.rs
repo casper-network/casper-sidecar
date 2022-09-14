@@ -1,6 +1,5 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, Iden, InsertStatement, Order, Query,
-    SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Iden, InsertStatement, Query, Table, TableCreateStatement,
 };
 
 #[derive(Iden)]
@@ -11,9 +10,9 @@ pub(super) enum DeployEventType {
 }
 
 pub enum DeployEventTypeId {
-    DeployAccepted = 1,
-    DeployExpired = 2,
-    DeployProcessed = 3,
+    Accepted = 1,
+    Expired = 2,
+    Processed = 3,
 }
 
 pub fn create_table_stmt() -> TableCreateStatement {
@@ -43,15 +42,15 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
             DeployEventType::DeployEventTypeName,
         ])
         .values(vec![
-            (DeployEventTypeId::DeployAccepted as u8).into(),
+            (DeployEventTypeId::Accepted as u8).into(),
             "DeployAccepted".into(),
         ])?
         .values(vec![
-            (DeployEventTypeId::DeployExpired as u8).into(),
+            (DeployEventTypeId::Expired as u8).into(),
             "DeployExpired".into(),
         ])?
         .values(vec![
-            (DeployEventTypeId::DeployProcessed as u8).into(),
+            (DeployEventTypeId::Processed as u8).into(),
             "DeployProcessed".into(),
         ])?
         .to_owned())

@@ -1,6 +1,5 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, Iden, InsertStatement, Order, Query,
-    SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Iden, InsertStatement, Query, Table, TableCreateStatement,
 };
 
 #[derive(Iden)]

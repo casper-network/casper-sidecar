@@ -289,7 +289,7 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                let _ = server.broadcast(event.clone());
+                server.broadcast(event.clone());
                 server_behavior.sleep_if_required().await;
             }
 
