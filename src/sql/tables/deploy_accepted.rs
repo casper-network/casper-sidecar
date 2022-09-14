@@ -6,7 +6,7 @@ use sea_query::{
 use super::event_log::EventLog;
 
 #[derive(Iden)]
-enum DeployAccepted {
+pub(super) enum DeployAccepted {
     #[iden = "DeployAccepted"]
     Table,
     DeployHash,

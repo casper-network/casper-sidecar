@@ -6,10 +6,11 @@ use sea_query::{
 use super::event_log::EventLog;
 
 #[derive(Iden)]
-enum DeployExpired {
+pub(super) enum DeployExpired {
     #[iden = "DeployExpired"]
     Table,
     DeployHash,
+    Raw,
     EventLogId,
 }
 
@@ -23,6 +24,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .not_null()
                 .primary_key(),
         )
+        .col(ColumnDef::new(DeployExpired::Raw).boolean().default(true))
         .col(
             ColumnDef::new(DeployExpired::EventLogId)
                 .integer()

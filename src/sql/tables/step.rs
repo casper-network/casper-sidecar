@@ -25,7 +25,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
             ForeignKey::create()
                 .name("FK_event_log_id")
                 .from(Step::Table, Step::EventLogId)
-                .to(EventLog::EventLogId, EventLog::EventLogId)
+                .to(EventLog::Table, EventLog::EventLogId)
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
         )

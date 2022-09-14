@@ -172,14 +172,14 @@ mod filters {
 
 mod handlers {
     use crate::database::DatabaseReader;
-    use crate::rest_server::serialize_or_reject_storage_result;
+    use crate::rest_server::format_or_reject_storage_result;
     use warp::{Rejection, Reply};
 
     pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_latest_block().await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_block_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -187,7 +187,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_block_by_hash(&hash).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
@@ -195,14 +195,14 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_block_by_height(height).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_latest_deploy_aggregate().await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -210,7 +210,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_by_hash_aggregate(&hash).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -218,7 +218,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_accepted_by_hash(&hash).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_deploy_processed_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -226,7 +226,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_processed_by_hash(&hash).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_deploy_expired_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -234,7 +234,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_deploy_expired_by_hash(&hash).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_step_by_era<Db: DatabaseReader + Clone + Send>(
@@ -242,7 +242,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_step_by_era(era_id).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_faults_by_public_key<Db: DatabaseReader + Clone + Send>(
@@ -250,7 +250,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_faults_by_public_key(&public_key).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 
     pub(super) async fn get_faults_by_era<Db: DatabaseReader + Clone + Send>(
@@ -258,7 +258,7 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_faults_by_era(era).await;
-        serialize_or_reject_storage_result(db_result)
+        format_or_reject_storage_result(db_result)
     }
 }
 
@@ -275,21 +275,18 @@ pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Resu
     Ok(())
 }
 
-fn serialize_or_reject_storage_result<T>(
+fn format_or_reject_storage_result<T>(
     storage_result: Result<T, DatabaseRequestError>,
 ) -> Result<impl Reply, Rejection>
 where
     T: Serialize,
 {
     match storage_result {
-        Ok(data) => match serde_json::to_string_pretty(&data) {
-            Ok(pretty_json) => {
-                let json = warp::reply::json(&pretty_json);
-                Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
-            }
-            Err(err) => Err(warp::reject::custom(SerializationError(err))),
-        },
-        Err(err) => Err(warp::reject::custom(StorageError(err))),
+        Ok(data) => {
+            let json = warp::reply::json(&data);
+            Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
+        }
+        Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
     }
 }
 
@@ -369,10 +366,12 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 mod tests {
     use crate::database::AggregateDeployInfo;
     use crate::rest_server::filters;
-    use crate::{sqlite_db, DeployProcessed, Fault, Step};
+    use crate::sqlite_db::SqliteDb;
+    use crate::types::sse_events::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step};
+    use crate::DatabaseWriter;
     use bytes::Bytes;
     use casper_node::types::{Block, Deploy};
-    use casper_types::AsymmetricType;
+    use casper_types::{AsymmetricType, EraId, PublicKey, Timestamp};
     use http::{Response, StatusCode};
     use std::path::Path;
     use warp::test::request;
@@ -383,13 +382,14 @@ mod tests {
     const NOT_STORED_STEP_ERA_ID: u64 = 2304;
 
     const STORED_BLOCK_HASH: &str =
-        "d17f834afbc8a675e42f0ee3af9aed5e6759a79a3bc4bd4bd7acc3c8d9332b5a";
-    const STORED_BLOCK_HEIGHT: u64 = 23;
-    const STORED_DEPLOY_HASH: &str =
-        "5e1f28c650e371ae912616ea409e438123a7f0fcceaa1b67d543c7c9d181288d";
-    const STORED_STEP_ERA_ID: u64 = 3;
+        "a83aee61fddc50b039bc2879cc19fc206db59ec673d41fdd0facc627f800d515";
+    const STORED_BLOCK_HEIGHT: u64 = 49;
+    const STORED_ACCEPTED_PROCESSED_DEPLOY_HASH: &str =
+        "ce0e3468df750d3b4297f1510e6c0770a355374d70ac040c5ea7e72680d1b785";
+    const STORED_STEP_ERA_ID: u64 = 5;
     const STORED_FAULT_PUBLIC_KEY: &str =
-        "01a9bde8aee48a1a47d00c0892f5a25a2cda366d7df14147827e42920e48842785";
+        "014d3f346385e22857737177c27326affbe696f621536ba14c73c0b81b9e94e61c";
+    const STORED_FAULT_ERA_ID: u64 = 16;
 
     const VALID_PUBLIC_KEY: &str =
         "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
@@ -397,7 +397,13 @@ mod tests {
 
     async fn get_response_from_path(path: &str) -> Response<Bytes> {
         let db_path = Path::new("src/testing/");
-        let db = sqlite_db::SqliteDb::new(db_path, "127.0.0.1".to_string()).unwrap();
+        let db = SqliteDb::new(
+            db_path,
+            "sqlite_database.db3".to_string(),
+            "127.0.0.1".to_string(),
+        )
+        .await
+        .unwrap();
 
         let api = filters::combined_filters(db);
 
@@ -421,8 +427,7 @@ mod tests {
         let response = get_response_from_path("/block").await;
         assert!(response.status().is_success());
         let body = response.into_body();
-        let value = serde_json::from_slice::<Block>(&body);
-        assert!(value.is_ok());
+        serde_json::from_slice::<BlockAdded>(&body).unwrap();
     }
 
     #[tokio::test]
@@ -431,12 +436,9 @@ mod tests {
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
-        let value = serde_json::from_slice::<Block>(&body);
+        let value = serde_json::from_slice::<BlockAdded>(&body);
         assert!(value.is_ok());
-        assert_eq!(
-            hex::encode(value.unwrap().hash().inner()),
-            STORED_BLOCK_HASH
-        );
+        assert_eq!(value.unwrap().hex_encoded_hash(), STORED_BLOCK_HASH);
     }
 
     #[tokio::test]
@@ -445,9 +447,9 @@ mod tests {
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
-        let value = serde_json::from_slice::<Block>(&body);
+        let value = serde_json::from_slice::<BlockAdded>(&body);
         assert!(value.is_ok());
-        assert_eq!(value.unwrap().height(), STORED_BLOCK_HEIGHT);
+        assert_eq!(value.unwrap().get_height(), STORED_BLOCK_HEIGHT);
     }
 
     #[tokio::test]
@@ -461,46 +463,57 @@ mod tests {
 
     #[tokio::test]
     async fn deploy_by_hash_should_return_valid_data() {
-        let path = format!("/deploy/{}", STORED_DEPLOY_HASH);
+        let path = format!("/deploy/{}", STORED_ACCEPTED_PROCESSED_DEPLOY_HASH);
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
         let value = serde_json::from_slice::<AggregateDeployInfo>(&body);
         assert!(value.is_ok());
-        assert_eq!(value.unwrap().deploy_hash, STORED_DEPLOY_HASH);
+        assert_eq!(
+            value.unwrap().deploy_hash,
+            STORED_ACCEPTED_PROCESSED_DEPLOY_HASH
+        );
     }
 
     #[tokio::test]
     async fn deploy_accepted_by_hash_should_return_valid_data() {
-        let path = format!("/deploy/accepted/{}", STORED_DEPLOY_HASH);
+        let path = format!("/deploy/accepted/{}", STORED_ACCEPTED_PROCESSED_DEPLOY_HASH);
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
-        let value = serde_json::from_slice::<Deploy>(&body);
+        let value = serde_json::from_slice::<DeployAccepted>(&body);
         assert!(value.is_ok());
-        assert_eq!(hex::encode(value.unwrap().id()), STORED_DEPLOY_HASH);
+        assert_eq!(
+            value.unwrap().hex_encoded_hash(),
+            STORED_ACCEPTED_PROCESSED_DEPLOY_HASH
+        );
     }
 
     #[tokio::test]
     async fn deploy_processed_by_hash_should_return_valid_data() {
-        let path = format!("/deploy/processed/{}", STORED_DEPLOY_HASH);
+        let path = format!(
+            "/deploy/processed/{}",
+            STORED_ACCEPTED_PROCESSED_DEPLOY_HASH
+        );
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
         let value = serde_json::from_slice::<DeployProcessed>(&body);
         assert!(value.is_ok());
-        assert_eq!(hex::encode(*value.unwrap().deploy_hash), STORED_DEPLOY_HASH);
+        assert_eq!(
+            value.unwrap().hex_encoded_hash(),
+            STORED_ACCEPTED_PROCESSED_DEPLOY_HASH
+        );
     }
 
     #[tokio::test]
     async fn deploy_expired_by_hash_should_return_valid_data() {
-        let path = format!("/deploy/expired/{}", STORED_DEPLOY_HASH);
+        let path = format!("/deploy/expired/{}", STORED_ACCEPTED_PROCESSED_DEPLOY_HASH);
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
         let value = serde_json::from_slice::<bool>(&body);
-        assert!(value.is_ok());
-        assert!(!value.unwrap());
+        assert!(value.unwrap());
     }
 
     #[tokio::test]
@@ -515,14 +528,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fault_should_return_valid_data() {
+    async fn fault_by_public_key_should_return_valid_data() {
         let path = format!("/fault/{}", STORED_FAULT_PUBLIC_KEY);
         let response = get_response_from_path(&path).await;
         assert!(response.status().is_success());
         let body = response.into_body();
-        let value = serde_json::from_slice::<Fault>(&body);
+        let value = serde_json::from_slice::<Vec<Fault>>(&body);
         assert!(value.is_ok());
-        assert_eq!(value.unwrap().public_key.to_hex(), STORED_FAULT_PUBLIC_KEY);
+        assert_eq!(
+            value.unwrap().get(0).unwrap().public_key.to_hex(),
+            STORED_FAULT_PUBLIC_KEY
+        );
+    }
+
+    #[tokio::test]
+    async fn fault_by_era_should_return_valid_data() {
+        let path = format!("/fault/{}", STORED_FAULT_ERA_ID);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Vec<Fault>>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            value.unwrap().get(0).unwrap().era_id.value(),
+            STORED_FAULT_ERA_ID
+        );
     }
 
     #[tokio::test]
@@ -610,14 +640,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fault_of_not_stored_should_return_404() {
+    async fn fault_by_public_key_of_not_stored_should_return_404() {
         let path = format!("/fault/{}", VALID_PUBLIC_KEY);
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
-    async fn fault_of_invalid_public_key_should_return_400() {
+    async fn fault_by_era_of_not_stored_should_return_404() {
+        let path = format!("/fault/{}", 30);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn fault_by_invalid_public_key_should_return_400() {
         let path = "/fault/notapublickey".to_string();
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);

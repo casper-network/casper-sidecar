@@ -30,9 +30,20 @@ pub fn create_table_stmt() -> TableCreateStatement {
 }
 
 pub fn create_insert_stmt(event_log_id: u64, deploy_hash: String) -> SqResult<InsertStatement> {
-    Query::insert()
+    let insert_stmt = Query::insert()
         .into_table(DeployEvent::Table)
         .columns([DeployEvent::EventLogId, DeployEvent::DeployHash])
-        .values(vec![event_log_id.into(), deploy_hash.into()])
-        .map(|stmt| stmt.to_owned())
+        .values(vec![event_log_id.into(), deploy_hash.into()])?
+        .to_owned();
+
+    Ok(insert_stmt)
+}
+
+pub fn create_get_latest_deploy_hash() -> SelectStatement {
+    Query::select()
+        .column(DeployEvent::DeployHash)
+        .from(DeployEvent::Table)
+        .order_by(DeployEvent::EventLogId, Order::Asc)
+        .limit(1)
+        .to_owned()
 }

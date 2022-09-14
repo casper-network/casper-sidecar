@@ -35,11 +35,11 @@ use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
-#[cfg(test)]
-use casper_node::types::Block;
 #[cfg(test)]
 use super::testing;
+#[cfg(test)]
+use casper_node::types::Block;
+use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -467,7 +467,7 @@ impl ChannelsAndFilter {
                     ongoing_events_receiver,
                     event_filter,
                 )))
-                    .into_response()
+                .into_response()
             })
             .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
             .boxed();
@@ -837,8 +837,8 @@ mod tests {
                 ongoing_events_receiver,
                 get_filter(path_filter).unwrap(),
             )
-                .collect()
-                .await;
+            .collect()
+            .await;
 
             // Create the expected collection of emitted events.
             let deduplicated_events: Vec<ServerSentEvent> = initial_events
@@ -854,7 +854,7 @@ mod tests {
             // don't have access to the internals of the `WarpServerSentEvent`s, assert using their
             // `String` representations.
             for (received_event, deduplicated_event) in
-            received_events.iter().zip(deduplicated_events.iter())
+                received_events.iter().zip(deduplicated_events.iter())
             {
                 let received_event = received_event.as_ref().unwrap();
 
@@ -862,7 +862,7 @@ mod tests {
                     SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
                         deploy_accepted: deploy.clone(),
                     })
-                        .unwrap(),
+                    .unwrap(),
                     data => serde_json::to_string(&data).unwrap(),
                 };
 

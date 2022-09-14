@@ -1,18 +1,11 @@
-[connection]
-network = "Local" # or Mainnet or Local
-[connection.node.mainnet]
-ip_address = "65.108.78.120"
-sse_port=9999
-[connection.node.testnet]
-ip_address="135.181.74.237"
-sse_port=9999
-[connection.node.local]
+[node_connection]
 ip_address="127.0.0.1"
 sse_port=18101
 
 [storage]
-db_path = "./target/storage"
-sse_cache = "./target/storage"
+storage_path="./target/storage"
+sqlite_file_name="sqlite_database.db3"
+sse_cache_path="./target/storage"
 
 [rest_server]
 ip_address = "127.0.0.1"

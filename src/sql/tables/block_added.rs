@@ -91,7 +91,6 @@ pub fn create_get_latest_stmt() -> SelectStatement {
     Query::select()
         .column(BlockAdded::Raw)
         .from(BlockAdded::Table)
-        .order_by(BlockAdded::Height, Order::Desc)
-        .limit(1)
+        .expr(Expr::col(BlockAdded::Height).max())
         .to_owned()
 }

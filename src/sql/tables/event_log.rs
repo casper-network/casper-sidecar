@@ -1,7 +1,14 @@
+use crate::sql::tables::event_source::EventSource;
+use crate::sql::tables::event_type::EventTypeId;
+use crate::SqliteDb;
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, ColumnRef, Expr, ForeignKey, ForeignKeyAction, Iden,
+    InsertStatement, Query, QueryStatementBuilder, SelectStatement, SimpleExpr, SqliteQueryBuilder,
+    Table, TableCreateStatement,
 };
+use std::io::Error;
+use std::path::Path;
+use tracing::error;
 
 use super::event_type::EventType;
 
@@ -12,8 +19,11 @@ pub(super) enum EventLog {
     EventTypeId,
     EventSourceId,
     EventId,
-    Timestamp,
+    InsertedTimestamp,
+    EmittedTimestamp,
 }
+
+// todo add constraint on [ EventSourceId + EventId ] being UNIQUE
 
 pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()
@@ -30,12 +40,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(EventLog::EventSourceId).integer().not_null())
         .col(ColumnDef::new(EventLog::EventId).integer().not_null())
         .col(
-            ColumnDef::new(EventLog::Timestamp)
+            ColumnDef::new(EventLog::InsertedTimestamp)
                 .timestamp()
                 .not_null()
                 // This can be replaced with better syntax when https://github.com/SeaQL/sea-query/pull/428 merges.
                 .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
         )
+        .col(ColumnDef::new(EventLog::EmittedTimestamp).timestamp())
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_type_id")
@@ -47,30 +58,58 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
+//Query::insert()
+//     .into_table(Glyph::Table)
+//     .columns([Glyph::Aspect, Glyph::Image])
+//     .exprs([Expr::val(1).into(), SimpleExpr::SubQuery(Box::new( // Or, `exprs_panic`
+//         Query::select()
+//         .column(Glyph::Aspect)
+//         .from(Glyph::Table)
+//         .to_owned()
+//         .into_sub_query_statement()))])
+
 pub fn create_insert_stmt(
     event_type_id: u8,
-    event_source_id: u8,
+    event_source_address: &str,
     event_id: u64,
 ) -> SqResult<InsertStatement> {
-    Query::insert()
+    let insert_stmt = Query::insert()
         .into_table(EventLog::Table)
         .columns([
             EventLog::EventTypeId,
             EventLog::EventSourceId,
             EventLog::EventId,
         ])
-        .values(vec![
-            event_type_id.into(),
-            event_source_id.into(),
-            event_id.into(),
+        .exprs([
+            Expr::val(event_type_id).into_simple_expr(),
+            SimpleExpr::SubQuery(Box::new(
+                Query::select()
+                    .column(EventSource::EventSourceId)
+                    .from(EventSource::Table)
+                    .and_where(Expr::col(EventSource::EventSourceAddress).eq(event_source_address))
+                    .to_owned()
+                    .into_sub_query_statement(),
+            )),
+            Expr::val(event_id).into_simple_expr(),
         ])
-        .map(|stmt| stmt.to_owned())
+        .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
+
+    Ok(insert_stmt)
+
+    // format!(
+    //     r#"INSERT INTO "event_log" ("event_type_id", "event_source_id", "event_id") VALUES ({}, (SELECT "event_source_id" FROM "event_source" WHERE "event_source_address" = "{}"), {}) RETURNING "event_log_id""#,
+    //     event_type_id, event_source_address, event_id
+    // )
 }
 
-pub fn create_get_max_id_stmt() -> SelectStatement {
+pub fn create_get_latest_deploy_event_log_id() -> SelectStatement {
     Query::select()
         .column(EventLog::EventLogId)
-        .from(EventLog::Table)
-        .expr(Expr::col(EventLog::EventLogId).max())
+        .and_where(Expr::col(EventLog::EventTypeId).is_in(vec![
+            EventTypeId::DeployAccepted as u8,
+            EventTypeId::DeployProcessed as u8,
+            EventTypeId::DeployExpired as u8,
+        ]))
+        .limit(1)
         .to_owned()
 }
