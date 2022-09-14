@@ -80,7 +80,7 @@ impl SqliteDb {
             .execute(create_table_stmts.as_str())
             .await?;
 
-        // todo this is dumb it should be on a per event basis not on the initialisation of the struct/db
+        // todo this is dumb it should be inserted as needs be on a per event basis not on the initialisation of the struct/db
         // Check if node_ip_address is already in the DB to avoid duplicating the IP under different event_source_id's
         let check_for_node_ip_stmt =
             tables::event_source::create_select_id_by_address_stmt(node_ip_address.clone())
@@ -96,15 +96,13 @@ impl SqliteDb {
             initial_connection.execute(add_node_ip_sql.as_str()).await?;
         }
 
-        // Initialisation statements
-        let initialise_sql_event_type = tables::event_type::create_initialise_stmt()?;
-        let initialise_sql_deploy_event_type = tables::deploy_event_type::create_initialise_stmt()?;
-
-        let batched_initialise_tables =
-            vec![initialise_sql_event_type, initialise_sql_deploy_event_type]
-                .iter()
-                .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-                .join(";");
+        let batched_initialise_tables = vec![
+            tables::event_type::create_initialise_stmt()?,
+            tables::deploy_event_type::create_initialise_stmt()?,
+        ]
+        .iter()
+        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .join(";");
 
         // The result is swallowed because this call may fail if the tables were already created and populated.
         let _ = initial_connection

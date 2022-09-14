@@ -25,9 +25,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
 use types::{
     config::Config,
-    sse_events::{
-        BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
-    },
+    sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Step},
 };
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
@@ -420,56 +418,56 @@ mod tests {
         node_shutdown_tx.send(()).unwrap();
     }
 
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[serial]
-    // async fn should_allow_client_connection_to_sse() {
-    //     let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-    //
-    //     let test_config = read_config(TEST_CONFIG_PATH).unwrap();
-    //
-    //     tokio::spawn(run(test_config));
-    //
-    //     // Allow sidecar to spin up
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //
-    //     let mut main_event_stream = reqwest::Client::new()
-    //         .get("http://127.0.0.1:19999/events/main")
-    //         .send()
-    //         .await
-    //         .map_err(parse_error_for_connection_refused)
-    //         .unwrap()
-    //         .bytes_stream()
-    //         .eventsource();
-    //
-    //     while let Some(event) = main_event_stream.next().await {
-    //         event.unwrap();
-    //     }
-    //
-    //     node_shutdown_tx.send(()).unwrap();
-    // }
-    //
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[serial]
-    // async fn should_respond_to_rest_query() {
-    //     let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-    //
-    //     let test_config = read_config(TEST_CONFIG_PATH).unwrap();
-    //
-    //     tokio::spawn(run(test_config));
-    //
-    //     // Allow sidecar to spin up
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //
-    //     let response = reqwest::Client::new()
-    //         .get("http://127.0.0.1:17777/block")
-    //         .send()
-    //         .await
-    //         .unwrap();
-    //
-    //     assert!(response.status().is_success());
-    //
-    //     node_shutdown_tx.send(()).unwrap();
-    // }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial]
+    async fn should_allow_client_connection_to_sse() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        tokio::spawn(run(test_config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let mut main_event_stream = reqwest::Client::new()
+            .get("http://127.0.0.1:19999/events/main")
+            .send()
+            .await
+            .map_err(parse_error_for_connection_refused)
+            .unwrap()
+            .bytes_stream()
+            .eventsource();
+
+        while let Some(event) = main_event_stream.next().await {
+            event.unwrap();
+        }
+
+        node_shutdown_tx.send(()).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial]
+    async fn should_respond_to_rest_query() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+
+        tokio::spawn(run(test_config));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let response = reqwest::Client::new()
+            .get("http://127.0.0.1:17777/block")
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+
+        node_shutdown_tx.send(()).unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -502,7 +500,7 @@ mod performance_tests {
     async fn check_delay_in_receiving_blocks() {
         let config = read_config("config.toml").unwrap();
 
-        // tokio::spawn(run(config));
+        tokio::spawn(run(config));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -581,7 +579,7 @@ mod performance_tests {
     async fn check_delay_in_receiving_deploys() {
         let config = read_config("config.toml").unwrap();
 
-        // tokio::spawn(run(config));
+        tokio::spawn(run(config));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -666,16 +664,13 @@ mod performance_tests {
         while let Some(event) = event_stream.next().await {
             let received_timestamp = Instant::now();
             let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
-            match data {
-                SseData::BlockAdded { block_hash, .. } => {
-                    events_read += 1;
-                    let hash = encode(block_hash.inner());
-                    events_vec.push(EventWithHash {
-                        hash,
-                        received_at: received_timestamp,
-                    });
-                }
-                _ => {}
+            if let SseData::BlockAdded { block_hash, .. } = data {
+                events_read += 1;
+                let hash = encode(block_hash.inner());
+                events_vec.push(EventWithHash {
+                    hash,
+                    received_at: received_timestamp,
+                });
             }
             if events_read > EVENT_COUNT {
                 break;
@@ -699,16 +694,13 @@ mod performance_tests {
         while let Some(event) = event_stream.next().await {
             let received_timestamp = Instant::now();
             let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
-            match data {
-                SseData::DeployAccepted { deploy } => {
-                    events_read += 1;
-                    let hash = encode(*deploy.id());
-                    events_vec.push(EventWithHash {
-                        hash,
-                        received_at: received_timestamp,
-                    })
-                }
-                _ => {}
+            if let SseData::DeployAccepted { deploy } = data {
+                events_read += 1;
+                let hash = encode(*deploy.id());
+                events_vec.push(EventWithHash {
+                    hash,
+                    received_at: received_timestamp,
+                })
             }
             if events_read > EVENT_COUNT {
                 break;
@@ -731,12 +723,12 @@ mod performance_tests {
                 cloned_events_from_sidecar
                     .iter()
                     .map(|event_from_sidecar| {
-                        if event_from_sidecar.eq(&event_from_node) {
+                        if event_from_sidecar.eq(event_from_node) {
                             let time_difference =
                                 event_from_sidecar.received_at - event_from_node.received_at;
                             return Some(time_difference);
                         }
-                        return None;
+                        None
                     })
                     .reduce(
                         |previous, current| {
