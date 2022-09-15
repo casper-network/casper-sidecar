@@ -1,27 +1,31 @@
-use crate::database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter};
-use crate::sql::tables;
-use crate::sql::tables::event_type::EventTypeId;
-use crate::types::sse_events::{
-    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
-
-use anyhow::Error;
-use async_trait::async_trait;
 
 use casper_node::types::FinalitySignature as FinSig;
 use casper_types::AsymmetricType;
+
+use anyhow::Error;
+use async_trait::async_trait;
 use futures_util::StreamExt;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteQueryResult, SqliteRow};
 use sqlx::{
-    sqlite::{SqlitePool, SqlitePoolOptions},
+    sqlite::{
+        SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteQueryResult,
+        SqliteRow,
+    },
     ConnectOptions, Executor, Row,
 };
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+
+use crate::{
+    database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter},
+    sql::{tables, tables::event_type::EventTypeId},
+    types::sse_events::*,
+};
 
 const MAX_WRITE_CONNECTIONS: u32 = 10;
 const MAX_READ_CONNECTIONS: u32 = 100;

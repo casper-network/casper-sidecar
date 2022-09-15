@@ -1,21 +1,23 @@
-use crate::database::DatabaseRequestError;
-use crate::sqlite_db::SqliteDb;
-use crate::utils::resolve_address;
-use anyhow::Error;
-use serde::Serialize;
 use std::convert::Infallible;
-
 use std::path::PathBuf;
 
+use anyhow::Error;
+use serde::Serialize;
 use tracing::error;
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 
+use crate::{database::DatabaseRequestError, sqlite_db::SqliteDb, utils::resolve_address};
+
 mod filters {
-    use crate::database::DatabaseReader;
-    use crate::rest_server::{handle_rejection, handlers, InvalidPath};
     use std::convert::Infallible;
+
     use warp::Filter;
+
+    use crate::{
+        database::DatabaseReader,
+        rest_server::{handle_rejection, handlers, InvalidPath},
+    };
 
     pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         db: Db,
@@ -181,9 +183,9 @@ mod filters {
 }
 
 mod handlers {
-    use crate::database::DatabaseReader;
-    use crate::rest_server::format_or_reject_storage_result;
     use warp::{Rejection, Reply};
+
+    use crate::{database::DatabaseReader, rest_server::format_or_reject_storage_result};
 
     pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
         db: Db,
@@ -377,17 +379,21 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
 
 #[cfg(test)]
 mod tests {
-    use crate::database::AggregateDeployInfo;
-    use crate::rest_server::filters;
-    use crate::sqlite_db::SqliteDb;
-    use crate::types::sse_events::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step};
+    use std::path::Path;
 
     use bytes::Bytes;
+    use http::{Response, StatusCode};
+    use warp::test::request;
+
     use casper_node::types::FinalitySignature as FinSig;
     use casper_types::AsymmetricType;
-    use http::{Response, StatusCode};
-    use std::path::Path;
-    use warp::test::request;
+
+    use crate::{
+        database::AggregateDeployInfo,
+        rest_server::filters,
+        sqlite_db::SqliteDb,
+        types::sse_events::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step},
+    };
 
     const NOT_STORED_HASH: &str =
         "0bcd71363b01c1c147c1603d2cc945930dcceecd869275beeee61dfc83b27a2c";

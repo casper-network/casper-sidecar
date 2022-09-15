@@ -10,23 +10,23 @@ mod testing;
 mod types;
 mod utils;
 
-use crate::database::DatabaseWriter;
-use crate::event_stream_server::SseData;
-use crate::types::sse_events::FinalitySignature;
+use std::path::{Path, PathBuf};
+
+use casper_types::AsymmetricType;
+
 use anyhow::{Context, Error};
 use bytes::Bytes;
-use casper_types::AsymmetricType;
-use event_stream_server::{Config as SseConfig, EventStreamServer};
 use eventsource_stream::{EventStream, Eventsource};
 use futures::{Stream, StreamExt};
-use rest_server::run_server as start_rest_server;
-use sqlite_db::SqliteDb;
-use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
-use types::{
-    config::Config,
-    sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Step},
+
+use crate::{
+    database::DatabaseWriter,
+    event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
+    rest_server::run_server as start_rest_server,
+    sqlite_db::SqliteDb,
+    types::{config::Config, sse_events::*},
 };
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";

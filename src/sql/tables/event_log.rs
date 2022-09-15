@@ -1,11 +1,9 @@
-use crate::sql::tables::event_source::EventSource;
-
 use sea_query::{
     error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
     InsertStatement, Query, QueryStatementBuilder, SimpleExpr, Table, TableCreateStatement,
 };
 
-use super::event_type::EventType;
+use super::{event_source::EventSource, event_type::EventType};
 
 #[derive(Iden)]
 pub(super) enum EventLog {
@@ -18,7 +16,7 @@ pub(super) enum EventLog {
     EmittedTimestamp,
 }
 
-// todo add constraint on [ EventSourceId + EventId ] being UNIQUE
+// todo add constraint on [ EventSourceId + EventId + Timestamp] being UNIQUE
 
 pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()

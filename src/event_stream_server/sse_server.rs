@@ -5,6 +5,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+#[cfg(test)]
+use casper_node::types::Block;
+use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
+
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -30,16 +39,7 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
-
-#[cfg(test)]
 use super::testing;
-#[cfg(test)]
-use casper_node::types::Block;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";

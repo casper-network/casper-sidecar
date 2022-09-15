@@ -1,8 +1,9 @@
-use super::event_source::EventSource;
 use sea_query::{
     error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, InsertStatement,
     Query, Table, TableCreateStatement,
 };
+
+use super::event_source::EventSource;
 
 #[derive(Iden)]
 pub(super) enum EventSourceOfEvent {

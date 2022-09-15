@@ -31,6 +31,8 @@ mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
+use casper_types::ProtocolVersion;
+
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
@@ -39,7 +41,6 @@ use tracing::{info, warn};
 use warp::Filter;
 
 use crate::utils::{resolve_address, ListeningError};
-use casper_types::ProtocolVersion;
 pub use config::Config;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;

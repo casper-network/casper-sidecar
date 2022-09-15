@@ -10,10 +10,12 @@ use std::{
 };
 
 use casper_types::testing::TestRng;
+
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
+use serial_test::serial;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -21,7 +23,6 @@ use tokio::{
     time,
 };
 use tracing::debug;
-use serial_test::serial;
 
 use super::*;
 use sse_server::{
@@ -266,7 +267,7 @@ impl TestFixture {
             self.storage_dir.path().to_path_buf(),
             self.protocol_version,
         )
-            .unwrap();
+        .unwrap();
 
         self.first_event_id = server.event_indexer.current_index();
 
@@ -348,7 +349,7 @@ impl TestFixture {
                 SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
                     deploy_accepted: deploy.clone(),
                 })
-                    .unwrap(),
+                .unwrap(),
                 _ => serde_json::to_string(event).unwrap(),
             };
 
@@ -1044,7 +1045,7 @@ async fn should_handle_wrapping_past_max_event_id(path: &str) {
         fixture.storage_dir.path().join("sse_index"),
         start_index.to_le_bytes(),
     )
-        .unwrap();
+    .unwrap();
 
     // Set up a client which will connect at the start of the stream, and another two for once the
     // IDs have wrapped past the maximum value.
