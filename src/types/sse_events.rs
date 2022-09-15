@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp,
 };
 
 /// The version of this node's API server.  This event will always be the first sent to a new
@@ -85,6 +86,20 @@ pub struct Fault {
 /// New finality signature received.
 #[derive(Debug, Serialize, Deserialize, new)]
 pub struct FinalitySignature(Box<FinSig>);
+
+impl FinalitySignature {
+    pub fn inner(&self) -> FinSig {
+        *self.0.clone()
+    }
+
+    pub fn hex_encoded_block_hash(&self) -> String {
+        hex::encode(self.0.block_hash.inner())
+    }
+
+    pub fn hex_encoded_public_key(&self) -> String {
+        self.0.public_key.to_hex()
+    }
+}
 
 /// The execution effects produced by a `StepRequest`.
 #[derive(Debug, Serialize, Deserialize, new)]

@@ -26,7 +26,8 @@ mod filters {
             .or(deploy_filters(db.clone()))
             .or(step_by_era(db.clone()))
             .or(faults_by_public_key(db.clone()))
-            .or(faults_by_era(db))
+            .or(faults_by_era(db.clone()))
+            .or(finality_signatures_by_block(db))
             .recover(handle_rejection)
     }
 
@@ -163,6 +164,15 @@ mod filters {
             .and_then(handlers::get_faults_by_era)
     }
 
+    pub(super) fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
+        db: Db,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("signatures" / String)
+            .and(warp::get())
+            .and(with_db(db))
+            .and_then(handlers::get_finality_signatures_by_block)
+    }
+
     fn with_db<Db: DatabaseReader + Clone + Send>(
         db: Db,
     ) -> impl Filter<Extract = (Db,), Error = Infallible> + Clone {
@@ -258,6 +268,14 @@ mod handlers {
         db: Db,
     ) -> Result<impl Reply, Rejection> {
         let db_result = db.get_faults_by_era(era).await;
+        format_or_reject_storage_result(db_result)
+    }
+
+    pub(super) async fn get_finality_signatures_by_block<Db: DatabaseReader + Clone + Send>(
+        block_hash: String,
+        db: Db,
+    ) -> Result<impl Reply, Rejection> {
+        let db_result = db.get_finality_signatures_by_block(&block_hash).await;
         format_or_reject_storage_result(db_result)
     }
 }
@@ -365,7 +383,7 @@ mod tests {
     use crate::types::sse_events::{BlockAdded, DeployAccepted, DeployProcessed, Fault, Step};
 
     use bytes::Bytes;
-
+    use casper_node::types::FinalitySignature as FinSig;
     use casper_types::AsymmetricType;
     use http::{Response, StatusCode};
     use std::path::Path;
@@ -387,6 +405,8 @@ mod tests {
     const STORED_FAULT_PUBLIC_KEY: &str =
         "014d3f346385e22857737177c27326affbe696f621536ba14c73c0b81b9e94e61c";
     const STORED_FAULT_ERA_ID: u64 = 16;
+    const STORED_BLOCK_HASH_FOR_FIN_SIGS: &str =
+        "227b4c2896247dded47ca9e5924d5a6dcc8c398a9ea10d52f076cf61bbb428c3";
 
     const VALID_PUBLIC_KEY: &str =
         "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
@@ -553,6 +573,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finality_signatures_by_block_should_return_valid_data() {
+        let path = format!("/signatures/{}", STORED_BLOCK_HASH_FOR_FIN_SIGS);
+        let response = get_response_from_path(&path).await;
+        assert!(response.status().is_success());
+        let body = response.into_body();
+        let value = serde_json::from_slice::<Vec<FinSig>>(&body);
+        assert!(value.is_ok());
+        assert_eq!(
+            hex::encode(value.unwrap().get(0).unwrap().block_hash.inner()),
+            STORED_BLOCK_HASH_FOR_FIN_SIGS
+        );
+    }
+
+    #[tokio::test]
     async fn block_by_invalid_hash_should_return_400() {
         let path = format!("/block/{}", INVALID_HASH);
         let response = get_response_from_path(&path).await;
@@ -653,6 +687,20 @@ mod tests {
     #[tokio::test]
     async fn fault_by_invalid_public_key_should_return_400() {
         let path = "/fault/notapublickey".to_string();
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn finality_signature_of_not_stored_should_return_404() {
+        let path = format!("/signatures/{}", NOT_STORED_HASH);
+        let response = get_response_from_path(&path).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn finality_signature_by_invalid_block_hash_should_return_400() {
+        let path = format!("/signatures/{}", INVALID_HASH);
         let response = get_response_from_path(&path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }

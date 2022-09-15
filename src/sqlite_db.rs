@@ -8,6 +8,7 @@ use crate::types::sse_events::{
 use anyhow::Error;
 use async_trait::async_trait;
 
+use casper_node::types::FinalitySignature as FinSig;
 use casper_types::AsymmetricType;
 use futures_util::StreamExt;
 use itertools::Itertools;
@@ -66,6 +67,7 @@ impl SqliteDb {
             tables::deploy_processed::create_table_stmt(),
             tables::deploy_expired::create_table_stmt(),
             tables::fault::create_table_stmt(),
+            tables::finality_signature::create_table_stmt(),
             tables::step::create_table_stmt(),
         ]
         .iter()
@@ -76,7 +78,6 @@ impl SqliteDb {
             .execute(create_table_stmts.as_str())
             .await?;
 
-        // todo this is dumb it should be inserted as needs be on a per event basis not on the initialisation of the struct/db
         // Check if node_ip_address is already in the DB to avoid duplicating the IP under different event_source_id's
         let check_for_node_ip_stmt =
             tables::event_source::create_select_id_by_address_stmt(node_ip_address.clone())
@@ -182,7 +183,7 @@ impl DatabaseWriter for SqliteDb {
 
         let event_log_id = row.try_get::<i64, usize>(0)?;
 
-        let insert_to_block_added_stmt = tables::block_added::create_insert_stmt(
+        let insert_stmt = tables::block_added::create_insert_stmt(
             block_added.get_height(),
             encoded_hash,
             json,
@@ -190,11 +191,7 @@ impl DatabaseWriter for SqliteDb {
         )?
         .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(
-            db_connection
-                .execute(insert_to_block_added_stmt.as_str())
-                .await,
-        )
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
 
     async fn save_deploy_accepted(
@@ -329,11 +326,10 @@ impl DatabaseWriter for SqliteDb {
             .await?
             .try_get::<i64, usize>(0)?;
 
-        let insert_to_step_stmt =
-            tables::step::create_insert_stmt(era_id, json, event_log_id as u64)?
-                .to_string(SqliteQueryBuilder);
+        let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id as u64)?
+            .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_to_step_stmt.as_str()).await)
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
 
     async fn save_fault(
@@ -360,18 +356,46 @@ impl DatabaseWriter for SqliteDb {
             .await?
             .try_get::<i64, usize>(0)?;
 
-        let insert_to_step_stmt =
+        let insert_stmt =
             tables::fault::create_insert_stmt(era_id, public_key, json, event_log_id as u64)?
                 .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_to_step_stmt.as_str()).await)
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
 
     async fn save_finality_signature(
         &self,
-        _finality_signature: FinalitySignature,
+        finality_signature: FinalitySignature,
+        event_id: u64,
+        event_source_address: String,
     ) -> Result<usize, Error> {
-        Err(Error::msg("Not implemented yet"))
+        let db_connection = &self.connection_pool;
+
+        let json = serde_json::to_string(&finality_signature)?;
+        let block_hash = finality_signature.hex_encoded_block_hash();
+        let public_key = finality_signature.hex_encoded_public_key();
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::Fault as u8,
+            &event_source_address,
+            event_id,
+        )?
+        .to_string(SqliteQueryBuilder);
+
+        let event_log_id = db_connection
+            .fetch_one(insert_to_event_log_stmt.as_str())
+            .await?
+            .try_get::<i64, usize>(0)?;
+
+        let insert_stmt = tables::finality_signature::create_insert_stmt(
+            block_hash,
+            public_key,
+            json,
+            event_log_id as u64,
+        )?
+        .to_string(SqliteQueryBuilder);
+
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
 }
 
@@ -627,6 +651,26 @@ impl DatabaseReader for SqliteDb {
             .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
             .and_then(parse_faults_from_rows)
     }
+
+    async fn get_finality_signatures_by_block(
+        &self,
+        block_hash: &str,
+    ) -> Result<Vec<FinSig>, DatabaseRequestError> {
+        check_hash_is_correct_format(block_hash)?;
+
+        let db_connection = &self.connection_pool;
+
+        let stmt = tables::finality_signature::create_get_finality_signatures_by_block_stmt(
+            block_hash.to_string(),
+        )
+        .to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_all(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .and_then(parse_finality_signatures_from_rows)
+    }
 }
 
 fn parse_faults_from_rows(rows: Vec<SqliteRow>) -> Result<Vec<Fault>, DatabaseRequestError> {
@@ -644,6 +688,26 @@ fn parse_faults_from_rows(rows: Vec<SqliteRow>) -> Result<Vec<Fault>, DatabaseRe
         return Err(DatabaseRequestError::NotFound);
     }
     Ok(faults)
+}
+
+fn parse_finality_signatures_from_rows(
+    rows: Vec<SqliteRow>,
+) -> Result<Vec<FinSig>, DatabaseRequestError> {
+    let mut finality_signatures = Vec::new();
+    for row in rows {
+        let raw = row
+            .try_get::<String, &str>("raw")
+            .map_err(|err| wrap_query_error(err.into()))?;
+
+        let finality_signature =
+            deserialize_data::<FinalitySignature>(&raw).map_err(wrap_query_error)?;
+        finality_signatures.push(finality_signature.inner());
+    }
+
+    if finality_signatures.is_empty() {
+        return Err(DatabaseRequestError::NotFound);
+    }
+    Ok(finality_signatures)
 }
 
 fn check_hash_is_correct_format(hash: &str) -> Result<(), DatabaseRequestError> {

@@ -12,6 +12,7 @@ mod utils;
 
 use crate::database::DatabaseWriter;
 use crate::event_stream_server::SseData;
+use crate::types::sse_events::FinalitySignature;
 use anyhow::{Context, Error};
 use bytes::Bytes;
 use casper_types::AsymmetricType;
@@ -204,8 +205,8 @@ async fn run(config: Config) -> Result<(), Error> {
                                 )
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error saving block: {}", res.err().unwrap());
+                            if let Err(error) = res {
+                                warn!("Error saving block: {}", error);
                             }
                         }
                         SseData::DeployAccepted { deploy } => {
@@ -221,8 +222,8 @@ async fn run(config: Config) -> Result<(), Error> {
                                 )
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error saving deploy: {:?}", res.unwrap_err().to_string());
+                            if let Err(error) = res {
+                                warn!("Error saving deploy: {}", error);
                             }
                         }
                         SseData::DeployExpired { deploy_hash } => {
@@ -238,8 +239,8 @@ async fn run(config: Config) -> Result<(), Error> {
                                 )
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error updating expired deploy: {}", res.err().unwrap());
+                            if let Err(error) = res {
+                                warn!("Error saving deploy expired: {}", error);
                             }
                         }
                         SseData::DeployProcessed {
@@ -272,8 +273,8 @@ async fn run(config: Config) -> Result<(), Error> {
                                 )
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error updating processed deploy: {}", res.err().unwrap());
+                            if let Err(error) = res {
+                                warn!("Error saving deploy processed: {}", error);
                             }
                         }
                         SseData::Fault {
@@ -292,12 +293,24 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .save_fault(fault, event_id, event_source_address)
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error saving fault: {}", res.err().unwrap());
+                            if let Err(error) = res {
+                                warn!("Error saving fault: {}", error);
                             }
                         }
                         SseData::FinalitySignature(fs) => {
                             debug!("Finality signature, {}", fs.signature);
+                            let finality_signature = FinalitySignature::new(fs);
+                            let res = storage
+                                .save_finality_signature(
+                                    finality_signature,
+                                    event_id,
+                                    event_source_address,
+                                )
+                                .await;
+
+                            if let Err(error) = res {
+                                warn!("Error saving finality signature: {}", error)
+                            }
                         }
                         SseData::Step {
                             era_id,
@@ -309,8 +322,8 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .save_step(step, event_id, event_source_address)
                                 .await;
 
-                            if res.is_err() {
-                                warn!("Error saving step: {}", res.err().unwrap());
+                            if let Err(error) = res {
+                                warn!("Error saving step: {}", error);
                             }
                         }
                         SseData::Shutdown => {

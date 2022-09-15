@@ -2,6 +2,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use casper_node::types::FinalitySignature as FinSig;
+
 use crate::types::sse_events::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
 };
@@ -55,6 +57,8 @@ pub trait DatabaseWriter {
     async fn save_finality_signature(
         &self,
         finality_signature: FinalitySignature,
+        event_id: u64,
+        event_source_address: String,
     ) -> Result<usize, Error>;
 }
 
@@ -85,6 +89,10 @@ pub trait DatabaseReader {
         public_key: &str,
     ) -> Result<Vec<Fault>, DatabaseRequestError>;
     async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseRequestError>;
+    async fn get_finality_signatures_by_block(
+        &self,
+        block_hash: &str,
+    ) -> Result<Vec<FinSig>, DatabaseRequestError>;
 }
 
 #[derive(Debug)]
