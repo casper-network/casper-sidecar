@@ -21,9 +21,8 @@ use sqlx::{
 };
 
 use crate::{
-    database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError, DatabaseWriter},
     sql::{tables, tables::event_type::EventTypeId},
-    types::sse_events::*,
+    types::{database::*, sse_events::*},
 };
 
 const MAX_WRITE_CONNECTIONS: u32 = 10;
@@ -767,11 +766,7 @@ mod tests {
     use casper_types::testing::TestRng;
     use casper_types::AsymmetricType;
 
-    use crate::{
-        database::{DatabaseReader, DatabaseWriter},
-        sqlite_db::SqliteDb,
-        types::sse_events::*,
-    };
+    use crate::{sqlite_db::SqliteDb, types::sse_events::*};
 
     #[tokio::test]
     async fn should_save_and_retrieve_block_added() {

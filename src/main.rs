@@ -1,6 +1,5 @@
 extern crate core;
 
-mod database;
 mod event_stream_server;
 mod rest_server;
 mod sql;
@@ -20,11 +19,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
 
 use crate::{
-    database::DatabaseWriter,
     event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
     rest_server::run_server as start_rest_server,
     sqlite_db::SqliteDb,
-    types::{config::Config, sse_events::*},
+    types::{config::Config, database::DatabaseWriter, sse_events::*},
 };
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
