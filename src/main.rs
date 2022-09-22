@@ -521,7 +521,7 @@ mod performance_tests {
             .get("http://127.0.0.1:18101/events/main")
             .send()
             .await
-            .unwrap()
+            .expect("Error connecting to node")
             .bytes_stream()
             .eventsource();
 
@@ -530,7 +530,7 @@ mod performance_tests {
             .send()
             .await
             .map_err(parse_error_for_connection_refused)
-            .unwrap()
+            .expect("Error connecting to sidecar")
             .bytes_stream()
             .eventsource();
 
@@ -601,7 +601,7 @@ mod performance_tests {
             .get("http://127.0.0.1:18101/events/deploys")
             .send()
             .await
-            .unwrap()
+            .expect("Error connecting to node")
             .bytes_stream()
             .eventsource();
 
@@ -610,7 +610,7 @@ mod performance_tests {
             .send()
             .await
             .map_err(parse_error_for_connection_refused)
-            .unwrap()
+            .expect("Error connecting to sidecar")
             .bytes_stream()
             .eventsource();
 
@@ -625,6 +625,8 @@ mod performance_tests {
 
         let (deploy_events_from_node, node_overall_duration) = node_task_result.unwrap();
         let (deploy_events_from_sidecar, sidecar_overall_duration) = sidecar_task_result.unwrap();
+
+        assert_eq!(deploy_events_from_node.len(), deploy_events_from_node.len());
 
         let deploy_time_diffs =
             extract_time_diffs(deploy_events_from_node, deploy_events_from_sidecar);
@@ -685,7 +687,7 @@ mod performance_tests {
                     received_at: received_timestamp,
                 });
             }
-            if events_read > EVENT_COUNT {
+            if events_read >= EVENT_COUNT {
                 break;
             }
         }
@@ -715,7 +717,7 @@ mod performance_tests {
                     received_at: received_timestamp,
                 })
             }
-            if events_read > EVENT_COUNT {
+            if events_read >= EVENT_COUNT {
                 break;
             }
         }
@@ -752,7 +754,7 @@ mod performance_tests {
                             }
                         },
                     )
-                    .map(|reduced| reduced.unwrap())
+                    .map(|reduced| reduced.expect("reducer failed to get the Duration"))
             })
             .map(|opt_time_difference| opt_time_difference.unwrap())
             .collect::<Vec<Duration>>()

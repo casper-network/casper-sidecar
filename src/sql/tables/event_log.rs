@@ -50,7 +50,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
         )
-        // todo is this the correct naming for the index?
         .index(
             Index::create()
                 .unique()

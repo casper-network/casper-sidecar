@@ -41,7 +41,7 @@ impl SqliteDb {
     pub async fn new(
         database_dir: &Path,
         database_file_name: String,
-        auto_checkpoint_interval: u8,
+        auto_checkpoint_interval: u16,
     ) -> Result<SqliteDb, Error> {
         fs::create_dir_all(database_dir)?;
 
