@@ -28,17 +28,21 @@ use crate::{
 
 const MAX_WRITE_CONNECTIONS: u32 = 10;
 const MAX_READ_CONNECTIONS: u32 = 100;
+/// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
+const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
 
 #[derive(Clone)]
 pub struct SqliteDb {
-    // todo allow checkpointing to be configurable + log size
-    // todo return and share ref
     pub connection_pool: SqlitePool,
     pub file_path: PathBuf,
 }
 
 impl SqliteDb {
-    pub async fn new(database_dir: &Path, database_file_name: String) -> Result<SqliteDb, Error> {
+    pub async fn new(
+        database_dir: &Path,
+        database_file_name: String,
+        auto_checkpoint_interval: u8,
+    ) -> Result<SqliteDb, Error> {
         fs::create_dir_all(database_dir)?;
 
         match database_dir.join(database_file_name).to_str() {
@@ -50,6 +54,7 @@ impl SqliteDb {
                         SqliteConnectOptions::from_str(path)?
                             .create_if_missing(true)
                             .journal_mode(SqliteJournalMode::Wal)
+                            .pragma(WAL_AUTOCHECKPOINT_KEY, auto_checkpoint_interval.to_string())
                             .disable_statement_logging()
                             .to_owned(),
                     );

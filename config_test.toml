@@ -1,11 +1,13 @@
 [node_connection]
-ip_address="127.0.0.1"
-sse_port=4444
+ip_address = "127.0.0.1"
+sse_port = 4444
 
 [storage]
-storage_path="./target/test_storage"
-sqlite_file_name="sqlite_database.db3"
-sse_cache_path="./target/test_storage"
+storage_path = "./target/test_storage"
+sqlite_file_name = "sqlite_database.db3"
+# https://www.sqlite.org/compile.html#default_wal_autocheckpoint
+sqlite_wal_autocheckpointing_interval = 1000
+sse_cache_path = "./target/test_storage"
 
 [rest_server]
 ip_address = "127.0.0.1"

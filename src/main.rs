@@ -148,9 +148,13 @@ async fn run(config: Config) -> Result<(), Error> {
     let path_to_database_dir = Path::new(&config.storage.storage_path);
 
     // Creates and initialises Sqlite database
-    let sqlite_db: SqliteDb = SqliteDb::new(path_to_database_dir, config.storage.sqlite_file_name)
-        .await
-        .context("Error instantiating database")?;
+    let sqlite_db: SqliteDb = SqliteDb::new(
+        path_to_database_dir,
+        config.storage.sqlite_file_name,
+        config.storage.sqlite_wal_autocheckpointing_interval,
+    )
+    .await
+    .context("Error instantiating database")?;
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(

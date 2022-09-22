@@ -18,6 +18,7 @@ pub struct NodeConnection {
 pub struct StorageConfig {
     pub storage_path: String,
     pub sqlite_file_name: String,
+    pub sqlite_wal_autocheckpointing_interval: u8,
     pub sse_cache_path: String,
 }
 
