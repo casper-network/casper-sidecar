@@ -15,7 +15,6 @@ use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
-use serial_test::serial;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -726,8 +725,7 @@ async fn should_serve_signature_events_with_query_for_future_event() {
 
 /// Checks that when a server is shut down (e.g. for a node upgrade), connected clients don't have
 /// an error while handling the HTTP response.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[serial]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn server_exit_should_gracefully_shut_down_stream() {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);

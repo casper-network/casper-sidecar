@@ -11,10 +11,6 @@ use casper_types::{runtime_args, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U5
 
 use rand::{Rng, RngCore};
 
-#[cfg(test)]
-pub(crate) mod test_clock;
-mod test_rng;
-
 /// Creates a test deploy created at given instant and with given ttl.
 pub(crate) fn create_test_deploy(
     created_ago: TimeDiff,

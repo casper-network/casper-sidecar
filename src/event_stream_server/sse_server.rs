@@ -19,7 +19,6 @@ use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
 use rand::Rng;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
@@ -70,7 +69,7 @@ const SIGNATURES_FILTER: [EventFilter; 1] = [EventFilter::FinalitySignature];
 pub type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -82,7 +81,6 @@ pub enum SseData {
     },
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
-        #[schemars(with = "Deploy", description = "a deploy")]
         #[serde(flatten)]
         // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
         deploy: Arc<Deploy>,

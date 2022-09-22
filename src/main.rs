@@ -145,20 +145,16 @@ async fn run(config: Config) -> Result<(), Error> {
         true,
     ));
 
-    let storage_path = Path::new(&config.storage.storage_path);
+    let path_to_database_dir = Path::new(&config.storage.storage_path);
 
-    // Instantiates SQLite database
-    let storage: SqliteDb = SqliteDb::new(
-        storage_path,
-        config.storage.sqlite_file_name,
-        config.node_connection.ip_address.clone(),
-    )
-    .await
-    .context("Error instantiating database")?;
+    // Creates and initialises Sqlite database
+    let sqlite_db: SqliteDb = SqliteDb::new(path_to_database_dir, config.storage.sqlite_file_name)
+        .await
+        .context("Error instantiating database")?;
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        storage.file_path.clone(),
+        sqlite_db.file_path.clone(),
         config.rest_server.ip_address,
         config.rest_server.port,
     ));
@@ -175,7 +171,6 @@ async fn run(config: Config) -> Result<(), Error> {
     println!("\n\n");
 
     let node_ip_address = config.node_connection.ip_address.clone();
-    // Save event_source_address here
 
     // Task to manage incoming events from all three filters
     let sse_processing_task = async {
@@ -189,7 +184,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
                     match sse_data {
                         SseData::ApiVersion(version) => {
-                            info!("API Version: {:?}", version.to_string());
+                            info!(%version, "API Version");
                         }
                         SseData::BlockAdded { block, block_hash } => {
                             info!(
@@ -197,7 +192,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 hash = hex::encode(block_hash.inner()).as_str(),
                                 height = block.header.height,
                             );
-                            let res = storage
+                            let res = sqlite_db
                                 .save_block_added(
                                     BlockAdded::new(block_hash, block),
                                     event_id,
@@ -214,7 +209,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 message = "Deploy Accepted:",
                                 hash = hex::encode(deploy.id().inner()).as_str()
                             );
-                            let res = storage
+                            let res = sqlite_db
                                 .save_deploy_accepted(
                                     DeployAccepted::new(deploy),
                                     event_id,
@@ -231,7 +226,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 message = "Deploy expired:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage
+                            let res = sqlite_db
                                 .save_deploy_expired(
                                     DeployExpired::new(deploy_hash),
                                     event_id,
@@ -265,7 +260,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 message = "Deploy Processed:",
                                 hash = hex::encode(deploy_hash.inner()).as_str()
                             );
-                            let res = storage
+                            let res = sqlite_db
                                 .save_deploy_processed(
                                     deploy_processed,
                                     event_id,
@@ -289,7 +284,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 public_key.to_hex(),
                                 timestamp
                             );
-                            let res = storage
+                            let res = sqlite_db
                                 .save_fault(fault, event_id, event_source_address)
                                 .await;
 
@@ -300,7 +295,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::FinalitySignature(fs) => {
                             debug!("Finality signature, {}", fs.signature);
                             let finality_signature = FinalitySignature::new(fs);
-                            let res = storage
+                            let res = sqlite_db
                                 .save_finality_signature(
                                     finality_signature,
                                     event_id,
@@ -318,7 +313,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         } => {
                             let step = Step::new(era_id, execution_effect);
                             info!("\n\tStep reached for Era: {}", era_id);
-                            let res = storage
+                            let res = sqlite_db
                                 .save_step(step, event_id, event_source_address)
                                 .await;
 
@@ -393,21 +388,17 @@ async fn stream_events_to_channel(
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
     use super::*;
     use crate::testing::test_node::start_test_node_with_shutdown;
-    use lazy_static::lazy_static;
     use serial_test::serial;
     use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
 
-    lazy_static! {
-        static ref TEST_CONFIG: Config = read_config(TEST_CONFIG_PATH).unwrap();
-    }
-
     #[tokio::test]
     #[serial]
+    #[ignore]
     async fn should_return_helpful_error_if_node_unreachable() {
         let test_config = read_config(TEST_CONFIG_PATH).unwrap();
 
@@ -421,6 +412,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
+    #[ignore]
     async fn should_connect_and_shutdown_cleanly() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
 
@@ -433,6 +425,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
+    #[ignore]
     async fn should_allow_client_connection_to_sse() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
@@ -461,6 +454,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
+    #[ignore]
     async fn should_respond_to_rest_query() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
@@ -509,6 +503,7 @@ mod performance_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
+    #[ignore]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
         let config = read_config("config.toml").unwrap();
@@ -588,6 +583,7 @@ mod performance_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
+    #[ignore]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
         let config = read_config("config.toml").unwrap();

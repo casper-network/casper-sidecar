@@ -9,7 +9,6 @@ use casper_types::AsymmetricType;
 
 use anyhow::Error;
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
@@ -32,39 +31,86 @@ const MAX_READ_CONNECTIONS: u32 = 100;
 
 #[derive(Clone)]
 pub struct SqliteDb {
+    // todo allow checkpointing to be configurable + log size
+    // todo return and share ref
     pub connection_pool: SqlitePool,
     pub file_path: PathBuf,
 }
 
 impl SqliteDb {
-    pub async fn new(
-        storage_dir: &Path,
-        storage_file_name: String,
-        node_ip_address: String,
-    ) -> Result<SqliteDb, Error> {
-        fs::create_dir_all(storage_dir)?;
+    pub async fn new(database_dir: &Path, database_file_name: String) -> Result<SqliteDb, Error> {
+        fs::create_dir_all(database_dir)?;
 
-        let relative_path = storage_dir
-            .join(storage_file_name)
-            .to_str()
-            .unwrap()
-            .to_string();
+        match database_dir.join(database_file_name).to_str() {
+            None => Err(Error::msg("Error handling path to database")),
+            Some(path) => {
+                let connection_pool = SqlitePoolOptions::new()
+                    .max_connections(MAX_WRITE_CONNECTIONS)
+                    .connect_lazy_with(
+                        SqliteConnectOptions::from_str(path)?
+                            .create_if_missing(true)
+                            .journal_mode(SqliteJournalMode::Wal)
+                            .disable_statement_logging()
+                            .to_owned(),
+                    );
 
-        let mut initial_connection = SqliteConnectOptions::from_str(&relative_path)?
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .disable_statement_logging()
-            .connect()
-            .await?;
+                let sqlite_db = SqliteDb {
+                    connection_pool,
+                    file_path: Path::new(&path).into(),
+                };
 
+                sqlite_db.initialise_with_tables().await?;
+
+                Ok(sqlite_db)
+            }
+        }
+    }
+
+    pub fn new_read_only(path: &Path) -> Result<SqliteDb, Error> {
+        let connection_pool = SqlitePoolOptions::new()
+            .max_connections(MAX_READ_CONNECTIONS)
+            .connect_lazy_with(
+                SqliteConnectOptions::from_str(path.to_str().unwrap())?
+                    .read_only(true)
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .disable_statement_logging()
+                    .to_owned(),
+            );
+
+        Ok(SqliteDb {
+            connection_pool,
+            file_path: path.into(),
+        })
+    }
+
+    #[cfg(test)]
+    pub async fn new_in_memory() -> Result<SqliteDb, Error> {
+        let connection_pool = SqlitePoolOptions::new()
+            .max_connections(MAX_WRITE_CONNECTIONS)
+            .connect_lazy_with(
+                SqliteConnectOptions::from_str(":memory:")?
+                    .create_if_missing(true)
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .disable_statement_logging()
+                    .to_owned(),
+            );
+
+        let sqlite_db = SqliteDb {
+            connection_pool,
+            file_path: Path::new("in_memory").into(),
+        };
+
+        sqlite_db.initialise_with_tables().await?;
+
+        Ok(sqlite_db)
+    }
+
+    pub async fn initialise_with_tables(&self) -> Result<(), Error> {
         let create_table_stmts = vec![
             // Synthetic tables
             tables::event_type::create_table_stmt(),
             tables::event_log::create_table_stmt(),
-            tables::event_source::create_table_stmt(),
-            tables::event_source_of_event::create_table_stmt(),
             tables::deploy_event::create_table_stmt(),
-            tables::deploy_event_type::create_table_stmt(),
             // Raw Event tables
             tables::block_added::create_table_stmt(),
             tables::deploy_accepted::create_table_stmt(),
@@ -78,67 +124,20 @@ impl SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        initial_connection
+        self.connection_pool
             .execute(create_table_stmts.as_str())
             .await?;
 
-        // Check if node_ip_address is already in the DB to avoid duplicating the IP under different event_source_id's
-        let check_for_node_ip_stmt =
-            tables::event_source::create_select_id_by_address_stmt(node_ip_address.clone())
-                .to_string(SqliteQueryBuilder);
-        let node_ip_not_stored = initial_connection
-            .fetch_optional(check_for_node_ip_stmt.as_str())
-            .await?
-            .is_none();
-
-        if node_ip_not_stored {
-            let add_node_ip_sql = tables::event_source::create_insert_stmt(node_ip_address)?
-                .to_string(SqliteQueryBuilder);
-            initial_connection.execute(add_node_ip_sql.as_str()).await?;
-        }
-
-        let batched_initialise_tables = vec![
-            tables::event_type::create_initialise_stmt()?,
-            tables::deploy_event_type::create_initialise_stmt()?,
-        ]
-        .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-        .join(";");
+        let initialise_event_type =
+            tables::event_type::create_initialise_stmt()?.to_string(SqliteQueryBuilder);
 
         // The result is swallowed because this call may fail if the tables were already created and populated.
-        let _ = initial_connection
-            .execute(batched_initialise_tables.as_str())
+        let _ = self
+            .connection_pool
+            .execute(initialise_event_type.as_str())
             .await;
 
-        let connection_pool = SqlitePoolOptions::new()
-            .max_connections(MAX_WRITE_CONNECTIONS)
-            .connect_lazy_with(
-                SqliteConnectOptions::from_str(&relative_path)?
-                    .journal_mode(SqliteJournalMode::Wal)
-                    .disable_statement_logging()
-                    .to_owned(),
-            );
-
-        Ok(SqliteDb {
-            connection_pool,
-            file_path: Path::new(&relative_path).into(),
-        })
-    }
-
-    pub fn new_read_only(path: &Path) -> Result<SqliteDb, Error> {
-        let connection_pool = SqlitePoolOptions::new()
-            .max_connections(MAX_READ_CONNECTIONS)
-            .connect_lazy_with(
-                SqliteConnectOptions::from_str(path.to_str().unwrap())?
-                    .read_only(true)
-                    .journal_mode(SqliteJournalMode::Wal), // .disable_statement_logging()
-                                                           // .to_owned(),
-            );
-
-        Ok(SqliteDb {
-            connection_pool,
-            file_path: path.into(),
-        })
+        Ok(())
     }
 }
 
@@ -146,18 +145,6 @@ fn handle_sqlite_result(result: Result<SqliteQueryResult, sqlx::Error>) -> Resul
     result
         .map_err(Error::from)
         .map(|sqlite_res| sqlite_res.rows_affected() as usize)
-}
-
-async fn execute_many_with_error_check(
-    connection: &SqlitePool,
-    batched_stmts: String,
-) -> Result<(), Error> {
-    while let Some(result) = connection.execute_many(batched_stmts.as_str()).next().await {
-        if let Err(sqlite_err) = result {
-            return Err(Error::from(sqlite_err));
-        }
-    }
-    Ok(())
 }
 
 #[async_trait]
@@ -203,7 +190,7 @@ impl DatabaseWriter for SqliteDb {
         deploy_accepted: DeployAccepted,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error> {
+    ) -> Result<usize, Error> {
         let db_connection = &self.connection_pool;
 
         let json = serde_json::to_string(&deploy_accepted)?;
@@ -233,7 +220,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        execute_many_with_error_check(db_connection, batched_insert_stmts).await
+        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
     }
 
     async fn save_deploy_processed(
@@ -241,7 +228,7 @@ impl DatabaseWriter for SqliteDb {
         deploy_processed: DeployProcessed,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error> {
+    ) -> Result<usize, Error> {
         let db_connection = &self.connection_pool;
 
         let json = serde_json::to_string(&deploy_processed)?;
@@ -271,7 +258,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        execute_many_with_error_check(db_connection, batched_insert_stmts).await
+        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
     }
 
     async fn save_deploy_expired(
@@ -279,7 +266,7 @@ impl DatabaseWriter for SqliteDb {
         deploy_expired: DeployExpired,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error> {
+    ) -> Result<usize, Error> {
         let db_connection = &self.connection_pool;
 
         let encoded_hash = deploy_expired.hex_encoded_hash();
@@ -304,36 +291,7 @@ impl DatabaseWriter for SqliteDb {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        execute_many_with_error_check(db_connection, batched_insert_stmts).await
-    }
-
-    async fn save_step(
-        &self,
-        step: Step,
-        event_id: u64,
-        event_source_address: String,
-    ) -> Result<usize, Error> {
-        let db_connection = &self.connection_pool;
-
-        let json = serde_json::to_string(&step)?;
-        let era_id = u64::from(step.era_id);
-
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::Step as u8,
-            &event_source_address,
-            event_id,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = db_connection
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
-
-        let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id as u64)?
-            .to_string(SqliteQueryBuilder);
-
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
     }
 
     async fn save_fault(
@@ -398,6 +356,35 @@ impl DatabaseWriter for SqliteDb {
             event_log_id as u64,
         )?
         .to_string(SqliteQueryBuilder);
+
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+    }
+
+    async fn save_step(
+        &self,
+        step: Step,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error> {
+        let db_connection = &self.connection_pool;
+
+        let json = serde_json::to_string(&step)?;
+        let era_id = u64::from(step.era_id);
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::Step as u8,
+            &event_source_address,
+            event_id,
+        )?
+        .to_string(SqliteQueryBuilder);
+
+        let event_log_id = db_connection
+            .fetch_one(insert_to_event_log_stmt.as_str())
+            .await?
+            .try_get::<i64, usize>(0)?;
+
+        let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id as u64)?
+            .to_string(SqliteQueryBuilder);
 
         handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
@@ -492,10 +479,10 @@ impl DatabaseReader for SqliteDb {
                     .map_err(|sqlx_err| wrap_query_error(sqlx_err.into())),
             })?;
 
-        self.get_deploy_by_hash_aggregate(&latest_deploy_hash).await
+        self.get_deploy_aggregate_by_hash(&latest_deploy_hash).await
     }
 
-    async fn get_deploy_by_hash_aggregate(
+    async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
@@ -511,8 +498,11 @@ impl DatabaseReader for SqliteDb {
                 deploy_processed: Some(deploy_processed),
                 deploy_expired: false,
             }),
-            Err(_) => {
-                // Other errors could be handled here but for now I think it's better to just lump them together and mark the DeployProcessed as if it is NotFound.
+            Err(err) => {
+                // If the error is anything other than NotFound return the error.
+                if !matches!(DatabaseRequestError::NotFound, _err) {
+                    return Err(err);
+                }
                 match self.get_deploy_expired_by_hash(hash).await {
                     Ok(deploy_has_expired) => Ok(AggregateDeployInfo {
                         deploy_hash: hash.to_string(),
@@ -520,8 +510,11 @@ impl DatabaseReader for SqliteDb {
                         deploy_processed: None,
                         deploy_expired: deploy_has_expired,
                     }),
-                    Err(_) => {
-                        // Other errors could be handled here but for now I think it's better to just lump them together and mark the DeployExpired as if it is NotFound.
+                    Err(err) => {
+                        // If the error is anything other than NotFound return the error.
+                        if !matches!(DatabaseRequestError::NotFound, _err) {
+                            return Err(err);
+                        }
                         Ok(AggregateDeployInfo {
                             deploy_hash: hash.to_string(),
                             deploy_accepted: Some(deploy_accepted),
@@ -764,4 +757,240 @@ fn wrap_query_error(error: SqliteDbError) -> DatabaseRequestError {
 
 fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
     serde_json::from_str::<T>(data).map_err(SqliteDbError::SerdeJson)
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_types::testing::TestRng;
+    use casper_types::AsymmetricType;
+
+    use crate::{
+        database::{DatabaseReader, DatabaseWriter},
+        sqlite_db::SqliteDb,
+        types::sse_events::*,
+    };
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_block_added() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let block_added = BlockAdded::random(&mut test_rng);
+
+        sqlite_db
+            .save_block_added(block_added.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving block_added");
+
+        sqlite_db
+            .get_latest_block()
+            .await
+            .expect("Error getting latest block_added");
+
+        sqlite_db
+            .get_block_by_hash(&block_added.hex_encoded_hash())
+            .await
+            .expect("Error getting block_added by hash");
+
+        sqlite_db
+            .get_block_by_height(block_added.get_height())
+            .await
+            .expect("Error getting block_added by height");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_deploy_accepted() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_accepted = DeployAccepted::random(&mut test_rng);
+
+        sqlite_db
+            .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_accepted");
+
+        sqlite_db
+            .get_deploy_accepted_by_hash(&deploy_accepted.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy_accepted by hash");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_deploy_processed() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+
+        sqlite_db
+            .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_processed");
+
+        sqlite_db
+            .get_deploy_processed_by_hash(&deploy_processed.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy_processed by hash");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_deploy_expired() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_expired = DeployExpired::random(&mut test_rng, None);
+
+        sqlite_db
+            .save_deploy_expired(deploy_expired.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_expired");
+
+        sqlite_db
+            .get_deploy_expired_by_hash(&deploy_expired.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy_expired by hash");
+    }
+
+    #[tokio::test]
+    async fn should_retrieve_deploy_aggregate_of_accepted() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_accepted = DeployAccepted::random(&mut test_rng);
+
+        sqlite_db
+            .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_accepted");
+
+        sqlite_db
+            .get_latest_deploy_aggregate()
+            .await
+            .expect("Error getting latest deploy aggregate");
+
+        sqlite_db
+            .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy aggregate by hash");
+    }
+
+    #[tokio::test]
+    async fn should_retrieve_deploy_aggregate_of_processed() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_accepted = DeployAccepted::random(&mut test_rng);
+        let deploy_processed =
+            DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+
+        sqlite_db
+            .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_accepted");
+
+        sqlite_db
+            .save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_processed");
+
+        sqlite_db
+            .get_latest_deploy_aggregate()
+            .await
+            .expect("Error getting latest deploy aggregate");
+
+        sqlite_db
+            .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy aggregate by hash");
+    }
+
+    #[tokio::test]
+    async fn should_retrieve_deploy_aggregate_of_expired() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let deploy_accepted = DeployAccepted::random(&mut test_rng);
+        let deploy_expired =
+            DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+
+        sqlite_db
+            .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_accepted");
+
+        sqlite_db
+            .save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving deploy_expired");
+
+        sqlite_db
+            .get_latest_deploy_aggregate()
+            .await
+            .expect("Error getting latest deploy aggregate");
+
+        sqlite_db
+            .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
+            .await
+            .expect("Error getting deploy aggregate by hash");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_fault() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let fault = Fault::random(&mut test_rng);
+
+        sqlite_db
+            .save_fault(fault.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving fault");
+
+        sqlite_db
+            .get_faults_by_era(fault.era_id.value())
+            .await
+            .expect("Error getting faults by era");
+
+        sqlite_db
+            .get_faults_by_public_key(&fault.public_key.to_hex())
+            .await
+            .expect("Error getting faults by public key");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_finality_signature() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let finality_signature = FinalitySignature::random(&mut test_rng);
+
+        sqlite_db
+            .save_finality_signature(finality_signature.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving finality_signature");
+
+        sqlite_db
+            .get_finality_signatures_by_block(&finality_signature.hex_encoded_block_hash())
+            .await
+            .expect("Error getting finality signatures by block_hash");
+    }
+
+    #[tokio::test]
+    async fn should_save_and_retrieve_step() {
+        let mut test_rng = TestRng::new();
+
+        let sqlite_db = SqliteDb::new_in_memory().await.unwrap();
+        let step = Step::random(&mut test_rng);
+
+        sqlite_db
+            .save_step(step.clone(), 1, "127.0.0.1".to_string())
+            .await
+            .expect("Error saving step");
+
+        sqlite_db
+            .get_step_by_era(step.era_id.value())
+            .await
+            .expect("Error getting step by era");
+    }
 }

@@ -1,22 +1,20 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, QueryStatementBuilder, SimpleExpr, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, Table, TableCreateStatement,
 };
 
-use super::{event_source::EventSource, event_type::EventType};
+use super::event_type::EventType;
 
 #[derive(Iden)]
 pub(super) enum EventLog {
     Table,
     EventLogId,
     EventTypeId,
-    EventSourceId,
+    EventSourceAddress,
     EventId,
     InsertedTimestamp,
     EmittedTimestamp,
 }
-
-// todo add constraint on [ EventSourceId + EventId + Timestamp] being UNIQUE
 
 pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()
@@ -30,7 +28,11 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .primary_key(),
         )
         .col(ColumnDef::new(EventLog::EventTypeId).integer().not_null())
-        .col(ColumnDef::new(EventLog::EventSourceId).integer().not_null())
+        .col(
+            ColumnDef::new(EventLog::EventSourceAddress)
+                .string()
+                .not_null(),
+        )
         .col(ColumnDef::new(EventLog::EventId).integer().not_null())
         .col(
             ColumnDef::new(EventLog::InsertedTimestamp)
@@ -48,6 +50,15 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
         )
+        // todo is this the correct naming for the index?
+        .index(
+            Index::create()
+                .unique()
+                .name("UDX_event_log")
+                .col(EventLog::EventSourceAddress)
+                .col(EventLog::EventId)
+                .col(EventLog::InsertedTimestamp),
+        )
         .to_owned()
 }
 
@@ -60,20 +71,13 @@ pub fn create_insert_stmt(
         .into_table(EventLog::Table)
         .columns([
             EventLog::EventTypeId,
-            EventLog::EventSourceId,
+            EventLog::EventSourceAddress,
             EventLog::EventId,
         ])
-        .exprs([
-            Expr::val(event_type_id).into_simple_expr(),
-            SimpleExpr::SubQuery(Box::new(
-                Query::select()
-                    .column(EventSource::EventSourceId)
-                    .from(EventSource::Table)
-                    .and_where(Expr::col(EventSource::EventSourceAddress).eq(event_source_address))
-                    .to_owned()
-                    .into_sub_query_statement(),
-            )),
-            Expr::val(event_id).into_simple_expr(),
+        .values(vec![
+            event_type_id.into(),
+            event_source_address.into(),
+            event_id.into(),
         ])
         .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
 

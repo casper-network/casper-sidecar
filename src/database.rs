@@ -16,52 +16,93 @@ pub struct AggregateDeployInfo {
     pub(crate) deploy_expired: bool,
 }
 
+/// Describes a reference for the writing interface of an 'Event Store' database.
+/// There is a one-to-one relationship between each method and each event that can be received from the node.
+/// Each method takes the `data` and `id` fields as well as the source IP address (useful for tying the node-specific `id` to the relevant node).
+///
+/// For a reference implementation using Sqlite see, [SqliteDb](crate::SqliteDb)
 #[async_trait]
 pub trait DatabaseWriter {
+    /// Save a BlockAdded event to the database.
+    ///
+    /// * `block_added`: the [BlockAdded] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_block_added(
         &self,
         block_added: BlockAdded,
         event_id: u64,
         event_source_address: String,
     ) -> Result<usize, Error>;
+    /// Save a DeployAccepted event to the database.
+    ///
+    /// * `deploy_accepted`: the [DeployAccepted] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_deploy_accepted(
         &self,
         deploy_accepted: DeployAccepted,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error>;
+    ) -> Result<usize, Error>;
+    /// Save a DeployProcessed event to the database.
+    ///
+    /// * `deploy_accepted`: the [DeployProcessed] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_deploy_processed(
         &self,
         deploy_processed: DeployProcessed,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error>;
+    ) -> Result<usize, Error>;
+    /// Save a DeployExpired event to the database.
+    ///
+    /// * `deploy_expired`: the [DeployExpired] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_deploy_expired(
         &self,
         deploy_expired: DeployExpired,
         event_id: u64,
         event_source_address: String,
-    ) -> Result<(), Error>;
-    async fn save_step(
-        &self,
-        step: Step,
-        event_id: u64,
-        event_source_address: String,
     ) -> Result<usize, Error>;
+    /// Save a Fault event to the database.
+    ///
+    /// * `fault`: the [Fault] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_fault(
         &self,
         fault: Fault,
         event_id: u64,
         event_source_address: String,
     ) -> Result<usize, Error>;
+    /// Save a FinalitySignature event to the database.
+    ///
+    /// * `finality_signature`: the [FinalitySignature] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
     async fn save_finality_signature(
         &self,
         finality_signature: FinalitySignature,
         event_id: u64,
         event_source_address: String,
     ) -> Result<usize, Error>;
+    /// Save a Step event to the database.
+    ///
+    /// * `step`: the [Step] from the `data` field.
+    /// * `event_id`: the node-specific assigned `id`.
+    /// * `event_source_address`: the IP address of the source node.
+    async fn save_step(
+        &self,
+        step: Step,
+        event_id: u64,
+        event_source_address: String,
+    ) -> Result<usize, Error>;
 }
 
+// todo document
 #[async_trait]
 pub trait DatabaseReader {
     async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError>;
@@ -70,7 +111,7 @@ pub trait DatabaseReader {
     async fn get_latest_deploy_aggregate(
         &self,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
-    async fn get_deploy_by_hash_aggregate(
+    async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError>;

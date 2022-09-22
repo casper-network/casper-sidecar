@@ -309,7 +309,6 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "reqwest",
- "schemars",
  "sea-query",
  "serde",
  "serde_json",
