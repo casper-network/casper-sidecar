@@ -584,8 +584,6 @@ impl DatabaseReader for SqliteDb {
             })
     }
 
-    // todo Note for documentation: calling the deploy_expired directly can only tell the client that the deploy has expired OR that the record wasn't found - this doesn't necessarily mean it hasn't expired.
-    // todo Calling the aggregate_deploy endpoint can confirm if a deploy hasn't expired (given there is a corresponding DeployAccepted record present)
     async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError> {
         check_hash_is_correct_format(hash)?;
 

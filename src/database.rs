@@ -102,44 +102,69 @@ pub trait DatabaseWriter {
     ) -> Result<usize, Error>;
 }
 
-// todo document
+/// Describes a reference for the reading interface of an 'Event Store' database.
+///
+/// For a reference implementation using Sqlite see, [SqliteDb](crate::SqliteDb)
 #[async_trait]
 pub trait DatabaseReader {
+    /// Returns the latest [BlockAdded] by height from the database.
     async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError>;
+    /// Returns the [BlockAdded] corresponding to the provided [height].
     async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseRequestError>;
+    /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError>;
+    /// Returns the aggregate of the latest deploy's events.
     async fn get_latest_deploy_aggregate(
         &self,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     async fn get_deploy_accepted_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployAccepted, DatabaseRequestError>;
+    /// Returns the [DeployProcessed] corresponding to the given hex-encoded `hash`
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseRequestError>;
+    /// Returns a boolean representing the expired state of the deploy corresponding to the given hex-encoded `hash`.
+    ///
+    /// * If there is a record present it will return `true` meaning the [Deploy] has expired.
+    /// * If there is no record present it will return [NotFound](DatabaseRequestError::NotFound) rather than `false`.
+    /// This is because the lack of a record does not definitely mean it hasn't expired. The deploy could have expired
+    /// prior to sidecar's start point. Calling [get_deploy_aggregate_by_hash] can help in this case, if there is a [DeployAccepted]
+    /// without a corresponding [DeployExpired] then you can assert that it truly has not expired.
     async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError>;
-    async fn get_step_by_era(&self, era_id: u64) -> Result<Step, DatabaseRequestError>;
+    /// Returns the [Step] event for the given era.
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseRequestError>;
+    /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
     ) -> Result<Vec<Fault>, DatabaseRequestError>;
+    /// Returns all [Fault]s that occurred in the given [era]
     async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseRequestError>;
+    /// Returns all [FinalitySignature](casper_node::types::FinalitySignature)s for the given hex-encoded `block_hash`.
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
     ) -> Result<Vec<FinSig>, DatabaseRequestError>;
 }
 
+/// The database was unable to fulfil the request.
 #[derive(Debug)]
 pub enum DatabaseRequestError {
+    /// The requested record was not present in the database.
     NotFound,
+    /// The provided parameter was not valid for the request.
     InvalidParam(Error),
+    /// An error occurred serialising or deserialising data from the database.
     Serialisation(Error),
+    /// An error occurred somewhere unexpected.
     Unhandled(Error),
 }
