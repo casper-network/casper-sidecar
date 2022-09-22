@@ -12,8 +12,6 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use casper_types::AsymmetricType;
-
 use anyhow::{Context, Error};
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
@@ -191,11 +189,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             info!(%version, "API Version");
                         }
                         SseData::BlockAdded { block, block_hash } => {
-                            info!(
-                                message = "Block Added:",
-                                hash = hex::encode(block_hash.inner()).as_str(),
-                                height = block.header.height,
-                            );
+                            info!(%block_hash, "Block Added");
                             let res = sqlite_db
                                 .save_block_added(
                                     BlockAdded::new(block_hash, block),
@@ -205,31 +199,26 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .await;
 
                             if let Err(error) = res {
-                                warn!("Error saving block: {}", error);
+                                warn!(%error, "Error saving block");
                             }
                         }
                         SseData::DeployAccepted { deploy } => {
-                            info!(
-                                message = "Deploy Accepted:",
-                                hash = hex::encode(deploy.id().inner()).as_str()
-                            );
+                            let deploy_accepted = DeployAccepted::new(deploy);
+                            info!(deploy_hash=%deploy_accepted.deploy_hash(), "Deploy Accepted");
                             let res = sqlite_db
                                 .save_deploy_accepted(
-                                    DeployAccepted::new(deploy),
+                                    deploy_accepted,
                                     event_id,
                                     event_source_address,
                                 )
                                 .await;
 
                             if let Err(error) = res {
-                                warn!("Error saving deploy: {}", error);
+                                warn!(%error, "Error saving deploy accepted");
                             }
                         }
                         SseData::DeployExpired { deploy_hash } => {
-                            info!(
-                                message = "Deploy expired:",
-                                hash = hex::encode(deploy_hash.inner()).as_str()
-                            );
+                            info!(%deploy_hash, "Deploy Expired");
                             let res = sqlite_db
                                 .save_deploy_expired(
                                     DeployExpired::new(deploy_hash),
@@ -239,7 +228,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .await;
 
                             if let Err(error) = res {
-                                warn!("Error saving deploy expired: {}", error);
+                                warn!(%error, "Error saving deploy expired");
                             }
                         }
                         SseData::DeployProcessed {
@@ -260,10 +249,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 block_hash,
                                 execution_result,
                             );
-                            info!(
-                                message = "Deploy Processed:",
-                                hash = hex::encode(deploy_hash.inner()).as_str()
-                            );
+                            info!(%deploy_hash, "Deploy Processed");
                             let res = sqlite_db
                                 .save_deploy_processed(
                                     deploy_processed,
@@ -273,7 +259,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .await;
 
                             if let Err(error) = res {
-                                warn!("Error saving deploy processed: {}", error);
+                                warn!(%error, "Error saving deploy processed");
                             }
                         }
                         SseData::Fault {
@@ -282,12 +268,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             public_key,
                         } => {
                             let fault = Fault::new(era_id, public_key.clone(), timestamp);
-                            info!(
-                                "\n\tFault reported!\n\tEra: {}\n\tPublic Key: {}\n\tTimestamp: {}",
-                                era_id,
-                                public_key.to_hex(),
-                                timestamp
-                            );
+                            warn!(%fault, "Fault reported");
                             let res = sqlite_db
                                 .save_fault(fault, event_id, event_source_address)
                                 .await;
@@ -297,7 +278,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::FinalitySignature(fs) => {
-                            debug!("Finality signature, {}", fs.signature);
+                            debug!(%fs.signature, "Finality signature");
                             let finality_signature = FinalitySignature::new(fs);
                             let res = sqlite_db
                                 .save_finality_signature(
@@ -308,7 +289,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 .await;
 
                             if let Err(error) = res {
-                                warn!("Error saving finality signature: {}", error)
+                                warn!(%error, "Error saving finality signature")
                             }
                         }
                         SseData::Step {
@@ -316,7 +297,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             execution_effect,
                         } => {
                             let step = Step::new(era_id, execution_effect);
-                            info!("\n\tStep reached for Era: {}", era_id);
+                            info!(%era_id, "Step");
                             let res = sqlite_db
                                 .save_step(step, event_id, event_source_address)
                                 .await;
@@ -332,7 +313,7 @@ async fn run(config: Config) -> Result<(), Error> {
                     }
                 }
                 Err(err) => {
-                    println!("{:?}", evt);
+                    warn!(?evt, "Error from stream");
                     if err.to_string() == CONNECTION_REFUSED {
                         warn!("Connection to node lost...");
                     } else {
@@ -375,7 +356,7 @@ async fn stream_events_to_channel(
             Ok(event) => {
                 let _ = sender.send(event);
             }
-            Err(error) => warn!("error receiving events: {}", error),
+            Err(error) => warn!(%error, "Error receiving events"),
         }
         if discard_first {
             let _ = event_stream.next().await;
@@ -385,7 +366,7 @@ async fn stream_events_to_channel(
                 Ok(event) => {
                     let _ = sender.send(event);
                 }
-                Err(error) => warn!("error receiving events: {}", error),
+                Err(error) => warn!(%error, "Error receiving events"),
             }
         }
     }

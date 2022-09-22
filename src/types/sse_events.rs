@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use derive_new::new;
@@ -63,7 +64,6 @@ impl DeployAccepted {
         }
     }
 
-    #[cfg(test)]
     pub fn deploy_hash(&self) -> DeployHash {
         self.deploy.id().to_owned()
     }
@@ -141,6 +141,12 @@ impl Fault {
             public_key: PublicKey::random(rng),
             timestamp: Timestamp::random(rng),
         }
+    }
+}
+
+impl Display for Fault {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
     }
 }
 
