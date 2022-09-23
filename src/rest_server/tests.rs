@@ -297,7 +297,7 @@ async fn faults_by_public_key_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/fault/{}", stored_identifiers.fault_public_key);
+    let request_path = format!("/faults/{}", stored_identifiers.fault_public_key);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -319,7 +319,7 @@ async fn faults_by_era_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/fault/{}", stored_identifiers.fault_era_id);
+    let request_path = format!("/faults/{}", stored_identifiers.fault_era_id);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -443,21 +443,21 @@ async fn step_by_era_of_not_stored_should_return_404() {
 
 #[tokio::test]
 async fn fault_by_public_key_of_not_stored_should_return_404() {
-    let request_path = format!("/fault/{}", NOT_STORED_PUBLIC_KEY);
+    let request_path = format!("/faults/{}", NOT_STORED_PUBLIC_KEY);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
 #[tokio::test]
 async fn fault_by_era_of_not_stored_should_return_404() {
-    let request_path = format!("/fault/{}", NOT_STORED_ERA);
+    let request_path = format!("/faults/{}", NOT_STORED_ERA);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
 #[tokio::test]
 async fn fault_by_invalid_public_key_should_return_400() {
-    let request_path = format!("/fault/{}", INVALID_PUBLIC_KEY);
+    let request_path = format!("/faults/{}", INVALID_PUBLIC_KEY);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
