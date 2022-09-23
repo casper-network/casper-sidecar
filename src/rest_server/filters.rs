@@ -129,7 +129,7 @@ fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("fault" / String)
+    warp::path!("faults" / String)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_faults_by_public_key)
@@ -138,7 +138,7 @@ fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
 fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("fault" / u64)
+    warp::path!("faults" / u64)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_faults_by_era)
