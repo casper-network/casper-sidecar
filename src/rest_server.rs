@@ -10,8 +10,13 @@ use anyhow::Error;
 
 use crate::{sqlite_database::SqliteDatabase, utils::resolve_address};
 
-pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<(), Error> {
-    let db = SqliteDatabase::new_read_only(&db_path)?;
+pub async fn run_server(
+    ip_address: String,
+    port: u16,
+    path_to_database: PathBuf,
+    max_read_connections: u32,
+) -> Result<(), Error> {
+    let db = SqliteDatabase::new_read_only(&path_to_database, max_read_connections)?;
 
     let api = filters::combined_filters(db);
 

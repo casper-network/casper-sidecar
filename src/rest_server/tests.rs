@@ -26,6 +26,8 @@ struct IdentifiersForStoredEvents {
     step_era_id: u64,
 }
 
+const MAX_CONNECTIONS: u32 = 100;
+
 const NOT_STORED_HASH: &str = "0bcd71363b01c1c147c1603d2cc945930dcceecd869275beeee61dfc83b27a2c";
 const NOT_STORED_ERA: u64 = 2304;
 const NOT_STORED_PUBLIC_KEY: &str =
@@ -86,7 +88,7 @@ async fn should_respond_to_path_with(request_path: String, expected_status: Stat
 }
 
 async fn prepare_database() -> (SqliteDatabase, IdentifiersForStoredEvents) {
-    let db = SqliteDatabase::new_in_memory()
+    let db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
 

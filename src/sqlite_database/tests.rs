@@ -7,11 +7,15 @@ use crate::types::{
     sse_events::*,
 };
 
+const MAX_CONNECTIONS: u32 = 100;
+
 #[tokio::test]
 async fn should_save_and_retrieve_block_added() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let block_added = BlockAdded::random(&mut test_rng);
 
     sqlite_db
@@ -39,7 +43,9 @@ async fn should_save_and_retrieve_block_added() {
 async fn should_save_and_retrieve_deploy_accepted() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -57,7 +63,9 @@ async fn should_save_and_retrieve_deploy_accepted() {
 async fn should_save_and_retrieve_deploy_processed() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
     sqlite_db
@@ -75,7 +83,9 @@ async fn should_save_and_retrieve_deploy_processed() {
 async fn should_save_and_retrieve_deploy_expired() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
     sqlite_db
@@ -93,7 +103,9 @@ async fn should_save_and_retrieve_deploy_expired() {
 async fn should_retrieve_deploy_aggregate_of_accepted() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -116,7 +128,9 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
 async fn should_retrieve_deploy_aggregate_of_processed() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_processed =
         DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
@@ -146,7 +160,9 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
 async fn should_retrieve_deploy_aggregate_of_expired() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
@@ -175,7 +191,9 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
 async fn should_save_and_retrieve_fault() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let fault = Fault::random(&mut test_rng);
 
     sqlite_db
@@ -198,7 +216,9 @@ async fn should_save_and_retrieve_fault() {
 async fn should_save_and_retrieve_finality_signature() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
     sqlite_db
@@ -216,7 +236,9 @@ async fn should_save_and_retrieve_finality_signature() {
 async fn should_save_and_retrieve_step() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory().await.unwrap();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
     let step = Step::random(&mut test_rng);
 
     sqlite_db

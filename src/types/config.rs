@@ -17,9 +17,16 @@ pub struct NodeConnection {
 #[derive(Deserialize)]
 pub struct StorageConfig {
     pub storage_path: String,
-    pub sqlite_file_name: String,
-    pub sqlite_wal_autocheckpointing_interval: u16,
     pub sse_cache_path: String,
+    pub sqlite_config: SqliteConfig,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct SqliteConfig {
+    pub file_name: String,
+    pub max_write_connections: u32,
+    pub max_read_connections: u32,
+    pub wal_autocheckpointing_interval: u16,
 }
 
 #[derive(Deserialize)]

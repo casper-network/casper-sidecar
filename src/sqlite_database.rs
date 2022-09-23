@@ -18,10 +18,8 @@ use sqlx::{
     ConnectOptions, Executor,
 };
 
-use crate::sql::tables;
+use crate::{sql::tables, types::config::SqliteConfig};
 
-const MAX_WRITE_CONNECTIONS: u32 = 10;
-const MAX_READ_CONNECTIONS: u32 = 100;
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
 
@@ -32,23 +30,22 @@ pub struct SqliteDatabase {
 }
 
 impl SqliteDatabase {
-    pub async fn new(
-        database_dir: &Path,
-        database_file_name: String,
-        auto_checkpoint_interval: u16,
-    ) -> Result<SqliteDatabase, Error> {
+    pub async fn new(database_dir: &Path, config: SqliteConfig) -> Result<SqliteDatabase, Error> {
         fs::create_dir_all(database_dir)?;
 
-        match database_dir.join(database_file_name).to_str() {
+        match database_dir.join(config.file_name).to_str() {
             None => Err(Error::msg("Error handling path to database")),
             Some(path) => {
                 let connection_pool = SqlitePoolOptions::new()
-                    .max_connections(MAX_WRITE_CONNECTIONS)
+                    .max_connections(config.max_write_connections)
                     .connect_lazy_with(
                         SqliteConnectOptions::from_str(path)?
                             .create_if_missing(true)
                             .journal_mode(SqliteJournalMode::Wal)
-                            .pragma(WAL_AUTOCHECKPOINT_KEY, auto_checkpoint_interval.to_string())
+                            .pragma(
+                                WAL_AUTOCHECKPOINT_KEY,
+                                config.wal_autocheckpointing_interval.to_string(),
+                            )
                             .disable_statement_logging()
                             .to_owned(),
                     );
@@ -65,11 +62,14 @@ impl SqliteDatabase {
         }
     }
 
-    pub fn new_read_only(path: &Path) -> Result<SqliteDatabase, Error> {
+    pub fn new_read_only(
+        path_to_database: &Path,
+        max_read_connections: u32,
+    ) -> Result<SqliteDatabase, Error> {
         let connection_pool = SqlitePoolOptions::new()
-            .max_connections(MAX_READ_CONNECTIONS)
+            .max_connections(max_read_connections)
             .connect_lazy_with(
-                SqliteConnectOptions::from_str(path.to_str().unwrap())?
+                SqliteConnectOptions::from_str(path_to_database.to_str().unwrap())?
                     .read_only(true)
                     .journal_mode(SqliteJournalMode::Wal)
                     .disable_statement_logging()
@@ -78,14 +78,14 @@ impl SqliteDatabase {
 
         Ok(SqliteDatabase {
             connection_pool,
-            file_path: path.into(),
+            file_path: path_to_database.into(),
         })
     }
 
     #[cfg(test)]
-    pub async fn new_in_memory() -> Result<SqliteDatabase, Error> {
+    pub async fn new_in_memory(max_connections: u32) -> Result<SqliteDatabase, Error> {
         let connection_pool = SqlitePoolOptions::new()
-            .max_connections(MAX_WRITE_CONNECTIONS)
+            .max_connections(max_connections)
             .connect_lazy_with(
                 SqliteConnectOptions::from_str(":memory:")?
                     .create_if_missing(true)

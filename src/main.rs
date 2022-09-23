@@ -27,6 +27,7 @@ use crate::{
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
+const CONFIG_PATH: &str = "config.toml";
 
 fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
     if error.to_string().contains(CONNECTION_REFUSED) {
@@ -47,7 +48,7 @@ async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config("config.toml").context("Error constructing config")?;
+    let config: Config = read_config(CONFIG_PATH).context("Error constructing config")?;
     info!("Configuration loaded");
 
     run(config).await
@@ -144,19 +145,17 @@ async fn run(config: Config) -> Result<(), Error> {
     let path_to_database_dir = Path::new(&config.storage.storage_path);
 
     // Creates and initialises Sqlite database
-    let sqlite_database = SqliteDatabase::new(
-        path_to_database_dir,
-        config.storage.sqlite_file_name,
-        config.storage.sqlite_wal_autocheckpointing_interval,
-    )
-    .await
-    .context("Error instantiating database")?;
+    let sqlite_database =
+        SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())
+            .await
+            .context("Error instantiating database")?;
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        sqlite_database.file_path.clone(),
         config.rest_server.ip_address,
         config.rest_server.port,
+        sqlite_database.file_path.clone(),
+        config.storage.sqlite_config.max_read_connections,
     ));
 
     // Create new instance for the Sidecar's Event Stream Server
@@ -371,6 +370,17 @@ async fn stream_events_to_channel(
 }
 
 #[cfg(test)]
+mod unit_tests {
+    use crate::{read_config, CONFIG_PATH};
+
+    #[test]
+    fn should_parse_config_toml_files() {
+        read_config(CONFIG_PATH).expect("Error parsing config.toml");
+        read_config("config_test.toml").expect("Error parsing config_test.toml");
+    }
+}
+
+#[cfg(test)]
 mod integration_tests {
     use super::*;
     use crate::testing::test_node::start_test_node_with_shutdown;
@@ -489,7 +499,7 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        let config = read_config("config.toml").unwrap();
+        let config = read_config(CONFIG_PATH).unwrap();
 
         tokio::spawn(run(config));
 
@@ -569,7 +579,7 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        let config = read_config("config.toml").unwrap();
+        let config = read_config(CONFIG_PATH).unwrap();
 
         tokio::spawn(run(config));
 
