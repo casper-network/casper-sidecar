@@ -1,6 +1,6 @@
 use casper_types::AsymmetricType;
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
@@ -32,12 +32,12 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let row = db_connection
+        let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await
-            .unwrap();
-
-        let event_log_id = row.try_get::<i64, usize>(0)?;
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let insert_stmt = tables::block_added::create_insert_stmt(
             block_added.get_height(),
@@ -70,8 +70,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let batched_insert_stmts = vec![
             tables::deploy_accepted::create_insert_stmt(
@@ -108,8 +110,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let batched_insert_stmts = vec![
             tables::deploy_processed::create_insert_stmt(
@@ -145,8 +149,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let batched_insert_stmts = vec![
             tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id as u64)?,
@@ -180,8 +186,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let insert_stmt =
             tables::fault::create_insert_stmt(era_id, public_key, json, event_log_id as u64)?
@@ -211,8 +219,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let insert_stmt = tables::finality_signature::create_insert_stmt(
             block_hash,
@@ -245,8 +255,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let event_log_id = db_connection
             .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<i64, usize>(0)?;
+            .await
+            .context("Error inserting row to event_log")?
+            .try_get::<i64, usize>(0)
+            .context("Error parsing event_log_id from row")?;
 
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id as u64)?
             .to_string(SqliteQueryBuilder);

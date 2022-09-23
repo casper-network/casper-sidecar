@@ -15,7 +15,7 @@ async fn should_save_and_retrieve_block_added() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let block_added = BlockAdded::random(&mut test_rng);
 
     sqlite_db
@@ -45,7 +45,7 @@ async fn should_save_and_retrieve_deploy_accepted() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -65,7 +65,7 @@ async fn should_save_and_retrieve_deploy_processed() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
     sqlite_db
@@ -85,7 +85,7 @@ async fn should_save_and_retrieve_deploy_expired() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
     sqlite_db
@@ -105,7 +105,7 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -130,7 +130,7 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_processed =
         DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
@@ -162,7 +162,7 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
@@ -193,7 +193,7 @@ async fn should_save_and_retrieve_fault() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let fault = Fault::random(&mut test_rng);
 
     sqlite_db
@@ -218,7 +218,7 @@ async fn should_save_and_retrieve_finality_signature() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
     sqlite_db
@@ -238,7 +238,7 @@ async fn should_save_and_retrieve_step() {
 
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
-        .unwrap();
+        .expect("Error opening database in memory");
     let step = Step::random(&mut test_rng);
 
     sqlite_db

@@ -393,7 +393,7 @@ mod integration_tests {
     #[serial]
     #[ignore]
     async fn should_return_helpful_error_if_node_unreachable() {
-        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
         let result = run(test_config).await;
 
@@ -409,9 +409,9 @@ mod integration_tests {
     async fn should_connect_and_shutdown_cleanly() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
-        run(test_config).await.unwrap();
+        run(test_config).await.expect("Error running sidecar");
 
         node_shutdown_tx.send(()).unwrap();
     }
@@ -422,7 +422,7 @@ mod integration_tests {
     async fn should_allow_client_connection_to_sse() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
         tokio::spawn(run(test_config));
 
@@ -434,12 +434,12 @@ mod integration_tests {
             .send()
             .await
             .map_err(parse_error_for_connection_refused)
-            .unwrap()
+            .expect("Error in main event stream")
             .bytes_stream()
             .eventsource();
 
         while let Some(event) = main_event_stream.next().await {
-            event.unwrap();
+            event.expect("Error from event stream - event should have been OK");
         }
 
         node_shutdown_tx.send(()).unwrap();
@@ -451,7 +451,7 @@ mod integration_tests {
     async fn should_respond_to_rest_query() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).unwrap();
+        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
         tokio::spawn(run(test_config));
 
@@ -462,7 +462,7 @@ mod integration_tests {
             .get("http://127.0.0.1:17777/block")
             .send()
             .await
-            .unwrap();
+            .expect("Error requesting the /block endpoint");
 
         assert!(response.status().is_success());
 
@@ -499,7 +499,7 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        let config = read_config(CONFIG_PATH).unwrap();
+        let config = read_config(CONFIG_PATH).expect("Error reading config");
 
         tokio::spawn(run(config));
 
@@ -532,8 +532,10 @@ mod performance_tests {
         let (node_task_result, sidecar_task_result) =
             tokio::join!(node_task_handle, sidecar_task_handle);
 
-        let (block_events_from_node, node_overall_duration) = node_task_result.unwrap();
-        let (block_events_from_sidecar, sidecar_overall_duration) = sidecar_task_result.unwrap();
+        let (block_events_from_node, node_overall_duration) =
+            node_task_result.expect("Error recording events from node");
+        let (block_events_from_sidecar, sidecar_overall_duration) =
+            sidecar_task_result.expect("Error recording events from sidecar");
 
         let block_time_diffs =
             extract_time_diffs(block_events_from_node, block_events_from_sidecar);
@@ -554,7 +556,7 @@ mod performance_tests {
             .iter()
             .sum::<u128>()
             .checked_div(block_time_diff_millis.len() as u128)
-            .unwrap();
+            .expect("Error calculating the average delay for blocks");
 
         println!(
             "\n\tBLOCKS RESULT:\n\
@@ -566,7 +568,7 @@ mod performance_tests {
             sidecar_overall_duration
                 .as_millis()
                 .checked_sub(node_overall_duration.as_millis())
-                .unwrap(),
+                .expect("Error taking the difference in the overall durations"),
             sidecar_overall_duration.as_secs(),
             node_overall_duration.as_secs()
         );
@@ -579,7 +581,7 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        let config = read_config(CONFIG_PATH).unwrap();
+        let config = read_config(CONFIG_PATH).expect("Error reading config");
 
         tokio::spawn(run(config));
 
@@ -612,8 +614,10 @@ mod performance_tests {
         let (node_task_result, sidecar_task_result) =
             tokio::join!(node_task_handle, sidecar_task_handle);
 
-        let (deploy_events_from_node, node_overall_duration) = node_task_result.unwrap();
-        let (deploy_events_from_sidecar, sidecar_overall_duration) = sidecar_task_result.unwrap();
+        let (deploy_events_from_node, node_overall_duration) =
+            node_task_result.expect("Error recording events from node");
+        let (deploy_events_from_sidecar, sidecar_overall_duration) =
+            sidecar_task_result.expect("Error recording events from sidecar");
 
         assert_eq!(deploy_events_from_node.len(), deploy_events_from_node.len());
 
@@ -636,7 +640,7 @@ mod performance_tests {
             .iter()
             .sum::<u128>()
             .checked_div(deploy_time_diff_millis.len() as u128)
-            .unwrap();
+            .expect("Error calculating the average delay for blocks");
 
         println!(
             "\n\tDEPLOYS RESULT:\n\
@@ -648,7 +652,7 @@ mod performance_tests {
             sidecar_overall_duration
                 .as_millis()
                 .checked_sub(node_overall_duration.as_millis())
-                .unwrap(),
+                .expect("Error taking the difference in the overall duration"),
             sidecar_overall_duration.as_secs(),
             node_overall_duration.as_secs()
         );
@@ -667,7 +671,10 @@ mod performance_tests {
 
         while let Some(event) = event_stream.next().await {
             let received_timestamp = Instant::now();
-            let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+            let data = serde_json::from_str::<SseData>(
+                &event.expect("Received error from event stream").data,
+            )
+            .expect("Error deserialising the event into SseData");
             if let SseData::BlockAdded { block_hash, .. } = data {
                 events_read += 1;
                 let hash = encode(block_hash.inner());
@@ -697,7 +704,10 @@ mod performance_tests {
 
         while let Some(event) = event_stream.next().await {
             let received_timestamp = Instant::now();
-            let data = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+            let data = serde_json::from_str::<SseData>(
+                &event.expect("Received error from event stream").data,
+            )
+            .expect("Error deserialising the event into SseData");
             if let SseData::DeployAccepted { deploy } = data {
                 events_read += 1;
                 let hash = encode(*deploy.id());
@@ -743,9 +753,11 @@ mod performance_tests {
                             }
                         },
                     )
-                    .map(|reduced| reduced.expect("reducer failed to get the Duration"))
+                    .map(|reduced| reduced.expect("Reducer failed to get the Duration"))
             })
-            .map(|opt_time_difference| opt_time_difference.unwrap())
+            .map(|opt_time_difference| {
+                opt_time_difference.expect("Duration should have been populated")
+            })
             .collect::<Vec<Duration>>()
     }
 }

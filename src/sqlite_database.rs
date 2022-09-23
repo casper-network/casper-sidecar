@@ -10,7 +10,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use sqlx::{
@@ -55,7 +55,10 @@ impl SqliteDatabase {
                     file_path: Path::new(&path).into(),
                 };
 
-                sqlite_db.initialise_with_tables().await?;
+                sqlite_db
+                    .initialise_with_tables()
+                    .await
+                    .context("Error initialising tables")?;
 
                 Ok(sqlite_db)
             }
@@ -69,11 +72,15 @@ impl SqliteDatabase {
         let connection_pool = SqlitePoolOptions::new()
             .max_connections(max_read_connections)
             .connect_lazy_with(
-                SqliteConnectOptions::from_str(path_to_database.to_str().unwrap())?
-                    .read_only(true)
-                    .journal_mode(SqliteJournalMode::Wal)
-                    .disable_statement_logging()
-                    .to_owned(),
+                SqliteConnectOptions::from_str(
+                    path_to_database
+                        .to_str()
+                        .context("Error parsing path to database")?,
+                )?
+                .read_only(true)
+                .journal_mode(SqliteJournalMode::Wal)
+                .disable_statement_logging()
+                .to_owned(),
             );
 
         Ok(SqliteDatabase {
@@ -99,7 +106,10 @@ impl SqliteDatabase {
             file_path: Path::new("in_memory").into(),
         };
 
-        sqlite_db.initialise_with_tables().await?;
+        sqlite_db
+            .initialise_with_tables()
+            .await
+            .context("Error initialising tables")?;
 
         Ok(sqlite_db)
     }

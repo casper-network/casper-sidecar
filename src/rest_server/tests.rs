@@ -485,7 +485,10 @@ async fn should_have_correct_content_type() {
     let response = request().path("/block").reply(&api).await;
 
     assert_eq!(
-        response.headers().get("content-type").unwrap(),
+        response
+            .headers()
+            .get("content-type")
+            .expect("Error extracting 'content-type' from headers"),
         "application/json"
     );
 }

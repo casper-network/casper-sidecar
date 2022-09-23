@@ -215,11 +215,15 @@ async fn should_connect_then_gracefully_shutdown() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to main event stream")
         .bytes_stream()
         .eventsource();
 
-    let first_event = connection.next().await.unwrap().unwrap();
+    let first_event = connection
+        .next()
+        .await
+        .expect("First event was None")
+        .expect("First event was an error from the EventStream");
     assert!(first_event.data.contains("ApiVersion"));
 
     let _ = node_shutdown_tx.send(());
@@ -238,12 +242,17 @@ async fn main_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to main event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
@@ -265,12 +274,17 @@ async fn deploys_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to deploys event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
@@ -292,12 +306,17 @@ async fn sigs_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to sigs event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
