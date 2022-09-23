@@ -8,10 +8,10 @@ use std::path::PathBuf;
 
 use anyhow::Error;
 
-use crate::{sqlite_db::SqliteDb, utils::resolve_address};
+use crate::{sqlite_database::SqliteDatabase, utils::resolve_address};
 
 pub async fn run_server(db_path: PathBuf, ip_address: String, port: u16) -> Result<(), Error> {
-    let db = SqliteDb::new_read_only(&db_path)?;
+    let db = SqliteDatabase::new_read_only(&db_path)?;
 
     let api = filters::combined_filters(db);
 

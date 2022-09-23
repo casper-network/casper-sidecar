@@ -3,7 +3,7 @@ extern crate core;
 mod event_stream_server;
 mod rest_server;
 mod sql;
-mod sqlite_db;
+mod sqlite_database;
 #[cfg(test)]
 mod testing;
 mod types;
@@ -21,7 +21,7 @@ use tracing::{debug, info, warn};
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
     rest_server::run_server as start_rest_server,
-    sqlite_db::SqliteDb,
+    sqlite_database::SqliteDatabase,
     types::{config::Config, database::DatabaseWriter, sse_events::*},
 };
 
@@ -144,7 +144,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let path_to_database_dir = Path::new(&config.storage.storage_path);
 
     // Creates and initialises Sqlite database
-    let sqlite_db: SqliteDb = SqliteDb::new(
+    let sqlite_database = SqliteDatabase::new(
         path_to_database_dir,
         config.storage.sqlite_file_name,
         config.storage.sqlite_wal_autocheckpointing_interval,
@@ -154,7 +154,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        sqlite_db.file_path.clone(),
+        sqlite_database.file_path.clone(),
         config.rest_server.ip_address,
         config.rest_server.port,
     ));
@@ -188,7 +188,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::BlockAdded { block, block_hash } => {
                             info!(%block_hash, "Block Added");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_block_added(
                                     BlockAdded::new(block_hash, block),
                                     event_id,
@@ -203,7 +203,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::DeployAccepted { deploy } => {
                             let deploy_accepted = DeployAccepted::new(deploy);
                             info!(deploy_hash=%deploy_accepted.deploy_hash(), "Deploy Accepted");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_deploy_accepted(
                                     deploy_accepted,
                                     event_id,
@@ -217,7 +217,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::DeployExpired { deploy_hash } => {
                             info!(%deploy_hash, "Deploy Expired");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_deploy_expired(
                                     DeployExpired::new(deploy_hash),
                                     event_id,
@@ -248,7 +248,7 @@ async fn run(config: Config) -> Result<(), Error> {
                                 execution_result,
                             );
                             info!(%deploy_hash, "Deploy Processed");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_deploy_processed(
                                     deploy_processed,
                                     event_id,
@@ -267,7 +267,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         } => {
                             let fault = Fault::new(era_id, public_key.clone(), timestamp);
                             warn!(%fault, "Fault reported");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_fault(fault, event_id, event_source_address)
                                 .await;
 
@@ -278,7 +278,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         SseData::FinalitySignature(fs) => {
                             debug!(%fs.signature, "Finality signature");
                             let finality_signature = FinalitySignature::new(fs);
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_finality_signature(
                                     finality_signature,
                                     event_id,
@@ -296,7 +296,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         } => {
                             let step = Step::new(era_id, execution_effect);
                             info!(%era_id, "Step");
-                            let res = sqlite_db
+                            let res = sqlite_database
                                 .save_step(step, event_id, event_source_address)
                                 .await;
 

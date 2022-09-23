@@ -7,7 +7,7 @@ use warp::test::request;
 
 use super::filters;
 use crate::{
-    sqlite_db::SqliteDb,
+    sqlite_database::SqliteDatabase,
     types::{
         database::{AggregateDeployInfo, DatabaseWriter},
         sse_events::*,
@@ -33,9 +33,9 @@ const NOT_STORED_PUBLIC_KEY: &str =
 const INVALID_HASH: &str = "not_a_hash";
 const INVALID_PUBLIC_KEY: &str = "not_a_public_key";
 
-// Creates random SSE event data and saves them to the given SqliteDb returning the identifiers for each record.
+// Creates random SSE event data and saves them to the given SqliteDatabase returning the identifiers for each record.
 async fn populate_test_db_returning_keys(
-    db: &SqliteDb,
+    db: &SqliteDatabase,
 ) -> Result<IdentifiersForStoredEvents, Error> {
     let mut rng = TestRng::new();
 
@@ -85,8 +85,8 @@ async fn should_respond_to_path_with(request_path: String, expected_status: Stat
     assert_eq!(response.status(), expected_status);
 }
 
-async fn prepare_database() -> (SqliteDb, IdentifiersForStoredEvents) {
-    let db = SqliteDb::new_in_memory()
+async fn prepare_database() -> (SqliteDatabase, IdentifiersForStoredEvents) {
+    let db = SqliteDatabase::new_in_memory()
         .await
         .expect("Error opening database in memory");
 
