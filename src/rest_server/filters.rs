@@ -22,13 +22,12 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .recover(handle_rejection)
 }
 
-pub(super) fn root_filter(
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path::end()
         .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
 }
 
-pub fn root_and_invalid_path(
+fn root_and_invalid_path(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path::param()
         .and(warp::path::end())
@@ -37,7 +36,7 @@ pub fn root_and_invalid_path(
         })
 }
 
-pub(super) fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
+fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     latest_block(db.clone())
@@ -45,7 +44,7 @@ pub(super) fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(block_by_height(db))
 }
 
-pub(super) fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
+fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     latest_deploy(db.clone())
@@ -55,7 +54,7 @@ pub(super) fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(deploy_expired_by_hash(db))
 }
 
-pub(super) fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
+fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("block")
@@ -64,7 +63,7 @@ pub(super) fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_latest_block)
 }
 
-pub(super) fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("block" / String)
@@ -73,7 +72,7 @@ pub(super) fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_hash)
 }
 
-pub(super) fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
+fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("block" / u64)
@@ -82,7 +81,7 @@ pub(super) fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_height)
 }
 
-pub(super) fn latest_deploy<Db: DatabaseReader + Clone + Send + Sync>(
+fn latest_deploy<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deploy")
@@ -91,7 +90,7 @@ pub(super) fn latest_deploy<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_latest_deploy)
 }
 
-pub(super) fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deploy" / String)
@@ -100,7 +99,7 @@ pub(super) fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_deploy_by_hash)
 }
 
-pub(super) fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deploy" / "accepted" / String)
@@ -109,16 +108,7 @@ pub(super) fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_deploy_accepted_by_hash)
 }
 
-pub(super) fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
-    db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("deploy" / "processed" / String)
-        .and(warp::get())
-        .and(with_db(db))
-        .and_then(handlers::get_deploy_processed_by_hash)
-}
-
-pub(super) fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deploy" / "expired" / String)
@@ -127,16 +117,16 @@ pub(super) fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_deploy_expired_by_hash)
 }
 
-pub(super) fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
+fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("step" / u64)
+    warp::path!("deploy" / "processed" / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(handlers::get_step_by_era)
+        .and_then(handlers::get_deploy_processed_by_hash)
 }
 
-pub(super) fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
+fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("fault" / String)
@@ -145,7 +135,7 @@ pub(super) fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_faults_by_public_key)
 }
 
-pub(super) fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
+fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("fault" / u64)
@@ -154,13 +144,22 @@ pub(super) fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_faults_by_era)
 }
 
-pub(super) fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
+fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("signatures" / String)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_finality_signatures_by_block)
+}
+
+fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
+    db: Db,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("step" / u64)
+        .and(warp::get())
+        .and(with_db(db))
+        .and_then(handlers::get_step_by_era)
 }
 
 fn with_db<Db: DatabaseReader + Clone + Send>(
