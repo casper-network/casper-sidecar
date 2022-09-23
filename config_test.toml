@@ -1,21 +1,22 @@
-[connection]
-network = "Local"
-[connection.node.mainnet]
-ip_address = "0.0.0.0"
-sse_port=9999
-[connection.node.testnet]
-ip_address="0.0.0.0"
-sse_port=9999
-[connection.node.local]
-ip_address="127.0.0.1"
-sse_port=4444
+[node_connection]
+ip_address = "127.0.0.1"
+sse_port = 4444
 
 [storage]
-db_path = "./target/test_storage"
-sse_cache = "./target/test_storage"
+storage_path = "./target/test_storage"
+sse_cache_path = "./target/test_storage"
+
+[storage.sqlite_config]
+file_name = "test_sqlite_database.db3"
+max_write_connections = 10
+max_read_connections = 100
+# https://www.sqlite.org/compile.html#default_wal_autocheckpoint
+wal_autocheckpointing_interval = 1000
 
 [rest_server]
+ip_address = "127.0.0.1"
 port = 17777
 
 [sse_server]
+ip_address = "127.0.0.1"
 port = 19999

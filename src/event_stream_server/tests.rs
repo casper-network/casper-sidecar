@@ -10,6 +10,7 @@ use std::{
 };
 
 use casper_types::testing::TestRng;
+
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
@@ -41,7 +42,7 @@ const MAX_EVENT_COUNT: u32 = 100_000_000;
 const BUFFER_LENGTH: u32 = EVENT_COUNT / 2;
 /// The maximum amount of time to wait for a test server to complete.  If this time is exceeded, the
 /// test has probably hung, and should be deemed to have failed.
-const MAX_TEST_TIME: Duration = Duration::from_secs(1);
+const MAX_TEST_TIME: Duration = Duration::from_secs(2);
 /// The duration of the sleep called between each event being sent by the server.
 const DELAY_BETWEEN_EVENTS: Duration = Duration::from_millis(1);
 
@@ -289,7 +290,7 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                let _ = server.broadcast(event.clone());
+                server.broadcast(event.clone());
                 server_behavior.sleep_if_required().await;
             }
 
@@ -725,8 +726,7 @@ async fn should_serve_signature_events_with_query_for_future_event() {
 
 /// Checks that when a server is shut down (e.g. for a node upgrade), connected clients don't have
 /// an error while handling the HTTP response.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[serial]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn server_exit_should_gracefully_shut_down_stream() {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);

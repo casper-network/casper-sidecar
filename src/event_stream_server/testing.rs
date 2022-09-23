@@ -2,14 +2,13 @@
 //!
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
-#[cfg(test)]
-pub(crate) mod test_clock;
-mod test_rng;
+
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_hashing::Digest;
 use casper_node::types::{Deploy, DeployHash};
 use casper_types::testing::TestRng;
 use casper_types::{runtime_args, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512};
+
 use rand::{Rng, RngCore};
 
 /// Creates a test deploy created at given instant and with given ttl.

@@ -1,10 +1,10 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
-// use std::vec::IntoIter;
-use crate::SseData;
+
 use casper_types::testing::TestRng;
 use casper_types::ProtocolVersion;
+
 #[allow(unused)]
 use eventsource_stream::{EventStream, Eventsource};
 #[allow(unused)]
@@ -18,6 +18,8 @@ use tokio::sync::oneshot;
 use tokio::time::{interval, Instant};
 use tokio_stream::wrappers::IntervalStream;
 use warp::{sse::Event, Filter};
+
+use crate::SseData;
 
 // fn build_event<I>(id: Option<I>, data: SseData) -> Result<Event, Infallible>
 //     where I: Into<String>,
@@ -175,7 +177,7 @@ async fn start_test_node(
         server.await
     });
 
-    return addr;
+    addr
 }
 
 pub(crate) async fn start_test_node_with_shutdown(
@@ -185,7 +187,7 @@ pub(crate) async fn start_test_node_with_shutdown(
     let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
     let (node_started_tx, node_started_rx) = oneshot::channel();
 
-    let num_events = num_events.unwrap_or_else(|| DEFAULT_NUM_OF_TEST_EVENTS);
+    let num_events = num_events.unwrap_or(DEFAULT_NUM_OF_TEST_EVENTS);
 
     tokio::spawn(start_test_node(
         port,
@@ -202,6 +204,7 @@ pub(crate) async fn start_test_node_with_shutdown(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
+#[ignore]
 async fn should_connect_then_gracefully_shutdown() {
     let test_node_port: u16 = 4444;
 
@@ -212,11 +215,15 @@ async fn should_connect_then_gracefully_shutdown() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to main event stream")
         .bytes_stream()
         .eventsource();
 
-    let first_event = connection.next().await.unwrap().unwrap();
+    let first_event = connection
+        .next()
+        .await
+        .expect("First event was None")
+        .expect("First event was an error from the EventStream");
     assert!(first_event.data.contains("ApiVersion"));
 
     let _ = node_shutdown_tx.send(());
@@ -224,6 +231,7 @@ async fn should_connect_then_gracefully_shutdown() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
+#[ignore]
 async fn main_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
@@ -234,12 +242,17 @@ async fn main_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to main event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
@@ -250,6 +263,7 @@ async fn main_filter_should_provide_valid_data() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
+#[ignore]
 async fn deploys_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
@@ -260,12 +274,17 @@ async fn deploys_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to deploys event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
@@ -276,6 +295,7 @@ async fn deploys_filter_should_provide_valid_data() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
+#[ignore]
 async fn sigs_filter_should_provide_valid_data() {
     let test_node_port: u16 = 4444;
 
@@ -286,12 +306,17 @@ async fn sigs_filter_should_provide_valid_data() {
         .get(&test_node_url)
         .send()
         .await
-        .unwrap()
+        .expect("Error connecting to sigs event stream")
         .bytes_stream()
         .eventsource();
 
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(&event.unwrap().data).unwrap();
+        let sse = serde_json::from_str::<SseData>(
+            &event
+                .expect("Event was an error from the event stream")
+                .data,
+        )
+        .expect("Error deserialising the event into SseData");
         if matches!(sse, SseData::Shutdown) {
             break;
         }
