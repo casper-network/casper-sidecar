@@ -299,6 +299,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hex",
+ "hex_fmt",
  "http",
  "hyper",
  "itertools",
