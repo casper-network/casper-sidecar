@@ -5,12 +5,20 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+#[cfg(test)]
+use casper_node::types::Block;
+use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
+
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
 use rand::Rng;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
@@ -29,15 +37,6 @@ use warp::{
     Filter, Reply,
 };
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
-
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
-#[cfg(test)]
-use casper_node::types::Block;
 #[cfg(test)]
 use super::testing;
 
@@ -70,7 +69,7 @@ const SIGNATURES_FILTER: [EventFilter; 1] = [EventFilter::FinalitySignature];
 pub type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -82,7 +81,6 @@ pub enum SseData {
     },
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
-        #[schemars(with = "Deploy", description = "a deploy")]
         #[serde(flatten)]
         // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
         deploy: Arc<Deploy>,
@@ -467,7 +465,7 @@ impl ChannelsAndFilter {
                     ongoing_events_receiver,
                     event_filter,
                 )))
-                    .into_response()
+                .into_response()
             })
             .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
             .boxed();
@@ -837,8 +835,8 @@ mod tests {
                 ongoing_events_receiver,
                 get_filter(path_filter).unwrap(),
             )
-                .collect()
-                .await;
+            .collect()
+            .await;
 
             // Create the expected collection of emitted events.
             let deduplicated_events: Vec<ServerSentEvent> = initial_events
@@ -854,7 +852,7 @@ mod tests {
             // don't have access to the internals of the `WarpServerSentEvent`s, assert using their
             // `String` representations.
             for (received_event, deduplicated_event) in
-            received_events.iter().zip(deduplicated_events.iter())
+                received_events.iter().zip(deduplicated_events.iter())
             {
                 let received_event = received_event.as_ref().unwrap();
 
@@ -862,7 +860,7 @@ mod tests {
                     SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
                         deploy_accepted: deploy.clone(),
                     })
-                        .unwrap(),
+                    .unwrap(),
                     data => serde_json::to_string(&data).unwrap(),
                 };
 

@@ -141,7 +141,7 @@ mod tests {
                 tempdir.path().join(CACHE_FILENAME),
                 &index.to_le_bytes()[1..],
             )
-                .unwrap();
+            .unwrap();
 
             let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
             assert_eq!(event_indexer.next_index(), 0);

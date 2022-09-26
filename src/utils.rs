@@ -3,6 +3,7 @@ use std::{
     io,
     net::{SocketAddr, ToSocketAddrs},
 };
+
 use thiserror::Error;
 
 /// DNS resolution error.
