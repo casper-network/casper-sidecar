@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
     pub node_connection: NodeConnection,
     pub storage: StorageConfig,
@@ -8,13 +8,13 @@ pub struct Config {
     pub sse_server: ServerConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct NodeConnection {
     pub ip_address: String,
     pub sse_port: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct StorageConfig {
     pub storage_path: String,
     pub sse_cache_path: String,
@@ -29,7 +29,7 @@ pub struct SqliteConfig {
     pub wal_autocheckpointing_interval: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct ServerConfig {
     pub ip_address: String,
     pub port: u16,

@@ -36,7 +36,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         )
         .col(
             ColumnDef::new(FinalitySignature::EventLogId)
-                .integer()
+                .big_unsigned()
                 .not_null(),
         )
         .foreign_key(
@@ -54,7 +54,7 @@ pub fn create_insert_stmt(
     block_hash: String,
     public_key: String,
     raw: String,
-    event_log_id: u64,
+    event_log_id: u32,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(FinalitySignature::Table)

@@ -1,9 +1,10 @@
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
-use derive_new::new;
-use serde::{Deserialize, Serialize};
-
+#[cfg(test)]
+use casper_hashing::Digest;
 #[cfg(test)]
 use casper_node::types::Block;
 use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
@@ -13,8 +14,11 @@ use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,
 };
+
+use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.
@@ -28,8 +32,8 @@ pub struct BlockAdded {
     block: Box<JsonBlock>,
 }
 
+#[cfg(test)]
 impl BlockAdded {
-    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let block = Block::random(rng);
         Self {
@@ -38,6 +42,30 @@ impl BlockAdded {
         }
     }
 
+    pub fn random_with_height(rng: &mut TestRng, height: u64) -> Self {
+        let mut block = Block::random(rng);
+        block.set_height(height, EraId::default());
+
+        Self {
+            block_hash: *block.hash(),
+            block: Box::new(JsonBlock::new(block, None)),
+        }
+    }
+
+    pub fn random_with_hash(rng: &mut TestRng, hash: String) -> Self {
+        let block = Block::random(rng);
+
+        let hash_digest = Digest::from_hex(hash).expect("Error creating digest from hash");
+        let block_hash = BlockHash::from(hash_digest);
+
+        Self {
+            block_hash,
+            block: Box::new(JsonBlock::new(block, None)),
+        }
+    }
+}
+
+impl BlockAdded {
     pub fn hex_encoded_hash(&self) -> String {
         hex::encode(self.block_hash.inner())
     }

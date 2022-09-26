@@ -8,14 +8,6 @@ use crate::types::sse_events::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
 };
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct AggregateDeployInfo {
-    pub(crate) deploy_hash: String,
-    pub(crate) deploy_accepted: Option<DeployAccepted>,
-    pub(crate) deploy_processed: Option<DeployProcessed>,
-    pub(crate) deploy_expired: bool,
-}
-
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
 /// Each method takes the `data` and `id` fields as well as the source IP address (useful for tying the node-specific `id` to the relevant node).
@@ -31,7 +23,7 @@ pub trait DatabaseWriter {
     async fn save_block_added(
         &self,
         block_added: BlockAdded,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a DeployAccepted event to the database.
@@ -42,7 +34,7 @@ pub trait DatabaseWriter {
     async fn save_deploy_accepted(
         &self,
         deploy_accepted: DeployAccepted,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a DeployProcessed event to the database.
@@ -53,7 +45,7 @@ pub trait DatabaseWriter {
     async fn save_deploy_processed(
         &self,
         deploy_processed: DeployProcessed,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a DeployExpired event to the database.
@@ -64,7 +56,7 @@ pub trait DatabaseWriter {
     async fn save_deploy_expired(
         &self,
         deploy_expired: DeployExpired,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a Fault event to the database.
@@ -75,7 +67,7 @@ pub trait DatabaseWriter {
     async fn save_fault(
         &self,
         fault: Fault,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a FinalitySignature event to the database.
@@ -86,7 +78,7 @@ pub trait DatabaseWriter {
     async fn save_finality_signature(
         &self,
         finality_signature: FinalitySignature,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
     /// Save a Step event to the database.
@@ -97,7 +89,7 @@ pub trait DatabaseWriter {
     async fn save_step(
         &self,
         step: Step,
-        event_id: u64,
+        event_id: u32,
         event_source_address: String,
     ) -> Result<usize, Error>;
 }
@@ -161,10 +153,71 @@ pub trait DatabaseReader {
 pub enum DatabaseRequestError {
     /// The requested record was not present in the database.
     NotFound,
-    /// The provided parameter was not valid for the request.
-    InvalidParam(Error),
     /// An error occurred serialising or deserialising data from the database.
     Serialisation(Error),
     /// An error occurred somewhere unexpected.
     Unhandled(Error),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AggregateDeployInfo {
+    pub(crate) deploy_hash: String,
+    pub(crate) deploy_accepted: Option<DeployAccepted>,
+    pub(crate) deploy_processed: Option<DeployProcessed>,
+    pub(crate) deploy_expired: bool,
+}
+
+#[cfg(test)]
+mod testing {
+    use casper_hashing::Digest;
+    use casper_node::types::DeployHash;
+    use casper_types::testing::TestRng;
+
+    use rand::Rng;
+
+    use super::AggregateDeployInfo;
+    use crate::types::sse_events::{DeployAccepted, DeployProcessed};
+
+    impl AggregateDeployInfo {
+        pub fn random(test_rng: &mut TestRng, with_hash: Option<String>) -> Self {
+            let deploy_accepted = DeployAccepted::random(test_rng);
+
+            let deploy_hash = with_hash.unwrap_or_else(|| deploy_accepted.hex_encoded_hash());
+
+            match test_rng.gen_range(0..=2) {
+                // Accepted
+                0 => AggregateDeployInfo {
+                    deploy_hash,
+                    deploy_accepted: Some(deploy_accepted),
+                    deploy_processed: None,
+                    deploy_expired: false,
+                },
+                // Accepted -> Processed
+                1 => {
+                    let deploy_processed = DeployProcessed::random(
+                        test_rng,
+                        Some(DeployHash::from(
+                            Digest::from_hex(deploy_hash.clone())
+                                .expect("Error creating Digest from hash"),
+                        )),
+                    );
+
+                    AggregateDeployInfo {
+                        deploy_hash,
+                        deploy_accepted: Some(deploy_accepted),
+                        deploy_processed: Some(deploy_processed),
+                        deploy_expired: false,
+                    }
+                }
+                // Accepted -> Expired
+                2 => AggregateDeployInfo {
+                    deploy_hash,
+                    deploy_accepted: Some(deploy_accepted),
+                    deploy_processed: None,
+                    deploy_expired: true,
+                },
+                _ => unreachable!(),
+            }
+        }
+    }
 }
