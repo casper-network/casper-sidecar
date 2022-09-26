@@ -17,7 +17,7 @@ use eventsource_stream::{EventStream, Eventsource};
 use futures::{Stream, StreamExt};
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
@@ -188,6 +188,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::BlockAdded { block, block_hash } => {
                             info!("Block Added: {:18}", HexFmt(block_hash.inner()));
+                            debug!("Block Added: {}", HexFmt(block_hash.inner()));
                             let res = sqlite_database
                                 .save_block_added(
                                     BlockAdded::new(block_hash, block),
@@ -202,6 +203,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::DeployAccepted { deploy } => {
                             info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
+                            debug!("Deploy Accepted: {}", HexFmt(deploy.id().inner()));
                             let deploy_accepted = DeployAccepted::new(deploy);
                             let res = sqlite_database
                                 .save_deploy_accepted(
@@ -217,6 +219,7 @@ async fn run(config: Config) -> Result<(), Error> {
                         }
                         SseData::DeployExpired { deploy_hash } => {
                             info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
+                            debug!("Deploy Expired: {}", HexFmt(deploy_hash.inner()));
                             let res = sqlite_database
                                 .save_deploy_expired(
                                     DeployExpired::new(deploy_hash),
@@ -239,6 +242,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             execution_result,
                         } => {
                             info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
+                            debug!("Deploy Processed: {}", HexFmt(deploy_hash.inner()));
                             let deploy_processed = DeployProcessed::new(
                                 deploy_hash.clone(),
                                 account,
@@ -276,7 +280,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::FinalitySignature(fs) => {
-                            debug!("Finality Signature: {}", fs.signature);
+                            trace!("Finality Signature: {}", fs.signature);
                             let finality_signature = FinalitySignature::new(fs);
                             let res = sqlite_database
                                 .save_finality_signature(
