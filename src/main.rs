@@ -370,6 +370,32 @@ async fn stream_events_to_channel(
     }
 }
 
+/// A convenience wrapper around [Config] with a [Drop] impl that removes the `test_storage` dir created in `target` during testing.
+/// This means there is no need to explicitly remove the directory at the end of the tests which is liable to be skipped if the test fails earlier.
+#[cfg(test)]
+struct ConfigWithDrop {
+    config: Config,
+}
+
+#[cfg(test)]
+impl ConfigWithDrop {
+    fn new(path: &str) -> Self {
+        let config = read_config(path).expect("Error parsing config file");
+        Self { config }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ConfigWithDrop {
+    fn drop(&mut self) {
+        let path_to_test_storage = Path::new(&self.config.storage.storage_path);
+        if path_to_test_storage.exists() {
+            std::fs::remove_dir_all(path_to_test_storage)
+                .expect("Error removing test storage dir at end of test.");
+        }
+    }
+}
+
 #[cfg(test)]
 mod unit_tests {
     use crate::{read_config, CONFIG_PATH};
@@ -386,7 +412,6 @@ mod integration_tests {
     use super::*;
     use crate::testing::mock_node::start_test_node_with_shutdown;
     use serial_test::serial;
-    use std::fs;
     use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
@@ -395,9 +420,9 @@ mod integration_tests {
     #[serial]
     #[ignore]
     async fn should_return_helpful_error_if_node_unreachable() {
-        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+        let test_config = ConfigWithDrop::new(TEST_CONFIG_PATH);
 
-        let result = run(test_config.clone()).await;
+        let result = run(test_config.config.clone()).await;
 
         assert!(result.is_err());
         if let Some(error) = result.err() {
@@ -411,16 +436,13 @@ mod integration_tests {
     async fn should_connect_and_shutdown_cleanly() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+        let test_config = ConfigWithDrop::new(TEST_CONFIG_PATH);
 
-        run(test_config.clone())
+        run(test_config.config.clone())
             .await
             .expect("Error running sidecar");
 
         node_shutdown_tx.send(()).unwrap();
-
-        fs::remove_dir_all(test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -429,9 +451,9 @@ mod integration_tests {
     async fn should_allow_client_connection_to_sse() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+        let test_config = ConfigWithDrop::new(TEST_CONFIG_PATH);
 
-        tokio::spawn(run(test_config.clone()));
+        tokio::spawn(run(test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -450,9 +472,6 @@ mod integration_tests {
         }
 
         node_shutdown_tx.send(()).unwrap();
-
-        fs::remove_dir_all(test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -461,9 +480,9 @@ mod integration_tests {
     async fn should_respond_to_rest_query() {
         let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
 
-        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+        let test_config = ConfigWithDrop::new(TEST_CONFIG_PATH);
 
-        tokio::spawn(run(test_config.clone()));
+        tokio::spawn(run(test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -477,9 +496,6 @@ mod integration_tests {
         assert!(response.status().is_success());
 
         node_shutdown_tx.send(()).unwrap();
-
-        fs::remove_dir_all(test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
     }
 }
 
@@ -488,8 +504,8 @@ mod performance_tests {
     use super::*;
     use hex::encode;
     use serial_test::serial;
+    use std::println;
     use std::time::Duration;
-    use std::{fs, println};
     use tokio::time::Instant;
 
     #[derive(Clone)]
@@ -513,9 +529,9 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        let perf_test_config = read_config(PERF_TEST_CONFIG_PATH).expect("Error reading config");
+        let perf_test_config = ConfigWithDrop::new(PERF_TEST_CONFIG_PATH);
 
-        tokio::spawn(run(perf_test_config.clone()));
+        tokio::spawn(run(perf_test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -588,9 +604,6 @@ mod performance_tests {
         );
 
         assert!(average_delay < ACCEPTABLE_LAG_IN_MILLIS);
-
-        fs::remove_dir_all(perf_test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -598,9 +611,9 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        let perf_test_config = read_config(PERF_TEST_CONFIG_PATH).expect("Error reading config");
+        let perf_test_config = ConfigWithDrop::new(PERF_TEST_CONFIG_PATH);
 
-        tokio::spawn(run(perf_test_config.clone()));
+        tokio::spawn(run(perf_test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -675,9 +688,6 @@ mod performance_tests {
         );
 
         assert!(average_delay < ACCEPTABLE_LAG_IN_MILLIS);
-
-        fs::remove_dir_all(perf_test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
     }
 
     async fn push_timestamped_block_events_to_vecs(
