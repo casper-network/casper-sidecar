@@ -220,7 +220,7 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
         .await
         .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
-    let deploy_expired = DeployExpired::random(&mut test_rng, Some(*deploy_accepted.deploy.hash()));
+    let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
     sqlite_db
         .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
