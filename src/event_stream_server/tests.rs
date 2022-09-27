@@ -15,7 +15,6 @@ use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
-use serial_test::serial;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},

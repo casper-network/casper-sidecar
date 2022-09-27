@@ -92,6 +92,11 @@ impl DeployAccepted {
         }
     }
 
+    #[cfg(test)]
+    pub fn deploy_hash(&self) -> DeployHash {
+        self.deploy.id().to_owned()
+    }
+
     pub fn hex_encoded_hash(&self) -> String {
         hex::encode(self.deploy.id().inner())
     }
