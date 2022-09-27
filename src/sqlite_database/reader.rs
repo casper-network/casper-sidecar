@@ -42,16 +42,6 @@ impl DatabaseReader for SqliteDatabase {
     }
 
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError> {
-        let hash_regex = regex::Regex::new("^([A-Fa-f0-9]){64}$")
-            .map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
-        if !hash_regex.is_match(hash) {
-            return Err(DatabaseRequestError::InvalidParam(Error::msg(format!(
-                "Expected hex-encoded block hash (64 chars), received: {} (length: {})",
-                hash,
-                hash.len()
-            ))));
-        }
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::block_added::create_get_by_hash_stmt(hash.to_string())
@@ -93,7 +83,6 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         hash: &str,
     ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
-        check_hash_is_correct_format(hash)?;
         // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
         let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
 
@@ -138,8 +127,6 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         hash: &str,
     ) -> Result<DeployAccepted, DatabaseRequestError> {
-        check_hash_is_correct_format(hash)?;
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_accepted::create_get_by_hash_stmt(hash.to_string())
@@ -164,8 +151,6 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseRequestError> {
-        check_hash_is_correct_format(hash)?;
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
@@ -187,8 +172,6 @@ impl DatabaseReader for SqliteDatabase {
     }
 
     async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError> {
-        check_hash_is_correct_format(hash)?;
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
@@ -228,8 +211,6 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         public_key: &str,
     ) -> Result<Vec<Fault>, DatabaseRequestError> {
-        check_public_key_is_correct_format(public_key)?;
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::fault::create_get_faults_by_public_key_stmt(public_key.to_string())
@@ -258,8 +239,6 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         block_hash: &str,
     ) -> Result<Vec<FinSig>, DatabaseRequestError> {
-        check_hash_is_correct_format(block_hash)?;
-
         let db_connection = &self.connection_pool;
 
         let stmt = tables::finality_signature::create_get_finality_signatures_by_block_stmt(
@@ -335,31 +314,4 @@ fn parse_finality_signatures_from_rows(
         return Err(DatabaseRequestError::NotFound);
     }
     Ok(finality_signatures)
-}
-
-fn check_hash_is_correct_format(hash: &str) -> Result<(), DatabaseRequestError> {
-    let hash_regex = regex::Regex::new("^([0-9A-Fa-f]){64}$")
-        .map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
-    if !hash_regex.is_match(hash) {
-        return Err(DatabaseRequestError::InvalidParam(Error::msg(format!(
-            "Expected hex-encoded hash (64 chars), received: {} (length: {})",
-            hash,
-            hash.len()
-        ))));
-    }
-    Ok(())
-}
-
-fn check_public_key_is_correct_format(public_key_hex: &str) -> Result<(), DatabaseRequestError> {
-    let public_key_regex = regex::Regex::new("^([0-9A-Fa-f]{2}){33,34}$")
-        .map_err(|err| DatabaseRequestError::Unhandled(Error::from(err)))?;
-    if !public_key_regex.is_match(public_key_hex) {
-        Err(DatabaseRequestError::InvalidParam(Error::msg(format!(
-            "Expected hex-encoded public key (66/68 chars), received: {} (length: {})",
-            public_key_hex,
-            public_key_hex.len()
-        ))))
-    } else {
-        Ok(())
-    }
 }

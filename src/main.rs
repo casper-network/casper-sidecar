@@ -15,6 +15,7 @@ use anyhow::{Context, Error};
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use futures::{Stream, StreamExt};
+use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
 
@@ -174,7 +175,7 @@ async fn run(config: Config) -> Result<(), Error> {
     // Task to manage incoming events from all three filters
     let sse_processing_task = async {
         while let Some(evt) = aggregate_events_rx.recv().await {
-            let event_id: u64 = evt.id.as_str().parse().map_err(Error::from)?;
+            let event_id: u32 = evt.id.as_str().parse().map_err(Error::from)?;
             let event_source_address = node_ip_address.clone();
 
             match serde_json::from_str::<SseData>(&evt.data) {
@@ -186,7 +187,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             info!(%version, "API Version");
                         }
                         SseData::BlockAdded { block, block_hash } => {
-                            info!(%block_hash, "Block Added");
+                            info!("Block Added: {:18}", HexFmt(block_hash.inner()));
                             let res = sqlite_database
                                 .save_block_added(
                                     BlockAdded::new(block_hash, block),
@@ -200,8 +201,8 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::DeployAccepted { deploy } => {
+                            info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
                             let deploy_accepted = DeployAccepted::new(deploy);
-                            info!(deploy_hash=%deploy_accepted.deploy_hash(), "Deploy Accepted");
                             let res = sqlite_database
                                 .save_deploy_accepted(
                                     deploy_accepted,
@@ -215,7 +216,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::DeployExpired { deploy_hash } => {
-                            info!(%deploy_hash, "Deploy Expired");
+                            info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
                             let res = sqlite_database
                                 .save_deploy_expired(
                                     DeployExpired::new(deploy_hash),
@@ -237,6 +238,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             block_hash,
                             execution_result,
                         } => {
+                            info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
                             let deploy_processed = DeployProcessed::new(
                                 deploy_hash.clone(),
                                 account,
@@ -246,7 +248,6 @@ async fn run(config: Config) -> Result<(), Error> {
                                 block_hash,
                                 execution_result,
                             );
-                            info!(%deploy_hash, "Deploy Processed");
                             let res = sqlite_database
                                 .save_deploy_processed(
                                     deploy_processed,
@@ -275,7 +276,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::FinalitySignature(fs) => {
-                            debug!(%fs.signature, "Finality signature");
+                            debug!("Finality Signature: {}", fs.signature);
                             let finality_signature = FinalitySignature::new(fs);
                             let res = sqlite_database
                                 .save_finality_signature(
@@ -294,7 +295,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             execution_effect,
                         } => {
                             let step = Step::new(era_id, execution_effect);
-                            info!(%era_id, "Step");
+                            info!("Step at era: {}", era_id.value());
                             let res = sqlite_database
                                 .save_step(step, event_id, event_source_address)
                                 .await;
@@ -383,8 +384,9 @@ mod unit_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::testing::test_node::start_test_node_with_shutdown;
+    use crate::testing::mock_node::start_test_node_with_shutdown;
     use serial_test::serial;
+    use std::fs;
     use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
@@ -395,7 +397,7 @@ mod integration_tests {
     async fn should_return_helpful_error_if_node_unreachable() {
         let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
-        let result = run(test_config).await;
+        let result = run(test_config.clone()).await;
 
         assert!(result.is_err());
         if let Some(error) = result.err() {
@@ -411,9 +413,14 @@ mod integration_tests {
 
         let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
-        run(test_config).await.expect("Error running sidecar");
+        run(test_config.clone())
+            .await
+            .expect("Error running sidecar");
 
         node_shutdown_tx.send(()).unwrap();
+
+        fs::remove_dir_all(test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -424,7 +431,7 @@ mod integration_tests {
 
         let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
-        tokio::spawn(run(test_config));
+        tokio::spawn(run(test_config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -443,6 +450,9 @@ mod integration_tests {
         }
 
         node_shutdown_tx.send(()).unwrap();
+
+        fs::remove_dir_all(test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -453,7 +463,7 @@ mod integration_tests {
 
         let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
 
-        tokio::spawn(run(test_config));
+        tokio::spawn(run(test_config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -467,6 +477,9 @@ mod integration_tests {
         assert!(response.status().is_success());
 
         node_shutdown_tx.send(()).unwrap();
+
+        fs::remove_dir_all(test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
     }
 }
 
@@ -475,8 +488,8 @@ mod performance_tests {
     use super::*;
     use hex::encode;
     use serial_test::serial;
-    use std::println;
     use std::time::Duration;
+    use std::{fs, println};
     use tokio::time::Instant;
 
     #[derive(Clone)]
@@ -491,6 +504,7 @@ mod performance_tests {
         }
     }
 
+    const PERF_TEST_CONFIG_PATH: &str = "config_perf_test.toml";
     const EVENT_COUNT: u8 = 30;
     const ACCEPTABLE_LAG_IN_MILLIS: u128 = 1000;
 
@@ -499,9 +513,9 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        let config = read_config(CONFIG_PATH).expect("Error reading config");
+        let perf_test_config = read_config(PERF_TEST_CONFIG_PATH).expect("Error reading config");
 
-        tokio::spawn(run(config));
+        tokio::spawn(run(perf_test_config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -574,6 +588,9 @@ mod performance_tests {
         );
 
         assert!(average_delay < ACCEPTABLE_LAG_IN_MILLIS);
+
+        fs::remove_dir_all(perf_test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -581,9 +598,9 @@ mod performance_tests {
     #[ignore]
     // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        let config = read_config(CONFIG_PATH).expect("Error reading config");
+        let perf_test_config = read_config(PERF_TEST_CONFIG_PATH).expect("Error reading config");
 
-        tokio::spawn(run(config));
+        tokio::spawn(run(perf_test_config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -658,6 +675,9 @@ mod performance_tests {
         );
 
         assert!(average_delay < ACCEPTABLE_LAG_IN_MILLIS);
+
+        fs::remove_dir_all(perf_test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
     }
 
     async fn push_timestamped_block_events_to_vecs(

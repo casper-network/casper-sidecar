@@ -6,7 +6,7 @@ use sea_query::{
 use super::event_type::EventType;
 
 #[derive(Iden)]
-pub(super) enum EventLog {
+pub enum EventLog {
     Table,
     EventLogId,
     EventTypeId,
@@ -22,18 +22,22 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .if_not_exists()
         .col(
             ColumnDef::new(EventLog::EventLogId)
-                .integer()
+                .big_unsigned()
                 .auto_increment()
                 .not_null()
                 .primary_key(),
         )
-        .col(ColumnDef::new(EventLog::EventTypeId).integer().not_null())
+        .col(
+            ColumnDef::new(EventLog::EventTypeId)
+                .tiny_unsigned()
+                .not_null(),
+        )
         .col(
             ColumnDef::new(EventLog::EventSourceAddress)
                 .string()
                 .not_null(),
         )
-        .col(ColumnDef::new(EventLog::EventId).integer().not_null())
+        .col(ColumnDef::new(EventLog::EventId).unsigned().not_null())
         .col(
             ColumnDef::new(EventLog::InsertedTimestamp)
                 .timestamp()
@@ -64,7 +68,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
 pub fn create_insert_stmt(
     event_type_id: u8,
     event_source_address: &str,
-    event_id: u64,
+    event_id: u32,
 ) -> SqResult<InsertStatement> {
     let insert_stmt = Query::insert()
         .into_table(EventLog::Table)

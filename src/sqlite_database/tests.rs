@@ -1,13 +1,69 @@
 use casper_types::testing::TestRng;
-use casper_types::AsymmetricType;
+use casper_types::{AsymmetricType, EraId};
+
+use sea_query::{Query, SqliteQueryBuilder};
+use sqlx::Row;
 
 use super::SqliteDatabase;
-use crate::types::{
-    database::{DatabaseReader, DatabaseWriter},
-    sse_events::*,
+use crate::{
+    sql::tables,
+    types::{
+        database::{DatabaseReader, DatabaseWriter},
+        sse_events::*,
+    },
 };
 
 const MAX_CONNECTIONS: u32 = 100;
+
+#[tokio::test]
+async fn should_save_and_retrieve_a_u32max_id() {
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX)
+        .expect("Error creating event_log insert SQL")
+        .to_string(SqliteQueryBuilder);
+
+    let _ = sqlite_db.fetch_one(&sql).await;
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_id_u32max = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u32, usize>(0)
+        .expect("Error getting event_id (=u32::MAX) from row");
+
+    assert_eq!(event_id_u32max, u32::MAX);
+}
+
+#[tokio::test]
+async fn should_save_and_retrieve_a_step_with_u64_max_era() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let mut step = Step::random(&mut test_rng);
+    step.era_id = EraId::new(u64::MAX);
+
+    sqlite_db
+        .save_step(step.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving Step with u64::MAX era id");
+
+    let retrieved_step = sqlite_db
+        .get_step_by_era(u64::MAX)
+        .await
+        .expect("Error retrieving Step with u64::MAX era id");
+
+    assert_eq!(retrieved_step.era_id.value(), u64::MAX)
+}
 
 #[tokio::test]
 async fn should_save_and_retrieve_block_added() {
@@ -195,6 +251,32 @@ async fn should_save_and_retrieve_fault() {
         .await
         .expect("Error opening database in memory");
     let fault = Fault::random(&mut test_rng);
+
+    sqlite_db
+        .save_fault(fault.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving fault");
+
+    sqlite_db
+        .get_faults_by_era(fault.era_id.value())
+        .await
+        .expect("Error getting faults by era");
+
+    sqlite_db
+        .get_faults_by_public_key(&fault.public_key.to_hex())
+        .await
+        .expect("Error getting faults by public key");
+}
+
+#[tokio::test]
+async fn should_save_and_retrieve_fault_with_a_u64max() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let mut fault = Fault::random(&mut test_rng);
+    fault.era_id = EraId::new(u64::MAX);
 
     sqlite_db
         .save_fault(fault.clone(), 1, "127.0.0.1".to_string())

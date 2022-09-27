@@ -1,4 +1,4 @@
-#[cfg(test)]
+pub(crate) mod mock_database;
+pub(crate) mod mock_node;
 pub(crate) mod test_clock;
-pub(crate) mod test_node;
 mod test_rng;

@@ -1,6 +1,6 @@
 use sea_query::{
     error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -19,10 +19,18 @@ pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()
         .table(Fault::Table)
         .if_not_exists()
-        .col(ColumnDef::new(Fault::Era).integer().not_null())
+        .col(ColumnDef::new(Fault::Era).big_unsigned().not_null())
         .col(ColumnDef::new(Fault::PublicKey).string().not_null())
         .col(ColumnDef::new(Fault::Raw).blob(BlobSize::Tiny).not_null())
-        .col(ColumnDef::new(Fault::EventLogId).integer().not_null())
+        .col(ColumnDef::new(Fault::EventLogId).big_unsigned().not_null())
+        .index(
+            Index::create()
+                .name("PDX_Fault")
+                .col(Fault::Era)
+                .col(Fault::PublicKey)
+                .col(Fault::EventLogId)
+                .primary(),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")
@@ -38,7 +46,7 @@ pub fn create_insert_stmt(
     era: u64,
     public_key: String,
     raw: String,
-    event_log_id: u64,
+    event_log_id: u32,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Fault::Table)

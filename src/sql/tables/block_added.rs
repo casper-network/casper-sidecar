@@ -21,7 +21,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .if_not_exists()
         .col(
             ColumnDef::new(BlockAdded::Height)
-                .integer()
+                .big_unsigned()
                 .not_null()
                 .primary_key(),
         )
@@ -36,7 +36,11 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .blob(BlobSize::Tiny)
                 .not_null(),
         )
-        .col(ColumnDef::new(BlockAdded::EventLogId).integer().not_null())
+        .col(
+            ColumnDef::new(BlockAdded::EventLogId)
+                .big_unsigned()
+                .not_null(),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")
@@ -52,7 +56,7 @@ pub fn create_insert_stmt(
     height: u64,
     block_hash: String,
     raw: String,
-    event_log_id: u64,
+    event_log_id: u32,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(BlockAdded::Table)

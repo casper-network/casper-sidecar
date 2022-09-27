@@ -27,7 +27,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(DeployExpired::Raw).boolean().default(true))
         .col(
             ColumnDef::new(DeployExpired::EventLogId)
-                .integer()
+                .big_unsigned()
                 .not_null(),
         )
         .foreign_key(
@@ -41,7 +41,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_insert_stmt(deploy_hash: String, event_log_id: u64) -> SqResult<InsertStatement> {
+pub fn create_insert_stmt(deploy_hash: String, event_log_id: u32) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(DeployExpired::Table)
         .columns([DeployExpired::DeployHash, DeployExpired::EventLogId])
