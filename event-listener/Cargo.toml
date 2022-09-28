@@ -1,0 +1,20 @@
+[package]
+name = "casper-event-listener"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.65"
+bytes = "1.2.0"
+casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+eventsource-stream = "0.2.3"
+reqwest = { version = "0.11", features = ["stream"] }
+serde = { version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1.4", features = ["sync"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[patch.crates-io]
+casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
