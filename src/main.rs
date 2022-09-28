@@ -280,7 +280,6 @@ async fn run(config: Config) -> Result<(), Error> {
                             }
                         }
                         SseData::FinalitySignature(fs) => {
-                            trace!("Finality Signature: {}", fs.signature);
                             let finality_signature = FinalitySignature::new(fs);
                             let res = sqlite_database
                                 .save_finality_signature(
