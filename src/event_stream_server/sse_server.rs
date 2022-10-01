@@ -6,17 +6,17 @@ use std::{
 };
 
 use casper_event_types::{EventFilter, SseData};
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
+use casper_node::types::Deploy;
+#[cfg(test)]
+use casper_node::types::DeployHash;
+use casper_types::ProtocolVersion;
 
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::sync::{
     broadcast::{self, error::RecvError},
     mpsc,
@@ -33,9 +33,6 @@ use warp::{
     sse::{self, Event as WarpServerSentEvent},
     Filter, Reply,
 };
-
-#[cfg(test)]
-use super::testing;
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";

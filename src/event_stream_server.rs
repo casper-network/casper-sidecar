@@ -25,8 +25,6 @@ mod event_indexer;
 mod http_server;
 mod sse_server;
 #[cfg(test)]
-pub(crate) mod testing;
-#[cfg(test)]
 mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
@@ -43,7 +41,7 @@ use warp::Filter;
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
-use event_indexer::{EventIndex, EventIndexer};
+use event_indexer::EventIndexer;
 use sse_server::ChannelsAndFilter;
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See

@@ -1,6 +1,5 @@
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
-use std::sync::atomic::Ordering;
 
 use futures::{future, Future, FutureExt};
 use tokio::{
@@ -13,7 +12,6 @@ use wheelbuf::WheelBuf;
 
 use super::{
     config::Config,
-    event_indexer::EventIndex,
     sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
 };
 

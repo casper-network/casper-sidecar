@@ -10,8 +10,6 @@ mod types;
 mod utils;
 
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::sync::mpsc::channel;
 
 use casper_event_listener::{EventListener, SseEvent};
 use casper_event_types::SseData;
@@ -20,8 +18,7 @@ use casper_types::ProtocolVersion;
 use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -68,7 +65,7 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // Create new instance for the Sidecar's Event Stream Server
-    let mut event_stream_server = EventStreamServer::new(
+    let event_stream_server = EventStreamServer::new(
         SseConfig::new_on_specified(config.sse_server.ip_address.clone(), config.sse_server.port),
         PathBuf::from(&config.storage.sse_cache_path),
         // todo get API version dynamically

@@ -96,8 +96,8 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
 
         // This represents a single session where five events are produced before the session ends.
-        let init_and_increment_by_five = |expected_first_index: EventIndex| {
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+        let init_and_increment_by_five = |expected_first_index: u32| {
+            let event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
             for i in 0..5 {
                 assert_eq!(event_indexer.next_index(), expected_first_index + i);
             }
@@ -119,9 +119,9 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
 
         let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
-        event_indexer.index = EventIndex::MAX;
+        event_indexer.index = Arc::new(AtomicU32::new(u32::MAX));
 
-        assert_eq!(event_indexer.next_index(), EventIndex::MAX);
+        assert_eq!(event_indexer.next_index(), u32::MAX);
         assert_eq!(event_indexer.next_index(), 0);
     }
 
@@ -131,7 +131,7 @@ mod tests {
 
         // Create a folder with the same name as the cache file to cause reading to fail.
         fs::create_dir(tempdir.path().join(CACHE_FILENAME)).unwrap();
-        let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+        let event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
         assert_eq!(event_indexer.next_index(), 0);
     }
 
@@ -141,21 +141,22 @@ mod tests {
 
         {
             // Create the cache file with too few bytes to be parsed as an `Index`.
-            let index: EventIndex = 1;
+            let index: EventIndex = AtomicU32::new(1);
             fs::write(
                 tempdir.path().join(CACHE_FILENAME),
-                &index.to_le_bytes()[1..],
+                &index.load(Ordering::SeqCst).to_le_bytes()[1..],
             )
             .unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+            let event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
             assert_eq!(event_indexer.next_index(), 0);
         }
 
         {
             // Create the cache file with too many bytes to be parsed as an `Index`.
-            let index: EventIndex = 1;
+            let index: EventIndex = AtomicU32::new(1);
             let bytes: Vec<u8> = index
+                .load(Ordering::SeqCst)
                 .to_le_bytes()
                 .iter()
                 .chain(iter::once(&0))
@@ -163,7 +164,7 @@ mod tests {
                 .collect();
             fs::write(tempdir.path().join(CACHE_FILENAME), bytes).unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+            let event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
             assert_eq!(event_indexer.next_index(), 0);
         }
     }
