@@ -42,9 +42,9 @@ impl BlockAdded {
         }
     }
 
+    #[allow(unused)]
     pub fn random_with_height(rng: &mut TestRng, height: u64) -> Self {
-        let mut block = Block::random(rng);
-        block.set_height(height, EraId::default());
+        let block = Block::random(rng);
 
         Self {
             block_hash: *block.hash(),
