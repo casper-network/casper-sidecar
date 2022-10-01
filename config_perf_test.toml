@@ -1,6 +1,6 @@
-[node_connection]
-ip_address = "127.0.0.1"
-sse_port = 18101
+node_connections = [
+    { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5 }
+]
 
 [storage]
 storage_path = "./target/test_storage"

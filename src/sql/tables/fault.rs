@@ -23,14 +23,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(Fault::PublicKey).string().not_null())
         .col(ColumnDef::new(Fault::Raw).blob(BlobSize::Tiny).not_null())
         .col(ColumnDef::new(Fault::EventLogId).big_unsigned().not_null())
-        .index(
-            Index::create()
-                .name("PDX_Fault")
-                .col(Fault::Era)
-                .col(Fault::PublicKey)
-                .col(Fault::EventLogId)
-                .primary(),
-        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")

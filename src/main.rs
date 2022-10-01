@@ -10,26 +10,27 @@ mod types;
 mod utils;
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::mpsc::channel;
 
-use casper_event_listener::connect_to_event_stream;
+use casper_event_listener::{EventListener, SseEvent};
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
 
 use anyhow::{Context, Error};
-use bytes::Bytes;
-use eventsource_stream::{EventStream, Eventsource};
-use futures::{Stream, StreamExt};
+use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::{
-    event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
+    event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
     types::{config::Config, database::DatabaseWriter, sse_events::*},
 };
 
-const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
-const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
 const CONFIG_PATH: &str = "config.toml";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
@@ -50,13 +51,6 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
-    let mut node_event_source = connect_to_event_stream(
-        config.node_connection.ip_address.clone(),
-        config.node_connection.sse_port,
-        None,
-    )
-    .await?;
-
     let path_to_database_dir = Path::new(&config.storage.storage_path);
 
     // Creates and initialises Sqlite database
@@ -67,7 +61,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        config.rest_server.ip_address,
+        config.rest_server.ip_address.clone(),
         config.rest_server.port,
         sqlite_database.file_path.clone(),
         config.storage.sqlite_config.max_read_connections,
@@ -75,191 +69,227 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
-        PathBuf::from(config.storage.sse_cache_path),
-        node_event_source.api_version,
+        SseConfig::new_on_specified(config.sse_server.ip_address.clone(), config.sse_server.port),
+        PathBuf::from(&config.storage.sse_cache_path),
+        // todo get API version dynamically
+        ProtocolVersion::V1_0_0,
     )
     .context("Error starting EventStreamServer")?;
 
     // Adds space under setup logs before stream starts for readability
     println!("\n\n");
 
-    let node_ip_address = config.node_connection.ip_address.clone();
+    // This combined with the call to `.take()` allows sse_processing task to only ever have one inbound connection broadcast events through to the outbound - to avoid duplication
+    let mut server = Some(event_stream_server);
 
     // Task to manage incoming events from all three filters
-    let sse_processing_task = async {
-        while let Some(evt) = node_event_source.event_receiver.recv().await {
-            let event_id: u32 = evt.id.as_str().parse().map_err(Error::from)?;
-            let event_source_address = node_ip_address.clone();
+    let processor_task_handle = async move {
+        let mut join_handles = Vec::with_capacity(config.node_connections.len());
 
-            match serde_json::from_str::<SseData>(&evt.data) {
-                Ok(sse_data) => {
-                    event_stream_server.broadcast(sse_data.clone());
+        for connection in config.node_connections.into_iter() {
+            let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
 
-                    match sse_data {
-                        SseData::ApiVersion(version) => {
-                            info!(%version, "API Version");
-                        }
-                        SseData::BlockAdded { block, block_hash } => {
-                            info!("Block Added: {:18}", HexFmt(block_hash.inner()));
-                            let res = sqlite_database
-                                .save_block_added(
-                                    BlockAdded::new(block_hash, block),
-                                    event_id,
-                                    event_source_address,
-                                )
-                                .await;
+            let sse_data_stream = EventListener::stream_events(
+                bind_address,
+                connection.max_retries,
+                connection.delay_between_retries_secs,
+            )
+            .await?;
 
-                            if let Err(error) = res {
-                                warn!(%error, "Error saving block");
-                            }
-                        }
-                        SseData::DeployAccepted { deploy } => {
-                            info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
-                            let deploy_accepted = DeployAccepted::new(deploy);
-                            let res = sqlite_database
-                                .save_deploy_accepted(
-                                    deploy_accepted,
-                                    event_id,
-                                    event_source_address,
-                                )
-                                .await;
+            let join_handle = tokio::spawn(sse_processor(
+                sse_data_stream,
+                server.take(),
+                sqlite_database.clone(),
+            ));
 
-                            if let Err(error) = res {
-                                warn!(%error, "Error saving deploy accepted");
-                            }
-                        }
-                        SseData::DeployExpired { deploy_hash } => {
-                            info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
-                            let res = sqlite_database
-                                .save_deploy_expired(
-                                    DeployExpired::new(deploy_hash),
-                                    event_id,
-                                    event_source_address,
-                                )
-                                .await;
-
-                            if let Err(error) = res {
-                                warn!(%error, "Error saving deploy expired");
-                            }
-                        }
-                        SseData::DeployProcessed {
-                            deploy_hash,
-                            account,
-                            timestamp,
-                            ttl,
-                            dependencies,
-                            block_hash,
-                            execution_result,
-                        } => {
-                            info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
-                            let deploy_processed = DeployProcessed::new(
-                                deploy_hash.clone(),
-                                account,
-                                timestamp,
-                                ttl,
-                                dependencies,
-                                block_hash,
-                                execution_result,
-                            );
-                            let res = sqlite_database
-                                .save_deploy_processed(
-                                    deploy_processed,
-                                    event_id,
-                                    event_source_address,
-                                )
-                                .await;
-
-                            if let Err(error) = res {
-                                warn!(%error, "Error saving deploy processed");
-                            }
-                        }
-                        SseData::Fault {
-                            era_id,
-                            timestamp,
-                            public_key,
-                        } => {
-                            let fault = Fault::new(era_id, public_key.clone(), timestamp);
-                            warn!(%fault, "Fault reported");
-                            let res = sqlite_database
-                                .save_fault(fault, event_id, event_source_address)
-                                .await;
-
-                            if let Err(error) = res {
-                                warn!("Error saving fault: {}", error);
-                            }
-                        }
-                        SseData::FinalitySignature(fs) => {
-                            debug!("Finality Signature: {}", fs.signature);
-                            let finality_signature = FinalitySignature::new(fs);
-                            let res = sqlite_database
-                                .save_finality_signature(
-                                    finality_signature,
-                                    event_id,
-                                    event_source_address,
-                                )
-                                .await;
-
-                            if let Err(error) = res {
-                                warn!(%error, "Error saving finality signature")
-                            }
-                        }
-                        SseData::Step {
-                            era_id,
-                            execution_effect,
-                        } => {
-                            let step = Step::new(era_id, execution_effect);
-                            info!("Step at era: {}", era_id.value());
-                            let res = sqlite_database
-                                .save_step(step, event_id, event_source_address)
-                                .await;
-
-                            if let Err(error) = res {
-                                warn!("Error saving step: {}", error);
-                            }
-                        }
-                        SseData::Shutdown => {
-                            warn!("Node is shutting down");
-                            break;
-                        }
-                    }
-                }
-                Err(err) => {
-                    warn!(?evt, "Error from stream");
-                    if err.to_string() == CONNECTION_REFUSED {
-                        warn!("Connection to node lost...");
-                    } else {
-                        warn!(
-                            "Error parsing SSE: {}, for data:\n{}\n",
-                            err.to_string(),
-                            &evt.data
-                        );
-                    }
-                    continue;
-                }
-            }
+            join_handles.push(join_handle);
         }
-        Result::<_, Error>::Ok(())
+
+        let _ = join_all(join_handles).await;
+
+        // let join_handles = config
+        //     .node_connections
+        //     .into_iter()
+        //     .map(|connection| async move {
+        //         let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
+        //
+        //         let sse_data_stream = EventListener::stream_events(
+        //             bind_address,
+        //             connection.max_retries,
+        //             connection.delay_between_retries_secs,
+        //         )
+        //         .await?;
+        //
+        //         let join_handle = tokio::spawn(sse_processor(
+        //             sse_data_stream,
+        //             server.take(),
+        //             sqlite_database.clone(),
+        //         ));
+        //
+        //         Ok::<_, Error>(join_handle)
+        //     });
+        // .collect::<Vec<JoinHandle<()>>>();
+
+        Ok::<(), Error>(())
     };
 
     tokio::select! {
-        _ = sse_processing_task => {
-            info!("Stopped processing SSEs")
-        }
-
-        _ = rest_server_handle => {
-            info!("REST server stopped")
-        }
-    };
+        result = rest_server_handle => { warn!(?result, "REST server shutting down") }
+        result = processor_task_handle => { warn!(?result, "SSE processing ended")}
+    }
 
     Ok(())
 }
 
-fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
-    if error.to_string().contains(CONNECTION_REFUSED) {
-        Error::msg(&CONNECTION_ERR_MSG)
-    } else {
-        Error::from(error)
+async fn sse_processor(
+    mut sse_data_stream: UnboundedReceiver<SseEvent>,
+    event_stream_server: Option<EventStreamServer>,
+    sqlite_database: SqliteDatabase,
+) {
+    while let Some(sse_event) = sse_data_stream.recv().await {
+        let mut should_log = false;
+        if let Some(server) = event_stream_server.as_ref() {
+            should_log = true;
+            server.broadcast(sse_event.data.clone());
+        }
+
+        match sse_event.data {
+            SseData::ApiVersion(version) => {
+                if should_log {
+                    info!(%version, "API Version");
+                }
+            }
+            SseData::BlockAdded { block, block_hash } => {
+                if should_log {
+                    info!("Block Added: {:18}", HexFmt(block_hash.inner()));
+                }
+                let res = sqlite_database
+                    .save_block_added(
+                        BlockAdded::new(block_hash, block),
+                        sse_event.id.unwrap(),
+                        sse_event.source,
+                    )
+                    .await;
+
+                if let Err(error) = res {
+                    warn!(%error, "Error saving block");
+                }
+            }
+            SseData::DeployAccepted { deploy } => {
+                if should_log {
+                    info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
+                }
+                let deploy_accepted = DeployAccepted::new(deploy);
+                let res = sqlite_database
+                    .save_deploy_accepted(deploy_accepted, sse_event.id.unwrap(), sse_event.source)
+                    .await;
+
+                if let Err(error) = res {
+                    warn!(%error, "Error saving deploy accepted");
+                }
+            }
+            SseData::DeployExpired { deploy_hash } => {
+                if should_log {
+                    info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
+                }
+                let res = sqlite_database
+                    .save_deploy_expired(
+                        DeployExpired::new(deploy_hash),
+                        sse_event.id.unwrap(),
+                        sse_event.source,
+                    )
+                    .await;
+
+                if let Err(error) = res {
+                    warn!(%error, "Error saving deploy expired");
+                }
+            }
+            SseData::DeployProcessed {
+                deploy_hash,
+                account,
+                timestamp,
+                ttl,
+                dependencies,
+                block_hash,
+                execution_result,
+            } => {
+                if should_log {
+                    info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
+                }
+                let deploy_processed = DeployProcessed::new(
+                    deploy_hash.clone(),
+                    account,
+                    timestamp,
+                    ttl,
+                    dependencies,
+                    block_hash,
+                    execution_result,
+                );
+                let res = sqlite_database
+                    .save_deploy_processed(
+                        deploy_processed,
+                        sse_event.id.unwrap(),
+                        sse_event.source,
+                    )
+                    .await;
+
+                if let Err(error) = res {
+                    warn!(%error, "Error saving deploy processed");
+                }
+            }
+            SseData::Fault {
+                era_id,
+                timestamp,
+                public_key,
+            } => {
+                let fault = Fault::new(era_id, public_key.clone(), timestamp);
+                warn!(%fault, "Fault reported");
+                let res = sqlite_database
+                    .save_fault(fault, sse_event.id.unwrap(), sse_event.source)
+                    .await;
+
+                if let Err(error) = res {
+                    warn!("Error saving fault: {}", error);
+                }
+            }
+            SseData::FinalitySignature(fs) => {
+                if should_log {
+                    debug!("Finality Signature: {}", fs.signature);
+                }
+                let finality_signature = FinalitySignature::new(fs);
+                let res = sqlite_database
+                    .save_finality_signature(
+                        finality_signature,
+                        sse_event.id.unwrap(),
+                        sse_event.source,
+                    )
+                    .await;
+
+                if let Err(error) = res {
+                    warn!(%error, "Error saving finality signature")
+                }
+            }
+            SseData::Step {
+                era_id,
+                execution_effect,
+            } => {
+                let step = Step::new(era_id, execution_effect);
+                if should_log {
+                    info!("Step at era: {}", era_id.value());
+                }
+                let res = sqlite_database
+                    .save_step(step, sse_event.id.unwrap(), sse_event.source)
+                    .await;
+
+                if let Err(error) = res {
+                    warn!("Error saving step: {}", error);
+                }
+            }
+            SseData::Shutdown => {
+                warn!("Node ({}) is shutting down", sse_event.source);
+                break;
+            }
+        }
     }
 }
 
@@ -283,6 +313,7 @@ mod integration_tests {
     use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
+    const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
 
     #[tokio::test]
     #[serial]
@@ -316,37 +347,37 @@ mod integration_tests {
             .expect("Error removing test storage dir at end of test.");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
-    #[ignore]
-    async fn should_allow_client_connection_to_sse() {
-        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-
-        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
-
-        tokio::spawn(run(test_config.clone()));
-
-        // Allow sidecar to spin up
-        tokio::time::sleep(Duration::from_secs(3)).await;
-
-        let mut sidecar_event_source =
-            connect_to_event_stream("127.0.0.1".to_string(), 19999, None)
-                .await
-                .expect("Error connecting to sidecar event stream");
-
-        let event = sidecar_event_source
-            .event_receiver
-            .recv()
-            .await
-            .expect("Error getting first event");
-
-        serde_json::from_str::<SseData>(&event.data).expect("Error parsing event");
-
-        node_shutdown_tx.send(()).unwrap();
-
-        fs::remove_dir_all(test_config.storage.storage_path)
-            .expect("Error removing test storage dir at end of test.");
-    }
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    // #[serial]
+    // #[ignore]
+    // async fn should_allow_client_connection_to_sse() {
+    //     let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+    //
+    //     let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+    //
+    //     tokio::spawn(run(test_config.clone()));
+    //
+    //     // Allow sidecar to spin up
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //
+    //     let mut sidecar_event_source =
+    //         connect_to_event_stream("127.0.0.1".to_string(), 19999, None)
+    //             .await
+    //             .expect("Error connecting to sidecar event stream");
+    //
+    //     let event = sidecar_event_source
+    //         .event_receiver
+    //         .recv()
+    //         .await
+    //         .expect("Error getting first event");
+    //
+    //     serde_json::from_str::<SseData>(&event.data).expect("Error parsing event");
+    //
+    //     node_shutdown_tx.send(()).unwrap();
+    //
+    //     fs::remove_dir_all(test_config.storage.storage_path)
+    //         .expect("Error removing test storage dir at end of test.");
+    // }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
@@ -379,6 +410,9 @@ mod integration_tests {
 #[cfg(test)]
 mod performance_tests {
     use super::*;
+    use bytes::Bytes;
+    use eventsource_stream::{EventStream, Eventsource};
+    use futures::{Stream, StreamExt};
     use hex::encode;
     use serial_test::serial;
     use std::time::Duration;
@@ -425,7 +459,6 @@ mod performance_tests {
             .get("http://127.0.0.1:19999/events/main")
             .send()
             .await
-            .map_err(parse_error_for_connection_refused)
             .expect("Error connecting to sidecar")
             .bytes_stream()
             .eventsource();
@@ -510,7 +543,6 @@ mod performance_tests {
             .get("http://127.0.0.1:19999/events/deploys")
             .send()
             .await
-            .map_err(parse_error_for_connection_refused)
             .expect("Error connecting to sidecar")
             .bytes_stream()
             .eventsource();

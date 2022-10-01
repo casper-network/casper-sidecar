@@ -1,6 +1,6 @@
 use sea_query::{
     error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -19,18 +19,8 @@ pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()
         .table(BlockAdded::Table)
         .if_not_exists()
-        .col(
-            ColumnDef::new(BlockAdded::Height)
-                .big_unsigned()
-                .not_null()
-                .primary_key(),
-        )
-        .col(
-            ColumnDef::new(BlockAdded::BlockHash)
-                .string()
-                .not_null()
-                .unique_key(),
-        )
+        .col(ColumnDef::new(BlockAdded::Height).big_unsigned().not_null())
+        .col(ColumnDef::new(BlockAdded::BlockHash).string().not_null())
         .col(
             ColumnDef::new(BlockAdded::Raw)
                 .blob(BlobSize::Tiny)
@@ -48,6 +38,15 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .to(EventLog::Table, EventLog::EventLogId)
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
+        )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_BlockAdded")
+                .col(BlockAdded::BlockHash)
+                .col(BlockAdded::Height)
+                .col(BlockAdded::EventLogId),
         )
         .to_owned()
 }

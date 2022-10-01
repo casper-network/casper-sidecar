@@ -1,14 +1,16 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::{fs, path::PathBuf};
 
 use tracing::{debug, error, warn};
 
 const CACHE_FILENAME: &str = "sse_index";
 
-pub(super) type EventIndex = u32;
+pub(super) type EventIndex = AtomicU32;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct EventIndexer {
-    index: EventIndex,
+    index: Arc<EventIndex>,
     persistent_cache: PathBuf,
 }
 
@@ -18,7 +20,7 @@ impl EventIndexer {
             error!("Failed to create directory for sse cache: {}", err);
         });
         let persistent_cache = storage_path.join(CACHE_FILENAME);
-        let mut bytes = EventIndex::default().to_le_bytes();
+        let mut bytes = 0u32.to_le_bytes();
         match fs::read(&persistent_cache) {
             Err(error) => {
                 if persistent_cache.exists() {
@@ -42,8 +44,10 @@ impl EventIndexer {
             }
         }
 
-        let index = EventIndex::from_le_bytes(bytes);
-        debug!(%index, "initialized sse index");
+        let index_u32 = u32::from_le_bytes(bytes);
+        debug!(%index_u32, "initialized sse index");
+
+        let index = Arc::new(EventIndex::new(index_u32));
 
         EventIndexer {
             index,
@@ -51,21 +55,22 @@ impl EventIndexer {
         }
     }
 
-    pub(super) fn next_index(&mut self) -> EventIndex {
-        let index = self.index;
-        self.index = index.wrapping_add(1);
-        index
+    pub(super) fn next_index(&self) -> u32 {
+        self.index.fetch_add(1, Ordering::SeqCst)
     }
 
     #[cfg(test)]
-    pub(super) fn current_index(&self) -> EventIndex {
-        self.index
+    pub(super) fn current_index(&self) -> u32 {
+        self.index.load(Ordering::SeqCst)
     }
 }
 
 impl Drop for EventIndexer {
     fn drop(&mut self) {
-        match fs::write(&self.persistent_cache, self.index.to_le_bytes()) {
+        match fs::write(
+            &self.persistent_cache,
+            self.index.load(Ordering::SeqCst).to_le_bytes(),
+        ) {
             Err(error) => warn!(
                 file = %self.persistent_cache.display(),
                 %error,
@@ -73,7 +78,7 @@ impl Drop for EventIndexer {
             ),
             Ok(_) => debug!(
                 file = %self.persistent_cache.display(),
-                index = %self.index,
+                index = %self.index.load(Ordering::SeqCst),
                 "cached sse index to file"
             ),
         }

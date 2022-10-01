@@ -1,4 +1,6 @@
+use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
+use std::sync::atomic::Ordering;
 
 use futures::{future, Future, FutureExt};
 use tokio::{
@@ -12,7 +14,7 @@ use wheelbuf::WheelBuf;
 use super::{
     config::Config,
     event_indexer::EventIndex,
-    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent, SseData},
+    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
 };
 
 /// Run the HTTP server.
@@ -31,7 +33,7 @@ pub(super) async fn run(
     api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
-    mut data_receiver: mpsc::UnboundedReceiver<(EventIndex, SseData)>,
+    mut data_receiver: mpsc::UnboundedReceiver<(u32, SseData)>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {

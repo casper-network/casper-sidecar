@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Clone, Deserialize)]
 pub struct Config {
-    pub node_connection: NodeConnection,
+    pub node_connections: Vec<NodeConnection>,
     pub storage: StorageConfig,
     pub rest_server: ServerConfig,
     pub sse_server: ServerConfig,
@@ -12,6 +12,8 @@ pub struct Config {
 pub struct NodeConnection {
     pub ip_address: String,
     pub sse_port: u16,
+    pub max_retries: u8,
+    pub delay_between_retries_secs: u8,
 }
 
 #[derive(Clone, Deserialize)]
