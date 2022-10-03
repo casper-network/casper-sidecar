@@ -1,5 +1,6 @@
 mod utils;
 
+use std::fmt::Debug;
 use std::time::Duration;
 
 use casper_event_types::SseData;
@@ -13,31 +14,20 @@ use serde::Deserialize;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_stream::{Stream, StreamExt};
 use tracing::{error, info, warn};
-#[cfg(test)]
-use tracing_test::traced_test;
 
 use utils::resolve_address;
-
-#[tokio::test]
-#[traced_test]
-async fn check() {
-    let mut receiver = EventListener::stream_events("http://127.0.0.1:18101".to_string(), 5, 5)
-        .await
-        .unwrap();
-
-    while let Some(sse) = receiver.recv().await {
-        println!("Received SSE: {:?}", sse.id);
-    }
-}
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
 
 #[allow(unused)]
+#[derive(Clone)]
 pub struct EventListener {
     bind_address: String,
-    api_version: ProtocolVersion,
+    pub api_version: ProtocolVersion,
     current_event_id: Option<u32>,
+    max_retries: u8,
+    delay_between_retries: u8,
 }
 
 pub struct SseEvent {
@@ -46,6 +36,8 @@ pub struct SseEvent {
     pub data: SseData,
 }
 
+/// The version of this node's API server.  This event will always be the first sent to a new
+/// client, and will have no associated event ID provided.
 #[derive(Deserialize)]
 struct ApiVersion {
     #[serde(rename = "ApiVersion")]
@@ -53,49 +45,89 @@ struct ApiVersion {
 }
 
 impl EventListener {
-    pub async fn stream_events(
+    /// Returns an instance of [EventListener] based on the given `bind_address`.  
+    /// `delay_between_retries` should be provided in seconds.
+    ///
+    /// Will error if:
+    /// - `bind_address` cannot be parsed into a network address.
+    /// - It is unable to connect to the source.
+    /// - The source doesn't send a valid [ApiVersion] as the first event.
+    pub async fn new(
         bind_address: String,
         max_retries: u8,
-        delay_between_retries_secs: u8,
-    ) -> Result<UnboundedReceiver<SseEvent>, Error> {
+        delay_between_retries: u8,
+    ) -> Result<Self, Error> {
         resolve_address(&bind_address)?;
-        let bind_address = format!("http://{}", bind_address);
+        let prefixed_address = format!("http://{}", bind_address);
 
+        let address_with_filter = format!("{}/events/main", prefixed_address);
+        let stream = Client::new()
+            .get(&address_with_filter)
+            .send()
+            .await
+            .map_err(parse_error_for_connection_refused)?
+            .bytes_stream()
+            .eventsource();
+
+        let (api_version, _) = parse_api_version(stream).await?;
+
+        Ok(Self {
+            bind_address: prefixed_address,
+            api_version,
+            current_event_id: None,
+            max_retries,
+            delay_between_retries,
+        })
+    }
+
+    pub async fn stream_events(&self) -> UnboundedReceiver<SseEvent> {
         let (sse_tx, sse_rx) = unbounded_channel::<SseEvent>();
+
+        let mut cloned_self = self.clone();
 
         tokio::spawn(async move {
             let mut retry_count = 0;
             let mut current_event_id: Option<u32> = None;
 
-            while retry_count <= max_retries {
+            while retry_count <= cloned_self.max_retries {
                 if retry_count > 0 {
                     info!(
                         "Attempting to reconnect... ({}/{})",
-                        retry_count, max_retries
+                        retry_count, cloned_self.max_retries
                     );
                 }
 
-                let (api_version, mut event_receiver) =
-                    match Self::connect(bind_address.clone(), current_event_id).await {
-                        Ok(ok_val) => {
-                            retry_count = 0;
-                            ok_val
-                        }
-                        Err(_) => {
-                            error!(
-                                "Error connecting ({}), retrying in {}s",
-                                bind_address, delay_between_retries_secs
-                            );
-                            retry_count += 1;
-                            tokio::time::sleep(Duration::from_secs(
-                                delay_between_retries_secs as u64,
-                            ))
-                            .await;
-                            continue;
-                        }
-                    };
+                let (api_version, mut event_receiver) = match cloned_self
+                    .connect(cloned_self.bind_address.clone(), current_event_id)
+                    .await
+                {
+                    Ok(ok_val) => {
+                        retry_count = 0;
+                        ok_val
+                    }
+                    Err(_) => {
+                        error!(
+                            "Error connecting ({}), retrying in {}s",
+                            cloned_self.bind_address, cloned_self.delay_between_retries
+                        );
+                        retry_count += 1;
+                        tokio::time::sleep(Duration::from_secs(
+                            cloned_self.delay_between_retries as u64,
+                        ))
+                        .await;
+                        continue;
+                    }
+                };
 
-                info!(%bind_address, %api_version, "Connected to SSE");
+                if api_version.ne(&cloned_self.api_version) {
+                    warn!(
+                        "API version changed from {} to {}",
+                        cloned_self.api_version, api_version
+                    );
+                    cloned_self.api_version = api_version;
+                }
+
+                info!(%cloned_self.bind_address, %api_version, "Connected to SSE");
 
                 if let Some(id) = current_event_id {
                     info!("Resuming from event id: {}", id);
@@ -125,18 +157,18 @@ impl EventListener {
                         Ok(SseData::Shutdown) | Err(_) => {
                             error!(
                                 "Error connecting, retrying in {}s",
-                                delay_between_retries_secs
+                                cloned_self.delay_between_retries
                             );
                             retry_count += 1;
                             tokio::time::sleep(Duration::from_secs(
-                                delay_between_retries_secs as u64,
+                                cloned_self.delay_between_retries as u64,
                             ))
                             .await;
                             break;
                         }
                         Ok(sse_data) => {
                             let _ = cloned_sender.send(SseEvent {
-                                source: bind_address.clone(),
+                                source: cloned_self.bind_address.clone(),
                                 id: Some(event_id),
                                 data: sse_data,
                             });
@@ -147,16 +179,17 @@ impl EventListener {
 
             // Having tried to reconnect and failed we send the Shutdown.
             let _ = sse_tx.send(SseEvent {
-                source: bind_address,
+                source: cloned_self.bind_address,
                 id: None,
                 data: SseData::Shutdown,
             });
         });
 
-        Ok(sse_rx)
+        sse_rx
     }
 
     async fn connect(
+        &self,
         bind_address: String,
         start_from_id: Option<u32>,
     ) -> Result<(ProtocolVersion, UnboundedReceiver<Event>), Error> {
@@ -171,7 +204,7 @@ impl EventListener {
             sigs_filter_path.push_str(&start_from_query_string);
         }
 
-        let mut main_event_stream = Client::new()
+        let main_event_stream = Client::new()
             .get(&main_filter_path)
             .send()
             .await
@@ -203,22 +236,7 @@ impl EventListener {
         let sigs_event_tx = aggregate_events_tx.clone();
 
         // Parse the first event to see if the connection was successful
-        let api_version = match main_event_stream.next().await {
-            None => return Err(Error::msg("First event was empty")),
-            Some(Err(error)) => {
-                return Err(Error::msg(format!("failed to get first event: {}", error)))
-            }
-            Some(Ok(event)) => match serde_json::from_str::<ApiVersion>(&event.data) {
-                Ok(api_version) => api_version.version,
-                Err(serde_err) => {
-                    return match event.data.as_str() {
-                        CONNECTION_REFUSED => Err(Error::msg(CONNECTION_ERR_MSG)),
-                        _ => Err(Error::from(serde_err)
-                            .context("First event could not be deserialized into ApiVersion")),
-                    }
-                }
-            },
-        };
+        let (api_version, main_event_stream) = parse_api_version(main_event_stream).await?;
 
         // For each filtered Stream pass the events along a Sender which all feed into the
         // aggregate Receiver. The first event is (should be) the API Version which is already
@@ -244,9 +262,35 @@ impl EventListener {
     }
 }
 
+async fn parse_api_version<EvtStr, E>(
+    mut stream: EventStream<EvtStr>,
+) -> Result<(ProtocolVersion, EventStream<EvtStr>), Error>
+where
+    E: Debug,
+    EvtStr: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
+{
+    match stream.next().await {
+        None => Err(Error::msg("First event was empty")),
+        Some(Err(error)) => Err(Error::msg(format!(
+            "failed to get first event: {:?}",
+            error
+        ))),
+        Some(Ok(event)) => match serde_json::from_str::<ApiVersion>(&event.data) {
+            Ok(api_version) => Ok((api_version.version, stream)),
+            Err(serde_err) => {
+                return match event.data.as_str() {
+                    CONNECTION_REFUSED => Err(Error::msg(CONNECTION_ERR_MSG)),
+                    _ => Err(Error::from(serde_err)
+                        .context("First event could not be deserialized into ApiVersion")),
+                }
+            }
+        },
+    }
+}
+
 fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
     if error.to_string().contains(CONNECTION_REFUSED) {
-        Error::msg(&CONNECTION_ERR_MSG)
+        Error::msg(CONNECTION_ERR_MSG)
     } else {
         Error::from(error)
     }

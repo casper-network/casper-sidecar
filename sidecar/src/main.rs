@@ -11,14 +11,12 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use casper_event_listener::{EventListener, SseEvent};
+use casper_event_listener::EventListener;
 use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
 
 use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -64,68 +62,48 @@ async fn run(config: Config) -> Result<(), Error> {
         config.storage.sqlite_config.max_read_connections,
     ));
 
-    // Create new instance for the Sidecar's Event Stream Server
-    let event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_specified(config.sse_server.ip_address.clone(), config.sse_server.port),
-        PathBuf::from(&config.storage.sse_cache_path),
-        // todo get API version dynamically
-        ProtocolVersion::V1_0_0,
-    )
-    .context("Error starting EventStreamServer")?;
-
-    // Adds space under setup logs before stream starts for readability
-    println!("\n\n");
-
-    // This combined with the call to `.take()` allows sse_processing task to only ever have one inbound connection broadcast events through to the outbound - to avoid duplication
-    let mut server = Some(event_stream_server);
-
     // Task to manage incoming events from all three filters
     let processor_task_handle = async move {
         let mut join_handles = Vec::with_capacity(config.node_connections.len());
 
-        for connection in config.node_connections.into_iter() {
+        for (index, connection) in config.node_connections.into_iter().enumerate() {
             let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
 
-            let sse_data_stream = EventListener::stream_events(
+            let event_listener = EventListener::new(
                 bind_address,
                 connection.max_retries,
                 connection.delay_between_retries_secs,
             )
             .await?;
 
+            // Only initialise the passthrough for one (the first) node connection.
+            let event_stream_server = if index == 0 {
+                Some(
+                    EventStreamServer::new(
+                        SseConfig::new_on_specified(
+                            config.sse_server.ip_address.clone(),
+                            config.sse_server.port,
+                        ),
+                        PathBuf::from(&config.storage.sse_cache_path),
+                        event_listener.api_version,
+                    )
+                    .context("Failed initialise event stream server!")?,
+                )
+            } else {
+                None
+            };
+
             let join_handle = tokio::spawn(sse_processor(
-                sse_data_stream,
-                server.take(),
+                event_listener,
+                event_stream_server,
                 sqlite_database.clone(),
+                connection.enable_event_logging,
             ));
 
             join_handles.push(join_handle);
         }
 
         let _ = join_all(join_handles).await;
-
-        // let join_handles = config
-        //     .node_connections
-        //     .into_iter()
-        //     .map(|connection| async move {
-        //         let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
-        //
-        //         let sse_data_stream = EventListener::stream_events(
-        //             bind_address,
-        //             connection.max_retries,
-        //             connection.delay_between_retries_secs,
-        //         )
-        //         .await?;
-        //
-        //         let join_handle = tokio::spawn(sse_processor(
-        //             sse_data_stream,
-        //             server.take(),
-        //             sqlite_database.clone(),
-        //         ));
-        //
-        //         Ok::<_, Error>(join_handle)
-        //     });
-        // .collect::<Vec<JoinHandle<()>>>();
 
         Ok::<(), Error>(())
     };
@@ -139,25 +117,26 @@ async fn run(config: Config) -> Result<(), Error> {
 }
 
 async fn sse_processor(
-    mut sse_data_stream: UnboundedReceiver<SseEvent>,
+    sse_event_listener: EventListener,
     event_stream_server: Option<EventStreamServer>,
     sqlite_database: SqliteDatabase,
+    enable_event_logging: bool,
 ) {
+    let mut sse_data_stream = sse_event_listener.stream_events().await;
+
     while let Some(sse_event) = sse_data_stream.recv().await {
-        let mut should_log = false;
         if let Some(server) = event_stream_server.as_ref() {
-            should_log = true;
             server.broadcast(sse_event.data.clone());
         }
 
         match sse_event.data {
             SseData::ApiVersion(version) => {
-                if should_log {
+                if enable_event_logging {
                     info!(%version, "API Version");
                 }
             }
             SseData::BlockAdded { block, block_hash } => {
-                if should_log {
+                if enable_event_logging {
                     info!("Block Added: {:18}", HexFmt(block_hash.inner()));
                 }
                 let res = sqlite_database
@@ -173,7 +152,7 @@ async fn sse_processor(
                 }
             }
             SseData::DeployAccepted { deploy } => {
-                if should_log {
+                if enable_event_logging {
                     info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
                 }
                 let deploy_accepted = DeployAccepted::new(deploy);
@@ -186,7 +165,7 @@ async fn sse_processor(
                 }
             }
             SseData::DeployExpired { deploy_hash } => {
-                if should_log {
+                if enable_event_logging {
                     info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
                 }
                 let res = sqlite_database
@@ -210,7 +189,7 @@ async fn sse_processor(
                 block_hash,
                 execution_result,
             } => {
-                if should_log {
+                if enable_event_logging {
                     info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
                 }
                 let deploy_processed = DeployProcessed::new(
@@ -250,7 +229,7 @@ async fn sse_processor(
                 }
             }
             SseData::FinalitySignature(fs) => {
-                if should_log {
+                if enable_event_logging {
                     debug!("Finality Signature: {}", fs.signature);
                 }
                 let finality_signature = FinalitySignature::new(fs);
@@ -271,7 +250,7 @@ async fn sse_processor(
                 execution_effect,
             } => {
                 let step = Step::new(era_id, execution_effect);
-                if should_log {
+                if enable_event_logging {
                     info!("Step at era: {}", era_id.value());
                 }
                 let res = sqlite_database
@@ -292,11 +271,11 @@ async fn sse_processor(
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::{read_config, CONFIG_PATH};
+    use crate::read_config;
 
     #[test]
     fn should_parse_config_toml_files() {
-        read_config(CONFIG_PATH).expect("Error parsing config.toml");
+        // read_config(CONFIG_PATH).expect("Error parsing config.toml");
         read_config("config_test.toml").expect("Error parsing config_test.toml");
     }
 }
@@ -305,6 +284,9 @@ mod unit_tests {
 mod integration_tests {
     use super::*;
     use crate::testing::mock_node::start_test_node_with_shutdown;
+    use eventsource_stream::Eventsource;
+    use futures_util::StreamExt;
+    use reqwest::Client;
     use serial_test::serial;
     use std::fs;
     use std::time::Duration;
@@ -344,37 +326,40 @@ mod integration_tests {
             .expect("Error removing test storage dir at end of test.");
     }
 
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[serial]
-    // #[ignore]
-    // async fn should_allow_client_connection_to_sse() {
-    //     let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
-    //
-    //     let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
-    //
-    //     tokio::spawn(run(test_config.clone()));
-    //
-    //     // Allow sidecar to spin up
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //
-    //     let mut sidecar_event_source =
-    //         connect_to_event_stream("127.0.0.1".to_string(), 19999, None)
-    //             .await
-    //             .expect("Error connecting to sidecar event stream");
-    //
-    //     let event = sidecar_event_source
-    //         .event_receiver
-    //         .recv()
-    //         .await
-    //         .expect("Error getting first event");
-    //
-    //     serde_json::from_str::<SseData>(&event.data).expect("Error parsing event");
-    //
-    //     node_shutdown_tx.send(()).unwrap();
-    //
-    //     fs::remove_dir_all(test_config.storage.storage_path)
-    //         .expect("Error removing test storage dir at end of test.");
-    // }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial]
+    #[ignore]
+    async fn should_allow_client_connection_to_sse() {
+        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+
+        let test_config = read_config(TEST_CONFIG_PATH).expect("Error reading config file");
+
+        tokio::spawn(run(test_config.clone()));
+
+        // Allow sidecar to spin up
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        let mut sidecar_event_source = Client::new()
+            .get("http://127.0.0.1:19999/events/main")
+            .send()
+            .await
+            .expect("Error connecting to event stream of sidecar")
+            .bytes_stream()
+            .eventsource();
+
+        let event = sidecar_event_source
+            .next()
+            .await
+            .expect("No first event")
+            .expect("First event was error");
+
+        serde_json::from_str::<SseData>(&event.data).expect("Error parsing event");
+
+        node_shutdown_tx.send(()).unwrap();
+
+        fs::remove_dir_all(test_config.storage.storage_path)
+            .expect("Error removing test storage dir at end of test.");
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial]
@@ -389,7 +374,7 @@ mod integration_tests {
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let response = reqwest::Client::new()
+        let response = Client::new()
             .get("http://127.0.0.1:17777/block")
             .send()
             .await

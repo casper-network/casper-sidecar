@@ -14,6 +14,7 @@ pub struct NodeConnection {
     pub sse_port: u16,
     pub max_retries: u8,
     pub delay_between_retries_secs: u8,
+    pub enable_event_logging: bool,
 }
 
 #[derive(Clone, Deserialize)]

@@ -1,5 +1,5 @@
 node_connections = [
-    { ip_address = "127.0.0.1", sse_port = 4444, max_retries = 5, delay_between_retries_secs = 5 }
+    { ip_address = "127.0.0.1", sse_port = 4444, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true }
 ]
 
 [storage]
