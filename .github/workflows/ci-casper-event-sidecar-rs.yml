@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
 
