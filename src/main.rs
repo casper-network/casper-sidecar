@@ -17,7 +17,7 @@ use eventsource_stream::{EventStream, Eventsource};
 use futures::{Stream, StreamExt};
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
