@@ -90,7 +90,7 @@ async fn run(config: Config) -> Result<(), Error> {
                             Some(config.event_stream_server.event_stream_buffer_length),
                             Some(config.event_stream_server.max_concurrent_subscribers),
                         ),
-                        PathBuf::from(&config.storage.sse_cache_path),
+                        PathBuf::from(&config.storage.storage_path),
                         event_listener.api_version,
                     )
                     .context("Failed initialise event stream server!")?,
@@ -176,7 +176,6 @@ async fn sse_processor(
                 if enable_event_logging {
                     info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
                     debug!("Deploy Expired: {}", HexFmt(deploy_hash.inner()));
-
                 }
                 let res = sqlite_database
                     .save_deploy_expired(
@@ -202,7 +201,6 @@ async fn sse_processor(
                 if enable_event_logging {
                     info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
                     debug!("Deploy Processed: {}", HexFmt(deploy_hash.inner()));
-
                 }
                 let deploy_processed = DeployProcessed::new(
                     deploy_hash.clone(),
@@ -384,8 +382,9 @@ mod integration_tests {
             .bytes_stream()
             .eventsource();
 
-        while let Some(event) = main_event_stream.next().await {
-            serde_json::from_str::<SseData>(&event.data).expect("Error parsing event");
+        while let Some(event) = sidecar_event_source.next().await {
+            serde_json::from_str::<SseData>(&event.expect("Event was an error").data)
+                .expect("Error parsing event");
         }
 
         node_shutdown_tx.send(()).unwrap();
