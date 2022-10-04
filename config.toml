@@ -5,7 +5,6 @@ node_connections = [
 
 [storage]
 storage_path = "./target/storage"
-sse_cache_path = "./target/storage"
 
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
@@ -18,6 +17,8 @@ wal_autocheckpointing_interval = 1000
 ip_address = "127.0.0.1"
 port = 17777
 
-[sse_server]
+[event_stream_server]
 ip_address = "127.0.0.1"
 port = 19999
+max_concurrent_subscribers = 100
+event_stream_buffer_length = 5000

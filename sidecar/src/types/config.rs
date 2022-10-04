@@ -1,11 +1,12 @@
 use serde::Deserialize;
 
+// This struct is used to parse the config.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
 pub struct Config {
     pub node_connections: Vec<NodeConnection>,
     pub storage: StorageConfig,
-    pub rest_server: ServerConfig,
-    pub sse_server: ServerConfig,
+    pub rest_server: RestServerConfig,
+    pub event_stream_server: EventStreamServerConfig,
 }
 
 #[derive(Clone, Deserialize)]
@@ -20,7 +21,6 @@ pub struct NodeConnection {
 #[derive(Clone, Deserialize)]
 pub struct StorageConfig {
     pub storage_path: String,
-    pub sse_cache_path: String,
     pub sqlite_config: SqliteConfig,
 }
 
@@ -33,7 +33,15 @@ pub struct SqliteConfig {
 }
 
 #[derive(Clone, Deserialize)]
-pub struct ServerConfig {
+pub struct RestServerConfig {
     pub ip_address: String,
     pub port: u16,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct EventStreamServerConfig {
+    pub ip_address: String,
+    pub port: u16,
+    pub max_concurrent_subscribers: u32,
+    pub event_stream_buffer_length: u32,
 }
