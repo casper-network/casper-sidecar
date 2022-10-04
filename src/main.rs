@@ -159,10 +159,19 @@ async fn run(config: Config) -> Result<(), Error> {
         config.storage.sqlite_config.max_read_connections,
     ));
 
+    let event_stream_server_address = format!(
+        "{}:{}",
+        config.event_stream_server.ip_address, config.event_stream_server.port
+    );
+
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new_on_specified(config.sse_server.ip_address, config.sse_server.port),
-        PathBuf::from(config.storage.sse_cache_path),
+        SseConfig::new(
+            Some(event_stream_server_address),
+            Some(config.event_stream_server.event_stream_buffer_length),
+            Some(config.event_stream_server.max_concurrent_subscribers),
+        ),
+        PathBuf::from(config.storage.storage_path),
         api_version,
     )
     .context("Error starting EventStreamServer")?;
@@ -381,6 +390,7 @@ mod unit_tests {
     fn should_parse_config_toml_files() {
         read_config(CONFIG_PATH).expect("Error parsing config.toml");
         read_config("config_test.toml").expect("Error parsing config_test.toml");
+        read_config("config_perf_test.toml").expect("Error parsing config_perf_test.toml");
     }
 }
 
