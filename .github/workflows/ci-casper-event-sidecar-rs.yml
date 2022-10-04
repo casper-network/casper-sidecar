@@ -56,4 +56,4 @@ jobs:
           cargo install cargo-deb
 
       - name: deb
-        run: cargo deb
+        run: cargo deb -p casper-event-sidecar
