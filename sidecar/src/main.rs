@@ -155,7 +155,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!(%error, "Error saving block");
+                    warn!("Error saving block: {:#?}", error);
                 }
             }
             SseData::DeployAccepted { deploy } => {
@@ -169,7 +169,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!(%error, "Error saving deploy accepted");
+                    warn!("Error saving deploy accepted: {:#?}", error);
                 }
             }
             SseData::DeployExpired { deploy_hash } => {
@@ -186,7 +186,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!(%error, "Error saving deploy expired");
+                    warn!("Error saving deploy expired: {:#?}", error);
                 }
             }
             SseData::DeployProcessed {
@@ -220,7 +220,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!(%error, "Error saving deploy processed");
+                    warn!("Error saving deploy processed: {:#?}", error);
                 }
             }
             SseData::Fault {
@@ -235,7 +235,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!("Error saving fault: {}", error);
+                    warn!("Error saving fault: {:#?}", error);
                 }
             }
             SseData::FinalitySignature(fs) => {
@@ -252,7 +252,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!(%error, "Error saving finality signature")
+                    warn!("Error saving finality signature: {:#?}", error)
                 }
             }
             SseData::Step {
@@ -268,7 +268,7 @@ async fn sse_processor(
                     .await;
 
                 if let Err(error) = res {
-                    warn!("Error saving step: {}", error);
+                    warn!("Error saving step: {:#?}", error);
                 }
             }
             SseData::Shutdown => {
@@ -292,6 +292,19 @@ impl ConfigWithCleanup {
         let config = read_config(path).expect("Error parsing config file");
         Self { config }
     }
+
+    fn set_node_connection_port(&mut self, port: u16) {
+        self.config.node_connections[0].sse_port = port;
+    }
+
+    fn use_free_ports_for_servers(&mut self) -> (u16, u16) {
+        let rest_server_port = portpicker::pick_unused_port().expect("Error getting free port");
+        let sse_server_port = portpicker::pick_unused_port().expect("Error getting free port");
+        self.config.rest_server.port = rest_server_port;
+        self.config.event_stream_server.port = sse_server_port;
+
+        (rest_server_port, sse_server_port)
+    }
 }
 
 #[cfg(test)]
@@ -312,8 +325,7 @@ mod unit_tests {
     use crate::read_config;
 
     #[test]
-    fn should_parse_config_toml_files() {
-        // read_config(CONFIG_PATH).expect("Error parsing config.toml");
+    fn should_parse_test_config_toml_files() {
         read_config("config_test.toml").expect("Error parsing config_test.toml");
         read_config("config_perf_test.toml").expect("Error parsing config_perf_test.toml");
     }
@@ -322,60 +334,62 @@ mod unit_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::testing::mock_node::start_test_node_with_shutdown;
+    use crate::testing::mock_node::start_mock_node_with_shutdown;
     use eventsource_stream::Eventsource;
     use futures_util::StreamExt;
     use reqwest::Client;
-    use serial_test::serial;
     use std::time::Duration;
 
     const TEST_CONFIG_PATH: &str = "config_test.toml";
-    const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
-
-    #[tokio::test]
-    #[serial]
-    #[ignore]
-    async fn should_return_helpful_error_if_node_unreachable() {
-        let test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
-
-        let result = run(test_config.config.clone()).await;
-
-        assert!(result.is_err());
-        if let Some(error) = result.err() {
-            assert_eq!(error.to_string(), CONNECTION_ERR_MSG)
-        }
-    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
-    #[ignore]
+    // #[ignore]
     async fn should_connect_and_shutdown_cleanly() {
-        let node_shutdown_tx = start_test_node_with_shutdown(4444, None).await;
+        // Spin up mock_node
+        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(None).await;
 
-        let test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        // test_config points to the mock_node
+        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
 
+        // replace the hard-coded port in the config with the port returned by the mock node
+        test_config.set_node_connection_port(port);
+
+        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
+        test_config.use_free_ports_for_servers();
+
+        // run the sidecar against the mock_node. Should receive 30 events then send the Shutdown.
         run(test_config.config.clone())
             .await
             .expect("Error running sidecar");
 
+        // shutdown the mock_node
         node_shutdown_tx.send(()).unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
-    #[ignore]
+    // #[ignore]
     async fn should_allow_client_connection_to_sse() {
-        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+        // Spin up mock_node
+        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(Some(30)).await;
 
-        let test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        // test_config points to the mock_node
+        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+
+        // replace the hard-coded port in the config with the port returned by the mock node
+        test_config.set_node_connection_port(port);
+
+        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
+        let (_, sse_server_port) = test_config.use_free_ports_for_servers();
 
         tokio::spawn(run(test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
+        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/main", sse_server_port);
+
         let mut sidecar_event_source = Client::new()
-            .get("http://127.0.0.1:19999/events/main")
+            .get(&sidecar_sse_url)
             .send()
             .await
             .expect("Error connecting to event stream of sidecar")
@@ -391,20 +405,29 @@ mod integration_tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
-    #[ignore]
+    // #[ignore]
     async fn should_respond_to_rest_query() {
-        let node_shutdown_tx = start_test_node_with_shutdown(4444, Some(30)).await;
+        // Spin up mock_node
+        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(Some(30)).await;
 
-        let test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        // test_config points to the mock_node
+        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+
+        // replace the hard-coded port in the config with the port returned by the mock node
+        test_config.set_node_connection_port(port);
+
+        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
+        let (rest_server_port, _) = test_config.use_free_ports_for_servers();
 
         tokio::spawn(run(test_config.config.clone()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
+        let latest_block_url = format!("http://127.0.0.1:{}/block", rest_server_port);
+
         let response = Client::new()
-            .get("http://127.0.0.1:17777/block")
+            .get(&latest_block_url)
             .send()
             .await
             .expect("Error requesting the /block endpoint");
@@ -415,6 +438,7 @@ mod integration_tests {
     }
 }
 
+/// These tests NCTL to be running and deploys to be sent.
 #[cfg(test)]
 mod performance_tests {
     use super::*;
@@ -422,7 +446,6 @@ mod performance_tests {
     use eventsource_stream::{EventStream, Eventsource};
     use futures::{Stream, StreamExt};
     use hex::encode;
-    use serial_test::serial;
     use std::println;
     use std::time::Duration;
     use tokio::time::Instant;
@@ -444,11 +467,11 @@ mod performance_tests {
     const ACCEPTABLE_LAG_IN_MILLIS: u128 = 1000;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
     #[ignore]
-    // This test needs NCTL running in the background
     async fn check_delay_in_receiving_blocks() {
-        let perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+        let mut perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+
+        let (_, sse_server_port) = perf_test_config.use_free_ports_for_servers();
 
         tokio::spawn(run(perf_test_config.config.clone()));
 
@@ -463,8 +486,10 @@ mod performance_tests {
             .bytes_stream()
             .eventsource();
 
+        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/main", sse_server_port);
+
         let sidecar_event_stream = reqwest::Client::new()
-            .get("http://127.0.0.1:19999/events/main")
+            .get(&sidecar_sse_url)
             .send()
             .await
             .expect("Error connecting to sidecar")
@@ -525,11 +550,11 @@ mod performance_tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    #[serial]
     #[ignore]
-    // This test needs NCTL running in the background with deploys being sent
     async fn check_delay_in_receiving_deploys() {
-        let perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+        let mut perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+
+        let (_, sse_server_port) = perf_test_config.use_free_ports_for_servers();
 
         tokio::spawn(run(perf_test_config.config.clone()));
 
@@ -544,8 +569,10 @@ mod performance_tests {
             .bytes_stream()
             .eventsource();
 
+        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/deploys", sse_server_port);
+
         let sidecar_event_stream = reqwest::Client::new()
-            .get("http://127.0.0.1:19999/events/deploys")
+            .get(&sidecar_sse_url)
             .send()
             .await
             .expect("Error connecting to sidecar")

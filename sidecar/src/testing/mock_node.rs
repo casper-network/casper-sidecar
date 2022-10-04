@@ -12,7 +12,7 @@ use futures::{Stream, StreamExt};
 use futures_util::stream;
 #[allow(unused)]
 use futures_util::stream::{IntoStream, Iter, Map, Zip};
-use serial_test::serial;
+use rand::Rng;
 use tokio::sync::oneshot;
 #[allow(unused)]
 use tokio::time::{interval, Instant};
@@ -51,7 +51,7 @@ fn enclose_events_data(data: &mut Vec<SseData>, add_shutdown: bool) -> Vec<SseDa
     data.to_owned()
 }
 
-async fn start_test_node(
+async fn start_mock_node(
     port: u16,
     started_notification_sender: oneshot::Sender<()>,
     shutdown_receiver: oneshot::Receiver<()>,
@@ -178,147 +178,72 @@ async fn start_test_node(
     addr
 }
 
-pub(crate) async fn start_test_node_with_shutdown(
-    port: u16,
+/// Starts the mock node and returns the port it's running on as well as the oneshot sender to shut it down at the end of the test.
+pub(crate) async fn start_mock_node_with_shutdown(
     num_events: Option<usize>,
-) -> oneshot::Sender<()> {
+) -> (u16, oneshot::Sender<()>) {
     let (node_shutdown_tx, node_shutdown_rx) = oneshot::channel();
     let (node_started_tx, node_started_rx) = oneshot::channel();
 
-    let num_events = num_events.unwrap_or(DEFAULT_NUM_OF_TEST_EVENTS);
+    let port = portpicker::pick_unused_port().expect("Unable to get free port");
 
-    tokio::spawn(start_test_node(
+    tokio::spawn(start_mock_node(
         port,
         node_started_tx,
         node_shutdown_rx,
-        num_events,
+        num_events.unwrap_or(DEFAULT_NUM_OF_TEST_EVENTS),
     ));
 
     // Wait for the test node to report that it's live
     let _ = node_started_rx.await;
 
-    node_shutdown_tx
+    (port, node_shutdown_tx)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-#[ignore]
-async fn should_connect_then_gracefully_shutdown() {
-    let test_node_port: u16 = 4444;
-
-    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
-
-    let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let mut connection = reqwest::Client::new()
-        .get(&test_node_url)
-        .send()
-        .await
-        .expect("Error connecting to main event stream")
-        .bytes_stream()
-        .eventsource();
-
-    let first_event = connection
-        .next()
-        .await
-        .expect("First event was None")
-        .expect("First event was an error from the EventStream");
-    assert!(first_event.data.contains("ApiVersion"));
-
-    let _ = node_shutdown_tx.send(());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-#[ignore]
 async fn main_filter_should_provide_valid_data() {
-    let test_node_port: u16 = 4444;
-
-    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
-
-    let test_node_url = format!("http://127.0.0.1:{}/events/main", test_node_port);
-    let mut connection = reqwest::Client::new()
-        .get(&test_node_url)
-        .send()
-        .await
-        .expect("Error connecting to main event stream")
-        .bytes_stream()
-        .eventsource();
-
-    while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(
-            &event
-                .expect("Event was an error from the event stream")
-                .data,
-        )
-        .expect("Error deserialising the event into SseData");
-        if matches!(sse, SseData::Shutdown) {
-            break;
-        }
-    }
-
-    let _ = node_shutdown_tx.send(());
+    filter_should_provide_valid_data("main").await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-#[ignore]
 async fn deploys_filter_should_provide_valid_data() {
-    let test_node_port: u16 = 4444;
-
-    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
-
-    let test_node_url = format!("http://127.0.0.1:{}/events/deploys", test_node_port);
-    let mut connection = reqwest::Client::new()
-        .get(&test_node_url)
-        .send()
-        .await
-        .expect("Error connecting to deploys event stream")
-        .bytes_stream()
-        .eventsource();
-
-    while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(
-            &event
-                .expect("Event was an error from the event stream")
-                .data,
-        )
-        .expect("Error deserialising the event into SseData");
-        if matches!(sse, SseData::Shutdown) {
-            break;
-        }
-    }
-
-    let _ = node_shutdown_tx.send(());
+    filter_should_provide_valid_data("deploys").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-#[ignore]
 async fn sigs_filter_should_provide_valid_data() {
-    let test_node_port: u16 = 4444;
+    filter_should_provide_valid_data("sigs").await;
+}
 
-    let node_shutdown_tx = start_test_node_with_shutdown(test_node_port, None).await;
+#[cfg(test)]
+async fn filter_should_provide_valid_data(filter: &str) {
+    let mut test_rng = TestRng::new();
+    let num_events = test_rng.gen_range(3..10);
 
-    let test_node_url = format!("http://127.0.0.1:{}/events/sigs", test_node_port);
+    let (port, node_shutdown_tx) = start_mock_node_with_shutdown(Some(num_events)).await;
+
+    let mock_node_url = format!("http://127.0.0.1:{}/events/{}", port, filter);
     let mut connection = reqwest::Client::new()
-        .get(&test_node_url)
+        .get(&mock_node_url)
         .send()
         .await
-        .expect("Error connecting to sigs event stream")
+        .expect("Error connecting to event stream")
         .bytes_stream()
         .eventsource();
 
+    let mut event_count = 0;
+
     while let Some(event) = connection.next().await {
-        let sse = serde_json::from_str::<SseData>(
+        serde_json::from_str::<SseData>(
             &event
                 .expect("Event was an error from the event stream")
                 .data,
         )
         .expect("Error deserialising the event into SseData");
-        if matches!(sse, SseData::Shutdown) {
-            break;
-        }
+        event_count += 1;
     }
+
+    assert_eq!(event_count, num_events + 2);
 
     let _ = node_shutdown_tx.send(());
 }

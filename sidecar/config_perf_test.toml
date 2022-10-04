@@ -1,9 +1,9 @@
 node_connections = [
-    { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true }
+    { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 0, delay_between_retries_secs = 5, enable_event_logging = true }
 ]
 
 [storage]
-storage_path = "./target/test_storage"
+storage_path = "./test_storage"
 
 [storage.sqlite_config]
 file_name = "test_sqlite_database.db3"
