@@ -15,6 +15,7 @@ use casper_event_listener::EventListener;
 use casper_event_types::SseData;
 
 use anyhow::{Context, Error};
+use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tracing::{debug, info, warn};
@@ -26,12 +27,18 @@ use crate::{
     types::{config::Config, database::DatabaseWriter, sse_events::*},
 };
 
-const CONFIG_PATH: &str = "config.toml";
-
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content =
         std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct CmdLineArgs {
+    /// Path to the TOML-formatted config file
+    #[arg(short, long, value_name = "FILE")]
+    path_to_config: String,
 }
 
 #[tokio::main]
@@ -39,7 +46,11 @@ async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config(CONFIG_PATH).context("Error constructing config")?;
+    let args = CmdLineArgs::parse();
+
+    let path_to_config = args.path_to_config;
+
+    let config: Config = read_config(&path_to_config).context("Error constructing config")?;
     info!("Configuration loaded");
 
     run(config).await
