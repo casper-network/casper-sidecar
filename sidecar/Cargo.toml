@@ -12,6 +12,7 @@ casper-event-listener = { path = "../listener", version = "0.1.0"}
 casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"]}
 casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+clap = { version = "4.0.9", features = ["derive"] }
 derive-new = "0.5.9"
 eventsource-stream = "0.2.3"
 futures = "0.3.17"
