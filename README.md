@@ -18,8 +18,8 @@ network = "Local"
 and then ensure that the "Local" node settings are correct for your instance:
 ```toml
 [connection.node.local]
-ip_address="0.0.0.0"
-sse_port=9999
+ip_address = "0.0.0.0"
+sse_port = 9999
 ```
 You can also change the port on which the sidecar's Event Stream will be exposed:
 ```toml

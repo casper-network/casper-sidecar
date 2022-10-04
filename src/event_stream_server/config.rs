@@ -28,25 +28,22 @@ pub struct Config {
 
 impl Config {
     /// Creates a default instance for `EventStreamServer`.
-    pub fn new() -> Self {
+    pub fn new(
+        address: Option<String>,
+        buffer_length: Option<u32>,
+        max_subscribers: Option<u32>,
+    ) -> Self {
         Config {
-            address: DEFAULT_ADDRESS.to_string(),
-            event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
-            max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
-        }
-    }
-
-    pub fn new_on_specified(ip_address: String, port: u16) -> Self {
-        Config {
-            address: format!("{}:{}", ip_address, port),
-            event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
-            max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
+            address: address.unwrap_or_else(|| DEFAULT_ADDRESS.to_string()),
+            event_stream_buffer_length: buffer_length.unwrap_or(DEFAULT_EVENT_STREAM_BUFFER_LENGTH),
+            max_concurrent_subscribers: max_subscribers
+                .unwrap_or(DEFAULT_MAX_CONCURRENT_SUBSCRIBERS),
         }
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config::new()
+        Config::new(None, None, None)
     }
 }
