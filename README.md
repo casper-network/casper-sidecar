@@ -114,19 +114,19 @@ cargo run
 ```
 Or you can run the Sidecar with the following options:
 
-Only log `Info` events:
+The least verbose level, logging `Info` events:
 
 ```
 RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
 ```
 
-Only log `Debug` events
+Logging both `Info` and `Debug` events
 
 ```
 RUST_LOG=debug cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
 ```
 
-Only log `Trace` events
+The most verbose level, logging `Trace` events in addition to `Debg` and `Info`.
 
 ```
 RUST_LOG=trace cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
