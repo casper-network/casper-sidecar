@@ -95,6 +95,13 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
+## Unit Testing the Sidecar Application
+
+You can run included unit and integration tests with the following command:
+
+```
+cargo test
+```
 
 ## Running the Sidecar
 
@@ -103,3 +110,30 @@ Once you are happy with the configuration you can (build and) run it using Cargo
 ```shell
 cargo run
 ```
+Or you can run the Sidecar with the following options:
+
+Only log `Info` events:
+
+```
+RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
+```
+
+Only log `Debug` events
+
+```
+RUST_LOG=debug cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
+```
+
+Only log `Trace` events
+
+```
+RUST_LOG=trace cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
+```
+
+## Testing Sidecar with a Local Network using NCTL
+
+Your instance of the Sidecar application can be tested against a local network by using NCTL.
+
+Instructions for setting up NCTL can be found [here](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
+
+The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network, if one is running. The Sidecar should function in the same way that it would with a live node, displaying events as they occur in the local NCTL network.
