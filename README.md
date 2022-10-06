@@ -18,7 +18,6 @@ It will consume the node's event stream with the aim of providing:
 
 * CMake 3.1.4 or greater
 * [Rust](https://www.rust-lang.org/tools/install)
-* libssl-dev
 * pkg-config
 * gcc
 * g++
