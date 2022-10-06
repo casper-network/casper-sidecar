@@ -14,6 +14,8 @@ It will consume the node's event stream with the aim of providing:
 
 - The ability to query for filtered data.
 
+![Sidecar Diagram](https://user-images.githubusercontent.com/102557486/194373652-042e112b-bec8-4557-a28f-98c30a179e0c.png)
+
 ## Prerequisites
 
 * CMake 3.1.4 or greater
