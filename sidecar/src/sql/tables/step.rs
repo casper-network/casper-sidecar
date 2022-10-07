@@ -21,6 +21,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(Step::Era).integer_len(20).not_null())
         .col(ColumnDef::new(Step::Raw).blob(BlobSize::Tiny).not_null())
         .col(ColumnDef::new(Step::EventLogId).big_unsigned().not_null())
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_Step")
+                .col(Step::Era),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")
@@ -28,14 +35,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .to(EventLog::Table, EventLog::EventLogId)
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
-        )
-        .index(
-            Index::create()
-                .unique()
-                .primary()
-                .name("PDX_Step")
-                .col(Step::Era)
-                .col(Step::EventLogId),
         )
         .to_owned()
 }

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rand::Rng;
 
 use crate::types::{
-    database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError},
+    database::{AggregateDeployInfo, DatabaseReadError, DatabaseReader},
     sse_events::*,
 };
 
@@ -20,7 +20,7 @@ impl MockDatabase {
 
 #[async_trait]
 impl DatabaseReader for MockDatabase {
-    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let block_added = BlockAdded::random(&mut test_rng);
@@ -28,7 +28,7 @@ impl DatabaseReader for MockDatabase {
         Ok(block_added)
     }
 
-    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let block_added = BlockAdded::random_with_height(&mut test_rng, height);
@@ -36,7 +36,7 @@ impl DatabaseReader for MockDatabase {
         Ok(block_added)
     }
 
-    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let block_added = BlockAdded::random_with_hash(&mut test_rng, hash.to_string());
@@ -44,9 +44,7 @@ impl DatabaseReader for MockDatabase {
         Ok(block_added)
     }
 
-    async fn get_latest_deploy_aggregate(
-        &self,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+    async fn get_latest_deploy_aggregate(&self) -> Result<AggregateDeployInfo, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let deploy_aggregate = AggregateDeployInfo::random(&mut test_rng, None);
@@ -57,7 +55,7 @@ impl DatabaseReader for MockDatabase {
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+    ) -> Result<AggregateDeployInfo, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let deploy_aggregate = AggregateDeployInfo::random(&mut test_rng, Some(hash.to_string()));
@@ -69,7 +67,7 @@ impl DatabaseReader for MockDatabase {
     async fn get_deploy_accepted_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployAccepted, DatabaseRequestError> {
+    ) -> Result<DeployAccepted, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let deploy_accepted = DeployAccepted::random(&mut test_rng);
@@ -81,7 +79,7 @@ impl DatabaseReader for MockDatabase {
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployProcessed, DatabaseRequestError> {
+    ) -> Result<DeployProcessed, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let deploy_processed = DeployProcessed::random(&mut test_rng, None);
@@ -90,12 +88,12 @@ impl DatabaseReader for MockDatabase {
     }
 
     #[allow(unused)]
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError> {
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError> {
         Ok(true)
     }
 
     #[allow(unused)]
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseRequestError> {
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let step = Step::random(&mut test_rng);
@@ -107,7 +105,7 @@ impl DatabaseReader for MockDatabase {
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Vec<Fault>, DatabaseRequestError> {
+    ) -> Result<Vec<Fault>, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let fault_one = Fault::random(&mut test_rng);
@@ -120,7 +118,7 @@ impl DatabaseReader for MockDatabase {
     }
 
     #[allow(unused)]
-    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseRequestError> {
+    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let fault_one = Fault::random(&mut test_rng);
@@ -136,7 +134,7 @@ impl DatabaseReader for MockDatabase {
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
-    ) -> Result<Vec<FinSig>, DatabaseRequestError> {
+    ) -> Result<Vec<FinSig>, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let finality_signature_one =

@@ -18,13 +18,17 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
-    types::{config::Config, database::DatabaseWriter, sse_events::*},
+    types::{
+        config::Config,
+        database::{DatabaseWriteError, DatabaseWriter},
+        sse_events::*,
+    },
 };
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
@@ -153,9 +157,10 @@ async fn sse_processor(
                 }
             }
             SseData::BlockAdded { block, block_hash } => {
+                let full_length_hash = format!("{}", HexFmt(block_hash.inner()));
                 if enable_event_logging {
                     info!("Block Added: {:18}", HexFmt(block_hash.inner()));
-                    debug!("Block Added: {}", HexFmt(block_hash.inner()));
+                    debug!("Block Added: {}", full_length_hash);
                 }
                 let res = sqlite_database
                     .save_block_added(
@@ -165,28 +170,44 @@ async fn sse_processor(
                     )
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving block: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received BlockAdded ({}), logged in event_log",
+                            full_length_hash
+                        ),
+                        _ => warn!(?db_write_err, "Error saving BlockAdded"),
+                    }
                 }
             }
             SseData::DeployAccepted { deploy } => {
+                let full_length_hash = format!("{}", HexFmt(deploy.id().inner()));
                 if enable_event_logging {
                     info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
-                    debug!("Deploy Accepted: {}", HexFmt(deploy.id().inner()));
+                    debug!("Deploy Accepted: {}", full_length_hash);
                 }
                 let deploy_accepted = DeployAccepted::new(deploy);
                 let res = sqlite_database
                     .save_deploy_accepted(deploy_accepted, sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving deploy accepted: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received DeployAccepted ({}), logged in event_log",
+                            full_length_hash
+                        ),
+                        _ => warn!(?db_write_err, "Error saving DeployAccepted"),
+                    }
                 }
             }
             SseData::DeployExpired { deploy_hash } => {
+                let full_length_hash = format!("{}", HexFmt(deploy_hash.inner()));
                 if enable_event_logging {
                     info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
-                    debug!("Deploy Expired: {}", HexFmt(deploy_hash.inner()));
+                    debug!("Deploy Expired: {}", full_length_hash);
                 }
                 let res = sqlite_database
                     .save_deploy_expired(
@@ -196,8 +217,15 @@ async fn sse_processor(
                     )
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving deploy expired: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received DeployExpired ({}), logged in event_log",
+                            full_length_hash
+                        ),
+                        _ => warn!(?db_write_err, "Error saving DeployExpired"),
+                    }
                 }
             }
             SseData::DeployProcessed {
@@ -209,9 +237,10 @@ async fn sse_processor(
                 block_hash,
                 execution_result,
             } => {
+                let full_length_hash = format!("{}", HexFmt(deploy_hash.inner()));
                 if enable_event_logging {
                     info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
-                    debug!("Deploy Processed: {}", HexFmt(deploy_hash.inner()));
+                    debug!("Deploy Processed: {}", full_length_hash);
                 }
                 let deploy_processed = DeployProcessed::new(
                     deploy_hash.clone(),
@@ -230,8 +259,15 @@ async fn sse_processor(
                     )
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving deploy processed: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received DeployProcessed ({}), logged in event_log",
+                            full_length_hash
+                        ),
+                        _ => warn!(?db_write_err, "Error saving DeployProcessed"),
+                    }
                 }
             }
             SseData::Fault {
@@ -242,11 +278,18 @@ async fn sse_processor(
                 let fault = Fault::new(era_id, public_key.clone(), timestamp);
                 warn!(%fault, "Fault reported");
                 let res = sqlite_database
-                    .save_fault(fault, sse_event.id.unwrap(), sse_event.source)
+                    .save_fault(fault.clone(), sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving fault: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received Fault ({:#?}), logged in event_log",
+                            fault
+                        ),
+                        _ => warn!(?db_write_err, "Error saving Fault"),
+                    }
                 }
             }
             SseData::FinalitySignature(fs) => {
@@ -256,14 +299,21 @@ async fn sse_processor(
                 let finality_signature = FinalitySignature::new(fs);
                 let res = sqlite_database
                     .save_finality_signature(
-                        finality_signature,
+                        finality_signature.clone(),
                         sse_event.id.unwrap(),
                         sse_event.source,
                     )
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving finality signature: {:#?}", error)
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received FinalitySignature ({:#?}), logged in event_log",
+                            finality_signature
+                        ),
+                        _ => warn!(?db_write_err, "Error saving FinalitySignature"),
+                    }
                 }
             }
             SseData::Step {
@@ -278,8 +328,15 @@ async fn sse_processor(
                     .save_step(step, sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(error) = res {
-                    warn!("Error saving step: {:#?}", error);
+                if let Err(db_write_err) = res {
+                    match db_write_err {
+                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
+                            ?uc_err,
+                            "Already received Step ({}), logged in event_log",
+                            era_id.value()
+                        ),
+                        _ => warn!(?db_write_err, "Error saving Step"),
+                    }
                 }
             }
             SseData::Shutdown => {

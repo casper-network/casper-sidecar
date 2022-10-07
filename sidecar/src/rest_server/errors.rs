@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use warp::{reject, Rejection, Reply};
 
-use crate::types::database::DatabaseRequestError;
+use crate::types::database::DatabaseReadError;
 
 #[derive(Deserialize, Serialize)]
 struct ApiError {
@@ -24,7 +24,7 @@ pub(super) struct InvalidParam(pub(super) anyhow::Error);
 impl reject::Reject for InvalidParam {}
 
 #[derive(Debug)]
-pub(super) struct StorageError(pub(super) DatabaseRequestError);
+pub(super) struct StorageError(pub(super) DatabaseReadError);
 impl reject::Reject for StorageError {}
 
 #[derive(Debug)]
@@ -45,15 +45,15 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
         message = err_msg;
     } else if let Some(StorageError(err)) = err.find() {
         match err {
-            DatabaseRequestError::NotFound => {
+            DatabaseReadError::NotFound => {
                 code = StatusCode::NOT_FOUND;
                 message = "Query returned no results".to_string();
             }
-            DatabaseRequestError::Serialisation(err) => {
+            DatabaseReadError::Serialisation(err) => {
                 code = StatusCode::INTERNAL_SERVER_ERROR;
                 message = format!("Error deserializing returned data: {}", err)
             }
-            DatabaseRequestError::Unhandled(err) => {
+            DatabaseReadError::Unhandled(err) => {
                 code = StatusCode::INTERNAL_SERVER_ERROR;
                 message = format!("Unhandled error occurred in storage: {}", err)
             }
@@ -122,7 +122,7 @@ async fn should_handle_invalid_param() {
 
 #[tokio::test]
 async fn should_handle_not_found() {
-    let rejection = reject::custom(StorageError(DatabaseRequestError::NotFound));
+    let rejection = reject::custom(StorageError(DatabaseReadError::NotFound));
 
     let api_error = get_api_error_from_rejection(rejection).await;
 
@@ -133,11 +133,7 @@ async fn should_handle_not_found() {
 #[tokio::test]
 async fn should_handle_serialisation_error() {
     let rejection = serde_json::from_str::<i32>("")
-        .map_err(|err| {
-            reject::custom(StorageError(DatabaseRequestError::Serialisation(
-                err.into(),
-            )))
-        })
+        .map_err(|err| reject::custom(StorageError(DatabaseReadError::Serialisation(err.into()))))
         .unwrap_err();
 
     let api_error = get_api_error_from_rejection(rejection).await;

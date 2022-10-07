@@ -33,6 +33,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .big_unsigned()
                 .not_null(),
         )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeloyAccepted")
+                .col(DeployAccepted::DeployHash),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")
@@ -40,14 +47,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .to(EventLog::Table, EventLog::EventLogId)
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
-        )
-        .index(
-            Index::create()
-                .unique()
-                .primary()
-                .name("PDX_DeloyAccepted")
-                .col(DeployAccepted::DeployHash)
-                .col(DeployAccepted::EventLogId),
         )
         .to_owned()
 }

@@ -13,14 +13,14 @@ use super::{
 use crate::{
     sql::tables,
     types::{
-        database::{AggregateDeployInfo, DatabaseReader, DatabaseRequestError},
+        database::{AggregateDeployInfo, DatabaseReadError, DatabaseReader},
         sse_events::*,
     },
 };
 
 #[async_trait]
 impl DatabaseReader for SqliteDatabase {
-    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::block_added::create_get_latest_stmt().to_string(SqliteQueryBuilder);
@@ -30,7 +30,7 @@ impl DatabaseReader for SqliteDatabase {
         parse_block_from_row(row)
     }
 
-    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt =
@@ -41,7 +41,7 @@ impl DatabaseReader for SqliteDatabase {
         parse_block_from_row(row)
     }
 
-    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError> {
+    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::block_added::create_get_by_hash_stmt(hash.to_string())
@@ -50,16 +50,14 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(row) => parse_block_from_row(row),
             })
     }
 
-    async fn get_latest_deploy_aggregate(
-        &self,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+    async fn get_latest_deploy_aggregate(&self) -> Result<AggregateDeployInfo, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt =
@@ -68,9 +66,9 @@ impl DatabaseReader for SqliteDatabase {
         let latest_deploy_hash = db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(row) => row
                     .try_get::<String, &str>("deploy_hash")
                     .map_err(|sqlx_err| wrap_query_error(sqlx_err.into())),
@@ -82,7 +80,7 @@ impl DatabaseReader for SqliteDatabase {
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError> {
+    ) -> Result<AggregateDeployInfo, DatabaseReadError> {
         // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
         let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
 
@@ -96,7 +94,7 @@ impl DatabaseReader for SqliteDatabase {
             }),
             Err(err) => {
                 // If the error is anything other than NotFound return the error.
-                if !matches!(DatabaseRequestError::NotFound, _err) {
+                if !matches!(DatabaseReadError::NotFound, _err) {
                     return Err(err);
                 }
                 match self.get_deploy_expired_by_hash(hash).await {
@@ -108,7 +106,7 @@ impl DatabaseReader for SqliteDatabase {
                     }),
                     Err(err) => {
                         // If the error is anything other than NotFound return the error.
-                        if !matches!(DatabaseRequestError::NotFound, _err) {
+                        if !matches!(DatabaseReadError::NotFound, _err) {
                             return Err(err);
                         }
                         Ok(AggregateDeployInfo {
@@ -126,7 +124,7 @@ impl DatabaseReader for SqliteDatabase {
     async fn get_deploy_accepted_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployAccepted, DatabaseRequestError> {
+    ) -> Result<DeployAccepted, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_accepted::create_get_by_hash_stmt(hash.to_string())
@@ -135,9 +133,9 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(row) => {
                     let raw = row
                         .try_get::<String, &str>("raw")
@@ -150,7 +148,7 @@ impl DatabaseReader for SqliteDatabase {
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployProcessed, DatabaseRequestError> {
+    ) -> Result<DeployProcessed, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
@@ -159,9 +157,9 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(row) => {
                     let raw = row
                         .try_get::<String, &str>("raw")
@@ -171,7 +169,7 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError> {
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
@@ -180,14 +178,14 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(_) => Ok(true),
             })
     }
 
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseRequestError> {
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
@@ -195,9 +193,9 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_optional(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseRequestError::NotFound),
+                None => Err(DatabaseReadError::NotFound),
                 Some(row) => {
                     let raw = row
                         .try_get::<String, &str>("raw")
@@ -210,7 +208,7 @@ impl DatabaseReader for SqliteDatabase {
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Vec<Fault>, DatabaseRequestError> {
+    ) -> Result<Vec<Fault>, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::fault::create_get_faults_by_public_key_stmt(public_key.to_string())
@@ -219,11 +217,11 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_all(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_faults_from_rows)
     }
 
-    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseRequestError> {
+    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::fault::create_get_faults_by_era_stmt(era).to_string(SqliteQueryBuilder);
@@ -231,14 +229,14 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_all(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_faults_from_rows)
     }
 
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
-    ) -> Result<Vec<FinSig>, DatabaseRequestError> {
+    ) -> Result<Vec<FinSig>, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::finality_signature::create_get_finality_signatures_by_block_stmt(
@@ -249,7 +247,7 @@ impl DatabaseReader for SqliteDatabase {
         db_connection
             .fetch_all(stmt.as_str())
             .await
-            .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_finality_signatures_from_rows)
     }
 }
@@ -258,7 +256,7 @@ fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, Sqlit
     serde_json::from_str::<T>(data).map_err(SqliteDbError::SerdeJson)
 }
 
-fn parse_block_from_row(row: SqliteRow) -> Result<BlockAdded, DatabaseRequestError> {
+fn parse_block_from_row(row: SqliteRow) -> Result<BlockAdded, DatabaseReadError> {
     let raw_data = row
         .try_get::<String, &str>("raw")
         .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
@@ -268,18 +266,18 @@ fn parse_block_from_row(row: SqliteRow) -> Result<BlockAdded, DatabaseRequestErr
 async fn fetch_optional_with_error_check(
     connection: &SqlitePool,
     stmt: String,
-) -> Result<SqliteRow, DatabaseRequestError> {
+) -> Result<SqliteRow, DatabaseReadError> {
     connection
         .fetch_optional(stmt.as_str())
         .await
-        .map_err(|sql_err| DatabaseRequestError::Unhandled(Error::from(sql_err)))
+        .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
         .and_then(|maybe_row| match maybe_row {
-            None => Err(DatabaseRequestError::NotFound),
+            None => Err(DatabaseReadError::NotFound),
             Some(row) => Ok(row),
         })
 }
 
-fn parse_faults_from_rows(rows: Vec<SqliteRow>) -> Result<Vec<Fault>, DatabaseRequestError> {
+fn parse_faults_from_rows(rows: Vec<SqliteRow>) -> Result<Vec<Fault>, DatabaseReadError> {
     let mut faults = Vec::new();
     for row in rows {
         let raw = row
@@ -291,14 +289,14 @@ fn parse_faults_from_rows(rows: Vec<SqliteRow>) -> Result<Vec<Fault>, DatabaseRe
     }
 
     if faults.is_empty() {
-        return Err(DatabaseRequestError::NotFound);
+        return Err(DatabaseReadError::NotFound);
     }
     Ok(faults)
 }
 
 fn parse_finality_signatures_from_rows(
     rows: Vec<SqliteRow>,
-) -> Result<Vec<FinSig>, DatabaseRequestError> {
+) -> Result<Vec<FinSig>, DatabaseReadError> {
     let mut finality_signatures = Vec::new();
     for row in rows {
         let raw = row
@@ -311,7 +309,7 @@ fn parse_finality_signatures_from_rows(
     }
 
     if finality_signatures.is_empty() {
-        return Err(DatabaseRequestError::NotFound);
+        return Err(DatabaseReadError::NotFound);
     }
     Ok(finality_signatures)
 }
