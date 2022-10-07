@@ -6,15 +6,17 @@ The Casper Event Sidecar is an application that runs on the same host as the nod
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
-It will consume the node's event stream with the aim of providing:
+### System Components & Architecture
 
-- A stable external interface for clients who would have previously connected directly to the node process.
+![Sidecar Diagram](https://github.com/CasperLabs/event-sidecar/blob/dev/images/SidecarDiagram.png)
 
-- Access to historic data via convenient interfaces.
+Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-- The ability to query for filtered data.
+* Build a sidecar middleware service that connects to the Node Event Stream, allowing a pass through while supporting the same event interface (JSON-RPC).
 
-![Sidecar Diagram](https://user-images.githubusercontent.com/102557486/194373652-042e112b-bec8-4557-a28f-98c30a179e0c.png)
+* Provide a new RESTful endpoint that is discoverable to node operators.
+
+The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history.
 
 ## Prerequisites
 
