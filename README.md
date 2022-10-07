@@ -8,7 +8,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 ### System Components & Architecture
 
-![Sidecar Diagram](https://github.com/CasperLabs/event-sidecar/blob/dev/images/SidecarDiagram.png)
+![Sidecar Diagram](/images/SidecarDiagram.png)
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
