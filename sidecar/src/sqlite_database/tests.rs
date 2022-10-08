@@ -1,10 +1,14 @@
 use casper_types::testing::TestRng;
 use casper_types::{AsymmetricType, EraId};
+use rand::Rng;
+use std::fmt;
+use std::fmt::Debug;
 
 use sea_query::{Query, SqliteQueryBuilder};
 use sqlx::Row;
 
 use super::SqliteDatabase;
+use crate::types::database;
 use crate::{
     sql::tables,
     types::{
@@ -283,15 +287,19 @@ async fn should_save_and_retrieve_fault_with_a_u64max() {
         .await
         .expect("Error saving fault");
 
-    sqlite_db
+    let retrieved_faults = sqlite_db
         .get_faults_by_era(fault.era_id.value())
         .await
         .expect("Error getting faults by era");
 
-    sqlite_db
+    assert_eq!(retrieved_faults[0].era_id.value(), u64::MAX);
+
+    let retrieved_faults = sqlite_db
         .get_faults_by_public_key(&fault.public_key.to_hex())
         .await
         .expect("Error getting faults by public key");
+
+    assert_eq!(retrieved_faults[0].era_id.value(), u64::MAX);
 }
 
 #[tokio::test]
@@ -332,4 +340,255 @@ async fn should_save_and_retrieve_step() {
         .get_step_by_era(step.era_id.value())
         .await
         .expect("Error getting step by era");
+}
+
+#[tokio::test]
+async fn should_disallow_duplicate_event_id_from_source() {
+    let mut test_rng = TestRng::new();
+
+    let event_id = test_rng.gen::<u32>();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let block_added = BlockAdded::random(&mut test_rng);
+    let other_block_added = BlockAdded::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_block_added(block_added, event_id, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_block_added(other_block_added, event_id, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint being broken is from the event_log table rather than from the raw event table.
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "event_log")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_block_added() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let block_added = BlockAdded::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_block_added(block_added.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_block_added(block_added, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "BlockAdded")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_deploy_accepted() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_accepted = DeployAccepted::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_deploy_accepted(deploy_accepted, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "DeployAccepted")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_deploy_expired() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_expired = DeployExpired::random(&mut test_rng, None);
+
+    assert!(sqlite_db
+        .save_deploy_expired(deploy_expired.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "DeployExpired")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_deploy_processed() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+
+    assert!(sqlite_db
+        .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "DeployProcessed")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_fault() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let fault = Fault::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_fault(fault.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_fault(fault, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "Fault")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_finality_signature() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let finality_signature = FinalitySignature::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_finality_signature(finality_signature.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_finality_signature(finality_signature, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "FinalitySignature")
+    }
+}
+
+#[tokio::test]
+async fn should_disallow_insert_of_existing_step() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let step = Step::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_step(step.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let db_err = sqlite_db
+        .save_step(step, 2, "127.0.0.1".to_string())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        db_err,
+        database::DatabaseWriteError::UniqueConstraint(_)
+    ));
+
+    // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
+    if let database::DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
+        assert_eq!(uc_err.table, "Step")
+    }
 }
