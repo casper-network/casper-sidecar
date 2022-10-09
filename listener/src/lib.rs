@@ -25,6 +25,7 @@ const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to
 pub struct EventListener {
     bind_address: String,
     pub api_version: ProtocolVersion,
+    // This isn't being used yet due to an unresolved issue with 'self escapes closure'
     current_event_id: Option<u32>,
     max_retries: u8,
     delay_between_retries: u8,

@@ -53,7 +53,7 @@ use sse_server::ChannelsAndFilter;
 /// that a new client can retrieve the entire set of buffered events if desired.
 const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     sse_data_sender: UnboundedSender<(u32, SseData)>,

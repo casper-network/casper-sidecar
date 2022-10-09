@@ -1,8 +1,6 @@
 use casper_types::testing::TestRng;
 use casper_types::{AsymmetricType, EraId};
 use rand::Rng;
-use std::fmt;
-use std::fmt::Debug;
 
 use sea_query::{Query, SqliteQueryBuilder};
 use sqlx::Row;

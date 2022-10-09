@@ -1,7 +1,4 @@
-use anyhow::anyhow;
-use std::error::Error;
 use std::fmt::Debug;
-use std::ops::Deref;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -143,8 +140,6 @@ impl From<sqlx::Error> for DatabaseWriteError {
             if let Some(code) = db_err.code() {
                 match code.as_ref() {
                     "1555" | "2067" => {
-                        println!("{}", db_err.message());
-
                         // The message looks something like this:
                         // UNIQUE constraint failed: DeployProcessed.deploy_hash
 

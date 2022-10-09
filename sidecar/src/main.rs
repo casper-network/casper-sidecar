@@ -10,6 +10,7 @@ mod types;
 mod utils;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use casper_event_listener::EventListener;
 use casper_event_types::SseData;
@@ -77,48 +78,68 @@ async fn run(config: Config) -> Result<(), Error> {
         config.storage.sqlite_config.max_read_connections,
     ));
 
+    let mut node_event_listeners = Vec::with_capacity(config.node_connections.len());
+
+    for connection in &config.node_connections {
+        let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
+
+        let event_listener = EventListener::new(
+            bind_address,
+            connection.max_retries,
+            connection.delay_between_retries_secs,
+        )
+        .await?;
+
+        node_event_listeners.push(event_listener);
+    }
+
+    let api_versions_all_match = node_event_listeners
+        .windows(2)
+        .all(|w| w[0].api_version == w[1].api_version);
+
+    if !api_versions_all_match {
+        return Err(Error::msg(
+            "Error connecting to nodes - all connections must have the same API version",
+        ));
+    }
+
+    let api_version = node_event_listeners[0].api_version;
+
+    let event_stream_server_address = format!(
+        "{}:{}",
+        config.event_stream_server.ip_address, config.event_stream_server.port
+    );
+
+    let event_stream_server = EventStreamServer::new(
+        SseConfig::new(
+            Some(event_stream_server_address),
+            Some(config.event_stream_server.event_stream_buffer_length),
+            Some(config.event_stream_server.max_concurrent_subscribers),
+        ),
+        PathBuf::from(&config.storage.storage_path),
+        api_version,
+    )
+    .context("Failed initialise event stream server")?;
+
+    // The ESS instance is wrapped in an arc
+    let ess_with_arc = Arc::new(event_stream_server);
+
     // Task to manage incoming events from all three filters
-    let processor_task_handle = async move {
-        let mut join_handles = Vec::with_capacity(config.node_connections.len());
+    let listening_task_handle = async move {
+        let mut join_handles = Vec::with_capacity(node_event_listeners.len());
 
-        for (index, connection) in config.node_connections.into_iter().enumerate() {
-            let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
+        let connection_configs = config.node_connections.clone();
 
-            let event_listener = EventListener::new(
-                bind_address,
-                connection.max_retries,
-                connection.delay_between_retries_secs,
-            )
-            .await?;
-
-            // Only initialise the passthrough for one (the first) node connection.
-            let event_stream_server = if index == 0 {
-                let event_stream_server_address = format!(
-                    "{}:{}",
-                    config.event_stream_server.ip_address, config.event_stream_server.port
-                );
-
-                Some(
-                    EventStreamServer::new(
-                        SseConfig::new(
-                            Some(event_stream_server_address),
-                            Some(config.event_stream_server.event_stream_buffer_length),
-                            Some(config.event_stream_server.max_concurrent_subscribers),
-                        ),
-                        PathBuf::from(&config.storage.storage_path),
-                        event_listener.api_version,
-                    )
-                    .context("Failed initialise event stream server!")?,
-                )
-            } else {
-                None
-            };
+        for (event_listener, connection_config) in
+            node_event_listeners.into_iter().zip(connection_configs)
+        {
+            let cloned_ess = ess_with_arc.clone();
 
             let join_handle = tokio::spawn(sse_processor(
                 event_listener,
-                event_stream_server,
+                cloned_ess,
                 sqlite_database.clone(),
-                connection.enable_event_logging,
+                connection_config.enable_event_logging,
             ));
 
             join_handles.push(join_handle);
@@ -126,12 +147,12 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let _ = join_all(join_handles).await;
 
-        Ok::<(), Error>(())
+        Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     };
 
     tokio::select! {
         result = rest_server_handle => { warn!(?result, "REST server shutting down") }
-        result = processor_task_handle => { warn!(?result, "SSE processing ended")}
+        result = listening_task_handle => { warn!(?result, "SSE processing ended") }
     }
 
     Ok(())
@@ -139,17 +160,13 @@ async fn run(config: Config) -> Result<(), Error> {
 
 async fn sse_processor(
     sse_event_listener: EventListener,
-    event_stream_server: Option<EventStreamServer>,
+    event_stream_server: Arc<EventStreamServer>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
     let mut sse_data_stream = sse_event_listener.stream_events().await;
 
     while let Some(sse_event) = sse_data_stream.recv().await {
-        if let Some(server) = event_stream_server.as_ref() {
-            server.broadcast(sse_event.data.clone());
-        }
-
         match sse_event.data {
             SseData::ApiVersion(version) => {
                 if enable_event_logging {
@@ -162,23 +179,27 @@ async fn sse_processor(
                     info!("Block Added: {:18}", HexFmt(block_hash.inner()));
                     debug!("Block Added: {}", full_length_hash);
                 }
+
                 let res = sqlite_database
                     .save_block_added(
-                        BlockAdded::new(block_hash, block),
+                        BlockAdded::new(block_hash, block.clone()),
                         sse_event.id.unwrap(),
                         sse_event.source,
                     )
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
+                match res {
+                    Ok(_) => {
+                        event_stream_server.broadcast(SseData::BlockAdded { block, block_hash })
+                    }
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
                             "Already received BlockAdded ({}), logged in event_log",
                             full_length_hash
-                        ),
-                        _ => warn!(?db_write_err, "Error saving BlockAdded"),
+                        );
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving BlockAdded"),
                 }
             }
             SseData::DeployAccepted { deploy } => {
@@ -187,20 +208,21 @@ async fn sse_processor(
                     info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
                     debug!("Deploy Accepted: {}", full_length_hash);
                 }
-                let deploy_accepted = DeployAccepted::new(deploy);
+                let deploy_accepted = DeployAccepted::new(deploy.clone());
                 let res = sqlite_database
                     .save_deploy_accepted(deploy_accepted, sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::DeployAccepted { deploy }),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
                             "Already received DeployAccepted ({}), logged in event_log",
                             full_length_hash
-                        ),
-                        _ => warn!(?db_write_err, "Error saving DeployAccepted"),
+                        );
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving DeployAccepted"),
                 }
             }
             SseData::DeployExpired { deploy_hash } => {
@@ -217,15 +239,16 @@ async fn sse_processor(
                     )
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::DeployExpired { deploy_hash }),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
                             "Already received DeployExpired ({}), logged in event_log",
                             full_length_hash
-                        ),
-                        _ => warn!(?db_write_err, "Error saving DeployExpired"),
+                        );
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving DeployExpired"),
                 }
             }
             SseData::DeployProcessed {
@@ -244,30 +267,39 @@ async fn sse_processor(
                 }
                 let deploy_processed = DeployProcessed::new(
                     deploy_hash.clone(),
-                    account,
+                    account.clone(),
                     timestamp,
                     ttl,
-                    dependencies,
-                    block_hash,
-                    execution_result,
+                    dependencies.clone(),
+                    block_hash.clone(),
+                    execution_result.clone(),
                 );
                 let res = sqlite_database
                     .save_deploy_processed(
-                        deploy_processed,
+                        deploy_processed.clone(),
                         sse_event.id.unwrap(),
                         sse_event.source,
                     )
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::DeployProcessed {
+                        deploy_hash,
+                        account,
+                        timestamp,
+                        ttl,
+                        dependencies,
+                        block_hash,
+                        execution_result,
+                    }),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
                             "Already received DeployProcessed ({}), logged in event_log",
                             full_length_hash
-                        ),
-                        _ => warn!(?db_write_err, "Error saving DeployProcessed"),
+                        );
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving DeployProcessed"),
                 }
             }
             SseData::Fault {
@@ -281,22 +313,24 @@ async fn sse_processor(
                     .save_fault(fault.clone(), sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
-                            "Already received Fault ({:#?}), logged in event_log",
-                            fault
-                        ),
-                        _ => warn!(?db_write_err, "Error saving Fault"),
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::Fault {
+                        era_id,
+                        timestamp,
+                        public_key,
+                    }),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!("Already received Fault ({:#?}), logged in event_log", fault);
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving Fault"),
                 }
             }
             SseData::FinalitySignature(fs) => {
                 if enable_event_logging {
-                    debug!("Finality Signature: {}", fs.signature);
+                    debug!("Finality Signature: {} for {}", fs.signature, fs.block_hash);
                 }
-                let finality_signature = FinalitySignature::new(fs);
+                let finality_signature = FinalitySignature::new(fs.clone());
                 let res = sqlite_database
                     .save_finality_signature(
                         finality_signature.clone(),
@@ -305,14 +339,17 @@ async fn sse_processor(
                     )
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
-                            "Already received FinalitySignature ({:#?}), logged in event_log",
-                            finality_signature
-                        ),
-                        _ => warn!(?db_write_err, "Error saving FinalitySignature"),
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::FinalitySignature(fs)),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
+                            "Already received FinalitySignature ({}), logged in event_log",
+                            fs.signature
+                        );
+                        trace!(?uc_err);
+                    }
+                    Err(other_err) => {
+                        warn!(?other_err, "Unexpected error saving FinalitySignature")
                     }
                 }
             }
@@ -320,7 +357,7 @@ async fn sse_processor(
                 era_id,
                 execution_effect,
             } => {
-                let step = Step::new(era_id, execution_effect);
+                let step = Step::new(era_id, execution_effect.clone());
                 if enable_event_logging {
                     info!("Step at era: {}", era_id.value());
                 }
@@ -328,19 +365,23 @@ async fn sse_processor(
                     .save_step(step, sse_event.id.unwrap(), sse_event.source)
                     .await;
 
-                if let Err(db_write_err) = res {
-                    match db_write_err {
-                        DatabaseWriteError::UniqueConstraint(uc_err) => trace!(
-                            ?uc_err,
+                match res {
+                    Ok(_) => event_stream_server.broadcast(SseData::Step {
+                        era_id,
+                        execution_effect,
+                    }),
+                    Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                        debug!(
                             "Already received Step ({}), logged in event_log",
                             era_id.value()
-                        ),
-                        _ => warn!(?db_write_err, "Error saving Step"),
+                        );
+                        trace!(?uc_err);
                     }
+                    Err(other_err) => warn!(?other_err, "Unexpected error saving Step"),
                 }
             }
             SseData::Shutdown => {
-                warn!("Node ({}) is shutting down", sse_event.source);
+                warn!("Node ({}) is unavailable", sse_event.source);
                 break;
             }
         }
@@ -682,7 +723,7 @@ mod performance_tests {
             .iter()
             .sum::<u128>()
             .checked_div(deploy_time_diff_millis.len() as u128)
-            .expect("Error calculating the average delay for blocks");
+            .expect("Error calculating the average delay for deploys");
 
         println!(
             "\n\tDEPLOYS RESULT:\n\
@@ -772,34 +813,15 @@ mod performance_tests {
         events_from_node: Vec<EventWithHash>,
         events_from_sidecar: Vec<EventWithHash>,
     ) -> Vec<Duration> {
-        events_from_node
-            .iter()
-            .map(|event_from_node| {
-                let cloned_events_from_sidecar = events_from_sidecar.clone();
-                cloned_events_from_sidecar
-                    .iter()
-                    .map(|event_from_sidecar| {
-                        if event_from_sidecar.eq(event_from_node) {
-                            let time_difference =
-                                event_from_sidecar.received_at - event_from_node.received_at;
-                            return Some(time_difference);
-                        }
-                        None
-                    })
-                    .reduce(
-                        |previous, current| {
-                            if current.is_some() {
-                                current
-                            } else {
-                                previous
-                            }
-                        },
-                    )
-                    .map(|reduced| reduced.expect("Reducer failed to get the Duration"))
-            })
-            .map(|opt_time_difference| {
-                opt_time_difference.expect("Duration should have been populated")
-            })
-            .collect::<Vec<Duration>>()
+        let mut time_diffs = Vec::new();
+        for node_event in events_from_node {
+            for sidecar_event in &events_from_sidecar {
+                if sidecar_event.eq(&node_event) {
+                    time_diffs.push(sidecar_event.received_at - node_event.received_at);
+                }
+            }
+        }
+
+        time_diffs
     }
 }
