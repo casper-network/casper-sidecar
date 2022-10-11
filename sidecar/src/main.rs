@@ -74,8 +74,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let rest_server_handle = tokio::spawn(start_rest_server(
         config.rest_server.ip_address.clone(),
         config.rest_server.port,
-        sqlite_database.file_path.clone(),
-        config.storage.sqlite_config.max_read_connections,
+        sqlite_database.clone(),
     ));
 
     let mut node_event_listeners = Vec::with_capacity(config.node_connections.len());
