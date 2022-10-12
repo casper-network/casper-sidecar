@@ -2,7 +2,7 @@
 
 ## Summary of Purpose
 
-The Casper Event Sidecar is an application that runs on the same host as the node process. This offloads querying processes, allowing the node to focus entirely on the blockchain.
+The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribes to monitor the event stream through the Sidecar, while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
@@ -12,11 +12,11 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, allowing a pass through while supporting the same event interface (JSON-RPC).
+* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicate's the SSE interface of the node and it's filters (i.e., `/main`, `/deploys` and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
 
 * Provide a new RESTful endpoint that is discoverable to node operators.
 
-The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history.
+The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history if they use the `start_from` URL query.
 
 ## Prerequisites
 
@@ -43,9 +43,9 @@ node_connections = [
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 * `ip_address` - The IP address of the note to monitor.
-* `sse_port` - The node's port.
-* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node.
-* `delay_between_retries` - The delay between attempts to connect to the node.
+* `sse_port` - The node's event stream (SSE) port, `9999` by default.
+* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to reconnect.
+* `delay_between_retries` - The delay between attempts to connect to the node, in seconds.
 * `enable_event_logging` - This enables logging of events from the node in question.
 
 ### Storage
@@ -82,7 +82,7 @@ ip_address = "127.0.0.1"
 port = 17777
 ```
 
-This information determines outbound connection criteria for the Sidecar's `rest_server`. Our suggested syntax for the port is to use the same port as the associated node, but prefixed with a `1`. Therefore, if the port is running on port `7777`, the Sidecar would use port `1777`.
+This information determines outbound connection criteria for the Sidecar's `rest_server`. `17777` is the default, but operators are free to choose their own port as needed.
 
 ```
 [event_stream_server]
@@ -92,7 +92,7 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 ```
 
-The `event_stream_server` section specifies the IP address and port for the Sidecar's event stream. As above, we suggest that the port be the same as the node's event stream port, prefixed with a `1`.
+The `event_stream_server` section specifies the IP address and port for the Sidecar's event stream.
 
 Additionally, there are the following two options:
 
@@ -114,25 +114,24 @@ Once you are happy with the configuration you can (build and) run it using Cargo
 ```shell
 cargo run
 ```
-Or you can run the Sidecar with the following options:
 
-The least verbose level, logging `Info` events:
+The Sidecar application leverages tracing, which can be controlled by setting the `RUST_LOG` environment variable.
+
+The following command will run the sidecar application with the `INFO` log level.
 
 ```
 RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
 ```
 
-Logging both `Info` and `Debug` events
+The log levels, in order of verbosity, are:
 
-```
-RUST_LOG=debug cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
-```
+* `ERROR`
+* `WARN`
+* `INFO`
+* `DEBUG`
+* `TRACE`
 
-The most verbose level, logging `Trace` events in addition to `Debg` and `Info`.
-
-```
-RUST_LOG=trace cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
-```
+Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
 ## Testing Sidecar with a Local Network using NCTL
 
