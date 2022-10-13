@@ -15,10 +15,13 @@ impl From<sqlx::Error> for SqliteDbError {
 
 pub(super) fn wrap_query_error(error: SqliteDbError) -> DatabaseReadError {
     match error {
-        SqliteDbError::Sqlx(err) => match err.to_string().as_str() {
-            "Query returned no rows" => DatabaseReadError::NotFound,
-            _ => DatabaseReadError::Unhandled(Error::from(err)),
-        },
-        SqliteDbError::SerdeJson(err) => DatabaseReadError::Serialisation(Error::from(err)),
+        SqliteDbError::Sqlx(err) => {
+            println!("SQLX error: {:?}", err);
+            match err.to_string().as_str() {
+                "Query returned no rows" => DatabaseReadError::NotFound,
+                _ => DatabaseReadError::Unhandled(Error::from(err)),
+            }
+        }
+        SqliteDbError::SerdeJson(err) => DatabaseReadError::Serialisation(err),
     }
 }

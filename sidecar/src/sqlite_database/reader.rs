@@ -13,7 +13,7 @@ use super::{
 use crate::{
     sql::tables,
     types::{
-        database::{AggregateDeployInfo, DatabaseReadError, DatabaseReader},
+        database::{DeployAggregate, DatabaseReadError, DatabaseReader},
         sse_events::*,
     },
 };
@@ -57,7 +57,7 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_latest_deploy_aggregate(&self) -> Result<AggregateDeployInfo, DatabaseReadError> {
+    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt =
@@ -80,13 +80,13 @@ impl DatabaseReader for SqliteDatabase {
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseReadError> {
+    ) -> Result<DeployAggregate, DatabaseReadError> {
         // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
         let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
 
         // However we handle the Err case for DeployProcessed explicitly as we don't want to return NotFound when we've got a DeployAccepted to return
         match self.get_deploy_processed_by_hash(hash).await {
-            Ok(deploy_processed) => Ok(AggregateDeployInfo {
+            Ok(deploy_processed) => Ok(DeployAggregate {
                 deploy_hash: hash.to_string(),
                 deploy_accepted: Some(deploy_accepted),
                 deploy_processed: Some(deploy_processed),
@@ -98,7 +98,7 @@ impl DatabaseReader for SqliteDatabase {
                     return Err(err);
                 }
                 match self.get_deploy_expired_by_hash(hash).await {
-                    Ok(deploy_has_expired) => Ok(AggregateDeployInfo {
+                    Ok(deploy_has_expired) => Ok(DeployAggregate {
                         deploy_hash: hash.to_string(),
                         deploy_accepted: Some(deploy_accepted),
                         deploy_processed: None,
@@ -109,7 +109,7 @@ impl DatabaseReader for SqliteDatabase {
                         if !matches!(DatabaseReadError::NotFound, _err) {
                             return Err(err);
                         }
-                        Ok(AggregateDeployInfo {
+                        Ok(DeployAggregate {
                             deploy_hash: hash.to_string(),
                             deploy_accepted: Some(deploy_accepted),
                             deploy_processed: None,

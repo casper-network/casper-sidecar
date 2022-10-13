@@ -35,15 +35,7 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
     let code;
     let message;
 
-    if let Some(Unexpected(err)) = err.find() {
-        let err_msg = format!(
-            "Unexpected error in REST server - please file a bug report!\n{}",
-            err
-        );
-        error!(%err_msg);
-        code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = err_msg;
-    } else if let Some(StorageError(err)) = err.find() {
+    if let Some(StorageError(err)) = err.find() {
         match err {
             DatabaseReadError::NotFound => {
                 code = StatusCode::NOT_FOUND;
@@ -64,6 +56,14 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
     } else if let Some(InvalidParam(err)) = err.find() {
         code = StatusCode::BAD_REQUEST;
         message = format!("Invalid parameter in query: {}", err);
+    } else if let Some(Unexpected(err)) = err.find() {
+        let err_msg = format!(
+            "Unexpected error in REST server - please file a bug report!\n{}",
+            err
+        );
+        error!(%err_msg);
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = err_msg;
     } else {
         let err_msg = format!(
             "Unexpected error in REST server - please file a bug report!\n{:?}",

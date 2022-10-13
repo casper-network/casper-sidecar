@@ -4,8 +4,6 @@ use std::{
 };
 
 #[cfg(test)]
-use casper_hashing::Digest;
-#[cfg(test)]
 use casper_node::types::Block;
 use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
 #[cfg(test)]
@@ -48,18 +46,6 @@ impl BlockAdded {
 
         Self {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
-        }
-    }
-
-    pub fn random_with_hash(rng: &mut TestRng, hash: String) -> Self {
-        let block = Block::random(rng);
-
-        let hash_digest = Digest::from_hex(hash).expect("Error creating digest from hash");
-        let block_hash = BlockHash::from(hash_digest);
-
-        Self {
-            block_hash,
             block: Box::new(JsonBlock::new(block, None)),
         }
     }

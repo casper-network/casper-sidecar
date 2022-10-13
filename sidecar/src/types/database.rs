@@ -179,12 +179,12 @@ pub trait DatabaseReader {
     /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the aggregate of the latest deploy's events.
-    async fn get_latest_deploy_aggregate(&self) -> Result<AggregateDeployInfo, DatabaseReadError>;
+    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseReadError>;
+    ) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     async fn get_deploy_accepted_by_hash(
         &self,
@@ -225,13 +225,13 @@ pub enum DatabaseReadError {
     /// The requested record was not present in the database.
     NotFound,
     /// An error occurred serialising or deserialising data from the database.
-    Serialisation(anyhow::Error),
+    Serialisation(serde_json::Error),
     /// An error occurred somewhere unexpected.
     Unhandled(anyhow::Error),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AggregateDeployInfo {
+pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
@@ -246,10 +246,10 @@ mod testing {
 
     use rand::Rng;
 
-    use super::AggregateDeployInfo;
+    use super::DeployAggregate;
     use crate::types::sse_events::{DeployAccepted, DeployProcessed};
 
-    impl AggregateDeployInfo {
+    impl DeployAggregate {
         pub fn random(test_rng: &mut TestRng, with_hash: Option<String>) -> Self {
             let deploy_accepted = DeployAccepted::random(test_rng);
 
@@ -257,7 +257,7 @@ mod testing {
 
             match test_rng.gen_range(0..=2) {
                 // Accepted
-                0 => AggregateDeployInfo {
+                0 => DeployAggregate {
                     deploy_hash,
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
@@ -273,7 +273,7 @@ mod testing {
                         )),
                     );
 
-                    AggregateDeployInfo {
+                    DeployAggregate {
                         deploy_hash,
                         deploy_accepted: Some(deploy_accepted),
                         deploy_processed: Some(deploy_processed),
@@ -281,7 +281,7 @@ mod testing {
                     }
                 }
                 // Accepted -> Expired
-                2 => AggregateDeployInfo {
+                2 => DeployAggregate {
                     deploy_hash,
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
