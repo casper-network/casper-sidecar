@@ -1,3 +1,5 @@
+# todo Document
+[connection]
 node_connections = [
     { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true },
     { ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = false },
@@ -13,12 +15,11 @@ max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 
+# todo evaluate what the outbound ports should be
 [rest_server]
-ip_address = "127.0.0.1"
 port = 17777
 
 [event_stream_server]
-ip_address = "127.0.0.1"
 port = 19999
 max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000

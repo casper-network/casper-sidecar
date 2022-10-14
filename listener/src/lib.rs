@@ -8,7 +8,7 @@ use casper_types::ProtocolVersion;
 
 use anyhow::Error;
 use bytes::Bytes;
-use eventsource_stream::{Event, EventStream, Eventsource};
+use eventsource_stream::{EventStream, Eventsource};
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -20,12 +20,14 @@ use utils::resolve_address;
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
 
-#[allow(unused)]
+const MAIN_FILTER_PATH: &str = "main";
+const DEPLOYS_FILTER_PATH: &str = "deploys";
+const SIGNATURES_FILTER_PATH: &str = "sigs";
+
 #[derive(Clone)]
 pub struct EventListener {
     bind_address: String,
     pub api_version: ProtocolVersion,
-    // This isn't being used yet due to an unresolved issue with 'self escapes closure'
     current_event_id: Option<u32>,
     max_retries: u8,
     delay_between_retries: u8,
@@ -81,72 +83,102 @@ impl EventListener {
         })
     }
 
-    pub async fn stream_events(&self) -> UnboundedReceiver<SseEvent> {
+    pub async fn consume_combine_streams(&self) -> UnboundedReceiver<SseEvent> {
         let (sse_tx, sse_rx) = unbounded_channel::<SseEvent>();
 
-        let mut cloned_self = self.clone();
+        tokio::spawn(connect_with_retry(
+            sse_tx.clone(),
+            self.bind_address.clone(),
+            MAIN_FILTER_PATH.to_string(),
+            self.current_event_id,
+            self.max_retries,
+            self.delay_between_retries,
+        ));
 
-        tokio::spawn(async move {
-            let mut retry_count = 0;
-            let mut current_event_id: Option<u32> = None;
+        tokio::spawn(connect_with_retry(
+            sse_tx.clone(),
+            self.bind_address.clone(),
+            DEPLOYS_FILTER_PATH.to_string(),
+            self.current_event_id,
+            self.max_retries,
+            self.delay_between_retries,
+        ));
 
-            while retry_count <= cloned_self.max_retries {
-                if retry_count > 0 {
-                    info!(
-                        "Attempting to reconnect... ({}/{})",
-                        retry_count, cloned_self.max_retries
-                    );
-                }
+        tokio::spawn(connect_with_retry(
+            sse_tx,
+            self.bind_address.clone(),
+            SIGNATURES_FILTER_PATH.to_string(),
+            self.current_event_id,
+            self.max_retries,
+            self.delay_between_retries,
+        ));
 
-                let (api_version, mut event_receiver) = match cloned_self
-                    .connect(cloned_self.bind_address.clone(), current_event_id)
-                    .await
-                {
-                    Ok(ok_val) => {
-                        retry_count = 0;
-                        ok_val
-                    }
-                    Err(_) => {
-                        error!(
-                            "Error connecting ({}), retrying in {}s",
-                            cloned_self.bind_address, cloned_self.delay_between_retries
-                        );
-                        retry_count += 1;
-                        tokio::time::sleep(Duration::from_secs(
-                            cloned_self.delay_between_retries as u64,
-                        ))
-                        .await;
-                        continue;
-                    }
-                };
+        sse_rx
+    }
+}
 
-                if api_version.ne(&cloned_self.api_version) {
-                    warn!(
-                        "API version changed from {} to {}",
-                        cloned_self.api_version, api_version
-                    );
-                    cloned_self.api_version = api_version;
-                }
+async fn connect_with_retry(
+    event_sender: UnboundedSender<SseEvent>,
+    bind_address: String,
+    filter: String,
+    start_from_id: Option<u32>,
+    max_retries: u8,
+    delay_between: u8,
+) {
+    let mut retry_count = 0;
+    let mut current_event_id = start_from_id;
 
-                info!(%cloned_self.bind_address, %api_version, "Connected to SSE");
+    while retry_count <= max_retries {
+        if retry_count > 0 {
+            info!(
+                bind_address,
+                filter, "Attempting to reconnect... ({}/{})", retry_count, max_retries
+            );
+        }
 
-                if let Some(id) = current_event_id {
-                    info!("Resuming from event id: {}", id);
-                }
+        let mut url = format!("{}/events/{}", bind_address, filter);
+        if let Some(event_id) = current_event_id {
+            let start_from_query = format!("?start_from={}", event_id);
+            url.push_str(&start_from_query);
+        }
 
-                while let Some(event) = event_receiver.recv().await {
-                    // todo error handling
+        let (api_version, mut event_stream) = match connect(url).await {
+            Ok(ok_val) => {
+                // reset retry counter since the connection was successful
+                retry_count = 0;
+                ok_val
+            }
+            Err(_) => {
+                // increment retry counter since the connection failed
+                retry_count += 1;
+                // wait the configured delay before continuing
+                tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
+                continue;
+            }
+        };
+
+        info!(%bind_address, %filter, %api_version, "Connected to event stream{}", {
+            if let Some(event_id) = start_from_id {
+                format!(", resuming from id: {}", event_id)
+            } else {
+                "".to_string()
+            }
+        });
+
+        while let Some(event) = event_stream.next().await {
+            match event {
+                Ok(event) => {
                     let event_id: u32 = event.id.parse().expect("Error parsing id into u32");
                     current_event_id = Some(event_id);
 
-                    let cloned_sender = sse_tx.clone();
+                    let cloned_sender = event_sender.clone();
                     let parsed =
                         serde_json::from_str::<SseData>(&event.data).map_err(|serde_err| {
                             warn!(?event, "Error from stream");
                             if serde_err.to_string() == CONNECTION_REFUSED {
-                                warn!("Connection to node lost...");
+                                warn!(%bind_address, %filter, "Connection to node lost...");
                             } else {
-                                warn!(
+                                warn!(%bind_address, %filter,
                                     "Error parsing SSE: {}, for data:\n{}\n",
                                     serde_err.to_string(),
                                     &event.data
@@ -157,111 +189,98 @@ impl EventListener {
                     match parsed {
                         Ok(SseData::Shutdown) | Err(_) => {
                             error!(
+                                %bind_address,
+                                %filter,
                                 "Error connecting, retrying in {}s",
-                                cloned_self.delay_between_retries
+                                delay_between
                             );
                             retry_count += 1;
-                            tokio::time::sleep(Duration::from_secs(
-                                cloned_self.delay_between_retries as u64,
-                            ))
-                            .await;
+                            tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
                             break;
                         }
                         Ok(sse_data) => {
                             let _ = cloned_sender.send(SseEvent {
-                                source: cloned_self.bind_address.clone(),
+                                source: bind_address.clone(),
                                 id: Some(event_id),
                                 data: sse_data,
                             });
                         }
                     }
                 }
+                Err(event_stream_err) => {
+                    warn!(%bind_address, %filter, message = "Error returned from event stream", error=?event_stream_err)
+                }
             }
-
-            // Having tried to reconnect and failed we send the Shutdown.
-            let _ = sse_tx.send(SseEvent {
-                source: cloned_self.bind_address,
-                id: None,
-                data: SseData::Shutdown,
-            });
-        });
-
-        sse_rx
-    }
-
-    async fn connect(
-        &self,
-        bind_address: String,
-        start_from_id: Option<u32>,
-    ) -> Result<(ProtocolVersion, UnboundedReceiver<Event>), Error> {
-        let mut main_filter_path = format!("{}/events/main", bind_address);
-        let mut deploys_filter_path = format!("{}/events/deploys", bind_address);
-        let mut sigs_filter_path = format!("{}/events/sigs", bind_address);
-
-        if let Some(event_id) = start_from_id {
-            let start_from_query_string = format!("?start_from={}", event_id);
-            main_filter_path.push_str(&start_from_query_string);
-            deploys_filter_path.push_str(&start_from_query_string);
-            sigs_filter_path.push_str(&start_from_query_string);
         }
-
-        let main_event_stream = Client::new()
-            .get(&main_filter_path)
-            .send()
-            .await
-            .map_err(parse_error_for_connection_refused)?
-            .bytes_stream()
-            .eventsource();
-
-        let deploys_event_stream = Client::new()
-            .get(&deploys_filter_path)
-            .send()
-            .await
-            .map_err(parse_error_for_connection_refused)?
-            .bytes_stream()
-            .eventsource();
-
-        let sigs_event_stream = Client::new()
-            .get(&sigs_filter_path)
-            .send()
-            .await
-            .map_err(parse_error_for_connection_refused)?
-            .bytes_stream()
-            .eventsource();
-
-        // Channel for funnelling all event types into.
-        let (aggregate_events_tx, aggregate_events_rx) = unbounded_channel();
-        // Clone the aggregate sender for each event type. These will all feed into the aggregate receiver.
-        let main_events_tx = aggregate_events_tx.clone();
-        let deploy_events_tx = aggregate_events_tx.clone();
-        let sigs_event_tx = aggregate_events_tx.clone();
-
-        // Parse the first event to see if the connection was successful
-        let (api_version, main_event_stream) = parse_api_version(main_event_stream).await?;
-
-        // For each filtered Stream pass the events along a Sender which all feed into the
-        // aggregate Receiver. The first event is (should be) the API Version which is already
-        // extracted from the Main filter in the code above, however it can to be discarded
-        // from the Deploys and Sigs filter streams.
-        tokio::spawn(stream_events_to_channel(
-            main_event_stream,
-            main_events_tx,
-            false,
-        ));
-        tokio::spawn(stream_events_to_channel(
-            deploys_event_stream,
-            deploy_events_tx,
-            true,
-        ));
-        tokio::spawn(stream_events_to_channel(
-            sigs_event_stream,
-            sigs_event_tx,
-            true,
-        ));
-
-        Ok((api_version, aggregate_events_rx))
     }
+
+    // Retries have been exhausted without a successful connection - send Shutdown.
+    // Having tried to reconnect and failed we send the Shutdown.
+    let _ = event_sender.send(SseEvent {
+        source: bind_address,
+        id: None,
+        data: SseData::Shutdown,
+    });
 }
+
+async fn connect(
+    url: String,
+) -> Result<
+    (
+        ProtocolVersion,
+        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
+    ),
+    Error,
+> {
+    let event_stream = Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(parse_error_for_connection_refused)?
+        .bytes_stream()
+        .eventsource();
+
+    // Parse the first event to see if the connection was successful
+    let (api_version, event_stream) = parse_api_version(event_stream).await?;
+
+    Ok((api_version, event_stream))
+}
+
+// struct Connection<S>(EventStream<S>);
+//
+// impl Connection<S> {
+//     pub async fn new(url: String) -> Self {
+//         Self(
+//             Client::new()
+//                 .get(&url)
+//                 .send()
+//                 .await
+//                 .map_err(parse_error_for_connection_refused)?
+//                 .bytes_stream()
+//                 .eventsource()
+//         )
+//     }
+//
+//     pub async fn with_retry(&self, max_retries: u8, delay_between: u8) -> Self {
+//         let mut retry_count = 0;
+//
+//         while retry_count <= max_retries {
+//             if retry_count > 0 {
+//                 info!(
+//                         "Attempting to reconnect... ({}/{})",
+//                         retry_count, cloned_self.max_retries
+//                     );
+//             }
+//         }
+//
+//         self
+//     }
+//
+//     pub async fn stream(self) -> EventStream<S> {
+//         self.0
+//     }
+// }
+//
 
 async fn parse_api_version<EvtStr, E>(
     mut stream: EventStream<EvtStr>,
@@ -297,20 +316,20 @@ fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
     }
 }
 
-async fn stream_events_to_channel(
-    mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
-    sender: UnboundedSender<Event>,
-    discard_first: bool,
-) {
-    if discard_first {
-        let _ = event_stream.next().await;
-    }
-    while let Some(event) = event_stream.next().await {
-        match event {
-            Ok(event) => {
-                let _ = sender.send(event);
-            }
-            Err(error) => warn!(%error, "Error receiving events"),
-        }
-    }
-}
+// async fn stream_events_to_channel(
+//     mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
+//     sender: UnboundedSender<Event>,
+//     discard_first: bool,
+// ) {
+//     if discard_first {
+//         let _ = event_stream.next().await;
+//     }
+//     while let Some(event) = event_stream.next().await {
+//         match event {
+//             Ok(event) => {
+//                 let _ = sender.send(event);
+//             }
+//             Err(error) => warn!(%error, "Error receiving events"),
+//         }
+//     }
+// }

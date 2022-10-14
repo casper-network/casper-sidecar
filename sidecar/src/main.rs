@@ -72,14 +72,13 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        config.rest_server.ip_address.clone(),
         config.rest_server.port,
         sqlite_database.clone(),
     ));
 
-    let mut node_event_listeners = Vec::with_capacity(config.node_connections.len());
+    let mut node_event_listeners = Vec::with_capacity(config.connection.node_connections.len());
 
-    for connection in &config.node_connections {
+    for connection in &config.connection.node_connections {
         let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
 
         let event_listener = EventListener::new(
@@ -104,14 +103,9 @@ async fn run(config: Config) -> Result<(), Error> {
 
     let api_version = node_event_listeners[0].api_version;
 
-    let event_stream_server_address = format!(
-        "{}:{}",
-        config.event_stream_server.ip_address, config.event_stream_server.port
-    );
-
     let event_stream_server = EventStreamServer::new(
         SseConfig::new(
-            Some(event_stream_server_address),
+            config.event_stream_server.port,
             Some(config.event_stream_server.event_stream_buffer_length),
             Some(config.event_stream_server.max_concurrent_subscribers),
         ),
@@ -127,7 +121,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let listening_task_handle = async move {
         let mut join_handles = Vec::with_capacity(node_event_listeners.len());
 
-        let connection_configs = config.node_connections.clone();
+        let connection_configs = config.connection.node_connections.clone();
 
         for (event_listener, connection_config) in
             node_event_listeners.into_iter().zip(connection_configs)
@@ -163,7 +157,7 @@ async fn sse_processor(
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
-    let mut sse_data_stream = sse_event_listener.stream_events().await;
+    let mut sse_data_stream = sse_event_listener.consume_combine_streams().await;
 
     while let Some(sse_event) = sse_data_stream.recv().await {
         match sse_event.data {
@@ -402,7 +396,7 @@ impl ConfigWithCleanup {
     }
 
     fn set_node_connection_port(&mut self, port: u16) {
-        self.config.node_connections[0].sse_port = port;
+        self.config.connection.node_connections[0].sse_port = port;
     }
 
     fn use_free_ports_for_servers(&mut self) -> (u16, u16) {

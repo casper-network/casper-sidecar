@@ -237,6 +237,7 @@ impl DatabaseWriter for SqliteDatabase {
     ) -> Result<usize, DatabaseWriteError> {
         let db_connection = &self.connection_pool;
 
+        // todo compression + test + performance
         let json = serde_json::to_string(&step)?;
         let era_id = step.era_id.value();
 

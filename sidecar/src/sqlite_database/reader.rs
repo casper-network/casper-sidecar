@@ -13,7 +13,7 @@ use super::{
 use crate::{
     sql::tables,
     types::{
-        database::{DeployAggregate, DatabaseReadError, DatabaseReader},
+        database::{DatabaseReadError, DatabaseReader, DeployAggregate},
         sse_events::*,
     },
 };
@@ -190,6 +190,8 @@ impl DatabaseReader for SqliteDatabase {
 
         let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
 
+        // todo cache recent steps with decay
+        // todo decompression
         db_connection
             .fetch_optional(stmt.as_str())
             .await

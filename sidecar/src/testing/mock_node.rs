@@ -59,6 +59,7 @@ async fn start_mock_node(
 ) -> SocketAddr {
     let mut rng = TestRng::new();
 
+    // todo add other MAIN filter events
     let mut blocks_data: Vec<SseData> = (1..=num_events)
         .map(|_| SseData::random_block_added(&mut rng))
         .collect();
