@@ -178,8 +178,6 @@ pub trait DatabaseReader {
     async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
-    /// Returns the aggregate of the latest deploy's events.
-    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
     async fn get_deploy_aggregate_by_hash(
         &self,

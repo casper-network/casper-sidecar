@@ -50,12 +50,3 @@ pub fn create_insert_stmt(event_log_id: u32, deploy_hash: String) -> SqResult<In
 
     Ok(insert_stmt)
 }
-
-pub fn create_get_latest_deploy_hash() -> SelectStatement {
-    Query::select()
-        .column(DeployEvent::DeployHash)
-        .from(DeployEvent::Table)
-        .order_by(DeployEvent::EventLogId, Order::Asc)
-        .limit(1)
-        .to_owned()
-}

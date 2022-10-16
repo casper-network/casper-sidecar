@@ -245,14 +245,6 @@ impl DatabaseReader for FakeDatabase {
         };
     }
 
-    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError> {
-        let mut test_rng = TestRng::new();
-
-        let deploy_aggregate = DeployAggregate::random(&mut test_rng, None);
-
-        Ok(deploy_aggregate)
-    }
-
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
