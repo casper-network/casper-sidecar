@@ -172,11 +172,6 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
         .expect("Error saving deploy_accepted");
 
     sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
-
-    sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
         .expect("Error getting deploy aggregate by hash");
@@ -202,11 +197,6 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
         .save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
         .await
         .expect("Error saving deploy_processed");
-
-    sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
 
     sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
@@ -235,14 +225,11 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
         .expect("Error saving deploy_expired");
 
     sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
-
-    sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
         .expect("Error getting deploy aggregate by hash");
+
+    // todo make some assertions i.e. Processed == None
 }
 
 #[tokio::test]

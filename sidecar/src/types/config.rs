@@ -47,3 +47,34 @@ pub struct EventStreamServerConfig {
     pub max_concurrent_subscribers: u32,
     pub event_stream_buffer_length: u32,
 }
+
+#[cfg(test)]
+impl Config {
+    pub(crate) fn new() -> Self {
+        Self {
+            connection: ConnectionConfig {
+                node_connections: vec![NodeConnection {
+                    ip_address: "127.0.0.1".to_string(),
+                    sse_port: 18101,
+                    max_retries: 3,
+                    delay_between_retries_secs: 3,
+                    enable_event_logging: false,
+                }],
+            },
+            storage: StorageConfig {
+                storage_path: "/target/test_storage".to_string(),
+                sqlite_config: SqliteConfig {
+                    file_name: "test_sqlite_database".to_string(),
+                    max_connections_in_pool: 100,
+                    wal_autocheckpointing_interval: 1000,
+                },
+            },
+            rest_server: RestServerConfig { port: 17777 },
+            event_stream_server: EventStreamServerConfig {
+                port: 19999,
+                max_concurrent_subscribers: 100,
+                event_stream_buffer_length: 5000,
+            },
+        }
+    }
+}

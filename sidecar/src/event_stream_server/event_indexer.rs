@@ -55,6 +55,7 @@ impl EventIndexer {
         }
     }
 
+    // # todo u32 vs atomic
     pub(super) fn next_index(&self) -> u32 {
         self.index.fetch_add(1, Ordering::SeqCst)
     }

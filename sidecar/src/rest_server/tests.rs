@@ -112,23 +112,6 @@ async fn block_by_height_should_return_valid_data() {
 }
 
 #[tokio::test]
-async fn deploy_root_should_return_valid_data() {
-    let database = FakeDatabase::new();
-
-    let api = filters::combined_filters(database);
-
-    let request_path = format!("/{}", DEPLOY);
-
-    let response = request().path(&request_path).reply(&api).await;
-
-    assert!(response.status().is_success());
-
-    let body = response.into_body();
-    serde_json::from_slice::<DeployAggregate>(&body)
-        .expect("Error parsing AggregateDeployInfo from response");
-}
-
-#[tokio::test]
 async fn deploy_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 

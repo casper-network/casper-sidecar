@@ -113,6 +113,8 @@ impl EventListener {
             self.delay_between_retries,
         ));
 
+        // tokio macro return early for allow_partial = false
+
         sse_rx
     }
 }
@@ -315,21 +317,3 @@ fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
         Error::from(error)
     }
 }
-
-// async fn stream_events_to_channel(
-//     mut event_stream: EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>> + Unpin>,
-//     sender: UnboundedSender<Event>,
-//     discard_first: bool,
-// ) {
-//     if discard_first {
-//         let _ = event_stream.next().await;
-//     }
-//     while let Some(event) = event_stream.next().await {
-//         match event {
-//             Ok(event) => {
-//                 let _ = sender.send(event);
-//             }
-//             Err(error) => warn!(%error, "Error receiving events"),
-//         }
-//     }
-// }

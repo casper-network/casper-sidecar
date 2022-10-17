@@ -19,6 +19,7 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
+use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
@@ -60,6 +61,8 @@ async fn main() -> Result<(), Error> {
 
     run(config).await
 }
+
+// todo mediator
 
 async fn run(config: Config) -> Result<(), Error> {
     let path_to_database_dir = Path::new(&config.storage.storage_path);
@@ -381,45 +384,85 @@ async fn sse_processor(
     }
 }
 
-/// A convenience wrapper around [Config] with a [Drop] impl that removes the `test_storage` dir created in `target` during testing.
-/// This means there is no need to explicitly remove the directory at the end of the tests which is liable to be skipped if the test fails earlier.
 #[cfg(test)]
-struct ConfigWithCleanup {
+struct TestingConfig {
     config: Config,
 }
 
 #[cfg(test)]
-impl ConfigWithCleanup {
-    fn new(path: &str) -> Self {
-        let config = read_config(path).expect("Error parsing config file");
+impl TestingConfig {
+    fn default() -> Self {
+        let config = Config::new();
+
         Self { config }
     }
 
-    fn set_node_connection_port(&mut self, port: u16) {
-        self.config.connection.node_connections[0].sse_port = port;
+    fn set_storage_path(mut self, path: String) -> Self {
+        self.config.storage.storage_path = path;
+        self
     }
 
-    fn use_free_ports_for_servers(&mut self) -> (u16, u16) {
+    fn set_node_connection_port(mut self, port: u16) -> Self {
+        self.config.connection.node_connections[0].sse_port = port;
+        self
+    }
+
+    fn set_max_sse_subscribers(mut self, num_subscribers: u32) -> Self {
+        self.config.event_stream_server.max_concurrent_subscribers = num_subscribers;
+        self
+    }
+
+    fn configure_retry_settings(mut self, max_retries: u8, delay_between_retries: u8) -> Self {
+        for connection in &mut self.config.connection.node_connections {
+            connection.max_retries = max_retries;
+            connection.delay_between_retries_secs = delay_between_retries;
+        }
+        self
+    }
+
+    fn use_free_ports_for_servers(mut self) -> Self {
         let rest_server_port = portpicker::pick_unused_port().expect("Error getting free port");
         let sse_server_port = portpicker::pick_unused_port().expect("Error getting free port");
         self.config.rest_server.port = rest_server_port;
         self.config.event_stream_server.port = sse_server_port;
 
-        (rest_server_port, sse_server_port)
+        self
+    }
+
+    fn inner(&self) -> Config {
+        self.config.clone()
+    }
+
+    fn connection_port(&self) -> u16 {
+        self.config.connection.node_connections[0].sse_port
+    }
+
+    fn rest_server_port(&self) -> u16 {
+        self.config.rest_server.port
+    }
+
+    fn event_stream_server_port(&self) -> u16 {
+        self.config.event_stream_server.port
     }
 }
 
 #[cfg(test)]
-impl Drop for ConfigWithCleanup {
-    fn drop(&mut self) {
-        let path_to_test_storage = Path::new(&self.config.storage.storage_path);
-        if path_to_test_storage.exists() {
-            let res = std::fs::remove_dir_all(path_to_test_storage);
-            if let Err(error) = res {
-                println!("Error removing test_storage dir: {}", error);
-            }
-        }
-    }
+fn prepare_config(temp_storage: &TempDir) -> TestingConfig {
+    let path_to_temp_storage = temp_storage
+        .path()
+        .to_str()
+        .expect("Error getting path of temporary directory")
+        .to_string();
+
+    // Get an unused port to bind the mock event_stream_server to
+    let port_for_mock_event_stream =
+        portpicker::pick_unused_port().expect("Unable to get free port");
+
+    // test_config points to the mock_node
+    TestingConfig::default()
+        .set_storage_path(path_to_temp_storage)
+        .set_node_connection_port(port_for_mock_event_stream)
+        .use_free_ports_for_servers()
 }
 
 #[cfg(test)]
@@ -427,68 +470,63 @@ mod unit_tests {
     use crate::read_config;
 
     #[test]
-    fn should_parse_test_config_toml_files() {
-        read_config("config_test.toml").expect("Error parsing config_test.toml");
-        read_config("config_perf_test.toml").expect("Error parsing config_perf_test.toml");
+    fn should_parse_example_config_toml() {
+        read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing example config");
     }
 }
 
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::testing::mock_node::start_mock_node_with_shutdown;
+    use crate::testing::fake_event_stream_server::{
+        spin_up_fake_event_stream, EventStreamScenario,
+    };
     use eventsource_stream::Eventsource;
     use futures_util::StreamExt;
     use reqwest::Client;
     use std::time::Duration;
 
-    const TEST_CONFIG_PATH: &str = "config_test.toml";
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[ignore]
-    async fn should_connect_and_shutdown_cleanly() {
-        // Spin up mock_node
-        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(None).await;
+    #[ignore]
+    async fn should_bind_to_mock_event_stream_and_shutdown_cleanly() {
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-        // test_config points to the mock_node
-        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        let test_config = prepare_config(&temp_dir);
 
-        // replace the hard-coded port in the config with the port returned by the mock node
-        test_config.set_node_connection_port(port);
-
-        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
-        test_config.use_free_ports_for_servers();
+        // spin up a mock event stream server for the sidecar to listen to
+        tokio::task::spawn(spin_up_fake_event_stream(
+            test_config.connection_port(),
+            EventStreamScenario::Realistic,
+        ));
 
         // run the sidecar against the mock_node. Should receive 30 events then send the Shutdown.
-        run(test_config.config.clone())
+        run(test_config.inner())
             .await
             .expect("Error running sidecar");
-
-        // shutdown the mock_node
-        node_shutdown_tx.send(()).unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[ignore]
+    #[ignore]
     async fn should_allow_client_connection_to_sse() {
-        // Spin up mock_node
-        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(Some(30)).await;
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-        // test_config points to the mock_node
-        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        let test_config = prepare_config(&temp_dir);
 
-        // replace the hard-coded port in the config with the port returned by the mock node
-        test_config.set_node_connection_port(port);
+        // spin up a mock event stream server for the sidecar to listen to
+        tokio::task::spawn(spin_up_fake_event_stream(
+            test_config.connection_port(),
+            EventStreamScenario::Realistic,
+        ));
 
-        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
-        let (_, sse_server_port) = test_config.use_free_ports_for_servers();
-
-        tokio::spawn(run(test_config.config.clone()));
+        tokio::spawn(run(test_config.inner()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/main", sse_server_port);
+        let sidecar_sse_url = format!(
+            "http://127.0.0.1:{}/events/main",
+            test_config.event_stream_server_port()
+        );
 
         let mut sidecar_event_source = Client::new()
             .get(&sidecar_sse_url)
@@ -502,31 +540,27 @@ mod integration_tests {
             serde_json::from_str::<SseData>(&event.expect("Event was an error").data)
                 .expect("Error parsing event");
         }
-
-        node_shutdown_tx.send(()).unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[ignore]
+    #[ignore]
     async fn should_respond_to_rest_query() {
-        // Spin up mock_node
-        let (port, node_shutdown_tx) = start_mock_node_with_shutdown(Some(30)).await;
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-        // test_config points to the mock_node
-        let mut test_config = ConfigWithCleanup::new(TEST_CONFIG_PATH);
+        let test_config = prepare_config(&temp_dir);
 
-        // replace the hard-coded port in the config with the port returned by the mock node
-        test_config.set_node_connection_port(port);
+        // spin up a mock event stream server for the sidecar to listen to
+        tokio::task::spawn(spin_up_fake_event_stream(
+            test_config.connection_port(),
+            EventStreamScenario::Realistic,
+        ));
 
-        // replace the default server ports with dynamically generated ones to prevent conflicts with other tests.
-        let (rest_server_port, _) = test_config.use_free_ports_for_servers();
-
-        tokio::spawn(run(test_config.config.clone()));
+        tokio::spawn(run(test_config.inner()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let latest_block_url = format!("http://127.0.0.1:{}/block", rest_server_port);
+        let latest_block_url = format!("http://127.0.0.1:{}/block", test_config.rest_server_port());
 
         let response = Client::new()
             .get(&latest_block_url)
@@ -535,8 +569,6 @@ mod integration_tests {
             .expect("Error requesting the /block endpoint");
 
         assert!(response.status().is_success());
-
-        node_shutdown_tx.send(()).unwrap();
     }
 }
 
@@ -564,31 +596,38 @@ mod performance_tests {
         }
     }
 
-    const PERF_TEST_CONFIG_PATH: &str = "config_perf_test.toml";
     const EVENT_COUNT: u8 = 30;
     const ACCEPTABLE_LAG_IN_MILLIS: u128 = 1000;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[ignore]
     async fn check_delay_in_receiving_blocks() {
-        let mut perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-        let (_, sse_server_port) = perf_test_config.use_free_ports_for_servers();
+        let perf_test_config = prepare_config(&temp_dir).set_node_connection_port(18101);
 
-        tokio::spawn(run(perf_test_config.config.clone()));
+        tokio::spawn(run(perf_test_config.inner()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let node_event_stream = reqwest::Client::new()
-            .get("http://127.0.0.1:18101/events/main")
+        let source_sse_url = format!(
+            "http://127.0.0.1:{}/events/main",
+            perf_test_config.connection_port()
+        );
+
+        let source_event_stream = reqwest::Client::new()
+            .get(&source_sse_url)
             .send()
             .await
             .expect("Error connecting to node")
             .bytes_stream()
             .eventsource();
 
-        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/main", sse_server_port);
+        let sidecar_sse_url = format!(
+            "http://127.0.0.1:{}/events/main",
+            perf_test_config.event_stream_server_port()
+        );
 
         let sidecar_event_stream = reqwest::Client::new()
             .get(&sidecar_sse_url)
@@ -598,22 +637,22 @@ mod performance_tests {
             .bytes_stream()
             .eventsource();
 
-        let node_task_handle =
-            tokio::spawn(push_timestamped_block_events_to_vecs(node_event_stream));
+        let source_task_handle =
+            tokio::spawn(push_timestamped_block_events_to_vecs(source_event_stream));
 
         let sidecar_task_handle =
             tokio::spawn(push_timestamped_block_events_to_vecs(sidecar_event_stream));
 
-        let (node_task_result, sidecar_task_result) =
-            tokio::join!(node_task_handle, sidecar_task_handle);
+        let (source_task_result, sidecar_task_result) =
+            tokio::join!(source_task_handle, sidecar_task_handle);
 
-        let (block_events_from_node, node_overall_duration) =
-            node_task_result.expect("Error recording events from node");
+        let (block_events_from_source, node_overall_duration) =
+            source_task_result.expect("Error recording events from node");
         let (block_events_from_sidecar, sidecar_overall_duration) =
             sidecar_task_result.expect("Error recording events from sidecar");
 
         let block_time_diffs =
-            extract_time_diffs(block_events_from_node, block_events_from_sidecar);
+            extract_time_diffs(block_events_from_source, block_events_from_sidecar);
 
         let block_time_diff_millis = block_time_diffs
             .iter()
@@ -654,24 +693,32 @@ mod performance_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[ignore]
     async fn check_delay_in_receiving_deploys() {
-        let mut perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-        let (_, sse_server_port) = perf_test_config.use_free_ports_for_servers();
+        let perf_test_config = prepare_config(&temp_dir).set_node_connection_port(18101);
 
-        tokio::spawn(run(perf_test_config.config.clone()));
+        tokio::spawn(run(perf_test_config.inner()));
 
         // Allow sidecar to spin up
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let node_event_stream = reqwest::Client::new()
-            .get("http://127.0.0.1:18101/events/deploys")
+        let source_sse_url = format!(
+            "http://127.0.0.1:{}/events/deploys",
+            perf_test_config.connection_port()
+        );
+
+        let source_event_stream = reqwest::Client::new()
+            .get(&source_sse_url)
             .send()
             .await
-            .expect("Error connecting to node")
+            .expect("Error connecting to source")
             .bytes_stream()
             .eventsource();
 
-        let sidecar_sse_url = format!("http://127.0.0.1:{}/events/deploys", sse_server_port);
+        let sidecar_sse_url = format!(
+            "http://127.0.0.1:{}/events/deploys",
+            perf_test_config.event_stream_server_port()
+        );
 
         let sidecar_event_stream = reqwest::Client::new()
             .get(&sidecar_sse_url)
@@ -681,24 +728,27 @@ mod performance_tests {
             .bytes_stream()
             .eventsource();
 
-        let node_task_handle =
-            tokio::spawn(push_timestamped_deploy_events_to_vecs(node_event_stream));
+        let source_task_handle =
+            tokio::spawn(push_timestamped_deploy_events_to_vecs(source_event_stream));
 
         let sidecar_task_handle =
             tokio::spawn(push_timestamped_deploy_events_to_vecs(sidecar_event_stream));
 
-        let (node_task_result, sidecar_task_result) =
-            tokio::join!(node_task_handle, sidecar_task_handle);
+        let (source_task_result, sidecar_task_result) =
+            tokio::join!(source_task_handle, sidecar_task_handle);
 
-        let (deploy_events_from_node, node_overall_duration) =
-            node_task_result.expect("Error recording events from node");
+        let (deploy_events_from_source, source_overall_duration) =
+            source_task_result.expect("Error recording events from source");
         let (deploy_events_from_sidecar, sidecar_overall_duration) =
             sidecar_task_result.expect("Error recording events from sidecar");
 
-        assert_eq!(deploy_events_from_node.len(), deploy_events_from_node.len());
+        assert_eq!(
+            deploy_events_from_source.len(),
+            deploy_events_from_source.len()
+        );
 
         let deploy_time_diffs =
-            extract_time_diffs(deploy_events_from_node, deploy_events_from_sidecar);
+            extract_time_diffs(deploy_events_from_source, deploy_events_from_sidecar);
 
         let deploy_time_diff_millis = deploy_time_diffs
             .iter()
@@ -721,16 +771,16 @@ mod performance_tests {
         println!(
             "\n\tDEPLOYS RESULT:\n\
         \tAverage delay taken over {} matching deploy diffs = {} ms\n\
-        \tOverall difference in time to receive {} events = {}ms\t (sidecar: {}s, node: {}s)\n",
+        \tOverall difference in time to receive {} events = {}ms\t (sidecar: {}s, source: {}s)\n",
             deploy_time_diff_millis.len(),
             average_delay,
             EVENT_COUNT,
             sidecar_overall_duration
                 .as_millis()
-                .checked_sub(node_overall_duration.as_millis())
+                .checked_sub(source_overall_duration.as_millis())
                 .expect("Error taking the difference in the overall duration"),
             sidecar_overall_duration.as_secs(),
-            node_overall_duration.as_secs()
+            source_overall_duration.as_secs()
         );
 
         assert!(average_delay < ACCEPTABLE_LAG_IN_MILLIS);

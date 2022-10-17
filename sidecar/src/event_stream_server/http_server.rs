@@ -92,20 +92,14 @@ pub(super) async fn run(
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
                         Some((event_index, data)) => {
-                            // If connected to multiple nodes the receiver can be sent a Shutdown for a given node but this shouldn't be sent to connected clients
-                            // because there are other nodes still running, populating the event stream. This logic ensures that ALL senders have been dropped before a Shutdown is sent.
-                            // if SseData::Shutdown != data {
-                                // Buffer the data and broadcast it to subscribed clients.
-                                trace!("Event stream server received {:?}", data);
-                                let event = ServerSentEvent { id: Some(event_index), data };
-                                buffer.push(event.clone());
-                                let message = BroadcastChannelMessage::ServerSentEvent(event);
-                                // This can validly fail if there are no connected clients, so don't log
-                                // the error.
-                                let _ = broadcaster.send(message);
-                            // } else {
-                            //     warn!("Received a shutdown on the data_receiver");
-                            // }
+                            // Buffer the data and broadcast it to subscribed clients.
+                            trace!("Event stream server received {:?}", data);
+                            let event = ServerSentEvent { id: Some(event_index), data };
+                            buffer.push(event.clone());
+                            let message = BroadcastChannelMessage::ServerSentEvent(event);
+                            // This can validly fail if there are no connected clients, so don't log
+                            // the error.
+                            let _ = broadcaster.send(message);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.

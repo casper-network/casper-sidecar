@@ -1,6 +1,7 @@
 # todo Document
 [connection]
 node_connections = [
+    # todo add partial_connection toggle
     { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true },
     { ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = false },
     { ip_address = "127.0.0.1", sse_port = 18103, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = false }
