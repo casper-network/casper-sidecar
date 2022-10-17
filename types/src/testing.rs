@@ -3,7 +3,9 @@
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
 
+#[cfg(any(feature = "sse-data-testing", test))]
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+#[cfg(any(feature = "sse-data-testing", test))]
 use casper_hashing::Digest;
 use casper_node::types::{Deploy, DeployHash};
 use casper_types::testing::TestRng;
