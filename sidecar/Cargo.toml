@@ -8,6 +8,7 @@ edition = "2018"
 anyhow = {version = "1.0.44", default-features = false }
 async-trait = "0.1.56"
 bytes = "1.2.0"
+casper-event-listener = { path = "../listener", version = "0.1.0"}
 casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"]}
 casper-execution-engine = { git = "https://github.com/casper-network/casper-node", rev = "e01b528"}
 casper-hashing = { git = "https://github.com/casper-network/casper-node", rev = "e01b528"}

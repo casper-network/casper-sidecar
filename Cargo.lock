@@ -295,6 +295,20 @@ checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
 [[package]]
 name = "casper-event-listener"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "casper-event-types",
+ "casper-types",
+ "eventsource-stream",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
 
 [[package]]
 name = "casper-event-sidecar"
@@ -303,6 +317,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
+ "casper-event-listener",
  "casper-event-types",
  "casper-execution-engine",
  "casper-hashing",
