@@ -218,12 +218,12 @@ async fn connect(
     Ok((api_version, event_stream))
 }
 
-async fn parse_api_version<EvtStr, E>(
-    mut stream: EventStream<EvtStr>,
-) -> Result<(ProtocolVersion, EventStream<EvtStr>), Error>
+async fn parse_api_version<S, E>(
+    mut stream: EventStream<S>,
+) -> Result<(ProtocolVersion, EventStream<S>), Error>
 where
     E: Debug,
-    EvtStr: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
+    S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
 {
     match stream.next().await {
         None => Err(Error::msg("First event was empty")),
