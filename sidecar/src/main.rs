@@ -298,11 +298,11 @@ impl Drop for ConfigWithCleanup {
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::{read_config, CONFIG_PATH};
+    use crate::read_config;
 
     #[test]
     fn should_parse_config_toml_files() {
-        read_config(CONFIG_PATH).expect("Error parsing config.toml");
+        read_config("../config.toml").expect("Error parsing config.toml");
         read_config("config_test.toml").expect("Error parsing config_test.toml");
         read_config("config_perf_test.toml").expect("Error parsing config_perf_test.toml");
     }
