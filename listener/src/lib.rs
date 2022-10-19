@@ -26,6 +26,7 @@ pub struct EventListener {
     current_event_id: Option<u32>,
     max_retries: u8,
     delay_between_retries: u8,
+    allow_partial_connection: bool,
 }
 
 pub struct SseEvent {
@@ -46,6 +47,7 @@ impl EventListener {
         bind_address: String,
         max_retries: u8,
         delay_between_retries: u8,
+        allow_partial_connection: bool,
     ) -> Result<Self, Error> {
         resolve_address(&bind_address)?;
         let prefixed_address = format!("http://{}", bind_address);
@@ -66,13 +68,14 @@ impl EventListener {
             current_event_id: None,
             max_retries,
             delay_between_retries,
+            allow_partial_connection,
         })
     }
 
     pub async fn consume_combine_streams(&self) -> UnboundedReceiver<SseEvent> {
         let (sse_tx, sse_rx) = unbounded_channel::<SseEvent>();
 
-        tokio::spawn(connect_with_retry(
+        let main_filter_handle = tokio::spawn(connect_with_retry(
             sse_tx.clone(),
             self.bind_address.clone(),
             MAIN_FILTER_PATH.to_string(),
@@ -81,7 +84,7 @@ impl EventListener {
             self.delay_between_retries,
         ));
 
-        tokio::spawn(connect_with_retry(
+        let deploys_filter_handle = tokio::spawn(connect_with_retry(
             sse_tx.clone(),
             self.bind_address.clone(),
             DEPLOYS_FILTER_PATH.to_string(),
@@ -90,14 +93,45 @@ impl EventListener {
             self.delay_between_retries,
         ));
 
-        tokio::spawn(connect_with_retry(
-            sse_tx,
+        let sigs_filter_handle = tokio::spawn(connect_with_retry(
+            sse_tx.clone(),
             self.bind_address.clone(),
             SIGNATURES_FILTER_PATH.to_string(),
             self.current_event_id,
             self.max_retries,
             self.delay_between_retries,
         ));
+
+        let allow_partial_connection = self.allow_partial_connection;
+        let bind_address = self.bind_address.clone();
+        tokio::spawn(async move {
+            if allow_partial_connection {
+                let _ = tokio::join!(
+                    main_filter_handle,
+                    deploys_filter_handle,
+                    sigs_filter_handle
+                );
+                warn!("All filters have disconnected");
+            } else {
+                tokio::select! {
+                    result = main_filter_handle => {
+                       warn!(?result, "Failed to connect to MAIN filter - allow_partial_connection is set to false - disconnecting from node")
+                    },
+                    result = deploys_filter_handle => {
+                       warn!(?result, "Failed to connect to DEPLOYS filter - allow_partial_connection is set to false - disconnecting from node")
+                    },
+                    result = sigs_filter_handle => {
+                       warn!(?result, "Failed to connect to SIGS filter - allow_partial_connection is set to false - disconnecting from node")
+                    }
+                }
+            }
+            // Retries have been exhausted without a successful connection - send Shutdown.
+            let _ = sse_tx.send(SseEvent {
+                source: bind_address,
+                id: None,
+                data: SseData::Shutdown,
+            });
+        });
 
         sse_rx
     }
@@ -137,6 +171,12 @@ async fn connect_with_retry(
             Err(_) => {
                 // increment retry counter since the connection failed
                 retry_count += 1;
+                error!(
+                    %bind_address,
+                    %filter,
+                    "Error connecting, retrying in {}s",
+                    delay_between
+                );
                 // wait the configured delay before continuing
                 tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
                 continue;
@@ -186,14 +226,7 @@ async fn connect_with_retry(
             }
         }
     }
-
-    // Retries have been exhausted without a successful connection - send Shutdown.
-    // Having tried to reconnect and failed we send the Shutdown.
-    let _ = event_sender.send(SseEvent {
-        source: bind_address,
-        id: None,
-        data: SseData::Shutdown,
-    });
+    warn!(%bind_address, %filter, "Error connecting to node - if allow_partial_connection = true, listener will stay connected on other filters");
 }
 
 async fn connect(

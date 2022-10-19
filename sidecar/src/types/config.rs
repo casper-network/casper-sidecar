@@ -15,6 +15,7 @@ pub struct NodeConnection {
     pub sse_port: u16,
     pub max_retries: u8,
     pub delay_between_retries_in_seconds: u8,
+    pub allow_partial_connection: bool,
 }
 
 #[derive(Clone, Deserialize)]
