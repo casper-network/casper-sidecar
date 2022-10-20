@@ -3,10 +3,15 @@ use serde::Deserialize;
 // This struct is used to parse the config.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
 pub struct Config {
-    pub node_connection: NodeConnection,
+    pub connection: ConnectionConfig,
     pub storage: StorageConfig,
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct ConnectionConfig {
+    pub node_connections: Vec<NodeConnection>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -16,6 +21,7 @@ pub struct NodeConnection {
     pub max_retries: u8,
     pub delay_between_retries_in_seconds: u8,
     pub allow_partial_connection: bool,
+    pub enable_logging: bool,
 }
 
 #[derive(Clone, Deserialize)]
