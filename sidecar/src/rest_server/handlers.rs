@@ -4,7 +4,7 @@ use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 
 use super::errors::StorageError;
-use crate::types::database::{DatabaseReader, DatabaseRequestError};
+use crate::types::database::{DatabaseReadError, DatabaseReader};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,
@@ -108,7 +108,7 @@ pub(super) async fn get_finality_signatures_by_block<Db: DatabaseReader + Clone 
 }
 
 fn format_or_reject_storage_result<T>(
-    storage_result: Result<T, DatabaseRequestError>,
+    storage_result: Result<T, DatabaseReadError>,
 ) -> Result<impl Reply, Rejection>
 where
     T: Serialize,

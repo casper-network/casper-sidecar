@@ -21,8 +21,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(
             ColumnDef::new(DeployProcessed::DeployHash)
                 .string()
-                .not_null()
-                .primary_key(),
+                .not_null(),
         )
         .col(
             ColumnDef::new(DeployProcessed::Raw)

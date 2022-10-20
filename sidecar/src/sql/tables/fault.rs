@@ -25,10 +25,11 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(Fault::EventLogId).big_unsigned().not_null())
         .index(
             Index::create()
+                .unique()
+                .primary()
                 .name("PDX_Fault")
                 .col(Fault::Era)
-                .col(Fault::PublicKey)
-                .primary(),
+                .col(Fault::PublicKey),
         )
         .foreign_key(
             ForeignKey::create()
