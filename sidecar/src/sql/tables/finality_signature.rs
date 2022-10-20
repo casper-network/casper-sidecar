@@ -1,6 +1,6 @@
 use sea_query::{
     error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -38,6 +38,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
             ColumnDef::new(FinalitySignature::EventLogId)
                 .big_unsigned()
                 .not_null(),
+        )
+        .index(
+            Index::create()
+                .name("PDX_FinalitySignature")
+                .col(FinalitySignature::BlockHash)
+                .col(FinalitySignature::PublicKey)
+                .primary(),
         )
         .foreign_key(
             ForeignKey::create()

@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, InsertStatement,
-    Order, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Order, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -22,6 +22,14 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .not_null(),
         )
         .col(ColumnDef::new(DeployEvent::DeployHash).string().not_null())
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeployEvent")
+                .col(DeployEvent::DeployHash)
+                .col(DeployEvent::EventLogId),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")

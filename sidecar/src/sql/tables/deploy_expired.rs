@@ -1,5 +1,5 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
     InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
@@ -29,6 +29,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
             ColumnDef::new(DeployExpired::EventLogId)
                 .big_unsigned()
                 .not_null(),
+        )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeployExpired")
+                .col(DeployExpired::DeployHash),
         )
         .foreign_key(
             ForeignKey::create()

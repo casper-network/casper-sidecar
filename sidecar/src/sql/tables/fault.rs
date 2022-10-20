@@ -28,7 +28,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .name("PDX_Fault")
                 .col(Fault::Era)
                 .col(Fault::PublicKey)
-                .col(Fault::EventLogId)
                 .primary(),
         )
         .foreign_key(
