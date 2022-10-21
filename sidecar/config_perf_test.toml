@@ -17,7 +17,6 @@ wal_autocheckpointing_interval = 1000
 port = 17777
 
 [event_stream_server]
-ip_address = "127.0.0.1"
 port = 19999
 max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000

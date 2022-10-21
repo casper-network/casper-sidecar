@@ -45,7 +45,6 @@ pub struct RestServerConfig {
 
 #[derive(Clone, Deserialize)]
 pub struct EventStreamServerConfig {
-    pub ip_address: String,
     pub port: u16,
     pub max_concurrent_subscribers: u32,
     pub event_stream_buffer_length: u32,

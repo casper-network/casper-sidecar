@@ -90,15 +90,10 @@ async fn run(config: Config) -> Result<(), Error> {
         config.storage.sqlite_config.max_read_connections,
     ));
 
-    let event_stream_server_address = format!(
-        "{}:{}",
-        config.event_stream_server.ip_address, config.event_stream_server.port
-    );
-
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
         SseConfig::new(
-            Some(event_stream_server_address),
+            config.event_stream_server.port,
             Some(config.event_stream_server.event_stream_buffer_length),
             Some(config.event_stream_server.max_concurrent_subscribers),
         ),
