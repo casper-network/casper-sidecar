@@ -8,8 +8,7 @@ storage_path = "./target/test_storage"
 
 [storage.sqlite_config]
 file_name = "test_sqlite_database.db3"
-max_write_connections = 10
-max_read_connections = 100
+max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 

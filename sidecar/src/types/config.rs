@@ -33,8 +33,7 @@ pub struct StorageConfig {
 #[derive(Clone, Deserialize)]
 pub struct SqliteConfig {
     pub file_name: String,
-    pub max_write_connections: u32,
-    pub max_read_connections: u32,
+    pub max_connections_in_pool: u32,
     pub wal_autocheckpointing_interval: u16,
 }
 
