@@ -14,6 +14,9 @@ wal_autocheckpointing_interval = 1000
 
 [rest_server]
 port = 17777
+max_concurrent_requests = 50
+max_requests_per_second = 50
+request_timeout_in_seconds = 10
 
 [event_stream_server]
 port = 19999
