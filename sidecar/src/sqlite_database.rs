@@ -29,6 +29,7 @@ const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
 pub struct SqliteDatabase {
     pub connection_pool: SqlitePool,
     pub file_path: PathBuf,
+    use_compression: bool,
 }
 
 impl SqliteDatabase {
@@ -55,6 +56,7 @@ impl SqliteDatabase {
                 let sqlite_db = SqliteDatabase {
                     connection_pool,
                     file_path: Path::new(&path).into(),
+                    use_compression: true,
                 };
 
                 sqlite_db
@@ -82,6 +84,7 @@ impl SqliteDatabase {
         let sqlite_db = SqliteDatabase {
             connection_pool,
             file_path: Path::new("in_memory").into(),
+            use_compression: true,
         };
 
         sqlite_db

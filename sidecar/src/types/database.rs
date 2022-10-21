@@ -224,6 +224,8 @@ pub enum DatabaseReadError {
     NotFound,
     /// An error occurred serialising or deserialising data from the database.
     Serialisation(serde_json::Error),
+    /// An error occurred decompressing the stored data from the database.
+    Compression(miniz_oxide::inflate::DecompressError),
     /// An error occurred somewhere unexpected.
     Unhandled(anyhow::Error),
 }

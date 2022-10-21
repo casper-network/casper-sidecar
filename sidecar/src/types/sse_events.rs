@@ -226,3 +226,10 @@ impl Step {
         }
     }
 }
+
+#[cfg(test)]
+impl PartialEq<Self> for Step {
+    fn eq(&self, other: &Self) -> bool {
+        self.era_id == other.era_id && self.execution_effect == other.execution_effect
+    }
+}

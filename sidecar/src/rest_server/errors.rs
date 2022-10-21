@@ -53,6 +53,10 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
                 code = StatusCode::INTERNAL_SERVER_ERROR;
                 message = format!("Error deserializing returned data: {}", err)
             }
+            DatabaseReadError::Compression(err) => {
+                code = StatusCode::INTERNAL_SERVER_ERROR;
+                message = format!("Error decompressing returned data: {}", err)
+            }
             DatabaseReadError::Unhandled(err) => {
                 code = StatusCode::INTERNAL_SERVER_ERROR;
                 message = format!("Unhandled error occurred in storage: {}", err)

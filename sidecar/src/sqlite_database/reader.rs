@@ -2,8 +2,10 @@ use casper_node::types::FinalitySignature as FinSig;
 
 use anyhow::Error;
 use async_trait::async_trait;
+use miniz_oxide::inflate::decompress_to_vec;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
+use serde_json::Value;
 use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
 
 use super::{
@@ -185,26 +187,6 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => {
-                    let raw = row
-                        .try_get::<String, &str>("raw")
-                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                    deserialize_data::<Step>(&raw).map_err(wrap_query_error)
-                }
-            })
-    }
-
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
@@ -249,6 +231,43 @@ impl DatabaseReader for SqliteDatabase {
             .await
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_finality_signatures_from_rows)
+    }
+
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_optional(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(|maybe_row| match maybe_row {
+                None => Err(DatabaseReadError::NotFound),
+                Some(row) => {
+                    if self.use_compression {
+                        let compressed_bytes = row
+                            .try_get::<Vec<u8>, &str>("raw")
+                            .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
+
+                        let decompressed_bytes = decompress_to_vec(&compressed_bytes)
+                            .map_err(|decomp_err| wrap_query_error(decomp_err.into()))?;
+
+                        let json_value = serde_json::from_slice::<Value>(&decompressed_bytes)
+                            .map_err(|serde_err| wrap_query_error(serde_err.into()))?;
+
+                        let step = serde_json::from_value::<Step>(json_value)
+                            .map_err(|serde_err| wrap_query_error(serde_err.into()))?;
+
+                        Ok(step)
+                    } else {
+                        let raw = row
+                            .try_get::<String, &str>("raw")
+                            .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
+                        deserialize_data::<Step>(&raw).map_err(wrap_query_error)
+                    }
+                }
+            })
     }
 }
 

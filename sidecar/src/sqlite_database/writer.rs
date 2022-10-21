@@ -3,6 +3,7 @@ use casper_types::AsymmetricType;
 use anyhow::Context;
 use async_trait::async_trait;
 use itertools::Itertools;
+use miniz_oxide::deflate::compress_to_vec;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
@@ -16,6 +17,9 @@ use crate::{
         sse_events::*,
     },
 };
+
+// This can be set from 0-10 inclusive.
+const COMPRESSION_LEVEL: u8 = 10;
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -234,9 +238,6 @@ impl DatabaseWriter for SqliteDatabase {
     ) -> Result<usize, DatabaseWriteError> {
         let db_connection = &self.connection_pool;
 
-        let json = serde_json::to_string(&step)?;
-        let era_id = step.era_id.value();
-
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
             EventTypeId::Step as u8,
             &event_source_address,
@@ -250,8 +251,20 @@ impl DatabaseWriter for SqliteDatabase {
             .try_get::<u32, usize>(0)
             .context("Error parsing event_log_id from row")?;
 
-        let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
-            .to_string(SqliteQueryBuilder);
+        let insert_stmt = if self.use_compression {
+            let bytes = serde_json::to_vec(&step)?;
+            let compressed = compress_to_vec(&bytes, COMPRESSION_LEVEL);
+            let era_id = step.era_id.value();
+
+            tables::step::create_insert_stmt_compressed(era_id, compressed, event_log_id)?
+                .to_string(SqliteQueryBuilder)
+        } else {
+            let json = serde_json::to_string(&step)?;
+            let era_id = step.era_id.value();
+
+            tables::step::create_insert_stmt(era_id, json, event_log_id)?
+                .to_string(SqliteQueryBuilder)
+        };
 
         handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
@@ -273,4 +286,33 @@ fn handle_sqlite_result(
     result
         .map(|ok_query_result| ok_query_result.rows_affected() as usize)
         .map_err(std::convert::From::from)
+}
+
+#[cfg(test)]
+mod compression_checks {
+    use casper_types::testing::TestRng;
+
+    use miniz_oxide::{deflate::compress_to_vec, inflate::decompress_to_vec};
+    use serde_json::Value;
+
+    use crate::Step;
+
+    #[test]
+    #[ignore]
+    fn check_compression_roundtrip() {
+        let mut test_rng = TestRng::new();
+
+        for _ in 0..300 {
+            let step = Step::random(&mut test_rng);
+            let step_bytes = serde_json::to_vec(&step).unwrap();
+
+            let compressed = compress_to_vec(&step_bytes, 10);
+
+            let decompressed = decompress_to_vec(&compressed).unwrap();
+            let decompressed_json = serde_json::from_slice::<Value>(&decompressed).unwrap();
+            let decompressed_step = serde_json::from_value::<Step>(decompressed_json).unwrap();
+
+            assert_eq!(step, decompressed_step);
+        }
+    }
 }

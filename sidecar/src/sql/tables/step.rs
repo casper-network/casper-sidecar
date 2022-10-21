@@ -53,6 +53,18 @@ pub fn create_insert_stmt(era: u64, raw: String, event_log_id: u32) -> SqResult<
         .map(|stmt| stmt.to_owned())
 }
 
+pub fn create_insert_stmt_compressed(
+    era: u64,
+    raw: Vec<u8>,
+    event_log_id: u32,
+) -> SqResult<InsertStatement> {
+    Query::insert()
+        .into_table(Step::Table)
+        .columns([Step::Era, Step::Raw, Step::EventLogId])
+        .values(vec![era.into(), raw.into(), event_log_id.into()])
+        .map(|stmt| stmt.to_owned())
+}
+
 pub fn create_get_by_era_stmt(era: u64) -> SelectStatement {
     Query::select()
         .column(Step::Raw)
