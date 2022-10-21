@@ -14,7 +14,6 @@ max_read_connections = 100
 wal_autocheckpointing_interval = 1000
 
 [rest_server]
-ip_address = "127.0.0.1"
 port = 17777
 
 [event_stream_server]

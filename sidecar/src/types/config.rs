@@ -40,7 +40,6 @@ pub struct SqliteConfig {
 
 #[derive(Clone, Deserialize)]
 pub struct RestServerConfig {
-    pub ip_address: String,
     pub port: u16,
 }
 
