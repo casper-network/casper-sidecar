@@ -176,8 +176,6 @@ pub trait DatabaseReader {
     async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
-    /// Returns the aggregate of the latest deploy's events.
-    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
     async fn get_deploy_aggregate_by_hash(
         &self,
@@ -201,8 +199,6 @@ pub trait DatabaseReader {
     /// prior to sidecar's start point. Calling [get_deploy_aggregate_by_hash] can help in this case, if there is a [DeployAccepted]
     /// without a corresponding [DeployExpired] then you can assert that it truly has not expired.
     async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError>;
-    /// Returns the [Step] event for the given era.
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
     async fn get_faults_by_public_key(
         &self,
@@ -215,6 +211,8 @@ pub trait DatabaseReader {
         &self,
         block_hash: &str,
     ) -> Result<Vec<FinSig>, DatabaseReadError>;
+    /// Returns the [Step] event for the given era.
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.
@@ -236,59 +234,4 @@ pub struct DeployAggregate {
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
     pub(crate) deploy_expired: bool,
-}
-
-#[cfg(test)]
-mod testing {
-    use casper_hashing::Digest;
-    use casper_node::types::DeployHash;
-    use casper_types::testing::TestRng;
-
-    use rand::Rng;
-
-    use super::DeployAggregate;
-    use crate::types::sse_events::{DeployAccepted, DeployProcessed};
-
-    impl DeployAggregate {
-        pub fn random(test_rng: &mut TestRng, with_hash: Option<String>) -> Self {
-            let deploy_accepted = DeployAccepted::random(test_rng);
-
-            let deploy_hash = with_hash.unwrap_or_else(|| deploy_accepted.hex_encoded_hash());
-
-            match test_rng.gen_range(0..=2) {
-                // Accepted
-                0 => DeployAggregate {
-                    deploy_hash,
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: None,
-                    deploy_expired: false,
-                },
-                // Accepted -> Processed
-                1 => {
-                    let deploy_processed = DeployProcessed::random(
-                        test_rng,
-                        Some(DeployHash::from(
-                            Digest::from_hex(deploy_hash.clone())
-                                .expect("Error creating Digest from hash"),
-                        )),
-                    );
-
-                    DeployAggregate {
-                        deploy_hash,
-                        deploy_accepted: Some(deploy_accepted),
-                        deploy_processed: Some(deploy_processed),
-                        deploy_expired: false,
-                    }
-                }
-                // Accepted -> Expired
-                2 => DeployAggregate {
-                    deploy_hash,
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: None,
-                    deploy_expired: true,
-                },
-                _ => unreachable!(),
-            }
-        }
-    }
 }
