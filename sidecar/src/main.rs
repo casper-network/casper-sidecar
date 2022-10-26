@@ -28,7 +28,7 @@ use crate::{
 
 const CONNECTION_REFUSED: &str = "Connection refused (os error 111)";
 const CONNECTION_ERR_MSG: &str = "Connection refused: Please check connection to node.";
-const CONFIG_PATH: &str = "config.toml";
+const CONFIG_PATH: &str = "../config.toml";
 
 fn parse_error_for_connection_refused(error: reqwest::Error) -> Error {
     if error.to_string().contains(CONNECTION_REFUSED) {
