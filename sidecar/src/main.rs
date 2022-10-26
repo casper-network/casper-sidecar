@@ -19,8 +19,10 @@ use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, warn};
 
+use casper_event_types::SseData;
+
 use crate::{
-    event_stream_server::{Config as SseConfig, EventStreamServer, SseData},
+    event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
     types::{config::Config, database::DatabaseWriter, sse_events::*},
@@ -348,7 +350,7 @@ async fn run(config: Config) -> Result<(), Error> {
         _ = rest_server_handle => {
             info!("REST server stopped")
         }
-    };
+    }
 
     Ok(())
 }

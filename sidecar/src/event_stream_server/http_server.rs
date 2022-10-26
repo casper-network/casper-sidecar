@@ -1,5 +1,3 @@
-use casper_types::ProtocolVersion;
-
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
@@ -9,10 +7,13 @@ use tokio::{
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
+
 use super::{
     config::Config,
     event_indexer::EventIndex,
-    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent, SseData},
+    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
 };
 
 /// Run the HTTP server.

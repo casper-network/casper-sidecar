@@ -1,9 +1,4 @@
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::time::Duration;
-
-use casper_types::testing::TestRng;
-use casper_types::ProtocolVersion;
+use std::{convert::Infallible, net::SocketAddr, time::Duration};
 
 #[allow(unused)]
 use eventsource_stream::{EventStream, Eventsource};
@@ -19,7 +14,9 @@ use tokio::time::{interval, Instant};
 use tokio_stream::wrappers::IntervalStream;
 use warp::{sse::Event, Filter};
 
-use crate::SseData;
+use casper_event_types::SseData;
+use casper_types::testing::TestRng;
+use casper_types::ProtocolVersion;
 
 // fn build_event<I>(id: Option<I>, data: SseData) -> Result<Event, Infallible>
 //     where I: Into<String>,

@@ -3,6 +3,14 @@ name = "casper-event-types"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+casper-execution-engine = { git = "https://github.com/casper-network/casper-node", rev = "e01b528", optional = true }
+casper-hashing = { git = "https://github.com/casper-network/casper-node", rev = "e01b528", optional = true }
+casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e01b528"}
+casper-types = { git = "https://github.com/casper-network/casper-node", rev = "e01b528"}
+serde = { version = "1.0", features = ["derive"]}
+rand = { version = "0.8.5", optional = true }
+
+
+[features]
+sse-data-testing = ["rand", "casper-node/testing", "casper-execution-engine", "casper-hashing"]
