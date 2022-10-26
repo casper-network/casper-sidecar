@@ -11,12 +11,12 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use casper_event_listener::EventListener;
-use casper_event_types::SseData;
-
 use anyhow::{Context, Error};
 use hex_fmt::HexFmt;
 use tracing::{debug, info, warn};
+
+use casper_event_listener::EventListener;
+use casper_event_types::SseData;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
