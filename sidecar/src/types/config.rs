@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-// This struct is used to parse the config.toml so the values can be utilised in the code.
+// This struct is used to parse the EXAMPLE_CONFIG.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
 pub struct Config {
     pub connection: ConnectionConfig,

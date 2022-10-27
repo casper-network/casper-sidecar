@@ -9,7 +9,7 @@ mod rest_server;
 mod sql;
 mod sqlite_database;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 mod types;
 mod utils;
 
@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-const CONFIG_PATH: &str = "config.toml";
+const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content =
@@ -391,42 +391,7 @@ async fn sse_processor(
     }
 }
 
-/// A convenience wrapper around [Config] with a [Drop] impl that removes the `test_storage` dir created in `target` during testing.
-/// This means there is no need to explicitly remove the directory at the end of the tests which is liable to be skipped if the test fails earlier.
-#[cfg(test)]
-struct ConfigWithCleanup {
-    config: Config,
-}
-
-#[cfg(test)]
-impl ConfigWithCleanup {
-    fn new(path: &str) -> Self {
-        let config = read_config(path).expect("Error parsing config file");
-        Self { config }
-    }
-}
-
-#[cfg(test)]
-impl Drop for ConfigWithCleanup {
-    fn drop(&mut self) {
-        let path_to_test_storage = Path::new(&self.config.storage.storage_path);
-        if path_to_test_storage.exists() {
-            let res = std::fs::remove_dir_all(path_to_test_storage);
-            if let Err(error) = res {
-                println!("Error removing test_storage dir: {}", error);
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod unit_tests {
-    use crate::read_config;
-
-    #[test]
-    fn should_parse_config_toml_files() {
-        read_config("../config.toml").expect("Error parsing config.toml");
-        read_config("config_test.toml").expect("Error parsing config_test.toml");
-        read_config("config_perf_test.toml").expect("Error parsing config_perf_test.toml");
-    }
+#[test]
+fn should_parse_config_toml() {
+    read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
 }

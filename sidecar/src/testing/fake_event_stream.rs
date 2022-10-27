@@ -36,8 +36,6 @@ pub async fn spin_up_fake_event_stream(
     )
     .expect("Error spinning up Event Stream Server");
 
-    println!("Fake Event Stream running on :{}", port);
-
     match scenario {
         EventStreamScenario::Realistic => {
             realistic_event_streaming(event_stream_server, duration_in_seconds).await
@@ -52,7 +50,8 @@ pub async fn spin_up_fake_event_stream(
     }
 
     println!(
-        "Fake Event Stream shutdown after {}s",
+        "Fake Event Stream(:{}) shutdown after {}s",
+        port,
         start.elapsed().as_secs()
     );
 }
