@@ -137,7 +137,7 @@ async fn should_handle_not_found() {
 #[tokio::test]
 async fn should_handle_serialisation_error() {
     let rejection = serde_json::from_str::<i32>("")
-        .map_err(|err| reject::custom(StorageError(DatabaseReadError::Serialisation(err.into()))))
+        .map_err(|err| reject::custom(StorageError(DatabaseReadError::Serialisation(err))))
         .unwrap_err();
 
     let api_error = get_api_error_from_rejection(rejection).await;

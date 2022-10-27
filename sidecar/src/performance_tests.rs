@@ -1,21 +1,20 @@
 use super::*;
 use crate::testing::fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario};
+use crate::testing::testing_config::prepare_config;
 use casper_event_listener::SseEvent;
 use casper_types::AsymmetricType;
 use derive_new::new;
-use serial_test::serial;
 use std::fmt::{Display, Formatter};
 use std::println;
 use std::time::Duration;
 use tabled::Tabled;
+use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Instant;
 
-const PERF_TEST_CONFIG_PATH: &str = "config_perf_test.toml";
 const ACCEPTABLE_LAG_IN_MILLIS: u128 = 1000;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[serial]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
     performance_check(
@@ -27,7 +26,6 @@ async fn check_latency_on_realistic_scenario() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[serial]
 #[ignore]
 async fn check_latency_on_frequent_step_scenario() {
     performance_check(
@@ -39,7 +37,6 @@ async fn check_latency_on_frequent_step_scenario() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[serial]
 #[ignore]
 async fn check_latency_on_fast_bursts_of_deploys_scenario() {
     performance_check(
@@ -139,27 +136,26 @@ async fn performance_check(
     duration_in_seconds: u64,
     acceptable_latency_in_millis: u128,
 ) {
-    let perf_test_config = ConfigWithCleanup::new(PERF_TEST_CONFIG_PATH);
-
-    let source_port = perf_test_config.config.connection.node_connections[0].sse_port;
+    let temp_storage_dir =
+        TempDir::new().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
-        source_port,
+        testing_config.connection_port(),
         scenario,
         duration_in_seconds,
     ));
 
-    tokio::spawn(run(perf_test_config.config.clone()));
+    tokio::spawn(run(testing_config.inner()));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("127.0.0.1:{}", source_port);
+    let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
     let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
     let source_event_receiver = source_event_listener.consume_combine_streams().await;
 
-    let sidecar_event_listener = EventListener::new("127.0.0.1:19999".to_string(), 0, 0, false)
-        .await
-        .unwrap();
+    let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
+    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
     let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
 
     let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver));
