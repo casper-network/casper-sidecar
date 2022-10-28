@@ -15,7 +15,7 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 
 [rest_server]
-port = 17777
+port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
 request_timeout_in_seconds = 10
