@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 use std::println;
 use std::time::Duration;
 use tabled::Tabled;
-use tempfile::TempDir;
+use tempfile::tempdir;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Instant;
 
@@ -136,8 +136,7 @@ async fn performance_check(
     duration_in_seconds: u64,
     acceptable_latency_in_millis: u128,
 ) {
-    let temp_storage_dir =
-        TempDir::new().expect("Should have created a temporary storage directory");
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
