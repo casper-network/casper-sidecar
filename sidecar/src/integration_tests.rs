@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
-use tempfile::TempDir;
+use tempfile::tempdir;
 
 use super::run;
 use crate::{
@@ -16,14 +16,13 @@ use crate::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
-    let temp_storage_dir =
-        TempDir::new().expect("Should have created a temporary storage directory");
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),
         EventStreamScenario::Realistic,
-        60,
+        30,
     ));
 
     run(testing_config.inner())
@@ -34,8 +33,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_allow_client_connection_to_sse() {
-    let temp_storage_dir =
-        TempDir::new().expect("Should have created a temporary storage directory");
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
@@ -69,10 +67,8 @@ async fn should_allow_client_connection_to_sse() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_respond_to_rest_query() {
-    let temp_storage_dir =
-        TempDir::new().expect("Should have created a temporary storage directory");
-    let testing_config =
-        prepare_config(&temp_storage_dir).set_storage_path("../../target/test_storage".to_string());
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),

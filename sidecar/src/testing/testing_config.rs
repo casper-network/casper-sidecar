@@ -1,8 +1,28 @@
 use crate::types::config::Config;
+use std::fs;
+use std::path::Path;
+use tempfile::TempDir;
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
 pub(crate) struct TestingConfig {
     config: Config,
+}
+
+/// Prepares an instance of [TestingConfig]. The instance has default values except:
+/// - `storage_path` is set to the path of the [TempDir] provided.
+/// - `node_connection_port` is set dynamically to a free port.
+/// - The outbound server (REST & SSE) ports are set dynamically to free ports.
+#[cfg(test)]
+pub(crate) fn prepare_config(temp_storage: &TempDir) -> TestingConfig {
+    let path_to_temp_storage = temp_storage
+        .path()
+        .to_str()
+        .expect("Error getting path of temporary directory")
+        .to_string();
+
+    TestingConfig::default()
+        .set_storage_path(path_to_temp_storage)
+        .allocate_available_ports()
 }
 
 impl TestingConfig {
@@ -86,20 +106,16 @@ impl TestingConfig {
     }
 }
 
-/// Prepares an instance of [TestingConfig]. The instance has default values except:
-/// - `storage_path` is set to the path of the [TempDir] provided.
-/// - `node_connection_port` is set dynamically to a free port.
-/// - The outbound server (REST & SSE) ports are set dynamically to free ports.
-#[cfg(test)]
-pub(crate) fn prepare_config(temp_storage: &tempfile::TempDir) -> TestingConfig {
-    let path_to_temp_storage = temp_storage
-        .path()
-        .to_str()
-        .expect("Error getting path of temporary directory")
-        .to_string();
-
-    // test_config points to the mock_node
-    TestingConfig::default()
-        .set_storage_path(path_to_temp_storage)
-        .allocate_available_ports()
+// Despite using TempDir I found that sometimes the directory wasn't being removed at the end of the tests.
+// To that end I've added a manual check and removal here.
+impl Drop for TestingConfig {
+    fn drop(&mut self) {
+        let config = self.inner();
+        let path_to_temp_dir = Path::new(&config.storage.storage_path);
+        if path_to_temp_dir.exists() {
+            let _ = fs::remove_dir_all(path_to_temp_dir).map_err(|fs_err| {
+                println!("Failed to remove temporary directory during Drop of TestingConfig")
+            });
+        }
+    }
 }
