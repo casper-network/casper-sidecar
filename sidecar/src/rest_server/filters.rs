@@ -29,11 +29,9 @@ fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reject
 
 fn root_and_invalid_path(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path::param()
-        .and(warp::path::end())
-        .and_then(|_param: String| async {
-            Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
-        })
+    warp::path::param().and_then(|_param: String| async {
+        Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
+    })
 }
 
 fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(

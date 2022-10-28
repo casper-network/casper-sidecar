@@ -45,6 +45,11 @@ async fn root_should_return_400() {
 #[tokio::test]
 async fn root_with_invalid_path_should_return_400() {
     should_respond_to_path_with("/not_block_or_deploy".to_string(), StatusCode::BAD_REQUEST).await;
+    should_respond_to_path_with(
+        "/not_block_or_deploy/extra".to_string(),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
 }
 
 #[tokio::test]
