@@ -1,7 +1,7 @@
-use casper_node::types::FinalitySignature as FinSig;
-
 use http::StatusCode;
 use warp::test::request;
+
+use casper_node::types::FinalitySignature as FinSig;
 
 use super::filters;
 use crate::{
