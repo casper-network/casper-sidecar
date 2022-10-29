@@ -1,5 +1,3 @@
-use casper_node::types::FinalitySignature as FinSig;
-
 use anyhow::Error;
 use async_trait::async_trait;
 use miniz_oxide::inflate::decompress_to_vec;
@@ -7,6 +5,8 @@ use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
+
+use casper_node::types::FinalitySignature as FinSig;
 
 use super::{
     errors::{wrap_query_error, SqliteDbError},

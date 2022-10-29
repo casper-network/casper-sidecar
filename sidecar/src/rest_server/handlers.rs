@@ -1,10 +1,12 @@
-use crate::rest_server::errors::{InvalidParam, Unexpected};
 use anyhow::Error;
 use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 
 use super::errors::StorageError;
-use crate::types::database::{DatabaseReadError, DatabaseReader};
+use crate::{
+    rest_server::errors::{InvalidParam, Unexpected},
+    types::database::{DatabaseReadError, DatabaseReader},
+};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,
