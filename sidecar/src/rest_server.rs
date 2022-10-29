@@ -9,9 +9,7 @@ use std::time::Duration;
 
 use anyhow::Error;
 use hyper::Server;
-use tower::buffer::Buffer;
-use tower::limit::RateLimitLayer;
-use tower::{limit::ConcurrencyLimitLayer, make::Shared, ServiceBuilder};
+use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 
 use crate::{
     sqlite_database::SqliteDatabase, types::config::RestServerConfig, utils::resolve_address,
