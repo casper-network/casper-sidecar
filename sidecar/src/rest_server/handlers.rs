@@ -5,7 +5,7 @@ use warp::{http::StatusCode, Rejection, Reply};
 use super::errors::StorageError;
 use crate::{
     rest_server::errors::{InvalidParam, Unexpected},
-    types::database::{DatabaseReader, DatabaseRequestError},
+    types::database::{DatabaseReadError, DatabaseReader},
 };
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
