@@ -33,20 +33,17 @@ pub struct StorageConfig {
 #[derive(Clone, Deserialize)]
 pub struct SqliteConfig {
     pub file_name: String,
-    pub max_write_connections: u32,
-    pub max_read_connections: u32,
+    pub max_connections_in_pool: u32,
     pub wal_autocheckpointing_interval: u16,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct RestServerConfig {
-    pub ip_address: String,
     pub port: u16,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct EventStreamServerConfig {
-    pub ip_address: String,
     pub port: u16,
     pub max_concurrent_subscribers: u32,
     pub event_stream_buffer_length: u32,

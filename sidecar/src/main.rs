@@ -85,21 +85,14 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        config.rest_server.ip_address.clone(),
         config.rest_server.port,
-        sqlite_database.file_path.clone(),
-        config.storage.sqlite_config.max_read_connections,
+        sqlite_database.clone(),
     ));
-
-    let event_stream_server_address = format!(
-        "{}:{}",
-        config.event_stream_server.ip_address, config.event_stream_server.port
-    );
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
         SseConfig::new(
-            Some(event_stream_server_address),
+            config.event_stream_server.port,
             Some(config.event_stream_server.event_stream_buffer_length),
             Some(config.event_stream_server.max_concurrent_subscribers),
         ),
