@@ -1,7 +1,8 @@
-use crate::types::config::Config;
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
+
 use tempfile::TempDir;
+
+use crate::types::config::Config;
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
 pub(crate) struct TestingConfig {
@@ -42,12 +43,14 @@ impl TestingConfig {
 
     /// Specify the port that the sidecar should connect to.
     /// By default it is set to `18101` - the SSE port of a node in the default NCTL network.
+    #[allow(unused)]
     pub(crate) fn set_connection_port(mut self, port: u16) -> Self {
         self.config.connection.node_connections[0].sse_port = port;
         self
     }
 
     /// Specify the max_concurrent_subscribers for the outbound EventStreamServer. By default it is set to 100.
+    #[allow(unused)]
     pub(crate) fn set_max_sse_subscribers(mut self, num_subscribers: u32) -> Self {
         self.config.event_stream_server.max_concurrent_subscribers = num_subscribers;
         self
@@ -56,6 +59,7 @@ impl TestingConfig {
     /// Specify the retry configuration settings. By default they are set as follows:
     /// - `max_retries`: 3
     /// - `delay_between_retries_in_seconds`: 5
+    #[allow(unused)]
     pub(crate) fn configure_retry_settings(
         mut self,
         max_retries: u8,
@@ -114,7 +118,10 @@ impl Drop for TestingConfig {
         let path_to_temp_dir = Path::new(&config.storage.storage_path);
         if path_to_temp_dir.exists() {
             let _ = fs::remove_dir_all(path_to_temp_dir).map_err(|fs_err| {
-                println!("Failed to remove temporary directory during Drop of TestingConfig")
+                println!(
+                    "Failed to remove temporary directory during Drop of TestingConfig:\n{:?}",
+                    fs_err
+                )
             });
         }
     }

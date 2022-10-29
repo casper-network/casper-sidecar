@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use casper_node::types::FinalitySignature as FinSig;
-use casper_types::testing::TestRng;
-
-use crate::DatabaseWriteError;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
+use casper_node::types::FinalitySignature as FinSig;
+use casper_types::testing::TestRng;
+
 use crate::types::{
-    database::{DatabaseReadError, DatabaseReader, DatabaseWriter, DeployAggregate},
+    database::{
+        DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
+    },
     sse_events::*,
 };
 

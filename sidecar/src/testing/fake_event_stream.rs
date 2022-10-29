@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use casper_event_types::SseData;
-use casper_types::{testing::TestRng, ProtocolVersion};
-
 use tempfile::TempDir;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::time::Instant;
+
+use casper_event_types::SseData;
+use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::event_stream_server::{Config as SseConfig, EventStreamServer};
 

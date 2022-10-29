@@ -1,16 +1,21 @@
-use super::*;
-use crate::testing::fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario};
-use crate::testing::testing_config::prepare_config;
-use casper_event_listener::SseEvent;
-use casper_types::AsymmetricType;
+use std::{
+    fmt::{Display, Formatter},
+    time::Duration,
+};
+
 use derive_new::new;
-use std::fmt::{Display, Formatter};
-use std::println;
-use std::time::Duration;
 use tabled::Tabled;
 use tempfile::tempdir;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::time::Instant;
+use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
+
+use casper_event_listener::SseEvent;
+use casper_types::AsymmetricType;
+
+use super::*;
+use crate::testing::{
+    fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+    testing_config::prepare_config,
+};
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 
