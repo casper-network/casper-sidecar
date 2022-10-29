@@ -54,6 +54,7 @@ async fn run(config: Config) -> Result<(), Error> {
         bind_address,
         config.node_connection.max_retries,
         config.node_connection.delay_between_retries_in_seconds,
+        config.node_connection.allow_partial_connection,
     )
     .await?;
 
