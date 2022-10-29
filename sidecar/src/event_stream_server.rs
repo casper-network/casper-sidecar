@@ -29,15 +29,15 @@ mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
-
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tracing::{info, warn};
 use warp::Filter;
+
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
