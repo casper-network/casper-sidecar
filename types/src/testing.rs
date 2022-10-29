@@ -2,6 +2,7 @@
 //!
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
+use rand::{Rng, RngCore};
 
 #[cfg(any(feature = "sse-data-testing", test))]
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
@@ -10,8 +11,6 @@ use casper_hashing::Digest;
 use casper_node::types::{Deploy, DeployHash};
 use casper_types::testing::TestRng;
 use casper_types::{runtime_args, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512};
-
-use rand::{Rng, RngCore};
 
 /// Creates a test deploy created at given instant and with given ttl.
 pub(crate) fn create_test_deploy(
