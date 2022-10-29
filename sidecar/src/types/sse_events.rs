@@ -3,6 +3,11 @@ use std::{
     sync::Arc,
 };
 
+use derive_new::new;
+#[cfg(test)]
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+
 #[cfg(test)]
 use casper_hashing::Digest;
 #[cfg(test)]
@@ -14,11 +19,6 @@ use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,
 };
-
-use derive_new::new;
-#[cfg(test)]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
 
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.

@@ -11,14 +11,14 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use casper_event_listener::EventListener;
-use casper_event_types::SseData;
-
 use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, trace, warn};
+
+use casper_event_listener::EventListener;
+use casper_event_types::SseData;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -161,10 +161,10 @@ async fn sse_processor(
                 }
             }
             SseData::BlockAdded { block, block_hash } => {
-                let full_length_hash = format!("{}", HexFmt(block_hash.inner()));
                 if enable_event_logging {
-                    info!("Block Added: {:18}", HexFmt(block_hash.inner()));
-                    debug!("Block Added: {}", full_length_hash);
+                    let hex_block_hash = HexFmt(block_hash.inner());
+                    info!("Block Added: {:18}", hex_block_hash);
+                    debug!("Block Added: {}", hex_block_hash);
                 }
 
                 let res = sqlite_database
@@ -182,7 +182,7 @@ async fn sse_processor(
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
                             "Already received BlockAdded ({}), logged in event_log",
-                            full_length_hash
+                            HexFmt(block_hash.inner())
                         );
                         trace!(?uc_err);
                     }
@@ -190,10 +190,10 @@ async fn sse_processor(
                 }
             }
             SseData::DeployAccepted { deploy } => {
-                let full_length_hash = format!("{}", HexFmt(deploy.id().inner()));
                 if enable_event_logging {
-                    info!("Deploy Accepted: {:18}", HexFmt(deploy.id().inner()));
-                    debug!("Deploy Accepted: {}", full_length_hash);
+                    let hex_deploy_hash = HexFmt(deploy.id().inner());
+                    info!("Deploy Accepted: {:18}", hex_deploy_hash);
+                    debug!("Deploy Accepted: {}", hex_deploy_hash);
                 }
                 let deploy_accepted = DeployAccepted::new(deploy.clone());
                 let res = sqlite_database
@@ -207,7 +207,7 @@ async fn sse_processor(
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
                             "Already received DeployAccepted ({}), logged in event_log",
-                            full_length_hash
+                            HexFmt(deploy.id().inner())
                         );
                         trace!(?uc_err);
                     }
@@ -215,10 +215,10 @@ async fn sse_processor(
                 }
             }
             SseData::DeployExpired { deploy_hash } => {
-                let full_length_hash = format!("{}", HexFmt(deploy_hash.inner()));
                 if enable_event_logging {
-                    info!("Deploy Expired: {:18}", HexFmt(deploy_hash.inner()));
-                    debug!("Deploy Expired: {}", full_length_hash);
+                    let hex_deploy_hash = HexFmt(deploy_hash.inner());
+                    info!("Deploy Expired: {:18}", hex_deploy_hash);
+                    debug!("Deploy Expired: {}", hex_deploy_hash);
                 }
                 let res = sqlite_database
                     .save_deploy_expired(
@@ -235,7 +235,7 @@ async fn sse_processor(
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
                             "Already received DeployExpired ({}), logged in event_log",
-                            full_length_hash
+                            HexFmt(deploy_hash.inner())
                         );
                         trace!(?uc_err);
                     }
@@ -251,10 +251,10 @@ async fn sse_processor(
                 block_hash,
                 execution_result,
             } => {
-                let full_length_hash = format!("{}", HexFmt(deploy_hash.inner()));
                 if enable_event_logging {
-                    info!("Deploy Processed: {:18}", HexFmt(deploy_hash.inner()));
-                    debug!("Deploy Processed: {}", full_length_hash);
+                    let hex_deploy_hash = HexFmt(deploy_hash.inner());
+                    info!("Deploy Processed: {:18}", hex_deploy_hash);
+                    debug!("Deploy Processed: {}", hex_deploy_hash);
                 }
                 let deploy_processed = DeployProcessed::new(
                     deploy_hash.clone(),
@@ -288,7 +288,7 @@ async fn sse_processor(
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
                             "Already received DeployProcessed ({}), logged in event_log",
-                            full_length_hash
+                            HexFmt(deploy_hash.inner())
                         );
                         trace!(?uc_err);
                     }
