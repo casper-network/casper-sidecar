@@ -1,6 +1,6 @@
 use sea_query::{
     error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -21,8 +21,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(
             ColumnDef::new(DeployAccepted::DeployHash)
                 .string()
-                .not_null()
-                .primary_key(),
+                .not_null(),
         )
         .col(
             ColumnDef::new(DeployAccepted::Raw)
@@ -33,6 +32,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
             ColumnDef::new(DeployAccepted::EventLogId)
                 .big_unsigned()
                 .not_null(),
+        )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeployAccepted")
+                .col(DeployAccepted::DeployHash),
         )
         .foreign_key(
             ForeignKey::create()

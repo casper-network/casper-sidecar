@@ -1,4 +1,3 @@
-use anyhow::Error;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +24,7 @@ pub trait DatabaseWriter {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a DeployAccepted event to the database.
     ///
     /// * `deploy_accepted`: the [DeployAccepted] from the `data` field.
@@ -36,7 +35,7 @@ pub trait DatabaseWriter {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a DeployProcessed event to the database.
     ///
     /// * `deploy_accepted`: the [DeployProcessed] from the `data` field.
@@ -47,7 +46,7 @@ pub trait DatabaseWriter {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a DeployExpired event to the database.
     ///
     /// * `deploy_expired`: the [DeployExpired] from the `data` field.
@@ -58,7 +57,7 @@ pub trait DatabaseWriter {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a Fault event to the database.
     ///
     /// * `fault`: the [Fault] from the `data` field.
@@ -69,7 +68,7 @@ pub trait DatabaseWriter {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a FinalitySignature event to the database.
     ///
     /// * `finality_signature`: the [FinalitySignature] from the `data` field.
@@ -80,7 +79,7 @@ pub trait DatabaseWriter {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
     /// Save a Step event to the database.
     ///
     /// * `step`: the [Step] from the `data` field.
@@ -91,7 +90,79 @@ pub trait DatabaseWriter {
         step: Step,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, Error>;
+    ) -> Result<usize, DatabaseWriteError>;
+}
+
+#[derive(Debug)]
+pub struct UniqueConstraintError {
+    pub table: String,
+    pub error: sqlx::Error,
+}
+
+/// The database failed to insert a record(s).
+#[derive(Debug)]
+pub enum DatabaseWriteError {
+    /// The insert failed prior to execution because the data could not be serialised.
+    Serialisation(serde_json::Error),
+    /// The insert failed prior to execution because the SQL could not be constructed.
+    SqlConstruction(sea_query::error::Error),
+    /// The insert was rejected by the database because it would break a unique constraint.
+    UniqueConstraint(UniqueConstraintError),
+    /// The insert was rejected by the database.
+    Database(sqlx::Error),
+    /// An error occurred somewhere unexpected.
+    Unhandled(anyhow::Error),
+}
+
+impl ToString for DatabaseWriteError {
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+impl From<serde_json::Error> for DatabaseWriteError {
+    fn from(serde_err: serde_json::Error) -> Self {
+        Self::Serialisation(serde_err)
+    }
+}
+
+impl From<sea_query::error::Error> for DatabaseWriteError {
+    fn from(sea_query_err: sea_query::error::Error) -> Self {
+        Self::SqlConstruction(sea_query_err)
+    }
+}
+
+impl From<sqlx::Error> for DatabaseWriteError {
+    fn from(sqlx_err: sqlx::Error) -> Self {
+        if let Some(db_err) = sqlx_err.as_database_error() {
+            if let Some(code) = db_err.code() {
+                match code.as_ref() {
+                    "1555" | "2067" => {
+                        // The message looks something like this:
+                        // UNIQUE constraint failed: DeployProcessed.deploy_hash
+
+                        let table = db_err.message().split(':').collect::<Vec<&str>>()[1]
+                            .split('.')
+                            .collect::<Vec<&str>>()[0]
+                            .trim()
+                            .to_string();
+                        return Self::UniqueConstraint(UniqueConstraintError {
+                            table,
+                            error: sqlx_err,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Self::Database(sqlx_err)
+    }
+}
+
+impl From<anyhow::Error> for DatabaseWriteError {
+    fn from(anyhow_err: anyhow::Error) -> Self {
+        Self::Unhandled(anyhow_err)
+    }
 }
 
 /// Describes a reference for the reading interface of an 'Event Store' database.
@@ -100,30 +171,28 @@ pub trait DatabaseWriter {
 #[async_trait]
 pub trait DatabaseReader {
     /// Returns the latest [BlockAdded] by height from the database.
-    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseRequestError>;
+    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided [height].
-    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseRequestError>;
+    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
-    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseRequestError>;
+    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns the aggregate of the latest deploy's events.
-    async fn get_latest_deploy_aggregate(
-        &self,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
-    ) -> Result<AggregateDeployInfo, DatabaseRequestError>;
+    ) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     async fn get_deploy_accepted_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployAccepted, DatabaseRequestError>;
+    ) -> Result<DeployAccepted, DatabaseReadError>;
     /// Returns the [DeployProcessed] corresponding to the given hex-encoded `hash`
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
-    ) -> Result<DeployProcessed, DatabaseRequestError>;
+    ) -> Result<DeployProcessed, DatabaseReadError>;
     /// Returns a boolean representing the expired state of the deploy corresponding to the given hex-encoded `hash`.
     ///
     /// * If there is a record present it will return `true` meaning the [Deploy] has expired.
@@ -131,36 +200,36 @@ pub trait DatabaseReader {
     /// This is because the lack of a record does not definitely mean it hasn't expired. The deploy could have expired
     /// prior to sidecar's start point. Calling [get_deploy_aggregate_by_hash] can help in this case, if there is a [DeployAccepted]
     /// without a corresponding [DeployExpired] then you can assert that it truly has not expired.
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseRequestError>;
+    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError>;
     /// Returns the [Step] event for the given era.
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseRequestError>;
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Vec<Fault>, DatabaseRequestError>;
+    ) -> Result<Vec<Fault>, DatabaseReadError>;
     /// Returns all [Fault]s that occurred in the given [era]
-    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseRequestError>;
+    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError>;
     /// Returns all [FinalitySignature](casper_node::types::FinalitySignature)s for the given hex-encoded `block_hash`.
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
-    ) -> Result<Vec<FinSig>, DatabaseRequestError>;
+    ) -> Result<Vec<FinSig>, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.
 #[derive(Debug)]
-pub enum DatabaseRequestError {
+pub enum DatabaseReadError {
     /// The requested record was not present in the database.
     NotFound,
     /// An error occurred serialising or deserialising data from the database.
-    Serialisation(Error),
+    Serialisation(serde_json::Error),
     /// An error occurred somewhere unexpected.
-    Unhandled(Error),
+    Unhandled(anyhow::Error),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AggregateDeployInfo {
+pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
@@ -175,10 +244,10 @@ mod testing {
 
     use rand::Rng;
 
-    use super::AggregateDeployInfo;
+    use super::DeployAggregate;
     use crate::types::sse_events::{DeployAccepted, DeployProcessed};
 
-    impl AggregateDeployInfo {
+    impl DeployAggregate {
         pub fn random(test_rng: &mut TestRng, with_hash: Option<String>) -> Self {
             let deploy_accepted = DeployAccepted::random(test_rng);
 
@@ -186,7 +255,7 @@ mod testing {
 
             match test_rng.gen_range(0..=2) {
                 // Accepted
-                0 => AggregateDeployInfo {
+                0 => DeployAggregate {
                     deploy_hash,
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
@@ -202,7 +271,7 @@ mod testing {
                         )),
                     );
 
-                    AggregateDeployInfo {
+                    DeployAggregate {
                         deploy_hash,
                         deploy_accepted: Some(deploy_accepted),
                         deploy_processed: Some(deploy_processed),
@@ -210,7 +279,7 @@ mod testing {
                     }
                 }
                 // Accepted -> Expired
-                2 => AggregateDeployInfo {
+                2 => DeployAggregate {
                     deploy_hash,
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,

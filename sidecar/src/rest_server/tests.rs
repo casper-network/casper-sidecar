@@ -6,7 +6,7 @@ use casper_node::types::FinalitySignature as FinSig;
 use super::filters;
 use crate::{
     testing::mock_database::MockDatabase,
-    types::{database::AggregateDeployInfo, sse_events::*},
+    types::{database::DeployAggregate, sse_events::*},
 };
 //
 // struct IdentifiersForStoredEvents {
@@ -160,7 +160,7 @@ async fn deploy_root_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    serde_json::from_slice::<AggregateDeployInfo>(&body)
+    serde_json::from_slice::<DeployAggregate>(&body)
         .expect("Error parsing AggregateDeployInfo from response");
 }
 
@@ -177,7 +177,7 @@ async fn deploy_by_hash_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    serde_json::from_slice::<AggregateDeployInfo>(&body)
+    serde_json::from_slice::<DeployAggregate>(&body)
         .expect("Error parsing AggregateDeployInfo from response");
 }
 
