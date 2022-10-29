@@ -12,17 +12,12 @@ use tempfile::tempdir;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Instant;
 
-const ACCEPTABLE_LAG_IN_MILLIS: u128 = 1000;
+const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
-    performance_check(
-        EventStreamScenario::Realistic,
-        120,
-        ACCEPTABLE_LAG_IN_MILLIS,
-    )
-    .await;
+    performance_check(EventStreamScenario::Realistic, 120, ACCEPTABLE_LATENCY).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -31,7 +26,7 @@ async fn check_latency_on_frequent_step_scenario() {
     performance_check(
         EventStreamScenario::LoadTestingStep(2),
         60,
-        ACCEPTABLE_LAG_IN_MILLIS,
+        ACCEPTABLE_LATENCY,
     )
     .await;
 }
@@ -42,7 +37,7 @@ async fn check_latency_on_fast_bursts_of_deploys_scenario() {
     performance_check(
         EventStreamScenario::LoadTestingDeploy(20),
         60,
-        ACCEPTABLE_LAG_IN_MILLIS,
+        ACCEPTABLE_LATENCY,
     )
     .await;
 }
@@ -134,7 +129,7 @@ impl TimestampedEvent {
 async fn performance_check(
     scenario: EventStreamScenario,
     duration_in_seconds: u64,
-    acceptable_latency_in_millis: u128,
+    acceptable_latency: Duration,
 ) {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -206,56 +201,60 @@ async fn performance_check(
         EventLatency::new(
             EventType::BlockAdded,
             num_block_added_received,
-            average_latency_for_block_added,
+            average_latency_for_block_added.as_millis(),
         ),
         EventLatency::new(
             EventType::DeployAccepted,
             num_deploy_accepted_received,
-            average_latency_for_deploy_accepted,
+            average_latency_for_deploy_accepted.as_millis(),
         ),
         EventLatency::new(
             EventType::DeployProcessed,
             num_deploy_processed_received,
-            average_latency_for_deploy_processed,
+            average_latency_for_deploy_processed.as_millis(),
         ),
         EventLatency::new(
             EventType::DeployExpired,
             num_deploy_expired_received,
-            average_latency_for_deploy_expired,
+            average_latency_for_deploy_expired.as_millis(),
         ),
-        EventLatency::new(EventType::Step, num_step_received, average_latency_for_step),
+        EventLatency::new(
+            EventType::Step,
+            num_step_received,
+            average_latency_for_step.as_millis(),
+        ),
         EventLatency::new(
             EventType::Fault,
             num_fault_received,
-            average_latency_for_fault,
+            average_latency_for_fault.as_millis(),
         ),
         EventLatency::new(
             EventType::FinalitySignature,
             num_finality_signatures_received,
-            average_latency_for_finality_signatures,
+            average_latency_for_finality_signatures.as_millis(),
         ),
     ];
 
     println!("{}", tabled::Table::new(average_latencies));
 
-    assert!(average_latency_for_block_added < acceptable_latency_in_millis);
-    assert!(average_latency_for_deploy_accepted < acceptable_latency_in_millis);
-    assert!(average_latency_for_deploy_expired < acceptable_latency_in_millis);
-    assert!(average_latency_for_deploy_processed < acceptable_latency_in_millis);
-    assert!(average_latency_for_fault < acceptable_latency_in_millis);
-    assert!(average_latency_for_finality_signatures < acceptable_latency_in_millis);
-    assert!(average_latency_for_step < acceptable_latency_in_millis);
+    assert!(average_latency_for_block_added < acceptable_latency);
+    assert!(average_latency_for_deploy_accepted < acceptable_latency);
+    assert!(average_latency_for_deploy_expired < acceptable_latency);
+    assert!(average_latency_for_deploy_processed < acceptable_latency);
+    assert!(average_latency_for_fault < acceptable_latency);
+    assert!(average_latency_for_finality_signatures < acceptable_latency);
+    assert!(average_latency_for_step < acceptable_latency);
 }
 
 /// Returns the average latency in millis and the number of events averaged over
 fn calculate_average_latency_for_type(
     event_type: EventType,
     combined_latencies: &mut Vec<EventLatency>,
-) -> (u128, u16) {
+) -> (Duration, u16) {
     let filtered_latencies = extract_latencies_by_type(event_type, combined_latencies);
 
     if filtered_latencies.is_empty() {
-        return (0, 0);
+        return (Duration::from_millis(0), 0);
     }
 
     let average = filtered_latencies
@@ -265,7 +264,10 @@ fn calculate_average_latency_for_type(
         .checked_div(filtered_latencies.len() as u128)
         .expect("Should have calculated average latency for BlockAdded events");
 
-    (average, filtered_latencies.len() as u16)
+    (
+        Duration::from_millis(average as u64),
+        filtered_latencies.len() as u16,
+    )
 }
 
 fn extract_latencies_by_type(
