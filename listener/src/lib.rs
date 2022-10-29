@@ -2,9 +2,6 @@ mod utils;
 
 use std::{fmt::Debug, time::Duration};
 
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
-
 use anyhow::Error;
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
@@ -13,7 +10,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_stream::{Stream, StreamExt};
 use tracing::{error, info, warn};
 
-use utils::resolve_address;
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
+
+use crate::utils::resolve_address;
 
 const MAIN_FILTER_PATH: &str = "main";
 const DEPLOYS_FILTER_PATH: &str = "deploys";
