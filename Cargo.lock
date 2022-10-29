@@ -301,6 +301,7 @@ dependencies = [
  "casper-event-types",
  "casper-types",
  "eventsource-stream",
+ "futures",
  "reqwest",
  "serde",
  "serde_json",

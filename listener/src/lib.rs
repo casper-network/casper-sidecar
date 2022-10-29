@@ -5,9 +5,10 @@ use std::{fmt::Debug, time::Duration};
 use anyhow::Error;
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
+use futures::StreamExt;
 use reqwest::Client;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio_stream::{Stream, StreamExt};
+use tokio_stream::Stream;
 use tracing::{error, info, warn};
 
 use casper_event_types::SseData;
