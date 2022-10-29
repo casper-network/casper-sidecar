@@ -32,16 +32,11 @@ pub async fn run_server(
 
     let warp_service = warp::service(api);
     let tower_service = ServiceBuilder::new()
-        .layer(ConcurrencyLimitLayer::new(
-            config.max_concurrent_requests as usize,
-        ))
-        .layer(RateLimitLayer::new(
+        .concurrency_limit(config.max_concurrent_requests as usize)
+        .rate_limit(
             config.max_requests_per_second as u64,
             Duration::from_secs(1),
-        ))
-        .timeout(Duration::from_secs(
-            config.request_timeout_in_seconds as u64,
-        ))
+        )
         .service(warp_service);
 
     Server::from_tcp(listener)?
