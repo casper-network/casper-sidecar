@@ -1,5 +1,3 @@
-use casper_types::AsymmetricType;
-
 use anyhow::Context;
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -7,6 +5,8 @@ use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
+
+use casper_types::AsymmetricType;
 
 use super::SqliteDatabase;
 use crate::{

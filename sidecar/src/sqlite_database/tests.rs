@@ -1,9 +1,9 @@
-use casper_types::testing::TestRng;
-use casper_types::{AsymmetricType, EraId};
-
 use rand::Rng;
 use sea_query::{Query, SqliteQueryBuilder};
 use sqlx::Row;
+
+use casper_types::testing::TestRng;
+use casper_types::{AsymmetricType, EraId};
 
 use super::SqliteDatabase;
 use crate::{

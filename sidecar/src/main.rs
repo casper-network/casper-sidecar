@@ -11,14 +11,14 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use casper_event_listener::EventListener;
-use casper_event_types::SseData;
-
 use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{debug, info, trace, warn};
+
+use casper_event_listener::EventListener;
+use casper_event_types::SseData;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},

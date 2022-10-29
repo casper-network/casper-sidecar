@@ -1,6 +1,3 @@
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
-
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
@@ -9,6 +6,9 @@ use tokio::{
 };
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
+
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
 
 use super::{
     config::Config,
