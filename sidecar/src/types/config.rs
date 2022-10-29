@@ -40,6 +40,9 @@ pub struct SqliteConfig {
 #[derive(Clone, Deserialize)]
 pub struct RestServerConfig {
     pub port: u16,
+    pub max_concurrent_requests: u32,
+    pub max_requests_per_second: u32,
+    pub request_timeout_in_seconds: u32,
 }
 
 #[derive(Clone, Deserialize)]

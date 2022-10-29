@@ -85,7 +85,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(
-        config.rest_server.port,
+        config.rest_server.clone(),
         sqlite_database.clone(),
     ));
 
