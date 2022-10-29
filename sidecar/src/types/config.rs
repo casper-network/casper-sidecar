@@ -13,6 +13,8 @@ pub struct Config {
 pub struct NodeConnection {
     pub ip_address: String,
     pub sse_port: u16,
+    pub max_retries: u8,
+    pub delay_between_retries_in_seconds: u8,
 }
 
 #[derive(Clone, Deserialize)]
