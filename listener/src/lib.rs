@@ -2,9 +2,6 @@ mod utils;
 
 use std::{fmt::Debug, time::Duration};
 
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
-
 use anyhow::Error;
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
@@ -14,7 +11,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_stream::Stream;
 use tracing::{error, info, warn};
 
-use utils::resolve_address;
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
+
+use crate::utils::resolve_address;
 
 const MAIN_FILTER_PATH: &str = "main";
 const DEPLOYS_FILTER_PATH: &str = "deploys";
@@ -252,12 +252,12 @@ async fn connect(
     Ok((api_version, event_stream))
 }
 
-async fn parse_api_version<EvtStr, E>(
-    mut stream: EventStream<EvtStr>,
-) -> Result<(ProtocolVersion, EventStream<EvtStr>), Error>
+async fn parse_api_version<S, E>(
+    mut stream: EventStream<S>,
+) -> Result<(ProtocolVersion, EventStream<S>), Error>
 where
     E: Debug,
-    EvtStr: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
+    S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
 {
     match stream.next().await {
         None => Err(Error::msg("First event was empty")),

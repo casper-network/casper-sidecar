@@ -1,8 +1,8 @@
-use casper_node::types::{BlockHash, FinalitySignature as FinSig};
-use casper_types::testing::TestRng;
-
 use async_trait::async_trait;
 use rand::Rng;
+
+use casper_node::types::{BlockHash, FinalitySignature as FinSig};
+use casper_types::testing::TestRng;
 
 use crate::types::{
     database::{DatabaseReadError, DatabaseReader, DeployAggregate},
