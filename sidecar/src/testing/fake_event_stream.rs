@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 use tempfile::TempDir;
@@ -20,13 +21,25 @@ pub enum EventStreamScenario {
     LoadTestingDeploy(NumberOfDeployEventsInBurst),
 }
 
+impl Display for EventStreamScenario {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventStreamScenario::Realistic => write!(f, "Realistic"),
+            EventStreamScenario::LoadTestingStep(_) => {
+                write!(f, "Load Testing [Step]")
+            }
+            EventStreamScenario::LoadTestingDeploy(_) => {
+                write!(f, "Load Testing [Deploy]")
+            }
+        }
+    }
+}
+
 pub async fn spin_up_fake_event_stream(
     port: u16,
     scenario: EventStreamScenario,
     duration_in_seconds: u64,
 ) {
-    let start = Instant::now();
-
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
     let event_stream_server = EventStreamServer::new(
@@ -50,9 +63,8 @@ pub async fn spin_up_fake_event_stream(
     }
 
     println!(
-        "Fake Event Stream(:{}) shutdown after {}s",
-        port,
-        start.elapsed().as_secs()
+        "Fake Event Stream(:{}) :: Scenario: {} :: Complete",
+        port, scenario
     );
 }
 

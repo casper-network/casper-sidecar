@@ -4,7 +4,7 @@ use std::{
 };
 
 use derive_new::new;
-use tabled::Tabled;
+use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
@@ -53,10 +53,9 @@ struct TimestampedEvent {
     timestamp: Instant,
 }
 
-#[derive(Tabled, new)]
+#[derive(new)]
 struct EventLatency {
     event: EventType,
-    received: u16,
     latency_millis: u128,
 }
 
@@ -125,10 +124,31 @@ impl TimestampedEvent {
         self.timestamp.duration_since(other.timestamp)
     }
 
-    // Underscored _other as clippy was viewing it as unused
-    fn matches(&self, _other: &Self) -> bool {
-        matches!(self, _other) && self.identifier() == _other.identifier()
+    fn matches(&self, other: &Self) -> bool {
+        match (&self.event, &other.event) {
+            (SseData::ApiVersion(_), SseData::ApiVersion(_))
+            | (SseData::BlockAdded { .. }, SseData::BlockAdded { .. })
+            | (SseData::DeployAccepted { .. }, SseData::DeployAccepted { .. })
+            | (SseData::DeployProcessed { .. }, SseData::DeployProcessed { .. })
+            | (SseData::DeployExpired { .. }, SseData::DeployExpired { .. })
+            | (SseData::Fault { .. }, SseData::Fault { .. })
+            | (SseData::FinalitySignature(_), SseData::FinalitySignature(_))
+            | (SseData::Step { .. }, SseData::Step { .. })
+            | (SseData::Shutdown, SseData::Shutdown) => (),
+            _ => return false,
+        }
+        self.identifier() == other.identifier()
     }
+}
+
+#[derive(new, Tabled)]
+struct Results {
+    #[tabled(rename = "Event Type")]
+    event_type: EventType,
+    #[tabled(rename = "Avg. Latency (ms)")]
+    average_latency: u128,
+    #[tabled(rename = "Total Received")]
+    total_received: u16,
 }
 
 async fn performance_check(
@@ -174,7 +194,6 @@ async fn performance_check(
             if event_from_source.matches(&events_from_sidecar[i]) {
                 event_latencies.push(EventLatency::new(
                     event_from_source.event_type(),
-                    0,
                     events_from_sidecar[i]
                         .time_since(&event_from_source)
                         .as_millis(),
@@ -202,45 +221,66 @@ async fn performance_check(
     let (average_latency_for_fault, num_fault_received) =
         calculate_average_latency_for_type(EventType::Fault, &mut event_latencies);
 
-    let average_latencies = vec![
-        EventLatency::new(
+    let results = vec![
+        Results::new(
             EventType::BlockAdded,
-            num_block_added_received,
             average_latency_for_block_added.as_millis(),
+            num_block_added_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::DeployAccepted,
-            num_deploy_accepted_received,
             average_latency_for_deploy_accepted.as_millis(),
+            num_deploy_accepted_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::DeployProcessed,
-            num_deploy_processed_received,
             average_latency_for_deploy_processed.as_millis(),
+            num_deploy_processed_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::DeployExpired,
-            num_deploy_expired_received,
             average_latency_for_deploy_expired.as_millis(),
+            num_deploy_expired_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::Step,
-            num_step_received,
             average_latency_for_step.as_millis(),
+            num_step_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::Fault,
-            num_fault_received,
             average_latency_for_fault.as_millis(),
+            num_fault_received,
         ),
-        EventLatency::new(
+        Results::new(
             EventType::FinalitySignature,
-            num_finality_signatures_received,
             average_latency_for_finality_signatures.as_millis(),
+            num_finality_signatures_received,
         ),
+        // This dummy entry is to create another row in the table - it is then overwritten by a span
+        // containing the overall duration of the test.
+        Results::new(EventType::ApiVersion, u128::default(), u16::default()),
     ];
 
-    println!("{}", tabled::Table::new(average_latencies));
+    let total_rows = results.len();
+
+    let horizontal_span = |row, col, span| {
+        Cell(row, col)
+            .modify()
+            .with(Alignment::center())
+            .with(Span::column(span))
+    };
+    let results_table = results
+        .table()
+        .with(
+            horizontal_span(total_rows, 0, 3)
+                .with(format!("\nTest Duration {}s", duration_in_seconds)),
+        )
+        .with(Style::rounded())
+        .with(Style::correct_spans())
+        .to_string();
+
+    println!("{}", results_table);
 
     assert!(average_latency_for_block_added < acceptable_latency);
     assert!(average_latency_for_deploy_accepted < acceptable_latency);
