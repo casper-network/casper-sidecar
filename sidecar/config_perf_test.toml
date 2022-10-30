@@ -1,15 +1,13 @@
 [connection]
 node_connections = [
     { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_in_seconds = 5, allow_partial_connection = false, enable_logging = true },
-    { ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries_in_seconds = 5, allow_partial_connection = false, enable_logging = false },
-    { ip_address = "127.0.0.1", sse_port = 18103, max_retries = 5, delay_between_retries_in_seconds = 5, allow_partial_connection = false, enable_logging = false }
 ]
 
 [storage]
-storage_path = "./target/storage"
+storage_path = "./target/test_storage"
 
 [storage.sqlite_config]
-file_name = "sqlite_database.db3"
+file_name = "test_sqlite_database.db3"
 max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
