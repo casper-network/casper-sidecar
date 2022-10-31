@@ -2,7 +2,7 @@
 
 ## Summary of Purpose
 
-The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribes to monitor the event stream through the Sidecar, while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
+The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribers to monitor the event stream through the Sidecar, while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
@@ -26,7 +26,7 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 * gcc
 * g++
 
-## Setting Up *Config.toml*
+## Setting Up *Example_config.toml*
 
 The file *config.toml* in the base *event-sidecar* directory contains configuration details for your instance of the Sidecar application. These must be adjusted prior to running the application.
 
@@ -79,7 +79,7 @@ This section includes configurations for the `sqlite` database.
 ```
 [rest_server]
 ip_address = "127.0.0.1"
-port = 17777
+port = 18888
 ```
 
 This information determines outbound connection criteria for the Sidecar's `rest_server`. `17777` is the default, but operators are free to choose their own port as needed.
@@ -101,15 +101,23 @@ Additionally, there are the following two options:
 
 ## Unit Testing the Sidecar Application
 
-You can run included unit and integration tests with the following command:
+You can run included unit tests with the following command:
 
 ```
 cargo test
 ```
 
+You can also run the integration and performance tests using the following command:
+
+```
+cargo test -- --include-ignored
+```
+
+This test will take longer, generally about two minutes.
+
 ## Running the Sidecar
 
-Once you are happy with the configuration you can (build and) run it using Cargo:
+Once you are happy with the configuration you can run it using Cargo:
 
 ```shell
 cargo run
@@ -123,7 +131,7 @@ The following command will run the sidecar application with the `INFO` log level
 RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
 ```
 
-The log levels, in order of verbosity, are:
+The log levels, listed in order of increasing verbosity, are:
 
 * `ERROR`
 * `WARN`
