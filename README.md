@@ -42,10 +42,11 @@ node_connections = [
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
-* `ip_address` - The IP address of the note to monitor.
+* `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port, `9999` by default.
 * `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to reconnect.
-* `delay_between_retries` - The delay between attempts to connect to the node, in seconds.
+* `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
+* `allow_partial_connection` - Determing whether the sidecar will allow a partial connection to this node.
 * `enable_event_logging` - This enables logging of events from the node in question.
 
 ### Storage
@@ -61,8 +62,7 @@ The directory that stores the sqlite database for the Sidecar and the SSE cache.
 ```
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
-max_write_connections = 10
-max_read_connections = 100
+max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 ```
@@ -70,23 +70,23 @@ wal_autocheckpointing_interval = 1000
 This section includes configurations for the `sqlite` database.
 
 * `file_name` - The database file path.
-* `max_write_connections` - The maximum number of connections with `write` access to the database. (Should generally be left as is.)
-* `max_read_connections` - The maximum number of connections with `read` access to the database. (Should generally be left as is.)
+* `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
 ### Rest & Event Stream Criteria
 
 ```
 [rest_server]
-ip_address = "127.0.0.1"
 port = 18888
+max_concurrent_requests = 50
+max_requests_per_second = 50
+request_timeout_in_seconds = 10
 ```
 
-This information determines outbound connection criteria for the Sidecar's `rest_server`. `17777` is the default, but operators are free to choose their own port as needed.
+This information determines outbound connection criteria for the Sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 
 ```
 [event_stream_server]
-ip_address = "127.0.0.1"
 port = 19999
 max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
