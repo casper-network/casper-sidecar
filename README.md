@@ -26,10 +26,9 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 * gcc
 * g++
 
-## Setting Up *Example_config.toml*
+## Configuration
 
-The file *config.toml* in the base *event-sidecar* directory contains configuration details for your instance of the Sidecar application. These must be adjusted prior to running the application.
-
+The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted prior to running the application.
 
 ### Node Connections
 
@@ -117,8 +116,6 @@ You can also run the integration and performance tests using the following comma
 ```
 cargo test -- --include-ignored
 ```
-
-This test will take longer, generally about two minutes.
 
 ## Running the Sidecar
 
