@@ -98,7 +98,6 @@ pub struct RestServerConfig {
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
-    pub request_timeout_in_seconds: u32,
 }
 
 #[cfg(test)]
@@ -108,7 +107,6 @@ impl Default for RestServerConfig {
             port: 17777,
             max_concurrent_requests: 50,
             max_requests_per_second: 50,
-            request_timeout_in_seconds: 20,
         }
     }
 }
