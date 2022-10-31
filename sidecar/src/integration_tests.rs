@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;

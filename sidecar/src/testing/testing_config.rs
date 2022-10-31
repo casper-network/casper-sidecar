@@ -1,5 +1,3 @@
-use std::{fs, path::Path};
-
 use tempfile::TempDir;
 
 use crate::types::config::Config;
