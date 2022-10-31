@@ -19,6 +19,7 @@ use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, trace, warn};
 
 use casper_event_listener::EventListener;
@@ -112,7 +113,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
 
     // Task to manage incoming events from all three filters
-    let listening_task_handle = async move {
+    let listening_task_handle = tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
 
         let connection_configs = config.connection.node_connections.clone();
@@ -133,20 +134,29 @@ async fn run(config: Config) -> Result<(), Error> {
         let _ = join_all(join_handles).await;
 
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
-    };
+    });
 
-    tokio::spawn(async move {
+    let event_broadcasting_handle = tokio::spawn(async move {
         while let Some(sse_data) = sse_data_receiver.recv().await {
             event_stream_server.broadcast(sse_data);
         }
+        Err::<(), Error>(Error::msg("Event broadcasting finished"))
     });
 
-    tokio::select! {
-        result = rest_server_handle => { warn!(?result, "REST server shutting down") }
-        result = listening_task_handle => { warn!(?result, "SSE processing ended") }
-    }
+    tokio::try_join!(
+        flatten_handle(event_broadcasting_handle),
+        flatten_handle(rest_server_handle),
+        flatten_handle(listening_task_handle)
+    )
+    .map(|_| Ok(()))?
+}
 
-    Ok(())
+async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Error> {
+    match handle.await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(err)) => Err(err),
+        Err(join_err) => Err(Error::from(join_err)),
+    }
 }
 
 async fn sse_processor(

@@ -25,12 +25,14 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
         30,
     ));
 
-    run(testing_config.inner())
+    let shutdown_err = run(testing_config.inner())
         .await
-        .expect("Error running sidecar");
+        .expect_err("Sidecar should return an Err message on shutdown");
 
-    // Allows the event stream server to finish caching the index before tempdir tries to remove the dir
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        shutdown_err.to_string(),
+        "Connected node(s) are unavailable"
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
