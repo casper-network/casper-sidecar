@@ -109,20 +109,3 @@ impl TestingConfig {
         self.config.event_stream_server.port
     }
 }
-
-// Despite using TempDir I found that sometimes the directory wasn't being removed at the end of the tests.
-// To that end I've added a manual check and removal here.
-impl Drop for TestingConfig {
-    fn drop(&mut self) {
-        let config = self.inner();
-        let path_to_temp_dir = Path::new(&config.storage.storage_path);
-        if path_to_temp_dir.exists() {
-            let _ = fs::remove_dir_all(path_to_temp_dir).map_err(|fs_err| {
-                println!(
-                    "Failed to remove temporary directory during Drop of TestingConfig:\n{:?}",
-                    fs_err
-                )
-            });
-        }
-    }
-}

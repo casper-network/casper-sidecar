@@ -40,6 +40,8 @@ pub async fn spin_up_fake_event_stream(
     scenario: EventStreamScenario,
     duration_in_seconds: u64,
 ) {
+    let start = Instant::now();
+
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
     let event_stream_server = EventStreamServer::new(
@@ -63,8 +65,10 @@ pub async fn spin_up_fake_event_stream(
     }
 
     println!(
-        "Fake Event Stream(:{}) :: Scenario: {} :: Complete",
-        port, scenario
+        "Fake Event Stream(:{}) :: Scenario: {} :: Completed ({}s)",
+        port,
+        scenario,
+        start.elapsed().as_secs()
     );
 }
 

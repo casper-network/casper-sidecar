@@ -28,7 +28,7 @@ impl FakeDatabase {
     }
 
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
-    pub async fn populate_with_events(
+    pub(crate) async fn populate_with_events(
         &self,
     ) -> Result<IdentifiersForStoredEvents, DatabaseWriteError> {
         let mut rng = TestRng::new();

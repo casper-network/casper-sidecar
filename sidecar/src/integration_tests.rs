@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
@@ -28,6 +28,9 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     run(testing_config.inner())
         .await
         .expect("Error running sidecar");
+
+    // Allows the event stream server to finish caching the index before tempdir tries to remove the dir
+    tokio::time::sleep(Duration::from_secs(1)).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
