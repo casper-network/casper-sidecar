@@ -42,7 +42,10 @@ impl TestingConfig {
     /// Specify the port that the sidecar should connect to.
     /// By default it is set to `18101` - the SSE port of a node in the default NCTL network.
     #[allow(unused)]
-    pub(crate) fn set_connection_port(mut self, port: u16) -> Self {
+    pub(crate) fn set_connection_address(mut self, ip_address: Option<String>, port: u16) -> Self {
+        if let Some(address) = ip_address {
+            self.config.connection.node_connections[0].ip_address = address;
+        }
         self.config.connection.node_connections[0].sse_port = port;
         self
     }

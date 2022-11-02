@@ -2,23 +2,12 @@ use serde::Deserialize;
 
 // This struct is used to parse the EXAMPLE_CONFIG.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub struct Config {
     pub connection: ConnectionConfig,
     pub storage: StorageConfig,
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
-}
-
-#[cfg(test)]
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            connection: ConnectionConfig::default(),
-            storage: StorageConfig::default(),
-            rest_server: RestServerConfig::default(),
-            event_stream_server: EventStreamServerConfig::default(),
-        }
-    }
 }
 
 #[derive(Clone, Deserialize)]

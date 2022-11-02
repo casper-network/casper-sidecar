@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{
     fmt::{Display, Formatter},
     time::Duration,
@@ -10,6 +11,7 @@ use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use casper_event_listener::SseEvent;
 use casper_types::AsymmetricType;
+use colored::Colorize;
 
 use super::*;
 use crate::testing::{
@@ -22,7 +24,12 @@ const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
-    performance_check(EventStreamScenario::Realistic, 120, ACCEPTABLE_LATENCY).await;
+    performance_check(
+        EventStreamScenario::Realistic,
+        Duration::from_secs(120),
+        ACCEPTABLE_LATENCY,
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -30,7 +37,7 @@ async fn check_latency_on_realistic_scenario() {
 async fn check_latency_on_frequent_step_scenario() {
     performance_check(
         EventStreamScenario::LoadTestingStep(2),
-        60,
+        Duration::from_secs(60),
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -41,7 +48,19 @@ async fn check_latency_on_frequent_step_scenario() {
 async fn check_latency_on_fast_bursts_of_deploys_scenario() {
     performance_check(
         EventStreamScenario::LoadTestingDeploy(20),
-        60,
+        Duration::from_secs(60),
+        ACCEPTABLE_LATENCY,
+    )
+    .await;
+}
+
+// This can be uncommented to use as a live test against a node in a real-world network i.e. Mainnet.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn check_latency_against_live_node() {
+    live_performance_check(
+        "3.141.144.131".to_string(),
+        9999,
+        Duration::from_secs(60 * 60 * 2),
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -145,15 +164,24 @@ impl TimestampedEvent {
 struct Results {
     #[tabled(rename = "Event Type")]
     event_type: EventType,
-    #[tabled(rename = "Avg. Latency (ms)")]
+    #[tabled(rename = "Avg. Latency (ms)", display_with = "highlight_slow_latency")]
     average_latency: u128,
     #[tabled(rename = "Total Received")]
     total_received: u16,
 }
 
+fn highlight_slow_latency(latency: &u128) -> String {
+    let millis = latency.to_owned();
+    if millis < ACCEPTABLE_LATENCY.as_millis() {
+        millis.to_string()
+    } else {
+        millis.to_string().red().to_string()
+    }
+}
+
 async fn performance_check(
     scenario: EventStreamScenario,
-    duration_in_seconds: u64,
+    duration: Duration,
     acceptable_latency: Duration,
 ) {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
@@ -162,7 +190,7 @@ async fn performance_check(
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),
         scenario,
-        duration_in_seconds,
+        duration,
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -177,16 +205,233 @@ async fn performance_check(
     let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
     let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
 
-    let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver));
+    let source_task_handle =
+        tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
 
-    let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(sidecar_event_receiver));
+    let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
+        sidecar_event_receiver,
+        None,
+    ));
 
     let (source_task_result, sidecar_task_result) =
         tokio::join!(source_task_handle, sidecar_task_handle);
 
     let events_from_source = source_task_result.expect("Error recording events from source");
-    let mut events_from_sidecar = sidecar_task_result.expect("Error recording events from sidecar");
+    let events_from_sidecar = sidecar_task_result.expect("Error recording events from sidecar");
 
+    let event_latencies = compare_events_collect_latencies(events_from_source, events_from_sidecar);
+
+    assert!(
+        !event_latencies.is_empty(),
+        "Should have compiled a list of event latencies - events may not have been received at all"
+    );
+
+    let event_types_ordered_for_efficiency = vec![
+        EventType::FinalitySignature,
+        EventType::DeployAccepted,
+        EventType::DeployProcessed,
+        EventType::BlockAdded,
+        EventType::Step,
+        EventType::DeployExpired,
+        EventType::Fault,
+    ];
+
+    let (average_latencies, number_of_events_received) =
+        calculate_average_latencies(event_latencies, event_types_ordered_for_efficiency);
+
+    let results = create_results_from_data(&average_latencies, number_of_events_received);
+
+    let results_table = build_table_from_results(results, duration);
+
+    println!("{}", results_table);
+
+    check_latencies_are_acceptable(average_latencies, acceptable_latency);
+}
+
+async fn live_performance_check(
+    ip_address: String,
+    port: u16,
+    duration: Duration,
+    acceptable_latency: Duration,
+) {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config =
+        prepare_config(&temp_storage_dir).set_connection_address(Some(ip_address.clone()), port);
+
+    tokio::spawn(run(testing_config.inner()));
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let source_url = format!("{}:{}", ip_address, port);
+    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
+    let source_event_receiver = source_event_listener.consume_combine_streams().await;
+
+    let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
+    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
+    let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
+
+    let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
+        source_event_receiver,
+        Some(duration),
+    ));
+
+    let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
+        sidecar_event_receiver,
+        Some(duration),
+    ));
+
+    let (source_task_result, sidecar_task_result) =
+        tokio::join!(source_task_handle, sidecar_task_handle);
+
+    let events_from_source = source_task_result.expect("Error recording events from source");
+    let events_from_sidecar = sidecar_task_result.expect("Error recording events from sidecar");
+
+    let event_latencies = compare_events_collect_latencies(events_from_source, events_from_sidecar);
+
+    assert!(
+        !event_latencies.is_empty(),
+        "Should have compiled a list of event latencies - events may not have been received at all"
+    );
+
+    let event_types_ordered_for_efficiency = vec![
+        EventType::FinalitySignature,
+        EventType::DeployAccepted,
+        EventType::DeployProcessed,
+        EventType::BlockAdded,
+        EventType::Step,
+        EventType::DeployExpired,
+        EventType::Fault,
+    ];
+
+    let (average_latencies, number_of_events_received) =
+        calculate_average_latencies(event_latencies, event_types_ordered_for_efficiency);
+
+    let results = create_results_from_data(&average_latencies, number_of_events_received);
+
+    let results_table = build_table_from_results(results, duration);
+
+    println!("{}", results_table);
+
+    check_latencies_are_acceptable(average_latencies, acceptable_latency);
+}
+
+fn check_latencies_are_acceptable(
+    average_latencies: HashMap<String, Duration>,
+    acceptable_latency: Duration,
+) {
+    let event_types = vec![
+        EventType::BlockAdded,
+        EventType::DeployAccepted,
+        EventType::DeployExpired,
+        EventType::DeployProcessed,
+        EventType::Fault,
+        EventType::FinalitySignature,
+        EventType::Step,
+    ];
+
+    for event_type in event_types {
+        let key = event_type.to_string();
+        let average_latency_for_type = average_latencies
+            .get(&key)
+            .unwrap_or_else(|| panic!("Should have retrieved average latency for {}", event_type));
+
+        assert!(
+            average_latency_for_type < &acceptable_latency,
+            "Latency of {} events exceeded acceptable value",
+            event_type
+        )
+    }
+}
+
+fn create_results_from_data(
+    average_latencies: &HashMap<String, Duration>,
+    num_events_received: HashMap<String, u16>,
+) -> Vec<Results> {
+    let event_types_ordered_for_display = vec![
+        EventType::BlockAdded,
+        EventType::DeployAccepted,
+        EventType::DeployExpired,
+        EventType::DeployProcessed,
+        EventType::Fault,
+        EventType::FinalitySignature,
+        EventType::Step,
+    ];
+
+    let mut results = Vec::new();
+
+    for event_type in event_types_ordered_for_display {
+        let key = event_type.to_string();
+        let average_latency_for_type = average_latencies
+            .get(&key)
+            .unwrap_or_else(|| panic!("Should have retrieved average latency for {}", event_type));
+        let number_of_events_received_for_type =
+            num_events_received.get(&key).unwrap_or_else(|| {
+                panic!(
+                    "Should have retrieved number of events received for {}",
+                    event_type
+                )
+            });
+
+        results.push(Results::new(
+            event_type,
+            average_latency_for_type.as_millis(),
+            number_of_events_received_for_type.to_owned(),
+        ));
+    }
+
+    // This dummy entry is to create another row at the bottom of the table - it will be overwritten by a span
+    // containing the overall duration of the test.
+    results.push(Results::new(
+        EventType::ApiVersion,
+        u128::default(),
+        u16::default(),
+    ));
+
+    results
+}
+
+fn calculate_average_latencies(
+    mut event_latencies: Vec<EventLatency>,
+    type_order: Vec<EventType>,
+) -> (HashMap<String, Duration>, HashMap<String, u16>) {
+    let mut average_latencies = HashMap::new();
+    let mut number_of_events_received = HashMap::new();
+
+    for event_type in type_order {
+        let (average_latency_for_type, num_event_type_received) =
+            calculate_average_latency_for_type(&event_type, &mut event_latencies);
+        average_latencies.insert(event_type.clone().to_string(), average_latency_for_type);
+        number_of_events_received.insert(event_type.to_string(), num_event_type_received);
+    }
+
+    (average_latencies, number_of_events_received)
+}
+
+fn build_table_from_results(results: Vec<Results>, duration: Duration) -> String {
+    let total_rows = results.len();
+
+    let horizontal_span = |row, col, span| {
+        Cell(row, col)
+            .modify()
+            .with(Alignment::center())
+            .with(Span::column(span))
+    };
+
+    results
+        .table()
+        .with(
+            horizontal_span(total_rows, 0, 3)
+                .with(format!("\nTest Duration {}s", display_duration(duration))),
+        )
+        .with(Style::rounded())
+        .with(Style::correct_spans())
+        .to_string()
+}
+
+fn compare_events_collect_latencies(
+    events_from_source: Vec<TimestampedEvent>,
+    mut events_from_sidecar: Vec<TimestampedEvent>,
+) -> Vec<EventLatency> {
     let mut event_latencies = Vec::new();
 
     for event_from_source in events_from_source {
@@ -204,96 +449,12 @@ async fn performance_check(
         }
     }
 
-    assert!(!event_latencies.is_empty());
-
-    let (average_latency_for_finality_signatures, num_finality_signatures_received) =
-        calculate_average_latency_for_type(EventType::FinalitySignature, &mut event_latencies);
-    let (average_latency_for_deploy_processed, num_deploy_processed_received) =
-        calculate_average_latency_for_type(EventType::DeployProcessed, &mut event_latencies);
-    let (average_latency_for_deploy_accepted, num_deploy_accepted_received) =
-        calculate_average_latency_for_type(EventType::DeployAccepted, &mut event_latencies);
-    let (average_latency_for_block_added, num_block_added_received) =
-        calculate_average_latency_for_type(EventType::BlockAdded, &mut event_latencies);
-    let (average_latency_for_step, num_step_received) =
-        calculate_average_latency_for_type(EventType::Step, &mut event_latencies);
-    let (average_latency_for_deploy_expired, num_deploy_expired_received) =
-        calculate_average_latency_for_type(EventType::DeployExpired, &mut event_latencies);
-    let (average_latency_for_fault, num_fault_received) =
-        calculate_average_latency_for_type(EventType::Fault, &mut event_latencies);
-
-    let results = vec![
-        Results::new(
-            EventType::BlockAdded,
-            average_latency_for_block_added.as_millis(),
-            num_block_added_received,
-        ),
-        Results::new(
-            EventType::DeployAccepted,
-            average_latency_for_deploy_accepted.as_millis(),
-            num_deploy_accepted_received,
-        ),
-        Results::new(
-            EventType::DeployProcessed,
-            average_latency_for_deploy_processed.as_millis(),
-            num_deploy_processed_received,
-        ),
-        Results::new(
-            EventType::DeployExpired,
-            average_latency_for_deploy_expired.as_millis(),
-            num_deploy_expired_received,
-        ),
-        Results::new(
-            EventType::Step,
-            average_latency_for_step.as_millis(),
-            num_step_received,
-        ),
-        Results::new(
-            EventType::Fault,
-            average_latency_for_fault.as_millis(),
-            num_fault_received,
-        ),
-        Results::new(
-            EventType::FinalitySignature,
-            average_latency_for_finality_signatures.as_millis(),
-            num_finality_signatures_received,
-        ),
-        // This dummy entry is to create another row in the table - it is then overwritten by a span
-        // containing the overall duration of the test.
-        Results::new(EventType::ApiVersion, u128::default(), u16::default()),
-    ];
-
-    let total_rows = results.len();
-
-    let horizontal_span = |row, col, span| {
-        Cell(row, col)
-            .modify()
-            .with(Alignment::center())
-            .with(Span::column(span))
-    };
-    let results_table = results
-        .table()
-        .with(
-            horizontal_span(total_rows, 0, 3)
-                .with(format!("\nTest Duration {}s", duration_in_seconds)),
-        )
-        .with(Style::rounded())
-        .with(Style::correct_spans())
-        .to_string();
-
-    println!("{}", results_table);
-
-    assert!(average_latency_for_block_added < acceptable_latency);
-    assert!(average_latency_for_deploy_accepted < acceptable_latency);
-    assert!(average_latency_for_deploy_expired < acceptable_latency);
-    assert!(average_latency_for_deploy_processed < acceptable_latency);
-    assert!(average_latency_for_fault < acceptable_latency);
-    assert!(average_latency_for_finality_signatures < acceptable_latency);
-    assert!(average_latency_for_step < acceptable_latency);
+    event_latencies
 }
 
 /// Returns the average latency in millis and the number of events averaged over
 fn calculate_average_latency_for_type(
-    event_type: EventType,
+    event_type: &EventType,
     combined_latencies: &mut Vec<EventLatency>,
 ) -> (Duration, u16) {
     let filtered_latencies = extract_latencies_by_type(event_type, combined_latencies);
@@ -316,13 +477,13 @@ fn calculate_average_latency_for_type(
 }
 
 fn extract_latencies_by_type(
-    event_type: EventType,
+    event_type: &EventType,
     combined_latencies: &mut Vec<EventLatency>,
 ) -> Vec<EventLatency> {
     let mut filtered_latencies = Vec::new();
     let mut i = 0;
     while i < combined_latencies.len() {
-        if combined_latencies[i].event == event_type {
+        if combined_latencies[i].event == *event_type {
             let latency = combined_latencies.remove(i);
             filtered_latencies.push(latency);
         } else {
@@ -333,15 +494,44 @@ fn extract_latencies_by_type(
     filtered_latencies
 }
 
+/// `timeout` should be set for live tests where the source is not expected to shutdown, because the receiver won't run out of events and therefore will never exit.
 async fn push_timestamped_events_to_vecs(
     mut event_stream: UnboundedReceiver<SseEvent>,
+    duration: Option<Duration>,
 ) -> Vec<TimestampedEvent> {
     let mut events_vec: Vec<TimestampedEvent> = Vec::new();
 
-    while let Some(event) = event_stream.recv().await {
-        let received_timestamp = Instant::now();
-        events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
+    if let Some(duration) = duration {
+        let start = Instant::now();
+
+        while let Some(event) = event_stream.recv().await {
+            if start.elapsed() > duration {
+                break;
+            }
+
+            let received_timestamp = Instant::now();
+            events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
+        }
+    } else {
+        while let Some(event) = event_stream.recv().await {
+            let received_timestamp = Instant::now();
+            events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
+        }
     }
 
     events_vec
+}
+
+fn display_duration(duration: Duration) -> String {
+    // less than a second
+    if duration.as_millis() < 1000 {
+        format!("{}ms", duration.as_millis())
+    // more than a minute
+    } else if duration.as_secs() > 60 {
+        let (minutes, seconds) = (duration.as_secs() / 60, duration.as_secs() % 60);
+        format!("{}min. {}s", minutes, seconds)
+    // over a second / under a minute
+    } else {
+        format!("{}s", duration.as_secs())
+    }
 }

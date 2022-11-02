@@ -165,26 +165,6 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => {
-                    let raw = row
-                        .try_get::<String, &str>("raw")
-                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                    deserialize_data::<Step>(&raw).map_err(wrap_query_error)
-                }
-            })
-    }
-
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
@@ -229,6 +209,26 @@ impl DatabaseReader for SqliteDatabase {
             .await
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_finality_signatures_from_rows)
+    }
+
+    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let stmt = tables::step::create_get_by_era_stmt(era).to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_optional(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(|maybe_row| match maybe_row {
+                None => Err(DatabaseReadError::NotFound),
+                Some(row) => {
+                    let raw = row
+                        .try_get::<String, &str>("raw")
+                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
+                    deserialize_data::<Step>(&raw).map_err(wrap_query_error)
+                }
+            })
     }
 }
 

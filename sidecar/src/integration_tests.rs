@@ -1,7 +1,9 @@
 use std::time::Duration;
 
+use casper_event_types::SseData;
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
+use http::StatusCode;
 use tempfile::tempdir;
 
 use super::run;
@@ -22,7 +24,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),
         EventStreamScenario::Realistic,
-        30,
+        Duration::from_secs(30),
     ));
 
     let shutdown_err = run(testing_config.inner())
@@ -44,7 +46,7 @@ async fn should_allow_client_connection_to_sse() {
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),
         EventStreamScenario::Realistic,
-        60,
+        Duration::from_secs(60),
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -64,9 +66,57 @@ async fn should_allow_client_connection_to_sse() {
         .bytes_stream()
         .eventsource();
 
-    while let Some(event) = main_event_stream.next().await {
-        event.expect("Error from event stream - event should have been OK");
+    let mut events_received = Vec::new();
+
+    while let Some(Ok(event)) = main_event_stream.next().await {
+        let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
+        events_received.push(sse_data);
     }
+
+    assert!(!events_received.is_empty());
+    assert!(events_received.len() > 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_send_shutdown_to_sse_client() {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(0, 0);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        testing_config.connection_port(),
+        EventStreamScenario::Realistic,
+        Duration::from_secs(60),
+    ));
+
+    tokio::spawn(run(testing_config.inner()));
+
+    // Allow sidecar to spin up
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let main_event_stream_url = format!(
+        "http://127.0.0.1:{}/events/main",
+        testing_config.event_stream_server_port()
+    );
+    let mut main_event_stream = reqwest::Client::new()
+        .get(&main_event_stream_url)
+        .send()
+        .await
+        .expect("Error in main event stream")
+        .bytes_stream()
+        .eventsource();
+
+    let mut last_event = None;
+    while let Some(Ok(event)) = main_event_stream.next().await {
+        last_event = Some(event);
+    }
+
+    let event_data = last_event.unwrap().data;
+
+    assert!(matches!(
+        serde_json::from_str::<SseData>(&event_data).unwrap(),
+        SseData::Shutdown
+    ));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -78,13 +128,31 @@ async fn should_respond_to_rest_query() {
     tokio::spawn(spin_up_fake_event_stream(
         testing_config.connection_port(),
         EventStreamScenario::Realistic,
-        60,
+        Duration::from_secs(60),
     ));
 
     tokio::spawn(run(testing_config.inner()));
 
     // Allow sidecar to spin up and receive a block from the stream
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(30)).await;
+
+    // let main_event_stream_url = format!(
+    //     "http://127.0.0.1:{}/events/main",
+    //     testing_config.event_stream_server_port()
+    // );
+    //
+    // let mut main_event_stream = reqwest::Client::new()
+    //     .get(&main_event_stream_url)
+    //     .send()
+    //     .await
+    //     .expect("Error in main event stream")
+    //     .bytes_stream()
+    //     .eventsource();
+    //
+    // let mut block_hash = None;
+    // while let Some(Ok(event)) = main_event_stream.next().await {
+    //     let sse_data =
+    // }
 
     let block_request_url = format!(
         "http://127.0.0.1:{}/block",
@@ -96,7 +164,7 @@ async fn should_respond_to_rest_query() {
         .await
         .expect("Error requesting the /block endpoint");
 
-    assert!(response.status().is_success());
+    assert!(response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND);
 
     let response_bytes = response
         .bytes()

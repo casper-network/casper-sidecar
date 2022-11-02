@@ -94,6 +94,12 @@ async fn run(config: Config) -> Result<(), Error> {
         sqlite_database.clone(),
     ));
 
+    // Adds space under setup logs before stream starts for readability
+    println!();
+
+    // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
+    let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
+
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
         SseConfig::new(
@@ -105,12 +111,6 @@ async fn run(config: Config) -> Result<(), Error> {
         api_version,
     )
     .context("Error starting EventStreamServer")?;
-
-    // Adds space under setup logs before stream starts for readability
-    println!("\n\n");
-
-    // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
-    let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = tokio::spawn(async move {

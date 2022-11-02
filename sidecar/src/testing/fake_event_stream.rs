@@ -10,7 +10,8 @@ use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::event_stream_server::{Config as SseConfig, EventStreamServer};
 
-const TIME_BETWEEN_BLOCKS_IN_SECONDS: u64 = 4;
+// Based on Mainnet cadence
+const TIME_BETWEEN_BLOCKS_IN_SECONDS: u64 = 30;
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u8;
@@ -38,7 +39,7 @@ impl Display for EventStreamScenario {
 pub async fn spin_up_fake_event_stream(
     port: u16,
     scenario: EventStreamScenario,
-    duration_in_seconds: u64,
+    duration: Duration,
 ) {
     let start = Instant::now();
 
@@ -53,14 +54,13 @@ pub async fn spin_up_fake_event_stream(
 
     match scenario {
         EventStreamScenario::Realistic => {
-            realistic_event_streaming(event_stream_server, duration_in_seconds).await
+            realistic_event_streaming(event_stream_server, duration).await
         }
         EventStreamScenario::LoadTestingStep(frequency) => {
-            repeat_step_events(event_stream_server, duration_in_seconds, frequency).await
+            repeat_step_events(event_stream_server, duration, frequency).await
         }
         EventStreamScenario::LoadTestingDeploy(num_in_burst) => {
-            fast_bursts_of_deploy_events(event_stream_server, duration_in_seconds, num_in_burst)
-                .await;
+            fast_bursts_of_deploy_events(event_stream_server, duration, num_in_burst).await;
         }
     }
 
@@ -72,85 +72,74 @@ pub async fn spin_up_fake_event_stream(
     );
 }
 
-async fn realistic_event_streaming(mut server: EventStreamServer, stream_duration_in_secs: u64) {
+async fn realistic_event_streaming(mut server: EventStreamServer, duration: Duration) {
     let (broadcast_sender, mut broadcast_receiver) = unbounded_channel();
 
     let cloned_sender = broadcast_sender.clone();
 
-    let frequent_handle = tokio::spawn(tokio::time::timeout(
-        Duration::from_secs(stream_duration_in_secs),
-        async move {
-            let mut test_rng = TestRng::new();
+    let frequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
+        let mut test_rng = TestRng::new();
 
-            let mut interval =
-                tokio::time::interval(Duration::from_secs(TIME_BETWEEN_BLOCKS_IN_SECONDS));
+        let mut interval =
+            tokio::time::interval(Duration::from_secs(TIME_BETWEEN_BLOCKS_IN_SECONDS));
 
-            loop {
-                // Four Block cycles
-                for _ in 0..4 {
-                    interval.tick().await;
+        loop {
+            // Four Block cycles
+            for _ in 0..4 {
+                interval.tick().await;
 
-                    // Prior to each BlockAdded emit FinalitySignatures
-                    for _ in 0..4 {
-                        let _ =
-                            cloned_sender.send(SseData::random_finality_signature(&mut test_rng));
-                    }
-
-                    // Emit DeployProcessed events for the next BlockAdded
-                    for _ in 0..4 {
-                        let _ = cloned_sender.send(SseData::random_deploy_processed(&mut test_rng));
-                    }
-
-                    // Emit the BlockAdded
-                    let _ = cloned_sender.send(SseData::random_block_added(&mut test_rng));
-
-                    // Emit DeployAccepted Events
-                    for _ in 0..4 {
-                        let _ =
-                            cloned_sender.send(SseData::random_deploy_accepted(&mut test_rng).0);
-                    }
+                // Prior to each BlockAdded emit FinalitySignatures
+                for _ in 0..100 {
+                    let _ = cloned_sender.send(SseData::random_finality_signature(&mut test_rng));
                 }
-                // Then a Step
-                let _ = cloned_sender.send(SseData::random_step(&mut test_rng));
-            }
-        },
-    ));
 
-    let infrequent_handle = tokio::spawn(tokio::time::timeout(
-        Duration::from_secs(stream_duration_in_secs),
-        async move {
-            let mut test_rng = TestRng::new();
-            loop {
-                tokio::time::sleep(Duration::from_secs(stream_duration_in_secs / 4)).await;
-                let _ = broadcast_sender.send(SseData::random_deploy_expired(&mut test_rng));
-                tokio::time::sleep(Duration::from_secs(stream_duration_in_secs / 2)).await;
-                let _ = broadcast_sender.send(SseData::random_fault(&mut test_rng));
-            }
-        },
-    ));
+                // Emit DeployProcessed events for the next BlockAdded
+                for _ in 0..20 {
+                    let _ = cloned_sender.send(SseData::random_deploy_processed(&mut test_rng));
+                }
 
-    let broadcast_handle = tokio::spawn(tokio::time::timeout(
-        Duration::from_secs(stream_duration_in_secs),
-        async move {
-            while let Some(sse_data) = broadcast_receiver.recv().await {
-                server.broadcast(sse_data);
+                // Emit the BlockAdded
+                let _ = cloned_sender.send(SseData::random_block_added(&mut test_rng));
+
+                // Emit DeployAccepted Events
+                for _ in 0..20 {
+                    let _ = cloned_sender.send(SseData::random_deploy_accepted(&mut test_rng).0);
+                }
             }
-        },
-    ));
+            // Then a Step
+            let _ = cloned_sender.send(SseData::random_step(&mut test_rng));
+        }
+    }));
+
+    let infrequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
+        let mut test_rng = TestRng::new();
+        loop {
+            tokio::time::sleep(duration / 4).await;
+            let _ = broadcast_sender.send(SseData::random_deploy_expired(&mut test_rng));
+            tokio::time::sleep(duration / 2).await;
+            let _ = broadcast_sender.send(SseData::random_fault(&mut test_rng));
+        }
+    }));
+
+    let broadcast_handle = tokio::spawn(tokio::time::timeout(duration, async move {
+        while let Some(sse_data) = broadcast_receiver.recv().await {
+            server.broadcast(sse_data);
+        }
+    }));
 
     let _ = tokio::join!(frequent_handle, infrequent_handle, broadcast_handle);
 }
 
 async fn repeat_step_events(
     mut event_stream_server: EventStreamServer,
-    duration_in_seconds: u64,
+    duration: Duration,
     frequency: u8,
 ) {
     let mut test_rng = TestRng::new();
 
     let start_time = Instant::now();
 
-    while start_time.elapsed() < Duration::from_secs(duration_in_seconds) {
+    while start_time.elapsed() < duration {
         event_stream_server.broadcast(SseData::random_step(&mut test_rng));
         tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
     }
@@ -158,14 +147,14 @@ async fn repeat_step_events(
 
 async fn fast_bursts_of_deploy_events(
     mut event_stream_server: EventStreamServer,
-    duration_in_seconds: u64,
+    duration: Duration,
     burst_size: u8,
 ) {
     let mut test_rng = TestRng::new();
 
     let start_time = Instant::now();
 
-    while start_time.elapsed() < Duration::from_secs(duration_in_seconds) {
+    while start_time.elapsed() < duration {
         for _ in 0..burst_size {
             event_stream_server.broadcast(SseData::random_deploy_accepted(&mut test_rng).0);
         }
