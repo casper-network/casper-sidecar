@@ -55,16 +55,17 @@ async fn check_latency_on_fast_bursts_of_deploys_scenario() {
 }
 
 // This can be uncommented to use as a live test against a node in a real-world network i.e. Mainnet.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn check_latency_against_live_node() {
-    live_performance_check(
-        "3.141.144.131".to_string(),
-        9999,
-        Duration::from_secs(60 * 60 * 2),
-        ACCEPTABLE_LATENCY,
-    )
-    .await;
-}
+// The ip address and port would need to be changed to point to the desired node.
+// #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+// async fn check_latency_against_live_node() {
+//     live_performance_check(
+//         "127.0.0.1".to_string(),
+//         18101,
+//         Duration::from_secs(60 * 10),
+//         ACCEPTABLE_LATENCY,
+//     )
+//     .await;
+// }
 
 #[derive(Clone, new)]
 struct TimestampedEvent {
@@ -248,6 +249,8 @@ async fn performance_check(
     check_latencies_are_acceptable(average_latencies, acceptable_latency);
 }
 
+// This is only used by the `check_latency_against_live_node` test which is generally commented out.
+#[allow(unused)]
 async fn live_performance_check(
     ip_address: String,
     port: u16,
@@ -421,7 +424,7 @@ fn build_table_from_results(results: Vec<Results>, duration: Duration) -> String
         .table()
         .with(
             horizontal_span(total_rows, 0, 3)
-                .with(format!("\nTest Duration {}s", display_duration(duration))),
+                .with(format!("\nTest Duration {}", display_duration(duration))),
         )
         .with(Style::rounded())
         .with(Style::correct_spans())
