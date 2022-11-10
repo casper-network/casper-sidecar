@@ -133,26 +133,28 @@ async fn should_respond_to_rest_query() {
 
     tokio::spawn(run(testing_config.inner()));
 
-    // Allow sidecar to spin up and receive a block from the stream
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
-    // let main_event_stream_url = format!(
-    //     "http://127.0.0.1:{}/events/main",
-    //     testing_config.event_stream_server_port()
-    // );
-    //
-    // let mut main_event_stream = reqwest::Client::new()
-    //     .get(&main_event_stream_url)
-    //     .send()
-    //     .await
-    //     .expect("Error in main event stream")
-    //     .bytes_stream()
-    //     .eventsource();
-    //
-    // let mut block_hash = None;
-    // while let Some(Ok(event)) = main_event_stream.next().await {
-    //     let sse_data =
-    // }
+    let main_event_stream_url = format!(
+        "http://127.0.0.1:{}/events/main",
+        testing_config.event_stream_server_port()
+    );
+
+    let mut main_event_stream = reqwest::Client::new()
+        .get(&main_event_stream_url)
+        .send()
+        .await
+        .expect("Error in main event stream")
+        .bytes_stream()
+        .eventsource();
+
+    // Listen to the sidecar's outbound stream to check for it storing a BlockAdded
+    while let Some(Ok(event)) = main_event_stream.next().await {
+        let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
+        if matches!(sse_data, SseData::BlockAdded { .. }) {
+            break;
+        }
+    }
 
     let block_request_url = format!(
         "http://127.0.0.1:{}/block",
