@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use derive_new::new;
 use tempfile::TempDir;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::time::Instant;
@@ -18,10 +19,17 @@ const TIME_BETWEEN_BLOCKS_IN_SECONDS: u64 = 30;
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u8;
 
+#[derive(new)]
+pub struct FesRestartConfig {
+    shutdown_after: Duration,
+    restart_after: Duration,
+}
+
 pub enum EventStreamScenario {
     Realistic,
     LoadTestingStep(FrequencyOfStepEvents),
     LoadTestingDeploy(NumberOfDeployEventsInBurst),
+    WithRestart(FesRestartConfig),
 }
 
 impl Display for EventStreamScenario {
@@ -33,6 +41,9 @@ impl Display for EventStreamScenario {
             }
             EventStreamScenario::LoadTestingDeploy(_) => {
                 write!(f, "Load Testing [Deploy]")
+            }
+            EventStreamScenario::WithRestart(_) => {
+                write!(f, "With Restart")
             }
         }
     }
@@ -52,7 +63,7 @@ pub async fn spin_up_fake_event_stream(
     let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
 
     let event_stream_server = EventStreamServer::new(
-        ess_config,
+        ess_config.clone(),
         temp_dir.path().to_path_buf(),
         ProtocolVersion::V1_0_0,
     )
@@ -68,6 +79,29 @@ pub async fn spin_up_fake_event_stream(
         EventStreamScenario::LoadTestingDeploy(num_in_burst) => {
             fast_bursts_of_deploy_events(rng_seed, event_stream_server, duration, num_in_burst)
                 .await;
+        }
+        EventStreamScenario::WithRestart(FesRestartConfig {
+            shutdown_after,
+            restart_after,
+        }) => {
+            assert!(duration > shutdown_after + restart_after, "Total duration must be greater than the time to wait before shutdown combined with the time to wait before restart");
+            realistic_event_streaming(rng_seed, event_stream_server, shutdown_after).await;
+
+            tokio::time::sleep(restart_after).await;
+
+            let event_stream_server = EventStreamServer::new(
+                ess_config,
+                temp_dir.path().to_path_buf(),
+                ProtocolVersion::V1_0_0,
+            )
+            .expect("Error spinning up Event Stream Server");
+
+            realistic_event_streaming(
+                rng_seed,
+                event_stream_server,
+                duration - shutdown_after - restart_after,
+            )
+            .await;
         }
     }
 

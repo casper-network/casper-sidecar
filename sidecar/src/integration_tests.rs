@@ -10,6 +10,7 @@ use tempfile::tempdir;
 use tokio::time::Instant;
 
 use super::run;
+use crate::testing::fake_event_stream::FesRestartConfig;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
@@ -260,4 +261,109 @@ async fn should_disallow_partial_connection() {
 
     // The sidecar should shutdown early
     assert!(Instant::now() - start_instant < stream_duration);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_not_attempt_reconnection() {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(0, 0);
+
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
+    let stream_duration = Duration::from_secs(60);
+
+    let fes_restart_config =
+        FesRestartConfig::new(Duration::from_secs(20), Duration::from_secs(20));
+
+    tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
+        ess_config,
+        EventStreamScenario::WithRestart(fes_restart_config),
+        stream_duration,
+    ));
+
+    let start_instant = Instant::now();
+
+    run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    let time_for_sidecar_to_shutdown = Instant::now() - start_instant;
+    // The sidecar should have shutdown as soon as it receives the Shutdown - making no attempt to reconnect.
+    assert!(time_for_sidecar_to_shutdown < stream_duration + Duration::from_secs(2));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[ignore]
+async fn should_reconnect_on_time() {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    // Should provide a 25 second window for the source to restart
+    let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(5, 5);
+
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
+    let start_instant = Instant::now();
+    let stream_duration = Duration::from_secs(60);
+
+    let fes_restart_config = FesRestartConfig::new(stream_duration / 3, stream_duration / 3);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
+        ess_config,
+        EventStreamScenario::WithRestart(fes_restart_config),
+        stream_duration,
+    ));
+
+    run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    // The sidecar should have continued to listen after successful reconnection
+    assert!(Instant::now() - start_instant > stream_duration);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[ignore]
+async fn should_shutdown_after_failure_to_reconnect() {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    // Should provide a 15 second window for the source to restart
+    let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(5, 3);
+
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
+    let stream_duration = Duration::from_secs(60);
+
+    let fes_restart_config = FesRestartConfig::new(stream_duration / 3, stream_duration / 3);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
+        ess_config,
+        EventStreamScenario::WithRestart(fes_restart_config),
+        stream_duration,
+    ));
+
+    let start_instant = Instant::now();
+
+    run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    let time_for_sidecar_to_shutdown = Instant::now() - start_instant;
+    let total_retry_duration = Duration::from_secs(5 * 3);
+    let minimum_time = (stream_duration / 3) + total_retry_duration;
+    // The sidecar should have shutdown after completing the configured retries.
+    assert!(
+        time_for_sidecar_to_shutdown > minimum_time
+            && time_for_sidecar_to_shutdown < minimum_time + Duration::from_secs(5)
+    );
 }
