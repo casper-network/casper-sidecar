@@ -15,9 +15,12 @@ use casper_event_listener::SseEvent;
 use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
-use crate::testing::{
-    fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
-    testing_config::prepare_config,
+use crate::{
+    event_stream_server::Config as EssConfig,
+    testing::{
+        fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+        testing_config::prepare_config,
+    },
 };
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
@@ -192,11 +195,10 @@ async fn performance_check(
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
-        testing_config.connection_port(),
-        scenario,
-        duration,
+        rng_seed, ess_config, scenario, duration,
     ));
 
     tokio::spawn(run(testing_config.inner()));

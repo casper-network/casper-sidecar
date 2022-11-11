@@ -10,7 +10,7 @@ use tokio::time::Instant;
 use casper_event_types::SseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 
-use crate::event_stream_server::{Config as SseConfig, EventStreamServer};
+use crate::event_stream_server::{Config as EssConfig, EventStreamServer};
 
 // Based on Mainnet cadence
 const TIME_BETWEEN_BLOCKS_IN_SECONDS: u64 = 30;
@@ -40,7 +40,7 @@ impl Display for EventStreamScenario {
 
 pub async fn spin_up_fake_event_stream(
     rng_seed: [u8; 16],
-    port: u16,
+    ess_config: EssConfig,
     scenario: EventStreamScenario,
     duration: Duration,
 ) {
@@ -48,8 +48,11 @@ pub async fn spin_up_fake_event_stream(
 
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
+    let cloned_address = ess_config.address.clone();
+    let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
+
     let event_stream_server = EventStreamServer::new(
-        SseConfig::new(port, None, None),
+        ess_config,
         temp_dir.path().to_path_buf(),
         ProtocolVersion::V1_0_0,
     )

@@ -10,6 +10,7 @@ use tempfile::tempdir;
 
 use super::run;
 use crate::{
+    event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
         testing_config::prepare_config,
@@ -26,9 +27,11 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
     tokio::spawn(spin_up_fake_event_stream(
         rng_seed,
-        testing_config.connection_port(),
+        ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(30),
     ));
@@ -52,9 +55,11 @@ async fn should_allow_client_connection_to_sse() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
     tokio::spawn(spin_up_fake_event_stream(
         rng_seed,
-        testing_config.connection_port(),
+        ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
     ));
@@ -96,9 +101,11 @@ async fn should_send_shutdown_to_sse_client() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(0, 0);
 
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
     tokio::spawn(spin_up_fake_event_stream(
         rng_seed,
-        testing_config.connection_port(),
+        ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
     ));
@@ -142,9 +149,11 @@ async fn should_respond_to_rest_query() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+
     tokio::spawn(spin_up_fake_event_stream(
         rng_seed,
-        testing_config.connection_port(),
+        ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
     ));
