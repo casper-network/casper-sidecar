@@ -1,5 +1,7 @@
-use std::fmt::{Display, Formatter};
-use std::time::Duration;
+use std::{
+    fmt::{Display, Formatter},
+    time::Duration,
+};
 
 use tempfile::TempDir;
 use tokio::sync::mpsc::unbounded_channel;
@@ -37,6 +39,7 @@ impl Display for EventStreamScenario {
 }
 
 pub async fn spin_up_fake_event_stream(
+    rng_seed: [u8; 16],
     port: u16,
     scenario: EventStreamScenario,
     duration: Duration,
@@ -54,13 +57,14 @@ pub async fn spin_up_fake_event_stream(
 
     match scenario {
         EventStreamScenario::Realistic => {
-            realistic_event_streaming(event_stream_server, duration).await
+            realistic_event_streaming(rng_seed, event_stream_server, duration).await
         }
         EventStreamScenario::LoadTestingStep(frequency) => {
-            repeat_step_events(event_stream_server, duration, frequency).await
+            repeat_step_events(rng_seed, event_stream_server, duration, frequency).await
         }
         EventStreamScenario::LoadTestingDeploy(num_in_burst) => {
-            fast_bursts_of_deploy_events(event_stream_server, duration, num_in_burst).await;
+            fast_bursts_of_deploy_events(rng_seed, event_stream_server, duration, num_in_burst)
+                .await;
         }
     }
 
@@ -72,13 +76,17 @@ pub async fn spin_up_fake_event_stream(
     );
 }
 
-async fn realistic_event_streaming(mut server: EventStreamServer, duration: Duration) {
+async fn realistic_event_streaming(
+    rng_seed: [u8; 16],
+    mut server: EventStreamServer,
+    duration: Duration,
+) {
     let (broadcast_sender, mut broadcast_receiver) = unbounded_channel();
 
     let cloned_sender = broadcast_sender.clone();
 
     let frequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
-        let mut test_rng = TestRng::new();
+        let mut test_rng = TestRng::from_seed(rng_seed);
 
         let mut interval =
             tokio::time::interval(Duration::from_secs(TIME_BETWEEN_BLOCKS_IN_SECONDS));
@@ -112,7 +120,7 @@ async fn realistic_event_streaming(mut server: EventStreamServer, duration: Dura
     }));
 
     let infrequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
-        let mut test_rng = TestRng::new();
+        let mut test_rng = TestRng::from_seed(rng_seed);
         loop {
             tokio::time::sleep(duration / 4).await;
             let _ = broadcast_sender.send(SseData::random_deploy_expired(&mut test_rng));
@@ -131,11 +139,12 @@ async fn realistic_event_streaming(mut server: EventStreamServer, duration: Dura
 }
 
 async fn repeat_step_events(
+    rng_seed: [u8; 16],
     mut event_stream_server: EventStreamServer,
     duration: Duration,
     frequency: u8,
 ) {
-    let mut test_rng = TestRng::new();
+    let mut test_rng = TestRng::from_seed(rng_seed);
 
     let start_time = Instant::now();
 
@@ -146,11 +155,12 @@ async fn repeat_step_events(
 }
 
 async fn fast_bursts_of_deploy_events(
+    rng_seed: [u8; 16],
     mut event_stream_server: EventStreamServer,
     duration: Duration,
     burst_size: u8,
 ) {
-    let mut test_rng = TestRng::new();
+    let mut test_rng = TestRng::from_seed(rng_seed);
 
     let start_time = Instant::now();
 

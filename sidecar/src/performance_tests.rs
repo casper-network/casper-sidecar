@@ -1,17 +1,18 @@
-use std::collections::HashMap;
 use std::{
+    collections::HashMap,
     fmt::{Display, Formatter},
     time::Duration,
 };
 
+use colored::Colorize;
 use derive_new::new;
+use rand::Rng;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use casper_event_listener::SseEvent;
-use casper_types::AsymmetricType;
-use colored::Colorize;
+use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
 use crate::testing::{
@@ -185,10 +186,14 @@ async fn performance_check(
     duration: Duration,
     acceptable_latency: Duration,
 ) {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
     tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
         testing_config.connection_port(),
         scenario,
         duration,
