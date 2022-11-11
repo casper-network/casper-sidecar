@@ -50,6 +50,14 @@ impl TestingConfig {
         self
     }
 
+    /// Set how the sidecar should handle the case where it is only able to connect to one or two of the node's filters.
+    #[allow(unused)]
+    pub(crate) fn set_allow_partial_connection(mut self, allow_partial_connection: bool) -> Self {
+        self.config.connection.node_connections[0].allow_partial_connection =
+            allow_partial_connection;
+        self
+    }
+
     /// Specify the max_concurrent_subscribers for the outbound EventStreamServer. By default it is set to 100.
     #[allow(unused)]
     pub(crate) fn set_max_sse_subscribers(mut self, num_subscribers: u32) -> Self {

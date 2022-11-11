@@ -7,6 +7,7 @@ use futures_util::StreamExt;
 use http::StatusCode;
 use rand::Rng;
 use tempfile::tempdir;
+use tokio::time::Instant;
 
 use super::run;
 use crate::{
@@ -201,4 +202,62 @@ async fn should_respond_to_rest_query() {
         .expect("Should have got bytes from response");
     serde_json::from_slice::<BlockAdded>(&response_bytes)
         .expect("Should have parsed BlockAdded from bytes");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_allow_partial_connection() {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(true);
+
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, Some(1));
+
+    let start_instant = Instant::now();
+    let stream_duration = Duration::from_secs(30);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
+        ess_config,
+        EventStreamScenario::Realistic,
+        stream_duration,
+    ));
+
+    run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    // The sidecar should shutdown on/after the stream shutdown
+    assert!(Instant::now() - start_instant >= stream_duration);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_disallow_partial_connection() {
+    let mut test_rng = TestRng::new();
+    let rng_seed = test_rng.gen::<[u8; 16]>();
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(false);
+
+    let ess_config = EssConfig::new(testing_config.connection_port(), None, Some(1));
+
+    let start_instant = Instant::now();
+    let stream_duration = Duration::from_secs(60);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        rng_seed,
+        ess_config,
+        EventStreamScenario::Realistic,
+        stream_duration,
+    ));
+
+    run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    // The sidecar should shutdown early
+    assert!(Instant::now() - start_instant < stream_duration);
 }
