@@ -1,8 +1,11 @@
+use std::ops::Div;
 use std::{
     fmt::{Display, Formatter},
+    iter,
     time::Duration,
 };
 
+use itertools::Itertools;
 use tempfile::TempDir;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::time::Instant;
@@ -13,7 +16,9 @@ use casper_types::{testing::TestRng, ProtocolVersion};
 use crate::event_stream_server::{Config as SseConfig, EventStreamServer};
 
 // Based on Mainnet cadence
-const TIME_BETWEEN_BLOCKS_IN_SECONDS: u64 = 30;
+const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
+const NUMBER_OF_VALIDATORS: u16 = 100;
+const NUMBER_OF_DEPLOYS_PER_BLOCK: u16 = 20;
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u8;
@@ -39,7 +44,7 @@ impl Display for EventStreamScenario {
 }
 
 pub async fn spin_up_fake_event_stream(
-    rng_seed: [u8; 16],
+    test_rng: &'static mut TestRng,
     port: u16,
     scenario: EventStreamScenario,
     duration: Duration,
@@ -57,13 +62,13 @@ pub async fn spin_up_fake_event_stream(
 
     match scenario {
         EventStreamScenario::Realistic => {
-            realistic_event_streaming(rng_seed, event_stream_server, duration).await
+            realistic_event_streaming(test_rng, event_stream_server, duration).await
         }
         EventStreamScenario::LoadTestingStep(frequency) => {
-            repeat_step_events(rng_seed, event_stream_server, duration, frequency).await
+            repeat_step_events(test_rng, event_stream_server, duration, frequency).await
         }
         EventStreamScenario::LoadTestingDeploy(num_in_burst) => {
-            fast_bursts_of_deploy_events(rng_seed, event_stream_server, duration, num_in_burst)
+            fast_bursts_of_deploy_events(test_rng, event_stream_server, duration, num_in_burst)
                 .await;
         }
     }
@@ -76,8 +81,13 @@ pub async fn spin_up_fake_event_stream(
     );
 }
 
+fn plus_ten_percent(base_value: u64) -> u64 {
+    let ten_percent = base_value / 10;
+    base_value + ten_percent
+}
+
 async fn realistic_event_streaming(
-    rng_seed: [u8; 16],
+    test_rng: &mut TestRng,
     mut server: EventStreamServer,
     duration: Duration,
 ) {
@@ -85,11 +95,35 @@ async fn realistic_event_streaming(
 
     let cloned_sender = broadcast_sender.clone();
 
-    let frequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
-        let mut test_rng = TestRng::from_seed(rng_seed);
+    let loops_in_duration = 4 * duration.div(TIME_BETWEEN_BLOCKS.as_secs() as u32).as_secs();
+    let finality_signatures_per_loop = NUMBER_OF_VALIDATORS as u64;
+    let total_finality_signature_events = finality_signatures_per_loop * loops_in_duration;
+    let deploy_events_per_loop = NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
+    let total_deploy_events = deploy_events_per_loop * loops_in_duration;
+    let total_block_added_events = loops_in_duration;
+    let total_step_events = loops_in_duration / 4;
 
-        let mut interval =
-            tokio::time::interval(Duration::from_secs(TIME_BETWEEN_BLOCKS_IN_SECONDS));
+    let mut finality_signature_events =
+        iter::repeat_with(|| SseData::random_finality_signature(test_rng))
+            .take(plus_ten_percent(total_finality_signature_events) as usize)
+            .collect_vec();
+    let mut deploy_processed_events =
+        iter::repeat_with(|| SseData::random_deploy_processed(test_rng))
+            .take(plus_ten_percent(total_deploy_events) as usize)
+            .collect_vec();
+    let mut block_added_events = iter::repeat_with(|| SseData::random_block_added(test_rng))
+        .take(plus_ten_percent(total_block_added_events) as usize)
+        .collect_vec();
+    let mut deploy_accepted_events =
+        iter::repeat_with(|| SseData::random_deploy_accepted(test_rng))
+            .take(plus_ten_percent(total_deploy_events) as usize)
+            .collect_vec();
+    let mut step_events = iter::repeat_with(|| SseData::random_step(test_rng))
+        .take(plus_ten_percent(total_step_events) as usize)
+        .collect_vec();
+
+    let frequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
+        let mut interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
 
         loop {
             // Four Block cycles
@@ -98,34 +132,52 @@ async fn realistic_event_streaming(
 
                 // Prior to each BlockAdded emit FinalitySignatures
                 for _ in 0..100 {
-                    let _ = cloned_sender.send(SseData::random_finality_signature(&mut test_rng));
+                    let _ = cloned_sender.send(finality_signature_events.pop().unwrap());
                 }
 
                 // Emit DeployProcessed events for the next BlockAdded
                 for _ in 0..20 {
-                    let _ = cloned_sender.send(SseData::random_deploy_processed(&mut test_rng));
+                    let _ = cloned_sender.send(deploy_processed_events.pop().unwrap());
                 }
 
                 // Emit the BlockAdded
-                let _ = cloned_sender.send(SseData::random_block_added(&mut test_rng));
+                let _ = cloned_sender.send(block_added_events.pop().unwrap());
 
                 // Emit DeployAccepted Events
                 for _ in 0..20 {
-                    let _ = cloned_sender.send(SseData::random_deploy_accepted(&mut test_rng).0);
+                    let _ = cloned_sender.send(deploy_accepted_events.pop().unwrap().0);
                 }
             }
             // Then a Step
-            let _ = cloned_sender.send(SseData::random_step(&mut test_rng));
+            let _ = cloned_sender.send(step_events.pop().unwrap());
         }
     }));
 
-    let infrequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
-        let mut test_rng = TestRng::from_seed(rng_seed);
+    let cloned_sender = broadcast_sender.clone();
+
+    let number_of_deploy_expired_events = 4;
+
+    let mut deploy_expired_events = iter::repeat_with(|| SseData::random_deploy_expired(test_rng))
+        .take(number_of_deploy_expired_events + 1)
+        .collect_vec();
+
+    let deploy_expired_events_handle = tokio::spawn(tokio::time::timeout(duration, async move {
         loop {
-            tokio::time::sleep(duration / 4).await;
-            let _ = broadcast_sender.send(SseData::random_deploy_expired(&mut test_rng));
-            tokio::time::sleep(duration / 2).await;
-            let _ = broadcast_sender.send(SseData::random_fault(&mut test_rng));
+            tokio::time::sleep(duration / number_of_deploy_expired_events as u32).await;
+            let _ = cloned_sender.send(deploy_expired_events.pop().unwrap());
+        }
+    }));
+
+    let number_of_fault_events = 2;
+
+    let mut fault_events = iter::repeat_with(|| SseData::random_fault(test_rng))
+        .take(number_of_fault_events + 1)
+        .collect_vec();
+
+    let fault_events_handle = tokio::spawn(tokio::time::timeout(duration, async move {
+        loop {
+            tokio::time::sleep(duration / number_of_fault_events as u32).await;
+            let _ = broadcast_sender.send(fault_events.pop().unwrap());
         }
     }));
 
@@ -135,42 +187,43 @@ async fn realistic_event_streaming(
         }
     }));
 
-    let _ = tokio::join!(frequent_handle, infrequent_handle, broadcast_handle);
+    let _ = tokio::join!(
+        frequent_handle,
+        deploy_expired_events_handle,
+        fault_events_handle,
+        broadcast_handle
+    );
 }
 
 async fn repeat_step_events(
-    rng_seed: [u8; 16],
+    test_rng: &mut TestRng,
     mut event_stream_server: EventStreamServer,
     duration: Duration,
     frequency: u8,
 ) {
-    let mut test_rng = TestRng::from_seed(rng_seed);
-
     let start_time = Instant::now();
 
     while start_time.elapsed() < duration {
-        event_stream_server.broadcast(SseData::random_step(&mut test_rng));
+        event_stream_server.broadcast(SseData::random_step(test_rng));
         tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
     }
 }
 
 async fn fast_bursts_of_deploy_events(
-    rng_seed: [u8; 16],
+    test_rng: &mut TestRng,
     mut event_stream_server: EventStreamServer,
     duration: Duration,
     burst_size: u8,
 ) {
-    let mut test_rng = TestRng::from_seed(rng_seed);
-
     let start_time = Instant::now();
 
     while start_time.elapsed() < duration {
         for _ in 0..burst_size {
-            event_stream_server.broadcast(SseData::random_deploy_accepted(&mut test_rng).0);
+            event_stream_server.broadcast(SseData::random_deploy_accepted(test_rng).0);
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
         for _ in 0..burst_size {
-            event_stream_server.broadcast(SseData::random_deploy_processed(&mut test_rng));
+            event_stream_server.broadcast(SseData::random_deploy_processed(test_rng));
         }
     }
 }
