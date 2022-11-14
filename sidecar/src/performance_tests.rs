@@ -6,7 +6,6 @@ use std::{
 
 use colored::Colorize;
 use derive_new::new;
-use rand::Rng;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
@@ -25,7 +24,7 @@ use crate::{
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
     performance_check(
@@ -189,8 +188,7 @@ async fn performance_check(
     duration: Duration,
     acceptable_latency: Duration,
 ) {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -198,7 +196,7 @@ async fn performance_check(
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed, ess_config, scenario, duration,
+        test_rng, ess_config, scenario, duration,
     ));
 
     tokio::spawn(run(testing_config.inner()));
