@@ -203,8 +203,7 @@ async fn should_respond_to_rest_query() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_allow_partial_connection() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(true);
@@ -215,7 +214,7 @@ async fn should_allow_partial_connection() {
     let stream_duration = Duration::from_secs(30);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         stream_duration,
@@ -232,8 +231,7 @@ async fn should_allow_partial_connection() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_disallow_partial_connection() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(false);
@@ -244,7 +242,7 @@ async fn should_disallow_partial_connection() {
     let stream_duration = Duration::from_secs(60);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         stream_duration,
