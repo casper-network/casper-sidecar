@@ -203,7 +203,7 @@ impl DatabaseWriter for SqliteDatabase {
         let public_key = finality_signature.hex_encoded_public_key();
 
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::Fault as u8,
+            EventTypeId::FinalitySignature as u8,
             &event_source_address,
             event_id,
         )?
