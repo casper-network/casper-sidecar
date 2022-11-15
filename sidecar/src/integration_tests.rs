@@ -1,13 +1,13 @@
-use casper_types::testing::TestRng;
 use std::time::Duration;
 
-use casper_event_types::SseData;
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
 use http::StatusCode;
-use rand::Rng;
 use tempfile::tempdir;
 use tokio::time::Instant;
+
+use casper_event_types::SseData;
+use casper_types::testing::TestRng;
 
 use super::run;
 use crate::{
@@ -22,8 +22,7 @@ use crate::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -31,7 +30,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(30),
@@ -50,8 +49,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_allow_client_connection_to_sse() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -59,7 +57,7 @@ async fn should_allow_client_connection_to_sse() {
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
@@ -96,8 +94,7 @@ async fn should_allow_client_connection_to_sse() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_send_shutdown_to_sse_client() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(0, 0);
@@ -105,7 +102,7 @@ async fn should_send_shutdown_to_sse_client() {
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
@@ -144,8 +141,7 @@ async fn should_send_shutdown_to_sse_client() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_respond_to_rest_query() {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -153,7 +149,7 @@ async fn should_respond_to_rest_query() {
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed,
+        test_rng,
         ess_config,
         EventStreamScenario::Realistic,
         Duration::from_secs(60),
