@@ -3,6 +3,7 @@ name = "casper-event-sidecar"
 authors = ["George Williamson <george@casperlabs.io>"]
 version = "0.1.0"
 edition = "2018"
+readme = "README.md"
 
 [dependencies]
 anyhow = {version = "1.0.44", default-features = false }
@@ -46,3 +47,29 @@ futures-util = "0.3.21"
 pretty_assertions = "1.3.0"
 reqwest = { version = "0.11.3", features = ["stream"] }
 serial_test = "0.9.0"
+
+[package.metadata.deb]
+revision = "0"
+assets = [
+    ["../target/release/casper-event-sidecar", "/usr/bin/casper-event-sidecar", "755"],
+    ["../README.md", "/etc/casper-event-sidecar/README.md", "644"],
+    ["../resources/ETC_README.md", "/etc/casper-event-sidecar/README.md", "644"],
+    ["../resources/default_config.toml", "/etc/casper-event-sidecar/config.toml", "644"],
+]
+
+maintainer-scripts = "./resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper Event Sidecar
+"""
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_event_sidecar"
+restart-after-upgrade = true
+
+[package.metadata.deb.variants.bionic]
+name = "casper-event-sidecar"
+revision = "0+bionic"
+
+[package.metadata.deb.variants.focal]
+name = "casper-event-sidecar"
+revision = "0+focal"

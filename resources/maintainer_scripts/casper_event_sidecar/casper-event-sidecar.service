@@ -2,17 +2,13 @@
 Description=Casper Event Sidecar
 Documentation=https://docs.casperlabs.io
 After=network-online.target
-# Stop restarting after 3 failures in 15 seconds
-StartLimitBurst=3
-StartLimitIntervalSec=15
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/casper-event-sidecar /etc/casper/event-sidecar/config.toml
-Restart=on-failure
-RestartSec=1
-User=casper
-Group=casper
+# This is currently hardcoded in binary as path, but leaving argument for future changes to use path
+ExecStart=/usr/bin/casper-event-sidecar /etc/casper-event-sidecar/config.toml
+User=csidecar
+Group=csidecar
 
 [Install]
 WantedBy=multi-user.target

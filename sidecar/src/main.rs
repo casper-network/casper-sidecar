@@ -32,6 +32,7 @@ use crate::{
 };
 
 const CONFIG_PATH: &str = "config.toml";
+const CONFIG_DEBIAN_PATH: &str = "/etc/casper-event-sidecar/config.toml";
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content =
@@ -44,7 +45,14 @@ async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config(CONFIG_PATH).context("Error constructing config")?;
+    let config = match read_config(CONFIG_PATH).context("Error constructing config") {
+        Ok(config) => config,
+        Err(_config) => {
+            info!("Falling back to Debian Config location.");
+            read_config(CONFIG_DEBIAN_PATH).context("Error constructing config")?
+        }
+    };
+
     info!("Configuration loaded");
 
     run(config).await
