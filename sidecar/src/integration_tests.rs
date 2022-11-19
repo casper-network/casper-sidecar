@@ -4,7 +4,6 @@ use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
 use http::StatusCode;
 use tempfile::tempdir;
-use tokio::time::Instant;
 
 use casper_event_types::SseData;
 use casper_types::testing::TestRng;
@@ -65,8 +64,7 @@ async fn should_allow_client_connection_to_sse() {
 
     tokio::spawn(run(testing_config.inner()));
 
-    // Allow sidecar to spin up
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let main_event_stream_url = format!(
         "http://127.0.0.1:{}/events/main",
@@ -110,8 +108,7 @@ async fn should_send_shutdown_to_sse_client() {
 
     tokio::spawn(run(testing_config.inner()));
 
-    // Allow sidecar to spin up
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let main_event_stream_url = format!(
         "http://127.0.0.1:{}/events/main",
@@ -202,56 +199,98 @@ async fn should_respond_to_rest_query() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-async fn should_allow_partial_connection() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(true);
-
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, Some(1));
-
-    let start_instant = Instant::now();
-    let stream_duration = Duration::from_secs(30);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        EventStreamScenario::Realistic,
-        stream_duration,
-    ));
-
-    run(testing_config.inner())
-        .await
-        .expect_err("Sidecar should return an Err message on shutdown");
-
-    // The sidecar should shutdown on/after the stream shutdown
-    assert!(Instant::now() - start_instant >= stream_duration);
+// This waits to receive a BlockAdded to ensure that the listener has prioritised connecting to the main filter.
+async fn should_allow_partial_connection_on_one_filter() {
+    let did_receive_events = partial_connection_test(100, 1, true).await;
+    assert!(did_receive_events)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-async fn should_disallow_partial_connection() {
+// This waits to receive a BlockAdded to ensure that the listener has prioritised connecting to the main filter.
+async fn should_allow_partial_connection_on_two_filters() {
+    let did_receive_events = partial_connection_test(100, 2, true).await;
+    assert!(did_receive_events)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_disallow_partial_connection_on_one_filter() {
+    let did_not_receive_events = !partial_connection_test(100, 1, false).await;
+    assert!(did_not_receive_events)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_disallow_partial_connection_on_two_filters() {
+    let did_not_receive_events = !partial_connection_test(100, 2, false).await;
+    assert!(did_not_receive_events)
+}
+
+#[cfg(test)]
+async fn partial_connection_test(
+    num_of_events_to_send: u8,
+    max_subscribers_for_fes: u32,
+    allow_partial_connection: bool,
+) -> bool {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir).set_allow_partial_connection(false);
+    let testing_config = prepare_config(&temp_storage_dir)
+        .configure_retry_settings(1, 2)
+        .set_allow_partial_connection(allow_partial_connection);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, Some(1));
+    let ess_config = EssConfig::new(
+        testing_config.connection_port(),
+        None,
+        Some(max_subscribers_for_fes),
+    );
 
-    let start_instant = Instant::now();
     let stream_duration = Duration::from_secs(60);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Realistic,
+        EventStreamScenario::Counted(num_of_events_to_send),
         stream_duration,
     ));
 
-    run(testing_config.inner())
-        .await
-        .expect_err("Sidecar should return an Err message on shutdown");
+    tokio::spawn(run(testing_config.inner()));
 
-    // The sidecar should shutdown early
-    assert!(Instant::now() - start_instant < stream_duration);
+    let main_event_stream_url = format!(
+        "http://127.0.0.1:{}/events/main",
+        testing_config.event_stream_server_port()
+    );
+
+    let mut main_event_stream = None;
+    for _ in 0..3 {
+        let event_source = reqwest::Client::new()
+            .get(&main_event_stream_url)
+            .send()
+            .await
+            .map(|response| {
+                main_event_stream = Some(response.bytes_stream().eventsource());
+            });
+        if event_source.is_ok() {
+            break;
+        } else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    if let Some(mut main_event_stream) = main_event_stream {
+        let mut got_events = false;
+
+        while let Some(event) = main_event_stream.next().await {
+            let data = event.unwrap().data;
+            if let Ok(SseData::BlockAdded { .. }) = serde_json::from_str(&data) {
+                got_events = true;
+                // break;
+            }
+        }
+
+        got_events
+    } else {
+        panic!("Couldn't connect to event stream")
+    }
 }

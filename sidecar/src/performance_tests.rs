@@ -205,11 +205,17 @@ async fn performance_check(
 
     let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
     let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
-    let source_event_receiver = source_event_listener.consume_combine_streams().await;
+    let source_event_receiver = source_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
     let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
-    let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
+    let sidecar_event_receiver = sidecar_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let source_task_handle =
         tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
@@ -272,11 +278,17 @@ async fn live_performance_check(
 
     let source_url = format!("{}:{}", ip_address, port);
     let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
-    let source_event_receiver = source_event_listener.consume_combine_streams().await;
+    let source_event_receiver = source_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
     let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
-    let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
+    let sidecar_event_receiver = sidecar_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         source_event_receiver,

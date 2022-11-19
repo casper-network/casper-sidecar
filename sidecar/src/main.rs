@@ -22,7 +22,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace, warn};
 
-use casper_event_listener::EventListener;
+use casper_event_listener::{EventListener, SseEvent};
 use casper_event_types::SseData;
 
 use crate::{
@@ -165,7 +165,18 @@ async fn sse_processor(
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
-    let mut sse_data_stream = sse_event_listener.consume_combine_streams().await;
+    let mut sse_data_stream = sse_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap_or_else(|_| {
+            let (tx, rx) = unbounded_channel::<SseEvent>();
+            let _ = tx.send(SseEvent {
+                source: "".to_string(),
+                id: None,
+                data: SseData::Shutdown,
+            });
+            rx
+        });
 
     while let Some(sse_event) = sse_data_stream.recv().await {
         match sse_event.data {

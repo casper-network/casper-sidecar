@@ -1,13 +1,19 @@
 mod utils;
 
-use std::{fmt::Debug, time::Duration};
+use std::{
+    fmt::{Debug, Display, Formatter},
+    time::Duration,
+};
 
 use anyhow::Error;
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    oneshot::{channel as oneshot_channel, Receiver as OneshotReceiver, Sender as OneshotSender},
+};
 use tokio_stream::Stream;
 use tracing::{error, info, warn};
 
@@ -16,9 +22,22 @@ use casper_types::ProtocolVersion;
 
 use crate::utils::resolve_address;
 
-const MAIN_FILTER_PATH: &str = "main";
-const DEPLOYS_FILTER_PATH: &str = "deploys";
-const SIGNATURES_FILTER_PATH: &str = "sigs";
+#[derive(Clone)]
+pub enum SseFilter {
+    Main,
+    Deploys,
+    Sigs,
+}
+
+impl Display for SseFilter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SseFilter::Main => write!(f, "main"),
+            SseFilter::Deploys => write!(f, "deploys"),
+            SseFilter::Sigs => write!(f, "sigs"),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct EventListener {
@@ -34,6 +53,32 @@ pub struct SseEvent {
     pub source: String,
     pub id: Option<u32>,
     pub data: SseData,
+}
+
+/// Pass the [`waiter_rx`] to the connecting task.
+/// Use the [`reporter_tx`] as the payload for the `waiter` channel.  
+/// [`connect_with_retry`] will await receipt of the sender  from the [`waiter_tx`].
+/// Once it has connected successfully it will report it by responding along the `reporter` channel.  
+/// Finally the managing task/function will have kept the [`reporter_rx`] to know when the connection is live.
+struct ConnectionWaiterReporter {
+    waiter_tx: OneshotSender<OneshotSender<()>>,
+    waiter_rx: OneshotReceiver<OneshotSender<()>>,
+    reporter_tx: OneshotSender<()>,
+    reporter_rx: OneshotReceiver<()>,
+}
+
+impl ConnectionWaiterReporter {
+    fn new() -> Self {
+        let (waiter_tx, waiter_rx) = oneshot_channel::<OneshotSender<()>>();
+        let (reporter_tx, reporter_rx) = oneshot_channel::<()>();
+
+        Self {
+            waiter_tx,
+            waiter_rx,
+            reporter_tx,
+            reporter_rx,
+        }
+    }
 }
 
 impl EventListener {
@@ -73,34 +118,43 @@ impl EventListener {
         })
     }
 
-    pub async fn consume_combine_streams(&self) -> UnboundedReceiver<SseEvent> {
+    pub async fn consume_combine_streams(&self) -> Result<UnboundedReceiver<SseEvent>, Error> {
         let (sse_tx, sse_rx) = unbounded_channel::<SseEvent>();
+
+        let main_connection_handler = ConnectionWaiterReporter::new();
 
         let main_filter_handle = tokio::spawn(connect_with_retry(
             sse_tx.clone(),
             self.bind_address.clone(),
-            MAIN_FILTER_PATH.to_string(),
+            SseFilter::Main,
             self.current_event_id,
             self.max_retries,
             self.delay_between_retries,
+            main_connection_handler.waiter_rx,
         ));
+
+        let deploys_connection_handler = ConnectionWaiterReporter::new();
 
         let deploys_filter_handle = tokio::spawn(connect_with_retry(
             sse_tx.clone(),
             self.bind_address.clone(),
-            DEPLOYS_FILTER_PATH.to_string(),
+            SseFilter::Deploys,
             self.current_event_id,
             self.max_retries,
             self.delay_between_retries,
+            deploys_connection_handler.waiter_rx,
         ));
+
+        let sigs_connection_handler = ConnectionWaiterReporter::new();
 
         let sigs_filter_handle = tokio::spawn(connect_with_retry(
             sse_tx.clone(),
             self.bind_address.clone(),
-            SIGNATURES_FILTER_PATH.to_string(),
+            SseFilter::Sigs,
             self.current_event_id,
             self.max_retries,
             self.delay_between_retries,
+            sigs_connection_handler.waiter_rx,
         ));
 
         let allow_partial_connection = self.allow_partial_connection;
@@ -134,26 +188,95 @@ impl EventListener {
             });
         });
 
-        sse_rx
+        let (wait_for_all_connection_reports_tx, wait_for_all_connection_reports_rx) =
+            oneshot_channel::<()>();
+
+        let (main_connected_tx, main_connected_rx) = oneshot_channel::<bool>();
+        let (sigs_connected_tx, sigs_connected_rx) = oneshot_channel::<bool>();
+        let (deploys_connected_tx, deploys_connected_rx) = oneshot_channel::<bool>();
+
+        // Manage filter connection priority
+        // todo make configurable
+        tokio::spawn(async move {
+            // Instruct main to connect
+            let _ = main_connection_handler
+                .waiter_tx
+                .send(main_connection_handler.reporter_tx);
+            // Wait for main to report it's connected
+            let main_report = main_connection_handler.reporter_rx.await;
+            let _ = main_connected_tx.send(main_report.is_ok());
+
+            // same as above for the following filters
+            let _ = sigs_connection_handler
+                .waiter_tx
+                .send(sigs_connection_handler.reporter_tx);
+            let sigs_report = sigs_connection_handler.reporter_rx.await;
+            let _ = sigs_connected_tx.send(sigs_report.is_ok());
+
+            let _ = deploys_connection_handler
+                .waiter_tx
+                .send(deploys_connection_handler.reporter_tx);
+            let deploys_report = deploys_connection_handler.reporter_rx.await;
+            let _ = deploys_connected_tx.send(deploys_report.is_ok());
+
+            let _ = wait_for_all_connection_reports_tx.send(());
+        });
+
+        // If allow_partial_connection is true - just return the receiver.
+        // If allow_partial_connection is false
+        //  wait for all connections to report success.
+
+        // If partial connection is acceptable then we can return the receiver immediately.
+        if allow_partial_connection {
+            Ok(sse_rx)
+        } else {
+            // Otherwise, we need to wait for all filters/connections to report
+            let _ = wait_for_all_connection_reports_rx.await;
+            // At this point all filters should have reported their statuses.
+            let main_connected = main_connected_rx
+                .await
+                .expect("Main filter connection should have reported status");
+            let sigs_connected = sigs_connected_rx
+                .await
+                .expect("Sigs filter connection should have reported status");
+            let deploys_connected = deploys_connected_rx
+                .await
+                .expect("Deploys filter connection should have reported status");
+
+            // If all filters are not connected then we need to return an Err since partial connection is not allowed
+            if !(main_connected && sigs_connected && deploys_connected) {
+                Err(Error::msg("Partial connection is disabled, the listener was unable to connect all filters"))
+            } else {
+                Ok(sse_rx)
+            }
+        }
     }
 }
 
 async fn connect_with_retry(
     event_sender: UnboundedSender<SseEvent>,
     bind_address: String,
-    filter: String,
+    filter: SseFilter,
     start_from_id: Option<u32>,
     max_retries: u8,
     delay_between: u8,
+    wait_turn_then_report: OneshotReceiver<OneshotSender<()>>,
 ) {
     let mut retry_count = 0;
     let mut current_event_id = start_from_id;
+
+    // Wait until this filter has been given it's turn to attempt connection
+    let connected_reporter = wait_turn_then_report
+        .await
+        .expect("Connection reporting channel failed - cannot control filter priority without it");
+
+    let mut exhaustible_connected_reporter = Some(connected_reporter);
 
     while retry_count <= max_retries {
         if retry_count > 0 {
             info!(
                 bind_address,
-                filter, "Attempting to reconnect... ({}/{})", retry_count, max_retries
+                %filter, "Attempting to reconnect... ({}/{})", retry_count, max_retries
             );
         }
 
@@ -172,17 +295,30 @@ async fn connect_with_retry(
             Err(_) => {
                 // increment retry counter since the connection failed
                 retry_count += 1;
-                error!(
-                    %bind_address,
-                    %filter,
-                    "Error connecting, retrying in {}s",
-                    delay_between
-                );
+                if retry_count > max_retries {
+                    error!(
+                        %bind_address,
+                        %filter,
+                        "Error connecting, retries exhausted"
+                    );
+                } else {
+                    error!(
+                        %bind_address,
+                        %filter,
+                        "Error connecting, retrying in {}s",
+                        delay_between
+                    );
+                }
+
                 // wait the configured delay before continuing
                 tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
                 continue;
             }
         };
+
+        if let Some(reporter) = exhaustible_connected_reporter.take() {
+            let _ = reporter.send(());
+        }
 
         info!(%bind_address, %filter, %api_version, "Connected to event stream{}", {
             if let Some(event_id) = start_from_id {
