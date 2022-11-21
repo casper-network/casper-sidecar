@@ -1,12 +1,14 @@
+use bytes::Bytes;
 use std::time::Duration;
 
-use eventsource_stream::Eventsource;
+use eventsource_stream::{EventStream, Eventsource};
 use futures_util::StreamExt;
 use http::StatusCode;
 use tempfile::tempdir;
 
 use casper_event_types::SseData;
 use casper_types::testing::TestRng;
+use futures::Stream;
 
 use super::run;
 use crate::{
@@ -70,13 +72,8 @@ async fn should_allow_client_connection_to_sse() {
         "http://127.0.0.1:{}/events/main",
         testing_config.event_stream_server_port()
     );
-    let mut main_event_stream = reqwest::Client::new()
-        .get(&main_event_stream_url)
-        .send()
-        .await
-        .expect("Error in main event stream")
-        .bytes_stream()
-        .eventsource();
+
+    let mut main_event_stream = try_connect(&main_event_stream_url).await;
 
     let mut events_received = Vec::new();
 
@@ -114,13 +111,8 @@ async fn should_send_shutdown_to_sse_client() {
         "http://127.0.0.1:{}/events/main",
         testing_config.event_stream_server_port()
     );
-    let mut main_event_stream = reqwest::Client::new()
-        .get(&main_event_stream_url)
-        .send()
-        .await
-        .expect("Error in main event stream")
-        .bytes_stream()
-        .eventsource();
+
+    let mut main_event_stream = try_connect(&main_event_stream_url).await;
 
     let mut last_event = None;
     while let Some(Ok(event)) = main_event_stream.next().await {
@@ -161,13 +153,7 @@ async fn should_respond_to_rest_query() {
         testing_config.event_stream_server_port()
     );
 
-    let mut main_event_stream = reqwest::Client::new()
-        .get(&main_event_stream_url)
-        .send()
-        .await
-        .expect("Error in main event stream")
-        .bytes_stream()
-        .eventsource();
+    let mut main_event_stream = try_connect(&main_event_stream_url).await;
 
     // Listen to the sidecar's outbound stream to check for it storing a BlockAdded
     while let Some(Ok(event)) = main_event_stream.next().await {
@@ -262,14 +248,31 @@ async fn partial_connection_test(
         testing_config.event_stream_server_port()
     );
 
-    let mut main_event_stream = None;
+    let mut main_event_stream = try_connect(&main_event_stream_url).await;
+
+    let mut got_events = false;
+
+    while let Some(event) = main_event_stream.next().await {
+        let data = event.unwrap().data;
+        if let Ok(SseData::BlockAdded { .. }) = serde_json::from_str(&data) {
+            got_events = true;
+            // break;
+        }
+    }
+
+    got_events
+}
+
+#[cfg(test)]
+async fn try_connect(url: &str) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
+    let mut event_stream = None;
     for _ in 0..3 {
         let event_source = reqwest::Client::new()
-            .get(&main_event_stream_url)
+            .get(url)
             .send()
             .await
             .map(|response| {
-                main_event_stream = Some(response.bytes_stream().eventsource());
+                event_stream = Some(response.bytes_stream().eventsource());
             });
         if event_source.is_ok() {
             break;
@@ -278,19 +281,5 @@ async fn partial_connection_test(
         }
     }
 
-    if let Some(mut main_event_stream) = main_event_stream {
-        let mut got_events = false;
-
-        while let Some(event) = main_event_stream.next().await {
-            let data = event.unwrap().data;
-            if let Ok(SseData::BlockAdded { .. }) = serde_json::from_str(&data) {
-                got_events = true;
-                // break;
-            }
-        }
-
-        got_events
-    } else {
-        panic!("Couldn't connect to event stream")
-    }
+    event_stream.expect("Unable to connect to stream")
 }
