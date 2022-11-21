@@ -1,9 +1,11 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    fs,
     time::Duration,
 };
 
+use chrono::{SecondsFormat, Utc};
 use colored::Colorize;
 use derive_new::new;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
@@ -12,12 +14,18 @@ use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use casper_event_listener::SseEvent;
 use casper_types::{testing::TestRng, AsymmetricType};
+use plotters::prelude::{
+    full_palette::{GREY, ORANGE},
+    BLACK, BLUE, GREEN, MAGENTA, RED,
+};
 
 use super::*;
+use crate::testing::graphing::Axis;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+        graphing::{Config as GraphConfig, Graph},
         testing_config::prepare_config,
     },
 };
@@ -79,6 +87,7 @@ struct TimestampedEvent {
 #[derive(new)]
 struct EventLatency {
     event: EventType,
+    received_at: Instant,
     latency_millis: u128,
 }
 
@@ -459,6 +468,7 @@ fn compare_events_collect_latencies(
             if event_from_source.matches(&events_from_sidecar[i]) {
                 event_latencies.push(EventLatency::new(
                     event_from_source.event_type(),
+                    event_from_source.timestamp,
                     events_from_sidecar[i]
                         .time_since(&event_from_source)
                         .as_millis(),
@@ -554,4 +564,57 @@ fn display_duration(duration: Duration) -> String {
     } else {
         format!("{}s", duration.as_secs())
     }
+}
+
+fn save_results_as_graph(
+    mut combined_event_latencies: Vec<EventLatency>,
+    duration: Duration,
+    start_instant: Instant,
+) {
+    let path_to_dir =
+        "/home/george/casper/casperlabs/event-sidecar/target/performance_results".to_string();
+    fs::create_dir_all(path_to_dir.clone()).unwrap();
+    let current_datetime: String = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let formatted_datetime = current_datetime.replace(':', "-");
+    let file_path = format!("{}/{}_latency_graph.png", path_to_dir, formatted_datetime);
+
+    let graph = Graph::new(GraphConfig::new(
+        "/home/george/casper/casperlabs/event-sidecar/target/performance_results/latency_graph.png",
+        "Event Sidecar Latency",
+        Axis::new("Time (ms)", 0..duration.as_secs(), false),
+        // 300,000ms is 5 minutes
+        Axis::new("Latency (ms)", 0..300_000, true),
+    ));
+
+    let event_types_ordered_for_efficiency = vec![
+        (EventType::FinalitySignature, ORANGE),
+        (EventType::DeployAccepted, MAGENTA),
+        (EventType::DeployProcessed, BLUE),
+        (EventType::BlockAdded, BLACK),
+        (EventType::Step, RED),
+        (EventType::DeployExpired, GREEN),
+        (EventType::Fault, GREY),
+    ];
+
+    for (event_type, line_colour) in event_types_ordered_for_efficiency {
+        println!("Charting {}...", event_type);
+        let event_latencies_for_type =
+            extract_latencies_by_type(&event_type, &mut combined_event_latencies);
+
+        let data = event_latencies_for_type
+            .iter()
+            .map(|event_latency| {
+                let time_since_start = event_latency
+                    .received_at
+                    .duration_since(start_instant)
+                    .as_secs();
+                let latency = event_latency.latency_millis as u64;
+                (time_since_start, latency)
+            })
+            .collect::<Vec<(u64, u64)>>();
+
+        graph.add_series(event_type.to_string().as_str(), line_colour, data);
+    }
+
+    graph.finalise();
 }

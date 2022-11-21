@@ -361,6 +361,7 @@ dependencies = [
  "casper-hashing",
  "casper-node",
  "casper-types",
+ "chrono",
  "colored",
  "derive-new",
  "eventsource-stream",

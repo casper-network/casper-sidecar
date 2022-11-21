@@ -1,25 +1,28 @@
 use std::{ops::Range, sync::Arc};
 
+use derive_new::new;
 use plotters::{
     chart::ChartState,
     coord::{types::RangedCoordu64, Shift},
     prelude::*,
 };
 
-struct Axis {
+#[derive(new)]
+pub(crate) struct Axis {
     label: &'static str,
     range: Range<u64>,
     use_log_scale: bool,
 }
 
-struct Config {
+#[derive(new)]
+pub(crate) struct Config {
     path_to_png: &'static str,
     heading: &'static str,
     x_axis: Axis,
     y_axis: Axis,
 }
 
-struct Graph<'a, CT: CoordTranslate> {
+pub(crate) struct Graph<'a, CT: CoordTranslate> {
     graph_root: DrawingArea<SVGBackend<'a>, Shift>,
     shared_chart_state: ChartState<Arc<CT>>,
 }
@@ -27,7 +30,7 @@ struct Graph<'a, CT: CoordTranslate> {
 impl Graph<'static, Cartesian2d<RangedCoordu64, LogCoord<u64>>> {
     pub(crate) fn new(config: Config) -> Self {
         // Creates drawing area with the SVG backend - this is the basis for the graph
-        let root = SVGBackend::new(config.path_to_png, (1920, 1080)).into_drawing_area();
+        let root = SVGBackend::new(&config.path_to_png, (1920, 1080)).into_drawing_area();
 
         // Sets the background
         root.fill(&WHITE)
