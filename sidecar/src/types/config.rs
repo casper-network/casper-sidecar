@@ -6,28 +6,14 @@ use casper_event_listener::FilterPriority;
 #[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(Default))]
 pub struct Config {
-    pub connection: ConnectionConfig,
+    pub connections: Vec<Connection>,
     pub storage: StorageConfig,
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
 }
 
 #[derive(Clone, Deserialize)]
-pub struct ConnectionConfig {
-    pub node_connections: Vec<NodeConnection>,
-}
-
-#[cfg(test)]
-impl Default for ConnectionConfig {
-    fn default() -> Self {
-        Self {
-            node_connections: vec![NodeConnection::default()],
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
-pub struct NodeConnection {
+pub struct Connection {
     pub ip_address: String,
     pub sse_port: u16,
     pub max_retries: u8,
@@ -39,7 +25,7 @@ pub struct NodeConnection {
 }
 
 #[cfg(test)]
-impl Default for NodeConnection {
+impl Default for Connection {
     fn default() -> Self {
         Self {
             ip_address: "127.0.0.1".to_string(),

@@ -56,9 +56,9 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
-    let mut event_listeners = Vec::with_capacity(config.connection.node_connections.len());
+    let mut event_listeners = Vec::with_capacity(config.connections.len());
 
-    for connection in &config.connection.node_connections {
+    for connection in &config.connections {
         let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
         let event_listener = EventListener::new(
             bind_address,
@@ -117,7 +117,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let listening_task_handle = tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
 
-        let connection_configs = config.connection.node_connections.clone();
+        let connection_configs = config.connections.clone();
 
         for (event_listener, connection_config) in
             event_listeners.into_iter().zip(connection_configs)
