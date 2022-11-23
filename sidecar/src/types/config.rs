@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use casper_event_listener::FilterPriority;
+
 // This struct is used to parse the EXAMPLE_CONFIG.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(Default))]
@@ -32,6 +34,8 @@ pub struct NodeConnection {
     pub delay_between_retries_in_seconds: u8,
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
+    #[serde(default)]
+    pub filter_priority: FilterPriority,
 }
 
 #[cfg(test)]
@@ -44,6 +48,7 @@ impl Default for NodeConnection {
             max_retries: 3,
             delay_between_retries_in_seconds: 5,
             enable_logging: false,
+            filter_priority: FilterPriority::default(),
         }
     }
 }

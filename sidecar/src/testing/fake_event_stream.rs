@@ -244,6 +244,8 @@ async fn counted_event_streaming(
 ) {
     for _ in 0..count {
         event_stream_server.broadcast(SseData::random_block_added(test_rng));
+        event_stream_server.broadcast(SseData::random_deploy_accepted(test_rng).0);
+        event_stream_server.broadcast(SseData::random_finality_signature(test_rng));
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }

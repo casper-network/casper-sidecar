@@ -1,3 +1,4 @@
+use casper_event_listener::FilterPriority;
 use tempfile::TempDir;
 
 use crate::types::config::Config;
@@ -54,6 +55,10 @@ impl TestingConfig {
         self.config.connection.node_connections[0].allow_partial_connection =
             allow_partial_connection;
         self
+    }
+
+    pub(crate) fn set_filter_priority(&mut self, filter_priority: FilterPriority) {
+        self.config.connection.node_connections[0].filter_priority = filter_priority;
     }
 
     /// Specify the retry configuration settings. By default they are set as follows:

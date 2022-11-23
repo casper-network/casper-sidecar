@@ -6,11 +6,13 @@ use futures_util::StreamExt;
 use http::StatusCode;
 use tempfile::tempdir;
 
+use casper_event_listener::{EventListener, FilterPriority};
 use casper_event_types::SseData;
 use casper_types::testing::TestRng;
 use futures::Stream;
 
 use super::run;
+use crate::performance_tests::EventType;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
@@ -71,7 +73,7 @@ async fn should_allow_client_connection_to_sse() {
         testing_config.event_stream_server_port()
     );
 
-    let mut main_event_stream = try_connect(&main_event_stream_url).await;
+    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
 
     let mut events_received = Vec::new();
 
@@ -82,6 +84,10 @@ async fn should_allow_client_connection_to_sse() {
 
     assert!(!events_received.is_empty());
     assert!(events_received.len() > 1);
+    assert!(
+        matches!(events_received[0], SseData::ApiVersion(_)),
+        "First event should be ApiVersion"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -108,7 +114,7 @@ async fn should_send_shutdown_to_sse_client() {
         testing_config.event_stream_server_port()
     );
 
-    let mut main_event_stream = try_connect(&main_event_stream_url).await;
+    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
 
     let mut last_event = None;
     while let Some(Ok(event)) = main_event_stream.next().await {
@@ -147,7 +153,7 @@ async fn should_respond_to_rest_query() {
         testing_config.event_stream_server_port()
     );
 
-    let mut main_event_stream = try_connect(&main_event_stream_url).await;
+    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
 
     // Listen to the sidecar's outbound stream to check for it storing a BlockAdded
     while let Some(Ok(event)) = main_event_stream.next().await {
@@ -179,54 +185,139 @@ async fn should_respond_to_rest_query() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-// This waits to receive a BlockAdded to ensure that the listener has prioritised connecting to the main filter.
 async fn should_allow_partial_connection_on_one_filter() {
-    let did_receive_events = partial_connection_test(100, 1, true).await;
-    assert!(did_receive_events)
+    let received_event_types = partial_connection_test(100, 1, true, None).await;
+    assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-// This waits to receive a BlockAdded to ensure that the listener has prioritised connecting to the main filter.
 async fn should_allow_partial_connection_on_two_filters() {
-    let did_receive_events = partial_connection_test(100, 2, true).await;
-    assert!(did_receive_events)
+    let received_event_types = partial_connection_test(100, 2, true, None).await;
+    assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_disallow_partial_connection_on_one_filter() {
-    let did_not_receive_events = !partial_connection_test(100, 1, false).await;
-    assert!(did_not_receive_events)
+    let received_event_types = partial_connection_test(100, 1, false, None).await;
+    assert!(received_event_types.is_none())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_disallow_partial_connection_on_two_filters() {
-    let did_not_receive_events = !partial_connection_test(100, 2, false).await;
-    assert!(did_not_receive_events)
+    let received_event_types = partial_connection_test(100, 2, false, None).await;
+    assert!(received_event_types.is_none())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_prioritise_filters_correctly_main_only() {
+    let filter_priority = FilterPriority::new(0, 1, 2).unwrap();
+    let received_event_types = partial_connection_test(100, 1, true, Some(filter_priority)).await;
+    assert!(received_event_types.is_some());
+
+    if let Some(event_types) = received_event_types {
+        // If any of the events received aren't part of the Main filter then it hasn't connected as configured
+        assert!(!event_types.iter().any(|evt_type| {
+            match evt_type {
+                EventType::ApiVersion
+                | EventType::BlockAdded
+                | EventType::DeployExpired
+                | EventType::DeployProcessed
+                | EventType::Fault
+                | EventType::Step
+                | EventType::Shutdown => false,
+                EventType::DeployAccepted | EventType::FinalitySignature => true,
+            }
+        }))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_prioritise_filters_correctly_sigs_only() {
+    let filter_priority = FilterPriority::new(1, 0, 2).unwrap();
+    let received_event_types = partial_connection_test(100, 1, true, Some(filter_priority)).await;
+    assert!(received_event_types.is_some());
+
+    if let Some(event_types) = received_event_types {
+        // If any of the events received aren't part of the Sigs filter then it hasn't connected as configured
+        assert!(!event_types.iter().any(|evt_type| {
+            match evt_type {
+                EventType::BlockAdded
+                | EventType::DeployAccepted
+                | EventType::DeployExpired
+                | EventType::DeployProcessed
+                | EventType::Fault
+                | EventType::Step => true,
+                EventType::ApiVersion | EventType::FinalitySignature | EventType::Shutdown => false,
+            }
+        }))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn should_prioritise_filters_correctly_deploys_only() {
+    let filter_priority = FilterPriority::new(1, 2, 0).unwrap();
+    let received_event_types = partial_connection_test(100, 1, true, Some(filter_priority)).await;
+    assert!(received_event_types.is_some());
+
+    if let Some(event_types) = received_event_types {
+        // If any of the events received aren't part of the Deploys filter then it hasn't connected as configured
+        assert!(!event_types.iter().any(|evt_type| {
+            match evt_type {
+                EventType::BlockAdded
+                | EventType::DeployExpired
+                | EventType::DeployProcessed
+                | EventType::Fault
+                | EventType::FinalitySignature
+                | EventType::Step => true,
+                EventType::ApiVersion | EventType::DeployAccepted | EventType::Shutdown => false,
+            }
+        }))
+    }
 }
 
 async fn partial_connection_test(
     num_of_events_to_send: u8,
     max_subscribers_for_fes: u32,
     allow_partial_connection: bool,
-) -> bool {
+    filter_priority: Option<FilterPriority>,
+) -> Option<Vec<EventType>> {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir)
+
+    // Setup config for the sidecar
+    //      - Set the sidecar to reattempt connection only once after a 2 second delay.
+    //      - Allow partial based on the value passed to the function.
+    let mut testing_config = prepare_config(&temp_storage_dir)
         .configure_retry_settings(1, 2)
         .set_allow_partial_connection(allow_partial_connection);
 
+    // If filter_priority was provided, set it in the config
+    if let Some(filter_priority) = filter_priority {
+        testing_config.set_filter_priority(filter_priority)
+    }
+
+    // Setup config for the Event Stream Server to be used in the Fake Event Stream
+    //      - Run it on the port the sidecar is set to connect to.
+    //      - The buffer will be the default.
+    //      - Limit the max_subscribers to the FakeEventStream as per the value passed to the function.
     let ess_config = EssConfig::new(
         testing_config.connection_port(),
         None,
         Some(max_subscribers_for_fes),
     );
 
+    // This is redundant for this test but is a required argument for starting the fake event stream.
     let stream_duration = Duration::from_secs(60);
 
+    // Run the Fake Event Stream in another task
+    //      - Use the Counted scenario to get the event stream to send the number of events specified in the test.
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
@@ -234,29 +325,35 @@ async fn partial_connection_test(
         stream_duration,
     ));
 
+    // Run the Sidecar in another task with the prepared config.
     tokio::spawn(run(testing_config.inner()));
 
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main",
-        testing_config.event_stream_server_port()
-    );
+    // URL for connecting to the Sidecar's event stream.
+    let sidecar_bind_address = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
 
-    let mut main_event_stream = try_connect(&main_event_stream_url).await;
+    let test_event_listener = try_connect_listener(sidecar_bind_address).await;
 
-    let mut got_events = false;
+    let mut combined_receiver = test_event_listener.consume_combine_streams().await.unwrap();
 
-    while let Some(event) = main_event_stream.next().await {
-        let data = event.unwrap().data;
-        if let Ok(SseData::BlockAdded { .. }) = serde_json::from_str(&data) {
-            got_events = true;
-            break;
+    let mut event_types_received = Vec::new();
+
+    while let Some(event) = combined_receiver.recv().await {
+        if !matches!(event.data, SseData::ApiVersion(_)) && !matches!(event.data, SseData::Shutdown)
+        {
+            event_types_received.push(event.data.into())
         }
     }
 
-    got_events
+    if event_types_received.is_empty() {
+        None
+    } else {
+        Some(event_types_received)
+    }
 }
 
-async fn try_connect(url: &str) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
+async fn try_connect_to_single_stream(
+    url: &str,
+) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
     let mut event_stream = None;
     for _ in 0..10 {
         let event_source = reqwest::Client::new()
@@ -274,4 +371,19 @@ async fn try_connect(url: &str) -> EventStream<impl Stream<Item = reqwest::Resul
     }
 
     event_stream.expect("Unable to connect to stream")
+}
+
+async fn try_connect_listener(bind_address: String) -> EventListener {
+    let mut event_listener = None;
+    for _ in 0..10 {
+        let listener =
+            EventListener::new(bind_address.clone(), 3, 3, false, FilterPriority::default()).await;
+        if listener.is_ok() {
+            event_listener = Some(listener.unwrap());
+            break;
+        } else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    event_listener.expect("Unable to connect to stream")
 }
