@@ -66,8 +66,6 @@ async fn should_allow_client_connection_to_sse() {
 
     tokio::spawn(run(testing_config.inner()));
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     let main_event_stream_url = format!(
         "http://127.0.0.1:{}/events/main",
         testing_config.event_stream_server_port()
@@ -104,8 +102,6 @@ async fn should_send_shutdown_to_sse_client() {
     ));
 
     tokio::spawn(run(testing_config.inner()));
-
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let main_event_stream_url = format!(
         "http://127.0.0.1:{}/events/main",
@@ -145,8 +141,6 @@ async fn should_respond_to_rest_query() {
     ));
 
     tokio::spawn(run(testing_config.inner()));
-
-    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let main_event_stream_url = format!(
         "http://127.0.0.1:{}/events/main",
@@ -213,7 +207,6 @@ async fn should_disallow_partial_connection_on_two_filters() {
     assert!(did_not_receive_events)
 }
 
-#[cfg(test)]
 async fn partial_connection_test(
     num_of_events_to_send: u8,
     max_subscribers_for_fes: u32,
@@ -256,17 +249,16 @@ async fn partial_connection_test(
         let data = event.unwrap().data;
         if let Ok(SseData::BlockAdded { .. }) = serde_json::from_str(&data) {
             got_events = true;
-            // break;
+            break;
         }
     }
 
     got_events
 }
 
-#[cfg(test)]
 async fn try_connect(url: &str) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
     let mut event_stream = None;
-    for _ in 0..3 {
+    for _ in 0..10 {
         let event_source = reqwest::Client::new()
             .get(url)
             .send()
