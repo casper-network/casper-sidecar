@@ -6,12 +6,11 @@ use std::{
 
 use colored::Colorize;
 use derive_new::new;
-use rand::Rng;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
-use casper_event_listener::SseEvent;
+use casper_event_listener::{FilterPriority, SseEvent};
 use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
@@ -25,7 +24,7 @@ use crate::{
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
     performance_check(
@@ -84,7 +83,7 @@ struct EventLatency {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum EventType {
+pub(crate) enum EventType {
     ApiVersion,
     BlockAdded,
     DeployAccepted,
@@ -94,6 +93,22 @@ enum EventType {
     FinalitySignature,
     Step,
     Shutdown,
+}
+
+impl From<SseData> for EventType {
+    fn from(sse_data: SseData) -> Self {
+        match sse_data {
+            SseData::ApiVersion(_) => EventType::ApiVersion,
+            SseData::BlockAdded { .. } => EventType::BlockAdded,
+            SseData::DeployAccepted { .. } => EventType::DeployAccepted,
+            SseData::DeployProcessed { .. } => EventType::DeployProcessed,
+            SseData::DeployExpired { .. } => EventType::DeployExpired,
+            SseData::Fault { .. } => EventType::Fault,
+            SseData::FinalitySignature(_) => EventType::FinalitySignature,
+            SseData::Step { .. } => EventType::Step,
+            SseData::Shutdown => EventType::Shutdown,
+        }
+    }
 }
 
 impl Display for EventType {
@@ -115,17 +130,7 @@ impl Display for EventType {
 
 impl TimestampedEvent {
     fn event_type(&self) -> EventType {
-        match self.event {
-            SseData::ApiVersion(_) => EventType::ApiVersion,
-            SseData::BlockAdded { .. } => EventType::BlockAdded,
-            SseData::DeployAccepted { .. } => EventType::DeployAccepted,
-            SseData::DeployProcessed { .. } => EventType::DeployProcessed,
-            SseData::DeployExpired { .. } => EventType::DeployExpired,
-            SseData::Fault { .. } => EventType::Fault,
-            SseData::FinalitySignature(_) => EventType::FinalitySignature,
-            SseData::Step { .. } => EventType::Step,
-            SseData::Shutdown => EventType::Shutdown,
-        }
+        self.event.clone().into()
     }
 
     fn identifier(&self) -> String {
@@ -189,8 +194,7 @@ async fn performance_check(
     duration: Duration,
     acceptable_latency: Duration,
 ) {
-    let mut test_rng = TestRng::new();
-    let rng_seed = test_rng.gen::<[u8; 16]>();
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
@@ -198,7 +202,7 @@ async fn performance_check(
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
-        rng_seed, ess_config, scenario, duration,
+        test_rng, ess_config, scenario, duration,
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -206,12 +210,24 @@ async fn performance_check(
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
-    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
-    let source_event_receiver = source_event_listener.consume_combine_streams().await;
+    let source_event_listener =
+        EventListener::new(source_url, 0, 0, false, FilterPriority::default())
+            .await
+            .unwrap();
+    let source_event_receiver = source_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
-    let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
+    let sidecar_event_listener =
+        EventListener::new(sidecar_url, 0, 0, false, FilterPriority::default())
+            .await
+            .unwrap();
+    let sidecar_event_receiver = sidecar_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let source_task_handle =
         tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
@@ -273,12 +289,24 @@ async fn live_performance_check(
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let source_url = format!("{}:{}", ip_address, port);
-    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
-    let source_event_receiver = source_event_listener.consume_combine_streams().await;
+    let source_event_listener =
+        EventListener::new(source_url, 0, 0, false, FilterPriority::default())
+            .await
+            .unwrap();
+    let source_event_receiver = source_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
-    let sidecar_event_receiver = sidecar_event_listener.consume_combine_streams().await;
+    let sidecar_event_listener =
+        EventListener::new(sidecar_url, 0, 0, false, FilterPriority::default())
+            .await
+            .unwrap();
+    let sidecar_event_receiver = sidecar_event_listener
+        .consume_combine_streams()
+        .await
+        .unwrap();
 
     let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         source_event_receiver,
