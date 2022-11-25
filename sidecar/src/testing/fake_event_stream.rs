@@ -25,7 +25,7 @@ type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u8;
 type NumberOfEventsToSend = u8;
 
-#[derive(new)]
+#[derive(Clone, new)]
 pub struct FesRestartConfig {
     shutdown_after: Duration,
     restart_after: Duration,
@@ -108,7 +108,7 @@ pub async fn spin_up_fake_event_stream(
             .expect("Error spinning up Event Stream Server");
 
             realistic_event_streaming(
-                rng_seed,
+                test_rng,
                 event_stream_server,
                 duration - shutdown_after - restart_after,
             )
@@ -276,10 +276,13 @@ async fn counted_event_streaming(
     mut event_stream_server: EventStreamServer,
     count: u8,
 ) {
-    for _ in 0..count {
-        event_stream_server.broadcast(SseData::random_block_added(test_rng));
+    let mut events_sent = 0;
+
+    while events_sent <= count {
         event_stream_server.broadcast(SseData::random_deploy_accepted(test_rng).0);
+        event_stream_server.broadcast(SseData::random_block_added(test_rng));
         event_stream_server.broadcast(SseData::random_finality_signature(test_rng));
+        events_sent += 3;
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }

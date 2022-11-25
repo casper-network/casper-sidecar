@@ -13,8 +13,8 @@ use casper_types::testing::TestRng;
 use futures::Stream;
 
 use super::run;
-use crate::testing::fake_event_stream::FesRestartConfig;
 use crate::performance_tests::EventType;
+use crate::testing::fake_event_stream::FesRestartConfig;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
@@ -353,43 +353,6 @@ async fn partial_connection_test(
     }
 }
 
-async fn try_connect_to_single_stream(
-    url: &str,
-) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
-    let mut event_stream = None;
-    for _ in 0..10 {
-        let event_source = reqwest::Client::new()
-            .get(url)
-            .send()
-            .await
-            .map(|response| {
-                event_stream = Some(response.bytes_stream().eventsource());
-            });
-        if event_source.is_ok() {
-            break;
-        } else {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    }
-
-    event_stream.expect("Unable to connect to stream")
-}
-
-async fn try_connect_listener(bind_address: String) -> EventListener {
-    let mut event_listener = None;
-    for _ in 0..10 {
-        let listener =
-            EventListener::new(bind_address.clone(), 3, 3, false, FilterPriority::default()).await;
-        if listener.is_ok() {
-            event_listener = Some(listener.unwrap());
-            break;
-        } else {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    }
-    event_listener.expect("Unable to connect to stream")
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn should_not_attempt_reconnection() {
@@ -457,7 +420,7 @@ async fn should_reconnect_on_time() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn should_shutdown_after_failure_to_reconnect() {
-    let let test_rng = Box::leak(Box::new(TestRng::new()));
+    let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     // Should provide a 15 second window for the source to restart
@@ -490,4 +453,41 @@ async fn should_shutdown_after_failure_to_reconnect() {
         time_for_sidecar_to_shutdown > minimum_time
             && time_for_sidecar_to_shutdown < minimum_time + Duration::from_secs(5)
     );
+}
+
+async fn try_connect_to_single_stream(
+    url: &str,
+) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
+    let mut event_stream = None;
+    for _ in 0..10 {
+        let event_source = reqwest::Client::new()
+            .get(url)
+            .send()
+            .await
+            .map(|response| {
+                event_stream = Some(response.bytes_stream().eventsource());
+            });
+        if event_source.is_ok() {
+            break;
+        } else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    event_stream.expect("Unable to connect to stream")
+}
+
+async fn try_connect_listener(bind_address: String) -> EventListener {
+    let mut event_listener = None;
+    for _ in 0..10 {
+        let listener =
+            EventListener::new(bind_address.clone(), 3, 3, false, FilterPriority::default()).await;
+        if listener.is_ok() {
+            event_listener = Some(listener.unwrap());
+            break;
+        } else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    event_listener.expect("Unable to connect to stream")
 }
