@@ -1,7 +1,7 @@
-use std::ops::Div;
 use std::{
     fmt::{Display, Formatter},
     iter,
+    ops::Div,
     time::Duration,
 };
 
@@ -13,7 +13,7 @@ use tokio::time::Instant;
 use casper_event_types::SseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 
-use crate::event_stream_server::{Config as SseConfig, EventStreamServer};
+use crate::event_stream_server::{Config as EssConfig, EventStreamServer};
 
 // Based on Mainnet cadence
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
@@ -22,8 +22,10 @@ const NUMBER_OF_DEPLOYS_PER_BLOCK: u16 = 20;
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u8;
+type NumberOfEventsToSend = u8;
 
 pub enum EventStreamScenario {
+    Counted(NumberOfEventsToSend),
     Realistic,
     LoadTestingStep(FrequencyOfStepEvents),
     LoadTestingDeploy(NumberOfDeployEventsInBurst),
@@ -32,6 +34,7 @@ pub enum EventStreamScenario {
 impl Display for EventStreamScenario {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            EventStreamScenario::Counted(num) => write!(f, "Counted ({} events)", num),
             EventStreamScenario::Realistic => write!(f, "Realistic"),
             EventStreamScenario::LoadTestingStep(_) => {
                 write!(f, "Load Testing [Step]")
@@ -45,7 +48,7 @@ impl Display for EventStreamScenario {
 
 pub async fn spin_up_fake_event_stream(
     test_rng: &'static mut TestRng,
-    port: u16,
+    ess_config: EssConfig,
     scenario: EventStreamScenario,
     duration: Duration,
 ) {
@@ -53,14 +56,20 @@ pub async fn spin_up_fake_event_stream(
 
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
+    let cloned_address = ess_config.address.clone();
+    let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
+
     let event_stream_server = EventStreamServer::new(
-        SseConfig::new(port, None, None),
+        ess_config,
         temp_dir.path().to_path_buf(),
         ProtocolVersion::V1_0_0,
     )
     .expect("Error spinning up Event Stream Server");
 
     match scenario {
+        EventStreamScenario::Counted(number_of_events) => {
+            counted_event_streaming(test_rng, event_stream_server, number_of_events).await
+        }
         EventStreamScenario::Realistic => {
             realistic_event_streaming(test_rng, event_stream_server, duration).await
         }
@@ -131,12 +140,12 @@ async fn realistic_event_streaming(
                 interval.tick().await;
 
                 // Prior to each BlockAdded emit FinalitySignatures
-                for _ in 0..100 {
+                for _ in 0..NUMBER_OF_VALIDATORS {
                     let _ = cloned_sender.send(finality_signature_events.pop().unwrap());
                 }
 
                 // Emit DeployProcessed events for the next BlockAdded
-                for _ in 0..20 {
+                for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
                     let _ = cloned_sender.send(deploy_processed_events.pop().unwrap());
                 }
 
@@ -144,7 +153,7 @@ async fn realistic_event_streaming(
                 let _ = cloned_sender.send(block_added_events.pop().unwrap());
 
                 // Emit DeployAccepted Events
-                for _ in 0..20 {
+                for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
                     let _ = cloned_sender.send(deploy_accepted_events.pop().unwrap().0);
                 }
             }
@@ -225,5 +234,18 @@ async fn fast_bursts_of_deploy_events(
         for _ in 0..burst_size {
             event_stream_server.broadcast(SseData::random_deploy_processed(test_rng));
         }
+    }
+}
+
+async fn counted_event_streaming(
+    test_rng: &mut TestRng,
+    mut event_stream_server: EventStreamServer,
+    count: u8,
+) {
+    for _ in 0..count {
+        event_stream_server.broadcast(SseData::random_block_added(test_rng));
+        event_stream_server.broadcast(SseData::random_deploy_accepted(test_rng).0);
+        event_stream_server.broadcast(SseData::random_finality_signature(test_rng));
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }

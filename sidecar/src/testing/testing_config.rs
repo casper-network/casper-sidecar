@@ -1,3 +1,4 @@
+use casper_event_listener::FilterPriority;
 use tempfile::TempDir;
 
 use crate::types::config::Config;
@@ -41,7 +42,6 @@ impl TestingConfig {
 
     /// Specify the port that the sidecar should connect to.
     /// By default it is set to `18101` - the SSE port of a node in the default NCTL network.
-    #[allow(unused)]
     pub(crate) fn set_connection_address(mut self, ip_address: Option<String>, port: u16) -> Self {
         if let Some(address) = ip_address {
             self.config.connection.node_connections[0].ip_address = address;
@@ -50,17 +50,20 @@ impl TestingConfig {
         self
     }
 
-    /// Specify the max_concurrent_subscribers for the outbound EventStreamServer. By default it is set to 100.
-    #[allow(unused)]
-    pub(crate) fn set_max_sse_subscribers(mut self, num_subscribers: u32) -> Self {
-        self.config.event_stream_server.max_concurrent_subscribers = num_subscribers;
+    /// Set how the sidecar should handle the case where it is only able to connect to one or two of the node's filters.
+    pub(crate) fn set_allow_partial_connection(mut self, allow_partial_connection: bool) -> Self {
+        self.config.connection.node_connections[0].allow_partial_connection =
+            allow_partial_connection;
         self
+    }
+
+    pub(crate) fn set_filter_priority(&mut self, filter_priority: FilterPriority) {
+        self.config.connection.node_connections[0].filter_priority = filter_priority;
     }
 
     /// Specify the retry configuration settings. By default they are set as follows:
     /// - `max_retries`: 3
     /// - `delay_between_retries_in_seconds`: 5
-    #[allow(unused)]
     pub(crate) fn configure_retry_settings(
         mut self,
         max_retries: u8,
