@@ -14,11 +14,12 @@ use futures::Stream;
 
 use super::run;
 use crate::performance_tests::EventType;
-use crate::testing::fake_event_stream::FesRestartConfig;
+use crate::testing::fake_event_stream::{Bound, GenericScenarioSettings, Restart};
+use crate::utils::display_duration;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
-        fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+        fake_event_stream::{spin_up_fake_event_stream, Scenario},
         testing_config::prepare_config,
     },
     types::sse_events::BlockAdded,
@@ -37,8 +38,10 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Realistic,
-        Duration::from_secs(30),
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(30)),
+            None,
+        )),
     ));
 
     let shutdown_err = run(testing_config.inner())
@@ -64,8 +67,10 @@ async fn should_allow_client_connection_to_sse() {
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Realistic,
-        Duration::from_secs(60),
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(60)),
+            None,
+        )),
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -105,8 +110,10 @@ async fn should_send_shutdown_to_sse_client() {
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Realistic,
-        Duration::from_secs(60),
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(60)),
+            None,
+        )),
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -144,8 +151,10 @@ async fn should_respond_to_rest_query() {
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Realistic,
-        Duration::from_secs(60),
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(60)),
+            None,
+        )),
     ));
 
     tokio::spawn(run(testing_config.inner()));
@@ -284,7 +293,7 @@ async fn should_prioritise_filters_correctly_deploys_only() {
 }
 
 async fn partial_connection_test(
-    num_of_events_to_send: u8,
+    num_of_events_to_send: u64,
     max_subscribers_for_fes: u32,
     allow_partial_connection: bool,
     filter_priority: Option<FilterPriority>,
@@ -315,16 +324,15 @@ async fn partial_connection_test(
         Some(max_subscribers_for_fes),
     );
 
-    // This is redundant for this test but is a required argument for starting the fake event stream.
-    let stream_duration = Duration::from_secs(60);
-
     // Run the Fake Event Stream in another task
     //      - Use the Counted scenario to get the event stream to send the number of events specified in the test.
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::Counted(num_of_events_to_send),
-        stream_duration,
+        Scenario::Counted(GenericScenarioSettings::new(
+            Bound::Counted(num_of_events_to_send),
+            None,
+        )),
     ));
 
     // Run the Sidecar in another task with the prepared config.
@@ -353,7 +361,7 @@ async fn partial_connection_test(
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn should_not_attempt_reconnection() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
@@ -363,16 +371,18 @@ async fn should_not_attempt_reconnection() {
 
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
-    let stream_duration = Duration::from_secs(60);
-
-    let fes_restart_config =
-        FesRestartConfig::new(Duration::from_secs(20), Duration::from_secs(20));
+    let stream_duration = Duration::from_secs(40);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::WithRestart(fes_restart_config),
-        stream_duration,
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(30)),
+            Some(Restart::new(
+                Duration::from_secs(10),
+                Bound::Timed(Duration::from_secs(30)),
+            )),
+        )),
     ));
 
     let start_instant = Instant::now();
@@ -382,8 +392,13 @@ async fn should_not_attempt_reconnection() {
         .expect_err("Sidecar should return an Err message on shutdown");
 
     let time_for_sidecar_to_shutdown = Instant::now() - start_instant;
+
+    println!(
+        "Shutdown: {}",
+        display_duration(time_for_sidecar_to_shutdown)
+    );
     // The sidecar should have shutdown as soon as it receives the Shutdown - making no attempt to reconnect.
-    assert!(time_for_sidecar_to_shutdown < stream_duration + Duration::from_secs(2));
+    assert!(time_for_sidecar_to_shutdown < stream_duration);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
@@ -400,13 +415,16 @@ async fn should_reconnect_on_time() {
     let start_instant = Instant::now();
     let stream_duration = Duration::from_secs(60);
 
-    let fes_restart_config = FesRestartConfig::new(stream_duration / 3, stream_duration / 3);
-
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::WithRestart(fes_restart_config),
-        stream_duration,
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(Duration::from_secs(30)),
+            Some(Restart::new(
+                Duration::from_secs(20),
+                Bound::Timed(Duration::from_secs(10)),
+            )),
+        )),
     ));
 
     run(testing_config.inner())
@@ -428,15 +446,15 @@ async fn should_shutdown_after_failure_to_reconnect() {
 
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
-    let stream_duration = Duration::from_secs(60);
-
-    let fes_restart_config = FesRestartConfig::new(stream_duration / 3, stream_duration / 3);
+    let initial_duration = Duration::from_secs(30);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
         ess_config,
-        EventStreamScenario::WithRestart(fes_restart_config),
-        stream_duration,
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(initial_duration),
+            Some(Restart::new(Duration::from_secs(20), Bound::Counted(100))),
+        )),
     ));
 
     let start_instant = Instant::now();
@@ -447,7 +465,7 @@ async fn should_shutdown_after_failure_to_reconnect() {
 
     let time_for_sidecar_to_shutdown = Instant::now() - start_instant;
     let total_retry_duration = Duration::from_secs(5 * 3);
-    let minimum_time = (stream_duration / 3) + total_retry_duration;
+    let minimum_time = initial_duration + total_retry_duration;
     // The sidecar should have shutdown after completing the configured retries.
     assert!(
         time_for_sidecar_to_shutdown > minimum_time

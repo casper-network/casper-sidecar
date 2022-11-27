@@ -309,11 +309,7 @@ async fn connect_with_retry(
         }
 
         let (api_version, mut event_stream) = match connect(url).await {
-            Ok(ok_val) => {
-                // reset retry counter since the connection was successful
-                retry_count = 0;
-                ok_val
-            }
+            Ok(ok_val) => ok_val,
             Err(_) => {
                 // increment retry counter since the connection failed
                 retry_count += 1;
@@ -371,6 +367,7 @@ async fn connect_with_retry(
                             break;
                         }
                         Ok(sse_data) => {
+                            retry_count = 0;
                             let _ = cloned_sender.send(SseEvent {
                                 source: bind_address.clone(),
                                 id: Some(event_id),
