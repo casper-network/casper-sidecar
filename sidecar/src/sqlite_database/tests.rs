@@ -7,7 +7,7 @@ use casper_types::{AsymmetricType, EraId};
 
 use super::SqliteDatabase;
 use crate::{
-    sql::tables,
+    sql::tables::{self, event_type::EventTypeId},
     types::{
         database::{DatabaseReader, DatabaseWriteError, DatabaseWriter},
         sse_events::*,
@@ -148,11 +148,6 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
         .expect("Error saving deploy_accepted");
 
     sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
-
-    sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
         .expect("Error getting deploy aggregate by hash");
@@ -180,11 +175,6 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
         .expect("Error saving deploy_processed");
 
     sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
-
-    sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
         .expect("Error getting deploy aggregate by hash");
@@ -209,11 +199,6 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
         .save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
         .await
         .expect("Error saving deploy_expired");
-
-    sqlite_db
-        .get_latest_deploy_aggregate()
-        .await
-        .expect("Error getting latest deploy aggregate");
 
     sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
@@ -564,4 +549,214 @@ async fn should_disallow_insert_of_existing_step() {
     if let DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
         assert_eq!(uc_err.table, "Step")
     }
+}
+
+#[tokio::test]
+async fn should_save_block_added_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let block_added = BlockAdded::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_block_added(block_added, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::BlockAdded as u8)
+}
+
+#[tokio::test]
+async fn should_save_deploy_accepted_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_accepted = DeployAccepted::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_deploy_accepted(deploy_accepted, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::DeployAccepted as u8)
+}
+
+#[tokio::test]
+async fn should_save_deploy_processed_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+
+    assert!(sqlite_db
+        .save_deploy_processed(deploy_processed, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::DeployProcessed as u8)
+}
+
+#[tokio::test]
+async fn should_save_deploy_expired_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let deploy_expired = DeployExpired::random(&mut test_rng, None);
+
+    assert!(sqlite_db
+        .save_deploy_expired(deploy_expired, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::DeployExpired as u8)
+}
+
+#[tokio::test]
+async fn should_save_fault_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let fault = Fault::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_fault(fault, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::Fault as u8)
+}
+
+#[tokio::test]
+async fn should_save_finality_signature_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let finality_signature = FinalitySignature::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_finality_signature(finality_signature, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::FinalitySignature as u8)
+}
+
+#[tokio::test]
+async fn should_save_step_with_correct_event_type_id() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    let step = Step::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_step(step, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+
+    let sql = Query::select()
+        .column(tables::event_log::EventLog::EventTypeId)
+        .from(tables::event_log::EventLog::Table)
+        .limit(1)
+        .to_string(SqliteQueryBuilder);
+
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
+        .try_get::<u8, usize>(0)
+        .expect("Error getting event_type_id from row");
+
+    assert_eq!(event_type_id, EventTypeId::Step as u8)
 }

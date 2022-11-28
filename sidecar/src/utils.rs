@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
@@ -68,4 +69,18 @@ pub(crate) enum ListeningError {
         /// The failure reason.
         error: Box<dyn std::error::Error + Send + Sync>,
     },
+}
+
+pub(crate) fn display_duration(duration: Duration) -> String {
+    // less than a second
+    if duration.as_millis() < 1000 {
+        format!("{}ms", duration.as_millis())
+        // more than a minute
+    } else if duration.as_secs() > 60 {
+        let (minutes, seconds) = (duration.as_secs() / 60, duration.as_secs() % 60);
+        format!("{}min. {}s", minutes, seconds)
+        // over a second / under a minute
+    } else {
+        format!("{}s", duration.as_secs())
+    }
 }

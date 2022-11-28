@@ -59,26 +59,6 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_latest_deploy_aggregate(&self) -> Result<DeployAggregate, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt =
-            tables::deploy_event::create_get_latest_deploy_hash().to_string(SqliteQueryBuilder);
-
-        let latest_deploy_hash = db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => row
-                    .try_get::<String, &str>("deploy_hash")
-                    .map_err(|sqlx_err| wrap_query_error(sqlx_err.into())),
-            })?;
-
-        self.get_deploy_aggregate_by_hash(&latest_deploy_hash).await
-    }
-
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,

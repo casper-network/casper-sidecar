@@ -41,5 +41,5 @@ pub async fn run_server(
         .serve(Shared::new(Buffer::new(tower_service, 50)))
         .await?;
 
-    Ok(())
+    Err(Error::msg("REST server shutting down"))
 }
