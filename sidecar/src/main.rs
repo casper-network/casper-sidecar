@@ -30,19 +30,13 @@ use crate::{
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
     types::{
-        config::Config,
+        config::{read_config, Config},
         database::{DatabaseWriteError, DatabaseWriter},
         sse_events::*,
     },
 };
 
 const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
-
-pub fn read_config(config_path: &str) -> Result<Config, Error> {
-    let toml_content =
-        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
-    toml::from_str(&toml_content).context("Error parsing config into TOML format")
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -411,9 +405,4 @@ async fn sse_processor(
             }
         }
     }
-}
-
-#[test]
-fn should_parse_config_toml() {
-    read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
 }

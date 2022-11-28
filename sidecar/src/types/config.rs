@@ -1,6 +1,13 @@
+use anyhow::{Context, Error};
 use serde::Deserialize;
 
 use casper_event_listener::FilterPriority;
+
+pub fn read_config(config_path: &str) -> Result<Config, Error> {
+    let toml_content =
+        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
+    toml::from_str(&toml_content).context("Error parsing config into TOML format")
+}
 
 // This struct is used to parse the EXAMPLE_CONFIG.toml so the values can be utilised in the code.
 #[derive(Clone, Deserialize)]
@@ -107,4 +114,9 @@ impl Default for EventStreamServerConfig {
             event_stream_buffer_length: 5000,
         }
     }
+}
+
+#[test]
+fn should_parse_config_toml() {
+    read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
 }
