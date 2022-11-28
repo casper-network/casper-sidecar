@@ -93,6 +93,7 @@ pub(super) async fn run(
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
                         Some((event_index, data)) => {
+                            let is_step = matches!(data, SseData::Step {..});
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data);
                             let event = ServerSentEvent { id: Some(event_index), data };
@@ -100,6 +101,12 @@ pub(super) async fn run(
                             let message = BroadcastChannelMessage::ServerSentEvent(event);
                             // This can validly fail if there are no connected clients, so don't log
                             // the error.
+                            if is_step {
+                                println!(
+                                    "Event stream server broadcasting Step at: {}",
+                                    chrono::Utc::now().time()
+                                );
+                            }
                             let _ = broadcaster.send(message);
                         }
                         None => {

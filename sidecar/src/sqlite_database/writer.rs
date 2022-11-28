@@ -7,6 +7,7 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
 
 use casper_types::AsymmetricType;
+use tokio::time::Instant;
 
 use super::SqliteDatabase;
 use crate::{
@@ -234,7 +235,12 @@ impl DatabaseWriter for SqliteDatabase {
     ) -> Result<usize, DatabaseWriteError> {
         let db_connection = &self.connection_pool;
 
+        let before = Instant::now();
         let json = serde_json::to_string(&step)?;
+        println!(
+            "Took {}ms to stringify step",
+            (Instant::now() - before).as_millis()
+        );
         let era_id = step.era_id.value();
 
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
@@ -250,10 +256,22 @@ impl DatabaseWriter for SqliteDatabase {
             .try_get::<u32, usize>(0)
             .context("Error parsing event_log_id from row")?;
 
+        let before = Instant::now();
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
             .to_string(SqliteQueryBuilder);
+        println!(
+            "Took {}ms to create statement",
+            (Instant::now() - before).as_millis()
+        );
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let before = Instant::now();
+        let sqlite_result = db_connection.execute(insert_stmt.as_str()).await;
+        println!(
+            "Took {}ms to execute statement",
+            (Instant::now() - before).as_millis()
+        );
+
+        handle_sqlite_result(sqlite_result)
     }
 }
 

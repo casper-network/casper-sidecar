@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    iter,
+    fs, iter,
     ops::Div,
     time::Duration,
 };
@@ -100,6 +100,19 @@ async fn realistic_event_streaming(
     mut server: EventStreamServer,
     duration: Duration,
 ) {
+    let mut steps = Vec::new();
+
+    for i in 6..=9 {
+        let path_to_step_json = format!(
+            "/home/george/casper/casperlabs/step_events/mainnet_step_700{}.json",
+            i
+        );
+        let step_json_string = fs::read_to_string(path_to_step_json).unwrap();
+        let big_step = serde_json::from_str::<SseData>(&step_json_string).unwrap();
+
+        steps.push(big_step);
+    }
+
     let (broadcast_sender, mut broadcast_receiver) = unbounded_channel();
 
     let cloned_sender = broadcast_sender.clone();
@@ -110,7 +123,6 @@ async fn realistic_event_streaming(
     let deploy_events_per_loop = NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
     let total_deploy_events = deploy_events_per_loop * loops_in_duration;
     let total_block_added_events = loops_in_duration;
-    let total_step_events = loops_in_duration / 4;
 
     let mut finality_signature_events =
         iter::repeat_with(|| SseData::random_finality_signature(test_rng))
@@ -127,9 +139,9 @@ async fn realistic_event_streaming(
         iter::repeat_with(|| SseData::random_deploy_accepted(test_rng))
             .take(plus_ten_percent(total_deploy_events) as usize)
             .collect_vec();
-    let mut step_events = iter::repeat_with(|| SseData::random_step(test_rng))
-        .take(plus_ten_percent(total_step_events) as usize)
-        .collect_vec();
+    // let mut step_events = iter::repeat_with(|| SseData::random_step(test_rng))
+    //     .take(plus_ten_percent(total_step_events) as usize)
+    //     .collect_vec();
 
     let frequent_handle = tokio::spawn(tokio::time::timeout(duration, async move {
         let mut interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
@@ -142,11 +154,13 @@ async fn realistic_event_streaming(
                 // Prior to each BlockAdded emit FinalitySignatures
                 for _ in 0..NUMBER_OF_VALIDATORS {
                     let _ = cloned_sender.send(finality_signature_events.pop().unwrap());
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
 
                 // Emit DeployProcessed events for the next BlockAdded
                 for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
                     let _ = cloned_sender.send(deploy_processed_events.pop().unwrap());
+                    tokio::time::sleep(Duration::from_millis(200)).await;
                 }
 
                 // Emit the BlockAdded
@@ -155,10 +169,11 @@ async fn realistic_event_streaming(
                 // Emit DeployAccepted Events
                 for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
                     let _ = cloned_sender.send(deploy_accepted_events.pop().unwrap().0);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
             // Then a Step
-            let _ = cloned_sender.send(step_events.pop().unwrap());
+            let _ = cloned_sender.send(steps.pop().unwrap());
         }
     }));
 
@@ -246,4 +261,27 @@ async fn counted_event_streaming(
         event_stream_server.broadcast(SseData::random_block_added(test_rng));
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
+}
+
+#[tokio::test]
+async fn check_step_flight_time() {
+    let path_to_step_json =
+        "/home/george/casper/casperlabs/step_events/mainnet_step_7006.json".to_string();
+    let step_json_string = fs::read_to_string(path_to_step_json).unwrap();
+    let big_step = serde_json::from_str::<SseData>(&step_json_string).unwrap();
+
+    let (sender, mut receiver) = unbounded_channel();
+
+    let sending_task_handle = tokio::spawn(async move {
+        while let Some(_event) = receiver.recv().await {
+            println!("Received event at: {}", chrono::Utc::now().time())
+        }
+    });
+
+    let receiving_task_handle = tokio::spawn(async move {
+        println!("Sending event at: {}", chrono::Utc::now().time());
+        let _ = sender.send(big_step);
+    });
+
+    let _ = tokio::join!(receiving_task_handle, sending_task_handle);
 }

@@ -20,6 +20,7 @@ use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tracing::{debug, info, trace, warn};
 
 use casper_event_listener::{EventListener, SseEvent};
@@ -379,13 +380,28 @@ async fn sse_processor(
                 era_id,
                 execution_effect,
             } => {
+                println!(
+                    "Sidecar started handling Step at: {}\n",
+                    chrono::Utc::now().time()
+                );
+                let sidecar_received_step_timestamp = Instant::now();
+                let before = Instant::now();
                 let step = Step::new(era_id, execution_effect.clone());
+                println!(
+                    "Took {}ms to clone Step",
+                    (Instant::now() - before).as_millis()
+                );
                 if enable_event_logging {
                     info!("Step at era: {}", era_id.value());
                 }
+                let before = Instant::now();
                 let res = sqlite_database
                     .save_step(step, sse_event.id.unwrap(), sse_event.source)
                     .await;
+                println!(
+                    "Took {}ms to save to DB",
+                    (Instant::now() - before).as_millis()
+                );
 
                 match res {
                     Ok(_) => {
@@ -403,6 +419,14 @@ async fn sse_processor(
                     }
                     Err(other_err) => warn!(?other_err, "Unexpected error saving Step"),
                 }
+                println!(
+                    "Took {}ms to handle step",
+                    (Instant::now() - sidecar_received_step_timestamp).as_millis()
+                );
+                println!(
+                    "\nSidecar finished handling Step at: {}",
+                    chrono::Utc::now().time()
+                );
             }
             SseData::Shutdown => {
                 warn!("Node ({}) is unavailable", sse_event.source);
