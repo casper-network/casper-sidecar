@@ -209,7 +209,7 @@ impl FinalitySignature {
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
 pub struct Step {
     pub era_id: EraId,
-    execution_effect: ExecutionEffect,
+    pub execution_effect: ExecutionEffect,
 }
 
 impl Step {

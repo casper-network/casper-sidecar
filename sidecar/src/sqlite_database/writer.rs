@@ -8,6 +8,7 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
 
 use casper_types::AsymmetricType;
+use tokio::time::Instant;
 
 use super::SqliteDatabase;
 use crate::{
@@ -19,7 +20,7 @@ use crate::{
 };
 
 // This can be set from 0-10 inclusive.
-const COMPRESSION_LEVEL: u8 = 10;
+const COMPRESSION_LEVEL: u8 = 1;
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -251,11 +252,15 @@ impl DatabaseWriter for SqliteDatabase {
             .try_get::<u32, usize>(0)
             .context("Error parsing event_log_id from row")?;
 
+        let mut start = Instant::now();
         let insert_stmt = if self.use_compression {
-            let bytes = serde_json::to_vec(&step)?;
+            let bytes = bincode::serialize(&step).unwrap();
+            println!("Serialised: {:.3}s", (Instant::now() - start).as_secs_f32());
+            start = Instant::now();
             let compressed = compress_to_vec(&bytes, COMPRESSION_LEVEL);
+            println!("Compressed: {:.3}s", (Instant::now() - start).as_secs_f32());
             let era_id = step.era_id.value();
-
+            start = Instant::now();
             tables::step::create_insert_stmt_compressed(era_id, compressed, event_log_id)?
                 .to_string(SqliteQueryBuilder)
         } else {
@@ -266,7 +271,21 @@ impl DatabaseWriter for SqliteDatabase {
                 .to_string(SqliteQueryBuilder)
         };
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        println!(
+            "Created step statement: {:.3}s",
+            (Instant::now() - start).as_secs_f32()
+        );
+
+        let start_of_write = Instant::now();
+        let handled_result =
+            handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await);
+
+        println!(
+            "Wrote step to db: {:.3}",
+            (Instant::now() - start_of_write).as_secs_f32()
+        );
+
+        handled_result
     }
 }
 
@@ -290,11 +309,18 @@ fn handle_sqlite_result(
 
 #[cfg(test)]
 mod compression_checks {
+    use std::fs;
+
+    use casper_event_types::SseData;
     use casper_types::testing::TestRng;
 
+    use crate::sqlite_database::SqliteDatabase;
+    use datasize::data_size;
     use miniz_oxide::{deflate::compress_to_vec, inflate::decompress_to_vec};
     use serde_json::Value;
+    use tokio::time::Instant;
 
+    use crate::types::database::DatabaseWriter;
     use crate::Step;
 
     #[test]
@@ -313,6 +339,146 @@ mod compression_checks {
             let decompressed_step = serde_json::from_value::<Step>(decompressed_json).unwrap();
 
             assert_eq!(step, decompressed_step);
+        }
+    }
+
+    #[test]
+    fn benchmark_compression() {
+        let file_string =
+            fs::read_to_string("/home/george/casper/casperlabs/step_events/mainnet_step_7006.json")
+                .unwrap();
+        let sse_data = serde_json::from_str::<SseData>(&file_string).unwrap();
+
+        if let SseData::Step {
+            era_id,
+            execution_effect,
+        } = sse_data
+        {
+            let step = Step {
+                era_id,
+                execution_effect,
+            };
+
+            println!("_______________ serde_json ____________");
+
+            let start_of_to_vec = Instant::now();
+            let bytes = serde_json::to_vec(&step).unwrap();
+            let end_of_to_vec = Instant::now();
+            println!(
+                "\nTime to convert to bytes: {:.2}s\n",
+                (end_of_to_vec - start_of_to_vec).as_secs_f32()
+            );
+
+            let uncompressed_step = data_size(&bytes);
+            println!("Original Size: {}MB\n", uncompressed_step / 1024 / 1024);
+
+            for i in 1..=10 {
+                let start = Instant::now();
+                let compressed = compress_to_vec(&bytes, i);
+                let time_to_compress = Instant::now() - start;
+                let compressed_step = data_size(&compressed);
+                println!(
+                    "Compressed Step in {:.2}s at level {}\t:: Compressed Size: {}MB\t:: Reduction => {}MB",
+                    time_to_compress.as_secs_f32(),
+                    i,
+                    compressed_step / 1024 / 1024,
+                    (uncompressed_step - compressed_step) / 1024 / 1024
+                );
+            }
+
+            println!("\n\n_______________ bincode ____________");
+
+            let start_of_to_vec = Instant::now();
+            let bytes = bincode::serialize(&step).unwrap();
+            let end_of_to_vec = Instant::now();
+            println!(
+                "\nTime to convert to bytes: {:.2}s\n",
+                (end_of_to_vec - start_of_to_vec).as_secs_f32()
+            );
+
+            let uncompressed_step = data_size(&bytes);
+            println!("Original Size: {}MB\n", uncompressed_step / 1024 / 1024);
+
+            for i in 1..=10 {
+                let start = Instant::now();
+                let compressed = compress_to_vec(&bytes, i);
+                let time_to_compress = Instant::now() - start;
+                let compressed_step = data_size(&compressed);
+                println!(
+                    "Compressed Step in {:.2}s at level {}\t:: Compressed Size: {}MB\t:: Reduction => {}MB",
+                    time_to_compress.as_secs_f32(),
+                    i,
+                    compressed_step / 1024 / 1024,
+                    (uncompressed_step - compressed_step) / 1024 / 1024
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn time_to_write_uncompressed_step() {
+        println!();
+        let mut sqlite_database = SqliteDatabase::new_in_memory(100).await.unwrap();
+        sqlite_database.use_compression = false;
+
+        let file_string =
+            fs::read_to_string("/home/george/casper/casperlabs/step_events/mainnet_step_7006.json")
+                .unwrap();
+        let sse_data = serde_json::from_str::<SseData>(&file_string).unwrap();
+
+        if let SseData::Step {
+            era_id,
+            execution_effect,
+        } = sse_data
+        {
+            let step = Step {
+                era_id,
+                execution_effect,
+            };
+            let start_of_uncompressed_write = Instant::now();
+            sqlite_database
+                .save_step(step, 1, "127.0.0.1".to_string())
+                .await
+                .unwrap();
+            let end_of_uncompressed_write = Instant::now();
+
+            println!(
+                "Time to write uncompressed step: {:.2}s",
+                (end_of_uncompressed_write - start_of_uncompressed_write).as_secs_f32()
+            );
+        }
+        println!()
+    }
+
+    #[tokio::test]
+    async fn time_to_write_compressed_step() {
+        let sqlite_database = SqliteDatabase::new_in_memory(100).await.unwrap();
+
+        let file_string =
+            fs::read_to_string("/home/george/casper/casperlabs/step_events/mainnet_step_7006.json")
+                .unwrap();
+        let sse_data = serde_json::from_str::<SseData>(&file_string).unwrap();
+
+        if let SseData::Step {
+            era_id,
+            execution_effect,
+        } = sse_data
+        {
+            let step = Step {
+                era_id,
+                execution_effect,
+            };
+            let start_of_compressed_write = Instant::now();
+            sqlite_database
+                .save_step(step, 1, "127.0.0.1".to_string())
+                .await
+                .unwrap();
+            let end_of_compressed_write = Instant::now();
+
+            println!(
+                "Time to write compressed step: {:.2}s",
+                (end_of_compressed_write - start_of_compressed_write).as_secs_f32()
+            );
         }
     }
 }
