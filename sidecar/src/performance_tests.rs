@@ -1,9 +1,11 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    fs,
     time::Duration,
 };
 
+use chrono::{SecondsFormat, Utc};
 use colored::Colorize;
 use derive_new::new;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
@@ -12,12 +14,18 @@ use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
 use casper_event_listener::{FilterPriority, SseEvent};
 use casper_types::{testing::TestRng, AsymmetricType};
+use plotters::prelude::{
+    full_palette::{GREY, ORANGE},
+    BLACK, BLUE, GREEN, MAGENTA, RED,
+};
 
 use super::*;
+use crate::testing::graphing::{Axis, Series};
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+        graphing::{Config as GraphConfig, Graph},
         testing_config::prepare_config,
     },
 };
@@ -29,7 +37,7 @@ const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 async fn check_latency_on_realistic_scenario() {
     performance_check(
         EventStreamScenario::Realistic,
-        Duration::from_secs(120),
+        Duration::from_secs(150),
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -70,15 +78,36 @@ async fn check_latency_on_fast_bursts_of_deploys_scenario() {
 //     .await;
 // }
 
+enum Source {
+    FakeEventStream,
+    Sidecar,
+    LiveNode,
+}
+
+impl Display for Source {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Source::FakeEventStream => "FakeEventStream",
+                Source::Sidecar => "Sidecar",
+                Source::LiveNode => "Live Node",
+            }
+        )
+    }
+}
+
 #[derive(Clone, new)]
 struct TimestampedEvent {
     event: SseData,
     timestamp: Instant,
 }
 
-#[derive(new)]
+#[derive(Clone, new)]
 struct EventLatency {
     event: EventType,
+    received_at: Instant,
     latency_millis: u128,
 }
 
@@ -229,13 +258,19 @@ async fn performance_check(
         .await
         .unwrap();
 
-    let source_task_handle =
-        tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
+    let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
+        source_event_receiver,
+        None,
+        Source::FakeEventStream,
+    ));
 
     let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         sidecar_event_receiver,
         None,
+        Source::Sidecar,
     ));
+
+    let start_for_graph = Instant::now();
 
     let (source_task_result, sidecar_task_result) =
         tokio::join!(source_task_handle, sidecar_task_handle);
@@ -261,13 +296,15 @@ async fn performance_check(
     ];
 
     let (average_latencies, number_of_events_received) =
-        calculate_average_latencies(event_latencies, event_types_ordered_for_efficiency);
+        calculate_average_latencies(event_latencies.clone(), event_types_ordered_for_efficiency);
 
     let results = create_results_from_data(&average_latencies, number_of_events_received);
 
     let results_table = build_table_from_results(results, duration);
 
     println!("{}", results_table);
+
+    save_results_as_graph(event_latencies, duration, start_for_graph);
 
     check_latencies_are_acceptable(average_latencies, acceptable_latency);
 }
@@ -311,11 +348,13 @@ async fn live_performance_check(
     let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         source_event_receiver,
         Some(duration),
+        Source::LiveNode,
     ));
 
     let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         sidecar_event_receiver,
         Some(duration),
+        Source::Sidecar,
     ));
 
     let (source_task_result, sidecar_task_result) =
@@ -477,6 +516,7 @@ fn compare_events_collect_latencies(
             if event_from_source.matches(&events_from_sidecar[i]) {
                 event_latencies.push(EventLatency::new(
                     event_from_source.event_type(),
+                    event_from_source.timestamp,
                     events_from_sidecar[i]
                         .time_since(&event_from_source)
                         .as_millis(),
@@ -536,6 +576,7 @@ fn extract_latencies_by_type(
 async fn push_timestamped_events_to_vecs(
     mut event_stream: UnboundedReceiver<SseEvent>,
     duration: Option<Duration>,
+    source: Source,
 ) -> Vec<TimestampedEvent> {
     let mut events_vec: Vec<TimestampedEvent> = Vec::new();
 
@@ -552,6 +593,14 @@ async fn push_timestamped_events_to_vecs(
         }
     } else {
         while let Some(event) = event_stream.recv().await {
+            if matches!(event.data, SseData::Step { .. }) {
+                println!(
+                    "Event Pusher received Step from {} at: {}",
+                    source,
+                    Utc::now().time()
+                );
+            }
+
             let received_timestamp = Instant::now();
             events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
         }
@@ -572,4 +621,63 @@ fn display_duration(duration: Duration) -> String {
     } else {
         format!("{}s", duration.as_secs())
     }
+}
+
+fn save_results_as_graph(
+    mut combined_event_latencies: Vec<EventLatency>,
+    duration: Duration,
+    start_instant: Instant,
+) {
+    let path_to_dir =
+        "/home/george/casper/casperlabs/event-sidecar/target/performance_results".to_string();
+    fs::create_dir_all(path_to_dir.clone()).unwrap();
+    let current_datetime: String = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let formatted_datetime = current_datetime.replace(':', "-");
+    let file_path = format!("{}/{}_latency_graph.png", path_to_dir, formatted_datetime);
+
+    let graph_config = GraphConfig::new(
+        file_path,
+        "Event Sidecar Latency".to_string(),
+        Axis::new("Time (ms)".to_string(), 0..duration.as_secs(), false),
+        // 300,000ms is 5 minutes
+        Axis::new("Latency (ms)".to_string(), 0..300_000, true),
+    );
+    let mut graph = Graph::new(&graph_config);
+
+    let event_types_ordered_for_efficiency = vec![
+        (EventType::FinalitySignature, ORANGE),
+        (EventType::DeployAccepted, MAGENTA),
+        (EventType::DeployProcessed, BLUE),
+        (EventType::BlockAdded, BLACK),
+        (EventType::Step, RED),
+        (EventType::DeployExpired, GREEN),
+        (EventType::Fault, GREY),
+    ];
+
+    let mut data_sets = Vec::new();
+
+    for (event_type, line_colour) in event_types_ordered_for_efficiency {
+        println!("Charting {}...", event_type);
+        let event_latencies_for_type =
+            extract_latencies_by_type(&event_type, &mut combined_event_latencies);
+
+        let data = event_latencies_for_type
+            .iter()
+            .map(|event_latency| {
+                let time_since_start = event_latency
+                    .received_at
+                    .duration_since(start_instant)
+                    .as_secs();
+                let latency = event_latency.latency_millis as u64;
+                (time_since_start, latency)
+            })
+            .collect::<Vec<(u64, u64)>>();
+
+        let series = Series::new(event_type.to_string(), data, line_colour);
+        data_sets.push(series)
+    }
+
+    graph.add_all_series(data_sets);
+
+    graph.finalise();
 }
