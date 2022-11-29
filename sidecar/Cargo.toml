@@ -55,9 +55,9 @@ assets = [
     ["../README.md", "/etc/casper-event-sidecar/README.md", "644"],
     ["../resources/ETC_README.md", "/etc/casper-event-sidecar/README.md", "644"],
     ["../resources/default_config.toml", "/etc/casper-event-sidecar/config.toml", "644"],
+    ["../resources/default_config.toml", "/usr/bin/config.toml", "644"]
 ]
-
-maintainer-scripts = "./resources/maintainer_scripts/debian"
+maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
 Package for Casper Event Sidecar
 """
