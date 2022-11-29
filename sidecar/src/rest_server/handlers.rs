@@ -32,13 +32,6 @@ pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
     format_or_reject_storage_result(db_result)
 }
 
-pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(
-    db: Db,
-) -> Result<impl Reply, Rejection> {
-    let db_result = db.get_latest_deploy_aggregate().await;
-    format_or_reject_storage_result(db_result)
-}
-
 pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(
     hash: String,
     db: Db,
