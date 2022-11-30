@@ -63,6 +63,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "android_system_properties"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "ansi-str"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,7 +330,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "casper-event-types",
- "casper-types",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
  "eventsource-stream",
  "futures",
  "reqwest",
@@ -342,11 +351,10 @@ dependencies = [
  "bytes",
  "casper-event-listener",
  "casper-event-types",
- "casper-execution-engine",
- "casper-hashing",
- "casper-node",
- "casper-types",
- "colored",
+ "casper-execution-engine 2.0.0",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "casper-node 1.4.6",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
  "derive-new",
  "eventsource-stream",
  "futures",
@@ -373,7 +381,7 @@ dependencies = [
  "toml",
  "tower",
  "tracing",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.16",
  "warp",
  "wheelbuf",
 ]
@@ -382,12 +390,53 @@ dependencies = [
 name = "casper-event-types"
 version = "0.1.0"
 dependencies = [
- "casper-execution-engine",
- "casper-hashing",
- "casper-node",
- "casper-types",
+ "casper-execution-engine 2.0.1",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "casper-node 1.4.8",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
  "rand 0.8.5",
  "serde",
+]
+
+[[package]]
+name = "casper-execution-engine"
+version = "2.0.0"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
+dependencies = [
+ "anyhow",
+ "base16",
+ "bincode",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "chrono",
+ "datasize",
+ "hex-buffer-serde 0.2.2",
+ "hex_fmt",
+ "hostname",
+ "itertools",
+ "libc",
+ "linked-hash-map",
+ "lmdb",
+ "log",
+ "num",
+ "num-derive",
+ "num-rational 0.4.1",
+ "num-traits",
+ "once_cell",
+ "parity-wasm",
+ "proptest",
+ "pwasm-utils",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "schemars",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "uint",
+ "uuid",
+ "wasmi",
 ]
 
 [[package]]
@@ -398,8 +447,8 @@ dependencies = [
  "anyhow",
  "base16",
  "bincode",
- "casper-hashing",
- "casper-types",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
  "datasize",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
@@ -438,7 +487,25 @@ source = "git+https://github.com/casper-network/casper-node?branch=dev#46a2803c6
 dependencies = [
  "base16",
  "blake2",
- "casper-types",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "datasize",
+ "hex",
+ "hex-buffer-serde 0.3.0",
+ "itertools",
+ "once_cell",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "casper-hashing"
+version = "1.4.3"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
+dependencies = [
+ "base16",
+ "blake2",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
  "datasize",
  "hex",
  "hex-buffer-serde 0.3.0",
@@ -465,9 +532,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-json-rpc"
+version = "0.1.0"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
+dependencies = [
+ "bytes",
+ "futures",
+ "http",
+ "itertools",
+ "serde",
+ "serde_json",
+ "tracing",
+ "warp",
+]
+
+[[package]]
 name = "casper-node"
-version = "1.4.8"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#46a2803c6446ddc50a3c9e0ab92e977673fc47b8"
+version = "1.4.6"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -477,11 +559,12 @@ dependencies = [
  "base64",
  "bincode",
  "bytes",
- "casper-execution-engine",
- "casper-hashing",
- "casper-json-rpc",
- "casper-node-macros",
- "casper-types",
+ "casper-execution-engine 2.0.0",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "casper-json-rpc 0.1.0 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "casper-node-macros 1.4.3 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e01b528)",
+ "chrono",
  "datasize",
  "derive_more",
  "ed25519-dalek",
@@ -540,10 +623,94 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-futures",
- "tracing-subscriber",
+ "tracing-subscriber 0.2.25",
  "uint",
  "uuid",
- "vergen",
+ "vergen 3.2.0",
+ "warp",
+ "wheelbuf",
+]
+
+[[package]]
+name = "casper-node"
+version = "1.4.8"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#46a2803c6446ddc50a3c9e0ab92e977673fc47b8"
+dependencies = [
+ "ansi_term",
+ "anyhow",
+ "async-trait",
+ "backtrace",
+ "base16",
+ "base64",
+ "bincode",
+ "bytes",
+ "casper-execution-engine 2.0.1",
+ "casper-hashing 1.4.3 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "casper-json-rpc 0.1.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "casper-node-macros 1.4.3 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?branch=dev)",
+ "datasize",
+ "derive_more",
+ "ed25519-dalek",
+ "either",
+ "enum-iterator 0.6.0",
+ "erased-serde",
+ "fs2",
+ "futures",
+ "futures-io",
+ "hex-buffer-serde 0.3.0",
+ "hex_fmt",
+ "hostname",
+ "http",
+ "hyper",
+ "itertools",
+ "libc",
+ "linked-hash-map",
+ "lmdb",
+ "log",
+ "num",
+ "num-derive",
+ "num-rational 0.4.1",
+ "num-traits",
+ "num_cpus",
+ "once_cell",
+ "openssl",
+ "pin-project",
+ "prometheus",
+ "quanta",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "regex",
+ "rmp-serde",
+ "schemars",
+ "serde",
+ "serde-big-array",
+ "serde_bytes",
+ "serde_json",
+ "serde_repr",
+ "shlex",
+ "signal-hook",
+ "signature",
+ "smallvec",
+ "static_assertions",
+ "stats_alloc",
+ "structopt",
+ "sys-info",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-openssl",
+ "tokio-serde",
+ "tokio-stream",
+ "tokio-util 0.6.10",
+ "toml",
+ "tower",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber 0.3.16",
+ "uint",
+ "uuid",
+ "vergen 7.4.2",
  "warp",
  "wheelbuf",
 ]
@@ -561,9 +728,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-node-macros"
+version = "1.4.3"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
+dependencies = [
+ "Inflector",
+ "indexmap",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "casper-types"
 version = "1.5.0"
 source = "git+https://github.com/casper-network/casper-node?branch=dev#46a2803c6446ddc50a3c9e0ab92e977673fc47b8"
+dependencies = [
+ "base16",
+ "base64",
+ "bitflags",
+ "blake2",
+ "datasize",
+ "derp",
+ "ed25519-dalek",
+ "getrandom",
+ "hex",
+ "hex_fmt",
+ "humantime",
+ "k256",
+ "num",
+ "num-derive",
+ "num-integer",
+ "num-rational 0.4.1",
+ "num-traits",
+ "once_cell",
+ "pem",
+ "proptest",
+ "rand 0.8.5",
+ "rand_pcg",
+ "schemars",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "thiserror",
+ "uint",
+ "untrusted",
+]
+
+[[package]]
+name = "casper-types"
+version = "1.5.0"
+source = "git+https://github.com/casper-network/casper-node?rev=e01b528#e01b528db64f96fc1d3eac8b3b8e58e1337b398d"
 dependencies = [
  "base16",
  "base64",
@@ -618,6 +833,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "chrono"
+version = "0.4.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16b0a3d9ed01224b22057780a37bb8c5dbfe1be8ba48678e7bf57ec4b385411f"
+dependencies = [
+ "iana-time-zone",
+ "js-sys",
+ "num-integer",
+ "num-traits",
+ "time 0.1.45",
+ "wasm-bindgen",
+ "winapi",
+]
+
+[[package]]
 name = "clap"
 version = "2.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -633,14 +863,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "colored"
-version = "2.0.0"
+name = "codespan-reporting"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3616f750b84d8f0de8a58bda93e08e2a81ad3f523089b05f1dffecab48c6cbd"
+checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
 dependencies = [
- "atty",
- "lazy_static",
- "winapi",
+ "termcolor",
+ "unicode-width",
 ]
 
 [[package]]
@@ -846,6 +1075,50 @@ dependencies = [
  "rand_core 0.5.1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "cxx"
+version = "1.0.82"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4a41a86530d0fe7f5d9ea779916b7cadd2d4f9add748b99c2c029cbbdfaf453"
+dependencies = [
+ "cc",
+ "cxxbridge-flags",
+ "cxxbridge-macro",
+ "link-cplusplus",
+]
+
+[[package]]
+name = "cxx-build"
+version = "1.0.82"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06416d667ff3e3ad2df1cd8cd8afae5da26cf9cec4d0825040f88b5ca659a2f0"
+dependencies = [
+ "cc",
+ "codespan-reporting",
+ "once_cell",
+ "proc-macro2",
+ "quote",
+ "scratch",
+ "syn",
+]
+
+[[package]]
+name = "cxxbridge-flags"
+version = "1.0.82"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "820a9a2af1669deeef27cb271f476ffd196a2c4b6731336011e0ba63e2c7cf71"
+
+[[package]]
+name = "cxxbridge-macro"
+version = "1.0.82"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a08a6e2fcc370a089ad3b4aaf54db3b1b4cee38ddabce5896b33eb693275f470"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1320,7 +1593,7 @@ checksum = "4eb1a864a501629691edf6c15a593b7a51eebaa1e8468e9ddc623de7c9b58ec6"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "wasi",
+ "wasi 0.11.0+wasi-snapshot-preview1",
 ]
 
 [[package]]
@@ -1588,6 +1861,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "iana-time-zone"
+version = "0.1.53"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64c122667b287044802d6ce17ee2ddf13207ed924c712de9a66a5814d5b64765"
+dependencies = [
+ "android_system_properties",
+ "core-foundation-sys",
+ "iana-time-zone-haiku",
+ "js-sys",
+ "wasm-bindgen",
+ "winapi",
+]
+
+[[package]]
+name = "iana-time-zone-haiku"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0703ae284fc167426161c2e3f1da3ea71d94b21bedbcc9494e92b28e334e3dca"
+dependencies = [
+ "cxx",
+ "cxx-build",
+]
+
+[[package]]
 name = "idna"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1716,6 +2013,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "link-cplusplus"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9272ab7b96c9046fbc5bc56c06c117cb639fe2d509df0c421cad82d2915cf369"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1778,6 +2084,15 @@ name = "match_cfg"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffbee8634e0d45d258acb448e7eaab3fce7a0a467395d4d9f228e3c1f01fb2e4"
+
+[[package]]
+name = "matchers"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f099785f7595cc4b4553a174ce30dd7589ef93391ff414dbb67f62392b9e0ce1"
+dependencies = [
+ "regex-automata",
+]
 
 [[package]]
 name = "matchers"
@@ -1854,7 +2169,7 @@ checksum = "57ee1c23c7c63b0c9250c339ffdc69255f110b298b901b9f6c82547b7b87caaf"
 dependencies = [
  "libc",
  "log",
- "wasi",
+ "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys",
 ]
 
@@ -2706,6 +3021,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
+name = "scratch"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c8132065adcfd6e02db789d9285a0deb2f3fcb04002865ab67d5fb103533898"
+
+[[package]]
 name = "sea-query"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3192,6 +3513,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "termcolor"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
+dependencies = [
+ "winapi-util",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3227,6 +3557,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5516c27b78311c50bf42c071425c560ac799b11c30b31f87e3081965fe5e0180"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "time"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b797afad3f312d1c66a56d11d0316f916356d11bd158fbc6ca6389ff6bf805a"
+dependencies = [
+ "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
+ "winapi",
 ]
 
 [[package]]
@@ -3479,11 +3820,33 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
+version = "0.2.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0d2eaa99c3c2e41547cfa109e910a68ea03823cccad4a0525dcbc9b01e8c71"
+dependencies = [
+ "ansi_term",
+ "chrono",
+ "lazy_static",
+ "matchers 0.0.1",
+ "regex",
+ "serde",
+ "serde_json",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-serde",
+]
+
+[[package]]
+name = "tracing-subscriber"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6176eae26dd70d0c919749377897b54a9276bd7061339665dd68777926b5a70"
 dependencies = [
- "matchers",
+ "matchers 0.1.0",
  "nu-ansi-term",
  "once_cell",
  "regex",
@@ -3673,6 +4036,17 @@ checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "vergen"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7141e445af09c8919f1d5f8a20dae0b20c3b57a45dee0d5823c6ed5d237f15a"
+dependencies = [
+ "bitflags",
+ "chrono",
+ "rustc_version",
+]
+
+[[package]]
+name = "vergen"
 version = "7.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73ba753d713ec3844652ad2cb7eb56bc71e34213a14faddac7852a10ba88f61e"
@@ -3684,7 +4058,7 @@ dependencies = [
  "git2",
  "rustversion",
  "thiserror",
- "time",
+ "time 0.3.15",
 ]
 
 [[package]]
@@ -3764,6 +4138,12 @@ dependencies = [
  "tower-service",
  "tracing",
 ]
+
+[[package]]
+name = "wasi"
+version = "0.10.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasi"
@@ -3892,6 +4272,15 @@ name = "winapi-i686-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
+name = "winapi-util"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70ec6ce85bb158151cae5e5c87f95a8e97d2c0c4b001223f33a334e3ce5de178"
+dependencies = [
+ "winapi",
+]
 
 [[package]]
 name = "winapi-x86_64-pc-windows-gnu"

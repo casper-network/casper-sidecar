@@ -14,7 +14,7 @@ max_write_connections = 10
 max_read_connections = 100
 
 [rest_server]
-port = 17777
+port = 18888
 ip_address = "127.0.0.1"
 max_concurrent_requests = 50
 max_requests_per_second = 50
