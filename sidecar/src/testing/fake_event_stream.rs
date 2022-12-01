@@ -117,7 +117,6 @@ pub(crate) async fn spin_up_fake_event_stream(
                     let _ = events_sender.send(SseData::Shutdown);
 
                     tokio::time::sleep(delay_before_restart).await;
-                    let _ = events_sender.send(SseData::ApiVersion(ProtocolVersion::V1_0_0));
                     counted_event_streaming(test_rng, events_sender, final_phase).await;
                 }
             });
@@ -143,7 +142,6 @@ pub(crate) async fn spin_up_fake_event_stream(
                     let _ = events_sender.send(SseData::Shutdown);
 
                     tokio::time::sleep(delay_before_restart).await;
-                    let _ = events_sender.send(SseData::ApiVersion(ProtocolVersion::V1_0_0));
                     realistic_event_streaming(test_rng, events_sender, final_phase).await;
                 }
             });
@@ -174,7 +172,6 @@ pub(crate) async fn spin_up_fake_event_stream(
                     let _ = events_sender.send(SseData::Shutdown);
 
                     tokio::time::sleep(delay_before_restart).await;
-                    let _ = events_sender.send(SseData::ApiVersion(ProtocolVersion::V1_0_0));
                     load_testing_step(test_rng, events_sender, final_phase, frequency).await;
                 }
             });
@@ -205,7 +202,6 @@ pub(crate) async fn spin_up_fake_event_stream(
                     let _ = events_sender.send(SseData::Shutdown);
 
                     tokio::time::sleep(delay_before_restart).await;
-                    let _ = events_sender.send(SseData::ApiVersion(ProtocolVersion::V1_0_0));
                     load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
                 }
             });
