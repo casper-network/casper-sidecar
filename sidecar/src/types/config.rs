@@ -10,7 +10,7 @@ pub fn read_config(config_path: &str) -> Result<Config, Error> {
 }
 
 // This struct is used to parse the EXAMPLE_CONFIG.toml so the values can be utilised in the code.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(Default))]
 pub struct Config {
     pub connections: Vec<Connection>,
@@ -19,7 +19,7 @@ pub struct Config {
     pub event_stream_server: EventStreamServerConfig,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
     pub ip_address: String,
     pub sse_port: u16,
@@ -31,74 +31,27 @@ pub struct Connection {
     pub filter_priority: FilterPriority,
 }
 
-#[cfg(test)]
-impl Default for Connection {
-    fn default() -> Self {
-        Self {
-            ip_address: "127.0.0.1".to_string(),
-            sse_port: 18101,
-            allow_partial_connection: false,
-            max_retries: 3,
-            delay_between_retries_in_seconds: 5,
-            enable_logging: false,
-            filter_priority: FilterPriority::default(),
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct StorageConfig {
     pub storage_path: String,
     pub sqlite_config: SqliteConfig,
 }
 
-#[cfg(test)]
-impl Default for StorageConfig {
-    fn default() -> Self {
-        Self {
-            storage_path: "/target/test_storage".to_string(),
-            sqlite_config: SqliteConfig::default(),
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SqliteConfig {
     pub file_name: String,
     pub max_connections_in_pool: u32,
     pub wal_autocheckpointing_interval: u16,
 }
 
-#[cfg(test)]
-impl Default for SqliteConfig {
-    fn default() -> Self {
-        Self {
-            file_name: "test_sqlite_database".to_string(),
-            max_connections_in_pool: 100,
-            wal_autocheckpointing_interval: 1000,
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct RestServerConfig {
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
 }
 
-#[cfg(test)]
-impl Default for RestServerConfig {
-    fn default() -> Self {
-        Self {
-            port: 17777,
-            max_concurrent_requests: 50,
-            max_requests_per_second: 50,
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct EventStreamServerConfig {
     pub port: u16,
     pub max_concurrent_subscribers: u32,
@@ -106,17 +59,118 @@ pub struct EventStreamServerConfig {
 }
 
 #[cfg(test)]
-impl Default for EventStreamServerConfig {
-    fn default() -> Self {
-        Self {
-            port: 19999,
-            max_concurrent_subscribers: 100,
-            event_stream_buffer_length: 5000,
+mod tests {
+    use super::*;
+    use casper_event_listener::FilterPriority;
+
+    #[test]
+    fn should_parse_config_toml() {
+        let example_config = Config {
+            connections: vec![
+                Connection {
+                    ip_address: "127.0.0.1".to_string(),
+                    sse_port: 18101,
+                    max_retries: 5,
+                    delay_between_retries_in_seconds: 5,
+                    allow_partial_connection: false,
+                    enable_logging: true,
+                    filter_priority: FilterPriority::default(),
+                },
+                Connection {
+                    ip_address: "127.0.0.1".to_string(),
+                    sse_port: 18102,
+                    max_retries: 5,
+                    delay_between_retries_in_seconds: 5,
+                    allow_partial_connection: false,
+                    enable_logging: false,
+                    filter_priority: FilterPriority::new(1, 0, 2).unwrap(),
+                },
+                Connection {
+                    ip_address: "127.0.0.1".to_string(),
+                    sse_port: 18103,
+                    max_retries: 5,
+                    delay_between_retries_in_seconds: 5,
+                    allow_partial_connection: false,
+                    enable_logging: false,
+                    filter_priority: FilterPriority::default(),
+                },
+            ],
+            storage: StorageConfig {
+                storage_path: "./target/storage".to_string(),
+                sqlite_config: SqliteConfig {
+                    file_name: "sqlite_database.db3".to_string(),
+                    max_connections_in_pool: 100,
+                    wal_autocheckpointing_interval: 1000,
+                },
+            },
+            rest_server: RestServerConfig {
+                port: 18888,
+                max_concurrent_requests: 50,
+                max_requests_per_second: 50,
+            },
+            event_stream_server: EventStreamServerConfig {
+                port: 19999,
+                max_concurrent_subscribers: 100,
+                event_stream_buffer_length: 5000,
+            },
+        };
+
+        let parsed_config =
+            read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
+
+        assert_eq!(parsed_config, example_config);
+    }
+
+    impl Default for Connection {
+        fn default() -> Self {
+            Self {
+                ip_address: "127.0.0.1".to_string(),
+                sse_port: 18101,
+                allow_partial_connection: false,
+                max_retries: 3,
+                delay_between_retries_in_seconds: 5,
+                enable_logging: false,
+                filter_priority: FilterPriority::default(),
+            }
         }
     }
-}
 
-#[test]
-fn should_parse_config_toml() {
-    read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
+    impl Default for StorageConfig {
+        fn default() -> Self {
+            Self {
+                storage_path: "/target/test_storage".to_string(),
+                sqlite_config: SqliteConfig::default(),
+            }
+        }
+    }
+
+    impl Default for SqliteConfig {
+        fn default() -> Self {
+            Self {
+                file_name: "test_sqlite_database".to_string(),
+                max_connections_in_pool: 100,
+                wal_autocheckpointing_interval: 1000,
+            }
+        }
+    }
+
+    impl Default for RestServerConfig {
+        fn default() -> Self {
+            Self {
+                port: 17777,
+                max_concurrent_requests: 50,
+                max_requests_per_second: 50,
+            }
+        }
+    }
+
+    impl Default for EventStreamServerConfig {
+        fn default() -> Self {
+            Self {
+                port: 19999,
+                max_concurrent_subscribers: 100,
+                event_stream_buffer_length: 5000,
+            }
+        }
+    }
 }

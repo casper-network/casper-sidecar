@@ -41,7 +41,7 @@ impl Display for SseFilter {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct FilterPriority {
     main: u8,
     sigs: u8,
