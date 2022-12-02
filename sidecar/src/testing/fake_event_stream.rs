@@ -82,148 +82,232 @@ impl Display for Scenario {
 
 pub(crate) async fn spin_up_fake_event_stream(
     test_rng: &'static mut TestRng,
-    ess_config: EssConfig,
+    ess_config: Vec<EssConfig>,
     scenario: Scenario,
 ) {
-    let cloned_address = ess_config.address.clone();
-    let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
-    let log_details = format!("Fake Event Stream(:{}) :: Scenario: {}", port, scenario);
-    println!("{} :: Started", log_details);
-
     let start = Instant::now();
 
-    let temp_dir = TempDir::new().expect("Error creating temporary directory");
+    let mut es_servers = Vec::new();
 
-    let mut event_stream_server = EventStreamServer::new(
-        ess_config.clone(),
-        temp_dir.path().to_path_buf(),
-        ProtocolVersion::V1_0_0,
-    )
-    .expect("Error spinning up Event Stream Server");
+    let mut fes_log_details = "Fake Event Stream".to_string();
+    let mut es_server_ports = Vec::new();
 
-    let (events_sender, mut events_receiver) = unbounded_channel();
+    for config in ess_config {
+        let cloned_address = config.address.clone();
+        let port = cloned_address.split(':').collect::<Vec<&str>>()[1].to_string();
+        es_server_ports.push(port);
 
-    match scenario {
-        Scenario::Counted(settings) => {
-            let scenario_task = tokio::spawn(async move {
-                counted_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
-                    .await;
+        let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    let _ = events_sender.send(SseData::Shutdown);
+        let event_stream_server = EventStreamServer::new(
+            config,
+            temp_dir.path().to_path_buf(),
+            ProtocolVersion::V1_0_0,
+        )
+        .expect("Error spinning up Event Stream Server");
 
-                    tokio::time::sleep(delay_before_restart).await;
-                    counted_event_streaming(test_rng, events_sender, final_phase).await;
-                }
-            });
+        es_servers.push(event_stream_server);
+    }
 
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
-                }
-            });
-
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+    for (index, port) in es_server_ports.iter().enumerate() {
+        if es_server_ports.len() == 1 {
+            let port_string = format!("(:{})", port);
+            fes_log_details.push_str(&port_string);
+            break;
         }
-        Scenario::Realistic(settings) => {
-            let scenario_task = tokio::spawn(async move {
-                realistic_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
-                    .await;
 
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    println!("\nSending shutdown...");
-                    let _ = events_sender.send(SseData::Shutdown);
-                    println!(
-                        "Waiting to restart ({})...",
-                        display_duration(delay_before_restart)
-                    );
-                    tokio::time::sleep(delay_before_restart).await;
-                    println!("Restarting...\n");
-                    realistic_event_streaming(test_rng, events_sender, final_phase).await;
-                }
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
-                }
-            });
-
-            let _ = tokio::join!(scenario_task, broadcasting_task);
-        }
-        Scenario::LoadTestingStep(settings, frequency) => {
-            let scenario_task = tokio::spawn(async move {
-                load_testing_step(
-                    test_rng,
-                    events_sender.clone(),
-                    settings.initial_phase,
-                    frequency,
-                )
-                .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    let _ = events_sender.send(SseData::Shutdown);
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    load_testing_step(test_rng, events_sender, final_phase, frequency).await;
-                }
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
-                }
-            });
-
-            let _ = tokio::join!(scenario_task, broadcasting_task);
-        }
-        Scenario::LoadTestingDeploy(settings, num_in_burst) => {
-            let scenario_task = tokio::spawn(async move {
-                load_testing_deploy(
-                    test_rng,
-                    events_sender.clone(),
-                    settings.initial_phase,
-                    num_in_burst,
-                )
-                .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    let _ = events_sender.send(SseData::Shutdown);
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
-                }
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
-                }
-            });
-
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+        if index == 0 {
+            let port_string = format!("(:{}, ", port);
+            fes_log_details.push_str(&port_string)
+        } else if index == es_server_ports.len() - 1 {
+            let port_string = format!(":{})", port);
+            fes_log_details.push_str(&port_string);
+        } else {
+            let port_string = format!(":{}, ", port);
+            fes_log_details.push_str(&port_string);
         }
     }
 
+    println!("{} :: Scenario {} :: Started", fes_log_details, scenario);
+
+    let (events_sender, mut events_receiver) = unbounded_channel();
+
+    let scenario_handle = tokio::spawn(async move {
+        match scenario {
+            Scenario::Counted(settings) => {
+                let (scenario_events_sender, mut scenario_events_receiver) = unbounded_channel();
+
+                let scenario_task = tokio::spawn(async move {
+                    counted_event_streaming(
+                        test_rng,
+                        scenario_events_sender.clone(),
+                        settings.initial_phase,
+                    )
+                    .await;
+
+                    if let Some(Restart {
+                        delay_before_restart,
+                        final_phase,
+                    }) = settings.restart
+                    {
+                        let _ = scenario_events_sender.send(SseData::Shutdown);
+
+                        tokio::time::sleep(delay_before_restart).await;
+                        counted_event_streaming(test_rng, scenario_events_sender, final_phase)
+                            .await;
+                    }
+                });
+
+                let broadcasting_task = tokio::spawn(async move {
+                    while let Some(event) = scenario_events_receiver.recv().await {
+                        let _ = events_sender.send(event);
+                    }
+                });
+
+                let _ = tokio::join!(scenario_task, broadcasting_task);
+            }
+            Scenario::Realistic(settings) => {
+                let (scenario_events_sender, mut scenario_events_receiver) = unbounded_channel();
+
+                let scenario_task = tokio::spawn(async move {
+                    realistic_event_streaming(
+                        test_rng,
+                        scenario_events_sender.clone(),
+                        settings.initial_phase,
+                    )
+                    .await;
+
+                    if let Some(Restart {
+                        delay_before_restart,
+                        final_phase,
+                    }) = settings.restart
+                    {
+                        println!("\nSending shutdown...");
+                        let _ = scenario_events_sender.send(SseData::Shutdown);
+                        println!(
+                            "Waiting to restart ({})...",
+                            display_duration(delay_before_restart)
+                        );
+                        tokio::time::sleep(delay_before_restart).await;
+                        println!("Restarting...\n");
+                        realistic_event_streaming(test_rng, scenario_events_sender, final_phase)
+                            .await;
+                    }
+                });
+
+                let broadcasting_task = tokio::spawn(async move {
+                    while let Some(event) = scenario_events_receiver.recv().await {
+                        let _ = events_sender.send(event);
+                    }
+                });
+
+                let _ = tokio::join!(scenario_task, broadcasting_task);
+            }
+            Scenario::LoadTestingStep(settings, frequency) => {
+                let (scenario_events_sender, mut scenario_events_receiver) = unbounded_channel();
+
+                let scenario_task = tokio::spawn(async move {
+                    load_testing_step(
+                        test_rng,
+                        scenario_events_sender.clone(),
+                        settings.initial_phase,
+                        frequency,
+                    )
+                    .await;
+
+                    if let Some(Restart {
+                        delay_before_restart,
+                        final_phase,
+                    }) = settings.restart
+                    {
+                        let _ = scenario_events_sender.send(SseData::Shutdown);
+
+                        tokio::time::sleep(delay_before_restart).await;
+                        load_testing_step(test_rng, scenario_events_sender, final_phase, frequency)
+                            .await;
+                    }
+                });
+
+                let broadcasting_task = tokio::spawn(async move {
+                    while let Some(event) = scenario_events_receiver.recv().await {
+                        let _ = events_sender.send(event);
+                    }
+                });
+
+                let _ = tokio::join!(scenario_task, broadcasting_task);
+            }
+            Scenario::LoadTestingDeploy(settings, num_in_burst) => {
+                let (scenario_events_sender, mut scenario_events_receiver) = unbounded_channel();
+
+                let scenario_task = tokio::spawn(async move {
+                    load_testing_deploy(
+                        test_rng,
+                        scenario_events_sender.clone(),
+                        settings.initial_phase,
+                        num_in_burst,
+                    )
+                    .await;
+
+                    if let Some(Restart {
+                        delay_before_restart,
+                        final_phase,
+                    }) = settings.restart
+                    {
+                        let _ = scenario_events_sender.send(SseData::Shutdown);
+
+                        tokio::time::sleep(delay_before_restart).await;
+                        load_testing_deploy(
+                            test_rng,
+                            scenario_events_sender,
+                            final_phase,
+                            num_in_burst,
+                        )
+                        .await;
+                    }
+                });
+
+                let broadcasting_task = tokio::spawn(async move {
+                    while let Some(event) = scenario_events_receiver.recv().await {
+                        let _ = events_sender.send(event);
+                    }
+                });
+
+                let _ = tokio::join!(scenario_task, broadcasting_task);
+            }
+        }
+    });
+
+    let is_only_one_es_server = es_servers.len() == 1;
+    let broadcasting_handle = tokio::spawn(async move {
+        if is_only_one_es_server {
+            while let Some(sse_data) = events_receiver.recv().await {
+                es_servers[0].broadcast(sse_data);
+            }
+        } else {
+            let (event_broadcaster, _) = tokio::sync::broadcast::channel::<SseData>(1000);
+
+            for mut server in es_servers {
+                let mut cloned_receiver = event_broadcaster.subscribe();
+
+                tokio::spawn(async move {
+                    while let Ok(sse_data) = cloned_receiver.recv().await {
+                        let cloned_data = sse_data.clone();
+                        server.broadcast(cloned_data);
+                    }
+                });
+            }
+
+            while let Some(sse_data) = events_receiver.recv().await {
+                let _ = event_broadcaster.send(sse_data);
+            }
+        }
+    });
+
+    let _ = tokio::join!(scenario_handle, broadcasting_handle);
+
     println!(
         "{} :: Completed ({}s)",
-        log_details,
+        fes_log_details,
         start.elapsed().as_secs()
     );
 }

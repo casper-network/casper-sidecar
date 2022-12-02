@@ -209,15 +209,19 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let testing_config = prepare_config(&temp_storage_dir);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(testing_config.connection_ports()[0], None, None);
 
-    tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
+    tokio::spawn(spin_up_fake_event_stream(
+        test_rng,
+        vec![ess_config],
+        scenario,
+    ));
 
     tokio::spawn(run(testing_config.inner()));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
+    let source_url = format!("127.0.0.1:{}", testing_config.connection_ports()[0]);
     let source_event_listener =
         EventListener::new(source_url, 0, 0, false, FilterPriority::default())
             .await
@@ -289,14 +293,16 @@ async fn live_performance_check(
     acceptable_latency: Duration,
 ) {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config =
-        prepare_config(&temp_storage_dir).set_connection_address(Some(ip_address.clone()), port);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    let source_url = format!("{}:{}", ip_address, port);
+
+    testing_config.add_connection(Some(ip_address), Some(port));
 
     tokio::spawn(run(testing_config.inner()));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("{}:{}", ip_address, port);
     let source_event_listener =
         EventListener::new(source_url, 0, 0, false, FilterPriority::default())
             .await
