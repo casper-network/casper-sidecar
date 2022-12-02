@@ -14,12 +14,14 @@ use casper_event_listener::{FilterPriority, SseEvent};
 use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
+use crate::testing::fake_event_stream::Bound;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
-        fake_event_stream::{spin_up_fake_event_stream, EventStreamScenario},
+        fake_event_stream::{spin_up_fake_event_stream, GenericScenarioSettings, Scenario},
         testing_config::prepare_config,
     },
+    utils::display_duration,
 };
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
@@ -27,9 +29,11 @@ const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
+    let duration = Duration::from_secs(120);
+
     performance_check(
-        EventStreamScenario::Realistic,
-        Duration::from_secs(120),
+        Scenario::Realistic(GenericScenarioSettings::new(Bound::Timed(duration), None)),
+        duration,
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -37,10 +41,15 @@ async fn check_latency_on_realistic_scenario() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-async fn check_latency_on_frequent_step_scenario() {
+async fn check_latency_on_load_testing_step_scenario() {
+    let duration = Duration::from_secs(60);
+
     performance_check(
-        EventStreamScenario::LoadTestingStep(2),
-        Duration::from_secs(60),
+        Scenario::LoadTestingStep(
+            GenericScenarioSettings::new(Bound::Timed(duration), None),
+            2,
+        ),
+        duration,
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -48,10 +57,15 @@ async fn check_latency_on_frequent_step_scenario() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-async fn check_latency_on_fast_bursts_of_deploys_scenario() {
+async fn check_latency_on_load_testing_deploys_scenario() {
+    let duration = Duration::from_secs(60);
+
     performance_check(
-        EventStreamScenario::LoadTestingDeploy(20),
-        Duration::from_secs(60),
+        Scenario::LoadTestingDeploy(
+            GenericScenarioSettings::new(Bound::Timed(duration), None),
+            20,
+        ),
+        duration,
         ACCEPTABLE_LATENCY,
     )
     .await;
@@ -189,11 +203,7 @@ fn highlight_slow_latency(latency: &u128) -> String {
     }
 }
 
-async fn performance_check(
-    scenario: EventStreamScenario,
-    duration: Duration,
-    acceptable_latency: Duration,
-) {
+async fn performance_check(scenario: Scenario, duration: Duration, acceptable_latency: Duration) {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
@@ -201,9 +211,7 @@ async fn performance_check(
 
     let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
 
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng, ess_config, scenario, duration,
-    ));
+    tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
 
     tokio::spawn(run(testing_config.inner()));
 
@@ -558,18 +566,4 @@ async fn push_timestamped_events_to_vecs(
     }
 
     events_vec
-}
-
-fn display_duration(duration: Duration) -> String {
-    // less than a second
-    if duration.as_millis() < 1000 {
-        format!("{}ms", duration.as_millis())
-    // more than a minute
-    } else if duration.as_secs() > 60 {
-        let (minutes, seconds) = (duration.as_secs() / 60, duration.as_secs() % 60);
-        format!("{}min. {}s", minutes, seconds)
-    // over a second / under a minute
-    } else {
-        format!("{}s", duration.as_secs())
-    }
 }
