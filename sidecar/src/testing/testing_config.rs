@@ -44,21 +44,20 @@ impl TestingConfig {
     /// By default it is set to `18101` - the SSE port of a node in the default NCTL network.
     pub(crate) fn set_connection_address(mut self, ip_address: Option<String>, port: u16) -> Self {
         if let Some(address) = ip_address {
-            self.config.connection.node_connections[0].ip_address = address;
+            self.config.connections[0].ip_address = address;
         }
-        self.config.connection.node_connections[0].sse_port = port;
+        self.config.connections[0].sse_port = port;
         self
     }
 
     /// Set how the sidecar should handle the case where it is only able to connect to one or two of the node's filters.
     pub(crate) fn set_allow_partial_connection(mut self, allow_partial_connection: bool) -> Self {
-        self.config.connection.node_connections[0].allow_partial_connection =
-            allow_partial_connection;
+        self.config.connections[0].allow_partial_connection = allow_partial_connection;
         self
     }
 
     pub(crate) fn set_filter_priority(&mut self, filter_priority: FilterPriority) {
-        self.config.connection.node_connections[0].filter_priority = filter_priority;
+        self.config.connections[0].filter_priority = filter_priority;
     }
 
     /// Specify the retry configuration settings. By default they are set as follows:
@@ -69,7 +68,7 @@ impl TestingConfig {
         max_retries: u8,
         delay_between_retries_in_seconds: u8,
     ) -> Self {
-        for connection in &mut self.config.connection.node_connections {
+        for connection in &mut self.config.connections {
             connection.max_retries = max_retries;
             connection.delay_between_retries_in_seconds = delay_between_retries_in_seconds;
         }
@@ -88,7 +87,7 @@ impl TestingConfig {
         let sse_server_port = portpicker::pick_unused_port().expect("Error getting free port");
         self.config.rest_server.port = rest_server_port;
         self.config.event_stream_server.port = sse_server_port;
-        self.config.connection.node_connections[0].sse_port = node_connection_port;
+        self.config.connections[0].sse_port = node_connection_port;
 
         self
     }
@@ -100,7 +99,7 @@ impl TestingConfig {
 
     /// Returns the port that the sidecar is configured to connect to, i.e. the Fake Event Stream port.
     pub(crate) fn connection_port(&self) -> u16 {
-        self.config.connection.node_connections[0].sse_port
+        self.config.connections[0].sse_port
     }
 
     /// Returns the port that the sidecar REST server is bound to.
