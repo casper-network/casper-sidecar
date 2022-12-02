@@ -30,19 +30,13 @@ use crate::{
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
     types::{
-        config::Config,
+        config::{read_config, Config},
         database::{DatabaseWriteError, DatabaseWriter},
         sse_events::*,
     },
 };
 
 const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
-
-pub fn read_config(config_path: &str) -> Result<Config, Error> {
-    let toml_content =
-        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
-    toml::from_str(&toml_content).context("Error parsing config into TOML format")
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -56,9 +50,9 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
-    let mut event_listeners = Vec::with_capacity(config.connection.node_connections.len());
+    let mut event_listeners = Vec::with_capacity(config.connections.len());
 
-    for connection in &config.connection.node_connections {
+    for connection in &config.connections {
         let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
         let event_listener = EventListener::new(
             bind_address,
@@ -117,7 +111,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let listening_task_handle = tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
 
-        let connection_configs = config.connection.node_connections.clone();
+        let connection_configs = config.connections.clone();
 
         for (event_listener, connection_config) in
             event_listeners.into_iter().zip(connection_configs)
@@ -411,9 +405,4 @@ async fn sse_processor(
             }
         }
     }
-}
-
-#[test]
-fn should_parse_config_toml() {
-    read_config("../EXAMPLE_CONFIG.toml").expect("Error parsing EXAMPLE_CONFIG.toml");
 }

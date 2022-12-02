@@ -66,7 +66,9 @@ pub enum Scenario {
 impl Display for Scenario {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Scenario::Counted(_) => write!(f, "Counted"),
+            Scenario::Counted(GenericScenarioSettings { initial_phase, .. }) => {
+                write!(f, "Counted ({})", initial_phase)
+            }
             Scenario::Realistic(_) => write!(f, "Realistic"),
             Scenario::LoadTestingStep(_, _) => {
                 write!(f, "Load Testing [Step]")
@@ -309,15 +311,11 @@ async fn realistic_event_streaming(
             interval.tick().await;
             match bound {
                 Bound::Timed(duration) => {
-                    println!("Checking bound... ({})", display_duration(duration));
-                    println!("Elapsed: {}", display_duration(start.elapsed()));
                     if start.elapsed() >= duration {
                         break 'outer;
                     }
                 }
                 Bound::Counted(count) => {
-                    println!("Checking bound... ({} events)", count);
-                    println!("Events sent: {}", events_sent);
                     if events_sent >= count {
                         break 'outer;
                     }

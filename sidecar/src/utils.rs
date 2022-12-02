@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::time::Duration;
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -71,6 +72,7 @@ pub(crate) enum ListeningError {
     },
 }
 
+#[cfg(test)]
 pub(crate) fn display_duration(duration: Duration) -> String {
     // less than a second
     if duration.as_millis() < 1000 {
