@@ -25,7 +25,6 @@ use crate::{
         testing_config::prepare_config,
     },
     types::sse_events::BlockAdded,
-    utils::display_duration,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -371,7 +370,8 @@ async fn should_fail_to_reconnect() {
     .await;
 
     assert!(time_for_sidecar_to_shutdown >= shutdown_after + Duration::from_secs(5 * 3));
-    assert!(time_for_sidecar_to_shutdown < shutdown_after + restart_after)
+    // There's a five second (20 - 15) window between the above assertion and the below in which the Sidecar should have shutdown.
+    assert!(time_for_sidecar_to_shutdown <= shutdown_after + restart_after)
 }
 
 async fn partial_connection_test(

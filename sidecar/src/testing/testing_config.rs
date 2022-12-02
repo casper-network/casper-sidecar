@@ -1,8 +1,9 @@
-use casper_event_listener::FilterPriority;
 use portpicker::Port;
 use tempfile::TempDir;
 
-use crate::types::config::{Config, NodeConnection};
+use casper_event_listener::FilterPriority;
+
+use crate::types::config::{Config, Connection};
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
 pub(crate) struct TestingConfig {
@@ -44,7 +45,7 @@ impl TestingConfig {
         port: Option<Port>,
     ) -> Port {
         let random_port = portpicker::pick_unused_port().unwrap();
-        let connection = NodeConnection {
+        let connection = Connection {
             ip_address: ip_address.unwrap_or("127.0.0.1".to_string()),
             sse_port: port.unwrap_or(random_port),
             max_retries: 0,
@@ -53,7 +54,7 @@ impl TestingConfig {
             enable_logging: false,
             filter_priority: Default::default(),
         };
-        self.config.connection.node_connections.push(connection);
+        self.config.connections.push(connection);
         random_port
     }
 
@@ -63,7 +64,7 @@ impl TestingConfig {
         port_of_node: Port,
         allow_partial_connection: bool,
     ) {
-        for mut connection in &mut self.config.connection.node_connections {
+        for mut connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
                 connection.allow_partial_connection = allow_partial_connection;
                 break;
@@ -76,7 +77,7 @@ impl TestingConfig {
         port_of_node: Port,
         filter_priority: FilterPriority,
     ) {
-        for mut connection in &mut self.config.connection.node_connections {
+        for mut connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
                 connection.filter_priority = filter_priority;
                 break;
@@ -93,7 +94,7 @@ impl TestingConfig {
         max_retries: u8,
         delay_between_retries_in_seconds: u8,
     ) {
-        for mut connection in &mut self.config.connection.node_connections {
+        for mut connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
                 connection.max_retries = max_retries;
                 connection.delay_between_retries_in_seconds = delay_between_retries_in_seconds;
@@ -122,8 +123,7 @@ impl TestingConfig {
     /// Returns the port that the sidecar is configured to connect to, i.e. the Fake Event Stream port.
     pub(crate) fn connection_ports(&self) -> Vec<u16> {
         self.config
-            .connection
-            .node_connections
+            .connections
             .iter()
             .map(|conn| conn.sse_port)
             .collect::<Vec<u16>>()
