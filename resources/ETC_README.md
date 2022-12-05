@@ -17,7 +17,7 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 
 ## Configuration
 
-The file `/etc/casper-event-sidecar/config.toml` holds a default configuration. This should work if installed on a casper node.
+The file `/etc/casper-event-sidecar/config.toml` holds a default configuration. This should work if installed on a Casper node.
 
 If you install the Sidecar on an external server, you must update the `ip-address` values under `node_connections` appropriately.
 
