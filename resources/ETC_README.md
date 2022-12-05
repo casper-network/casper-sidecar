@@ -94,7 +94,7 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
-## Running event-sidecar
+## Running the Event Sidecar
 
 The `casper-event-sidecar` service starts after installation, using the systemd service file.
 
