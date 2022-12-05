@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::iter;
 use std::time::Duration;
 
@@ -374,6 +375,60 @@ async fn should_fail_to_reconnect() {
     assert!(time_for_sidecar_to_shutdown <= shutdown_after + restart_after)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[ignore]
+async fn should_not_duplicate_events_with_multiple_connections() {
+    let test_rng = Box::leak(Box::new(TestRng::new()));
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    // Should provide a 15 second window for the source to restart
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    let ports = iter::repeat_with(|| testing_config.add_connection(None, None))
+        .take(3)
+        .collect_vec();
+
+    let ess_configs = ports
+        .iter()
+        .map(|port| EssConfig::new(port.to_owned(), None, None))
+        .collect_vec();
+
+    let stream_duration = Duration::from_secs(40);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        test_rng,
+        ess_configs,
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(stream_duration),
+            None,
+        )),
+    ));
+
+    tokio::spawn(run(testing_config.inner()));
+
+    let bind_address = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
+    let listener = try_connect_listener(bind_address).await;
+    let mut receiver = listener.consume_combine_streams().await.unwrap();
+
+    let event_buffer_size = 50;
+    let mut event_buffer = VecDeque::with_capacity(event_buffer_size);
+
+    while let Some(event) = receiver.recv().await {
+        let data = serde_json::to_vec(&event.data).unwrap();
+
+        for saved_data in event_buffer.iter() {
+            assert_ne!(&data, saved_data);
+        }
+
+        if event_buffer.len() <= event_buffer_size {
+            event_buffer.push_front(data);
+        } else {
+            let _ = event_buffer.pop_back();
+            event_buffer.push_front(data);
+        }
+    }
+}
+
 async fn partial_connection_test(
     num_of_events_to_send: u64,
     max_subscribers_for_fes: u32,
@@ -479,46 +534,6 @@ async fn reconnection_test(
     let (_, time_for_sidecar_to_shutdown) = tokio::join!(fes_handle, sidecar_handle);
 
     time_for_sidecar_to_shutdown.unwrap()
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
-async fn should_not_duplicate_events_with_multiple_connections() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    // Should provide a 15 second window for the source to restart
-    let mut testing_config = prepare_config(&temp_storage_dir);
-
-    let ports = iter::repeat_with(|| testing_config.add_connection(None, None))
-        .take(3)
-        .collect_vec();
-
-    let ess_configs = ports
-        .iter()
-        .map(|port| EssConfig::new(port.to_owned(), None, None))
-        .collect_vec();
-
-    let stream_duration = Duration::from_secs(40);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_configs,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(stream_duration),
-            None,
-        )),
-    ));
-
-    tokio::spawn(run(testing_config.inner()));
-
-    let bind_address = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let listener = try_connect_listener(bind_address).await;
-    let mut receiver = listener.consume_combine_streams().await.unwrap();
-
-    while let Some(event) = receiver.recv().await {
-        println!("{:?}", event.data);
-    }
 }
 
 async fn try_connect_to_single_stream(
