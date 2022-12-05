@@ -75,7 +75,7 @@ request_timeout_in_seconds = 10
 
 This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
-* `port` - The port for accessing the sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
+* `port` - The port for accessing the Sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
 * `max_requests_per_second` - The maximum total number of requests that can be made per second.
 * `request_timeout_in_seconds` - The total time before a request times out.
