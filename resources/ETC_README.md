@@ -8,7 +8,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicate's the SSE interface of the node and it's filters (i.e., `/main`, `/deploys` and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
+* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators.
 
