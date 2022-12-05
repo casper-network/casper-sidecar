@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    iter,
+    fs, iter,
     ops::Div,
     time::Duration,
 };
@@ -368,6 +368,19 @@ async fn load_testing_step(
     bound: Bound,
     frequency: u8,
 ) {
+    let mut steps = Vec::new();
+    // todo this is a dir local to my machine - it won't work out of the box
+    for i in 6..=9 {
+        let path_to_step_json = format!(
+            "/home/george/casper/casperlabs/step_events/mainnet_step_700{}.json",
+            i
+        );
+        let step_json_string = fs::read_to_string(path_to_step_json).unwrap();
+        let big_step = serde_json::from_str::<SseData>(&step_json_string).unwrap();
+
+        steps.push(big_step);
+    }
+
     let start_time = Instant::now();
 
     match bound {
@@ -379,10 +392,14 @@ async fn load_testing_step(
         }
         Bound::Counted(count) => {
             let mut events_sent = 0;
-            while events_sent <= count {
-                let _ = event_sender.send(SseData::random_step(test_rng));
+            let mut era_id = 7009;
+            while events_sent < count {
+                let step = steps.pop().unwrap();
+                let _ = event_sender.send(step);
+                println!("FES sent Step {}... {}", era_id, chrono::Utc::now());
                 events_sent += 1;
-                tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
+                era_id -= 1;
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
     }

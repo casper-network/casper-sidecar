@@ -14,6 +14,7 @@ use casper_event_listener::{FilterPriority, SseEvent};
 use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
+use crate::integration_tests::try_connect_listener;
 use crate::testing::fake_event_stream::Bound;
 use crate::{
     event_stream_server::Config as EssConfig,
@@ -45,10 +46,7 @@ async fn check_latency_on_load_testing_step_scenario() {
     let duration = Duration::from_secs(60);
 
     performance_check(
-        Scenario::LoadTestingStep(
-            GenericScenarioSettings::new(Bound::Timed(duration), None),
-            2,
-        ),
+        Scenario::LoadTestingStep(GenericScenarioSettings::new(Bound::Counted(4), None), 2),
         duration,
         ACCEPTABLE_LATENCY,
     )
@@ -215,34 +213,30 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::spawn(run(testing_config.inner()));
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
-    let source_event_listener =
-        EventListener::new(source_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let source_event_listener = try_connect_listener(source_url).await;
     let source_event_receiver = source_event_listener
         .consume_combine_streams()
         .await
         .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener =
-        EventListener::new(sidecar_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let sidecar_event_listener = try_connect_listener(sidecar_url).await;
     let sidecar_event_receiver = sidecar_event_listener
         .consume_combine_streams()
         .await
         .unwrap();
 
-    let source_task_handle =
-        tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
+    let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
+        source_event_receiver,
+        None,
+        "FES".to_string(),
+    ));
 
     let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         sidecar_event_receiver,
         None,
+        "Sidecar".to_string(),
     ));
 
     let (source_task_result, sidecar_task_result) =
@@ -319,11 +313,13 @@ async fn live_performance_check(
     let source_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         source_event_receiver,
         Some(duration),
+        "FES".to_string(),
     ));
 
     let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
         sidecar_event_receiver,
         Some(duration),
+        "Sidecar".to_string(),
     ));
 
     let (source_task_result, sidecar_task_result) =
@@ -544,6 +540,7 @@ fn extract_latencies_by_type(
 async fn push_timestamped_events_to_vecs(
     mut event_stream: UnboundedReceiver<SseEvent>,
     duration: Option<Duration>,
+    source: String,
 ) -> Vec<TimestampedEvent> {
     let mut events_vec: Vec<TimestampedEvent> = Vec::new();
 
@@ -561,6 +558,14 @@ async fn push_timestamped_events_to_vecs(
     } else {
         while let Some(event) = event_stream.recv().await {
             let received_timestamp = Instant::now();
+            if let SseData::Step { era_id, .. } = event.data {
+                println!(
+                    "Received Step {} from {}... {}",
+                    era_id.value(),
+                    source,
+                    chrono::Utc::now()
+                );
+            }
             events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
         }
     }

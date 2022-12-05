@@ -495,7 +495,7 @@ async fn try_connect_to_single_stream(
     event_stream.expect("Unable to connect to stream")
 }
 
-async fn try_connect_listener(bind_address: String) -> EventListener {
+pub(crate) async fn try_connect_listener(bind_address: String) -> EventListener {
     let mut event_listener = None;
     for _ in 0..10 {
         let listener =

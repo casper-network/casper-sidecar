@@ -255,10 +255,10 @@ impl DatabaseWriter for SqliteDatabase {
         let mut start = Instant::now();
         let insert_stmt = if self.use_compression {
             let bytes = bincode::serialize(&step).unwrap();
-            println!("Serialised: {:.3}s", (Instant::now() - start).as_secs_f32());
+            // println!("Serialised: {:.3}s", (Instant::now() - start).as_secs_f32());
             start = Instant::now();
             let compressed = compress_to_vec(&bytes, COMPRESSION_LEVEL);
-            println!("Compressed: {:.3}s", (Instant::now() - start).as_secs_f32());
+            // println!("Compressed: {:.3}s", (Instant::now() - start).as_secs_f32());
             let era_id = step.era_id.value();
             start = Instant::now();
             tables::step::create_insert_stmt_compressed(era_id, compressed, event_log_id)?
@@ -271,19 +271,19 @@ impl DatabaseWriter for SqliteDatabase {
                 .to_string(SqliteQueryBuilder)
         };
 
-        println!(
-            "Created step statement: {:.3}s",
-            (Instant::now() - start).as_secs_f32()
-        );
+        // println!(
+        //     "Created step statement: {:.3}s",
+        //     (Instant::now() - start).as_secs_f32()
+        // );
 
         let start_of_write = Instant::now();
         let handled_result =
             handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await);
 
-        println!(
-            "Wrote step to db: {:.3}",
-            (Instant::now() - start_of_write).as_secs_f32()
-        );
+        // println!(
+        //     "Wrote step to db: {:.3}",
+        //     (Instant::now() - start_of_write).as_secs_f32()
+        // );
 
         handled_result
     }
@@ -343,6 +343,7 @@ mod compression_checks {
     }
 
     #[test]
+    #[ignore]
     fn benchmark_compression() {
         let file_string =
             fs::read_to_string("/home/george/casper/casperlabs/step_events/mainnet_step_7006.json")

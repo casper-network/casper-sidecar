@@ -20,6 +20,7 @@ use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tracing::{debug, info, trace, warn};
 
 use casper_event_listener::{EventListener, SseEvent};
@@ -380,6 +381,12 @@ async fn sse_processor(
                 era_id,
                 execution_effect,
             } => {
+                println!(
+                    "Sidecar started processing Step {}... {}",
+                    era_id.value(),
+                    chrono::Utc::now()
+                );
+                let start = Instant::now();
                 let step = Step::new(era_id, execution_effect.clone());
                 if enable_event_logging {
                     info!("Step at era: {}", era_id.value());
@@ -404,6 +411,10 @@ async fn sse_processor(
                     }
                     Err(other_err) => warn!(?other_err, "Unexpected error saving Step"),
                 }
+                println!(
+                    "Sidecar finished with Step... {:.3}",
+                    (Instant::now() - start).as_secs_f32()
+                );
             }
             SseData::Shutdown => {
                 warn!("Node ({}) is unavailable", sse_event.source);
