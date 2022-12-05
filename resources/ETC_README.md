@@ -57,7 +57,7 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 ```
 
-This section includes configurations for the `sqlite` database.
+This section includes configurations for the SQLite database.
 
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
