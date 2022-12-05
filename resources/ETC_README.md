@@ -47,7 +47,7 @@ storage_path = "/var/lib/casper-event-stream"
 ```
 The directory that stores the sqlite database for the Sidecar and the SSE cache.
 
-### Sqlite Database
+### SQLite Database
 
 ```
 [storage.sqlite_config]
