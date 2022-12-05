@@ -96,7 +96,7 @@ Additionally, there are the following two options:
 
 ## Running event-sidecar
 
-The `casper-event-sidecar` starts after installation, using the systemd service file.
+The `casper-event-sidecar` service starts after installation, using the systemd service file.
 
 ### Stop
 
