@@ -45,7 +45,7 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 [storage]
 storage_path = "/var/lib/casper-event-stream"
 ```
-The directory that stores the sqlite database for the Sidecar and the SSE cache.
+This directory stores the SQLite database for the Sidecar and the SSE cache.
 
 ### SQLite Database
 
