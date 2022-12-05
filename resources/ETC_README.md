@@ -63,7 +63,7 @@ This section includes configurations for the SQLite database.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
-### Rest & Event Stream Criteria
+### REST & Event Stream Criteria
 
 ```
 [rest_server]
