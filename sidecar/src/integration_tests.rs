@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::iter;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -5,6 +7,7 @@ use eventsource_stream::{EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
+use itertools::Itertools;
 use tempfile::tempdir;
 use tokio::time::Instant;
 
@@ -31,13 +34,14 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Realistic(GenericScenarioSettings::new(
             Bound::Timed(Duration::from_secs(30)),
             None,
@@ -60,13 +64,14 @@ async fn should_allow_client_connection_to_sse() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Realistic(GenericScenarioSettings::new(
             Bound::Timed(Duration::from_secs(60)),
             None,
@@ -103,13 +108,15 @@ async fn should_send_shutdown_to_sse_client() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir).configure_retry_settings(0, 0);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
+    testing_config.set_retries_for_node(port_for_connection, 0, 0);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Realistic(GenericScenarioSettings::new(
             Bound::Timed(Duration::from_secs(60)),
             None,
@@ -144,13 +151,14 @@ async fn should_respond_to_rest_query() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Realistic(GenericScenarioSettings::new(
             Bound::Timed(Duration::from_secs(60)),
             None,
@@ -363,7 +371,62 @@ async fn should_fail_to_reconnect() {
     .await;
 
     assert!(time_for_sidecar_to_shutdown >= shutdown_after + Duration::from_secs(5 * 3));
-    assert!(time_for_sidecar_to_shutdown < shutdown_after + restart_after)
+    // There's a five second (20 - 15) window between the above assertion and the below in which the Sidecar should have shutdown.
+    assert!(time_for_sidecar_to_shutdown <= shutdown_after + restart_after)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[ignore]
+async fn should_not_duplicate_events_with_multiple_connections() {
+    let test_rng = Box::leak(Box::new(TestRng::new()));
+
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    // Should provide a 15 second window for the source to restart
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    let ports = iter::repeat_with(|| testing_config.add_connection(None, None))
+        .take(3)
+        .collect_vec();
+
+    let ess_configs = ports
+        .iter()
+        .map(|port| EssConfig::new(port.to_owned(), None, None))
+        .collect_vec();
+
+    let stream_duration = Duration::from_secs(40);
+
+    tokio::spawn(spin_up_fake_event_stream(
+        test_rng,
+        ess_configs,
+        Scenario::Realistic(GenericScenarioSettings::new(
+            Bound::Timed(stream_duration),
+            None,
+        )),
+    ));
+
+    tokio::spawn(run(testing_config.inner()));
+
+    let bind_address = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
+    let listener = try_connect_listener(bind_address).await;
+    let mut receiver = listener.consume_combine_streams().await.unwrap();
+
+    let event_buffer_size = 50;
+    let mut event_buffer = VecDeque::with_capacity(event_buffer_size);
+
+    while let Some(event) = receiver.recv().await {
+        let data = serde_json::to_vec(&event.data).unwrap();
+
+        for saved_data in event_buffer.iter() {
+            assert_ne!(&data, saved_data);
+        }
+
+        if event_buffer.len() <= event_buffer_size {
+            event_buffer.push_front(data);
+        } else {
+            let _ = event_buffer.pop_back();
+            event_buffer.push_front(data);
+        }
+    }
 }
 
 async fn partial_connection_test(
@@ -379,30 +442,28 @@ async fn partial_connection_test(
     // Setup config for the sidecar
     //      - Set the sidecar to reattempt connection only once after a 2 second delay.
     //      - Allow partial based on the value passed to the function.
-    let mut testing_config = prepare_config(&temp_storage_dir)
-        .configure_retry_settings(1, 2)
-        .set_allow_partial_connection(allow_partial_connection);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
+    testing_config.set_retries_for_node(port_for_connection, 1, 2);
+    testing_config
+        .set_allow_partial_connection_for_node(port_for_connection, allow_partial_connection);
 
     // If filter_priority was provided, set it in the config
     if let Some(filter_priority) = filter_priority {
-        testing_config.set_filter_priority(filter_priority)
+        testing_config.set_filter_priority_for_node(port_for_connection, filter_priority)
     }
 
     // Setup config for the Event Stream Server to be used in the Fake Event Stream
     //      - Run it on the port the sidecar is set to connect to.
     //      - The buffer will be the default.
     //      - Limit the max_subscribers to the FakeEventStream as per the value passed to the function.
-    let ess_config = EssConfig::new(
-        testing_config.connection_port(),
-        None,
-        Some(max_subscribers_for_fes),
-    );
+    let ess_config = EssConfig::new(port_for_connection, None, Some(max_subscribers_for_fes));
 
     // Run the Fake Event Stream in another task
     //      - Use the Counted scenario to get the event stream to send the number of events specified in the test.
     tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Counted(GenericScenarioSettings::new(
             Bound::Counted(num_of_events_to_send),
             None,
@@ -444,14 +505,15 @@ async fn reconnection_test(
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir)
-        .configure_retry_settings(max_retries, delay_between_retries);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
+    testing_config.set_retries_for_node(port_for_connection, max_retries, delay_between_retries);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     let fes_handle = tokio::spawn(spin_up_fake_event_stream(
         test_rng,
-        ess_config,
+        vec![ess_config],
         Scenario::Realistic(GenericScenarioSettings::new(
             shutdown_after,
             Some(Restart::new(
