@@ -1,7 +1,10 @@
-[connection]
-node_connections = [
-    { ip_address = "127.0.0.1", sse_port = 9999, max_retries = 0, delay_between_retries_secs = 5, enable_event_logging = true }
-]
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 9999
+max_retries = 0
+delay_between_retries_in_seconds = 5
+allow_partial_connection = true
+enable_logging = true
 
 [storage]
 storage_path = "/var/lib/casper-event-sidecar"
@@ -10,6 +13,7 @@ storage_path = "/var/lib/casper-event-sidecar"
 file_name = "sqlite_database.db3"
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
+max_connections_in_pool = 150
 max_write_connections = 10
 max_read_connections = 100
 

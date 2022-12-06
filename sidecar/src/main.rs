@@ -13,6 +13,8 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+
+use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Error};
@@ -36,21 +38,20 @@ use crate::{
     },
 };
 
-const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
-const CONFIG_DEBIAN_PATH: &str = "/etc/casper-event-sidecar/config.toml";
+const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config = match read_config(CONFIG_PATH).context("Error constructing config") {
-        Ok(config) => config,
-        Err(_config) => {
-            info!("Falling back to Debian Config location.");
-            read_config(CONFIG_DEBIAN_PATH).context("Error constructing config")?
-        }
+    let args: Vec<String> = env::args().collect();
+    let config_path= if args.len() > 1 {
+        &args[1]
+    } else {
+        LOCAL_CONFIG_PATH
     };
+    let config = read_config(config_path).context("Error constructing config")?;
 
     info!("Configuration loaded");
 
