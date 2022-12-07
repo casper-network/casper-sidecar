@@ -67,7 +67,6 @@ async fn run(config: Config) -> Result<(), Error> {
             connection.max_retries,
             connection.delay_between_retries_in_seconds,
             connection.allow_partial_connection,
-            connection.filter_priority.clone(),
         )
         .await?;
         event_listeners.push(event_listener);

@@ -1,8 +1,6 @@
 use anyhow::{Context, Error};
 use serde::Deserialize;
 
-use casper_event_listener::FilterPriority;
-
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content =
         std::fs::read_to_string(config_path).context("Error reading config file contents")?;
@@ -27,8 +25,6 @@ pub struct Connection {
     pub delay_between_retries_in_seconds: u8,
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
-    #[serde(default)]
-    pub filter_priority: FilterPriority,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -61,7 +57,6 @@ pub struct EventStreamServerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_event_listener::FilterPriority;
 
     #[test]
     fn should_parse_config_toml() {
@@ -74,7 +69,6 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: true,
-                    filter_priority: FilterPriority::default(),
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -83,7 +77,6 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: false,
-                    filter_priority: FilterPriority::new(1, 0, 2).unwrap(),
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -92,7 +85,6 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: false,
-                    filter_priority: FilterPriority::default(),
                 },
             ],
             storage: StorageConfig {
@@ -130,7 +122,6 @@ mod tests {
                 max_retries: 3,
                 delay_between_retries_in_seconds: 5,
                 enable_logging: false,
-                filter_priority: FilterPriority::default(),
             }
         }
     }
