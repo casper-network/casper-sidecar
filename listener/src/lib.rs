@@ -21,6 +21,7 @@ use tracing::{error, info, warn};
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
 use serde::Deserialize;
+use tokio::time::Instant;
 
 use crate::utils::resolve_address;
 
@@ -353,7 +354,7 @@ async fn connect_with_retry(
                     current_event_id = Some(event_id);
 
                     let cloned_sender = event_sender.clone();
-
+                    let maybe_start = Instant::now();
                     match serde_json::from_str::<SseData>(&event.data) {
                         Ok(SseData::Shutdown) | Err(_) => {
                             error!(
@@ -368,6 +369,19 @@ async fn connect_with_retry(
                         }
                         Ok(sse_data) => {
                             retry_count = 0;
+                            if let SseData::Step { era_id, .. } = sse_data {
+                                println!(
+                                    "Listener received Step {}...{:.3}s ago",
+                                    era_id.value(),
+                                    (Instant::now() - maybe_start).as_secs_f32()
+                                );
+                                println!(
+                                    "Listener sending Step {}... {}",
+                                    era_id.value(),
+                                    chrono::Utc::now()
+                                )
+                            }
+
                             let _ = cloned_sender.send(SseEvent {
                                 source: bind_address.clone(),
                                 id: Some(event_id),
