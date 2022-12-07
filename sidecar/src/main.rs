@@ -13,7 +13,6 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
-
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -46,7 +45,7 @@ async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt::init();
 
     let args: Vec<String> = env::args().collect();
-    let config_path= if args.len() > 1 {
+    let config_path = if args.len() > 1 {
         &args[1]
     } else {
         LOCAL_CONFIG_PATH
