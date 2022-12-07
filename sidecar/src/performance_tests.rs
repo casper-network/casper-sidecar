@@ -10,7 +10,7 @@ use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorEx
 use tempfile::tempdir;
 use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
 
-use casper_event_listener::{FilterPriority, SseEvent};
+use casper_event_listener::SseEvent;
 use casper_types::{testing::TestRng, AsymmetricType};
 
 use super::*;
@@ -207,9 +207,10 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(None, None);
 
-    let ess_config = EssConfig::new(testing_config.connection_port(), None, None);
+    let ess_config = EssConfig::new(port_for_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
 
@@ -217,21 +218,15 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("127.0.0.1:{}", testing_config.connection_port());
-    let source_event_listener =
-        EventListener::new(source_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let source_url = format!("127.0.0.1:{}", port_for_connection);
+    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
     let source_event_receiver = source_event_listener
         .consume_combine_streams()
         .await
         .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener =
-        EventListener::new(sidecar_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
     let sidecar_event_receiver = sidecar_event_listener
         .consume_combine_streams()
         .await
@@ -289,28 +284,22 @@ async fn live_performance_check(
     acceptable_latency: Duration,
 ) {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config =
-        prepare_config(&temp_storage_dir).set_connection_address(Some(ip_address.clone()), port);
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let port_for_connection = testing_config.add_connection(Some(ip_address.clone()), Some(port));
 
     tokio::spawn(run(testing_config.inner()));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("{}:{}", ip_address, port);
-    let source_event_listener =
-        EventListener::new(source_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let source_url = format!("{}:{}", ip_address, port_for_connection);
+    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
     let source_event_receiver = source_event_listener
         .consume_combine_streams()
         .await
         .unwrap();
 
     let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener =
-        EventListener::new(sidecar_url, 0, 0, false, FilterPriority::default())
-            .await
-            .unwrap();
+    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
     let sidecar_event_receiver = sidecar_event_listener
         .consume_combine_streams()
         .await
