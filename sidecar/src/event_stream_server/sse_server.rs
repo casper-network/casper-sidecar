@@ -5,12 +5,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use casper_event_types::{EventFilter, SseData};
-use casper_node::types::Deploy;
-#[cfg(test)]
-use casper_node::types::DeployHash;
-use casper_types::ProtocolVersion;
-
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -33,6 +27,12 @@ use warp::{
     sse::{self, Event as WarpServerSentEvent},
     Filter, Reply,
 };
+
+use casper_event_types::{EventFilter, SseData};
+use casper_node::types::Deploy;
+#[cfg(test)]
+use casper_node::types::DeployHash;
+use casper_types::ProtocolVersion;
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";

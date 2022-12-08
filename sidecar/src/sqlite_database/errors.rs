@@ -1,6 +1,6 @@
 use anyhow::Error;
 
-use crate::types::database::DatabaseRequestError;
+use crate::types::database::DatabaseReadError;
 
 pub(super) enum SqliteDbError {
     Sqlx(sqlx::Error),
@@ -13,12 +13,12 @@ impl From<sqlx::Error> for SqliteDbError {
     }
 }
 
-pub(super) fn wrap_query_error(error: SqliteDbError) -> DatabaseRequestError {
+pub(super) fn wrap_query_error(error: SqliteDbError) -> DatabaseReadError {
     match error {
         SqliteDbError::Sqlx(err) => match err.to_string().as_str() {
-            "Query returned no rows" => DatabaseRequestError::NotFound,
-            _ => DatabaseRequestError::Unhandled(Error::from(err)),
+            "Query returned no rows" => DatabaseReadError::NotFound,
+            _ => DatabaseReadError::Unhandled(Error::from(err)),
         },
-        SqliteDbError::SerdeJson(err) => DatabaseRequestError::Serialisation(Error::from(err)),
+        SqliteDbError::SerdeJson(serde_err) => DatabaseReadError::Serialisation(serde_err),
     }
 }

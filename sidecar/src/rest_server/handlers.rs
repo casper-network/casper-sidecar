@@ -1,10 +1,12 @@
-use crate::rest_server::errors::{InvalidParam, Unexpected};
 use anyhow::Error;
 use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 
 use super::errors::StorageError;
-use crate::types::database::{DatabaseReader, DatabaseRequestError};
+use crate::{
+    rest_server::errors::{InvalidParam, Unexpected},
+    types::database::{DatabaseReadError, DatabaseReader},
+};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,
@@ -27,13 +29,6 @@ pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
     db: Db,
 ) -> Result<impl Reply, Rejection> {
     let db_result = db.get_block_by_height(height).await;
-    format_or_reject_storage_result(db_result)
-}
-
-pub(super) async fn get_latest_deploy<Db: DatabaseReader + Clone + Send>(
-    db: Db,
-) -> Result<impl Reply, Rejection> {
-    let db_result = db.get_latest_deploy_aggregate().await;
     format_or_reject_storage_result(db_result)
 }
 
@@ -108,7 +103,7 @@ pub(super) async fn get_finality_signatures_by_block<Db: DatabaseReader + Clone 
 }
 
 fn format_or_reject_storage_result<T>(
-    storage_result: Result<T, DatabaseRequestError>,
+    storage_result: Result<T, DatabaseReadError>,
 ) -> Result<impl Reply, Rejection>
 where
     T: Serialize,

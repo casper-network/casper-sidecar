@@ -23,6 +23,8 @@ use crate::{sql::tables, types::config::SqliteConfig};
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
 
+/// [SqliteDatabase] can be cloned to allow multiple components access to the database.
+/// The [SqlitePool] is cloned using an [Arc](std::sync::Arc) so each cloned instance of [SqliteDatabase] shares the same connection pool.
 #[derive(Clone)]
 pub struct SqliteDatabase {
     pub connection_pool: SqlitePool,
@@ -37,7 +39,7 @@ impl SqliteDatabase {
             None => Err(Error::msg("Error handling path to database")),
             Some(path) => {
                 let connection_pool = SqlitePoolOptions::new()
-                    .max_connections(config.max_write_connections)
+                    .max_connections(config.max_connections_in_pool)
                     .connect_lazy_with(
                         SqliteConnectOptions::from_str(path)?
                             .create_if_missing(true)
@@ -63,30 +65,6 @@ impl SqliteDatabase {
                 Ok(sqlite_db)
             }
         }
-    }
-
-    pub fn new_read_only(
-        path_to_database: &Path,
-        max_read_connections: u32,
-    ) -> Result<SqliteDatabase, Error> {
-        let connection_pool = SqlitePoolOptions::new()
-            .max_connections(max_read_connections)
-            .connect_lazy_with(
-                SqliteConnectOptions::from_str(
-                    path_to_database
-                        .to_str()
-                        .context("Error parsing path to database")?,
-                )?
-                .read_only(true)
-                .journal_mode(SqliteJournalMode::Wal)
-                .disable_statement_logging()
-                .to_owned(),
-            );
-
-        Ok(SqliteDatabase {
-            connection_pool,
-            file_path: path_to_database.into(),
-        })
     }
 
     #[cfg(test)]

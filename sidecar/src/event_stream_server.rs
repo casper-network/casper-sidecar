@@ -29,9 +29,6 @@ mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
-
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
@@ -39,9 +36,12 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
+
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
-use event_indexer::EventIndexer;
+use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -53,10 +53,10 @@ use sse_server::ChannelsAndFilter;
 /// that a new client can retrieve the entire set of buffered events if desired.
 const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(u32, SseData)>,
+    sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -125,7 +125,7 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    pub(crate) fn broadcast(&self, sse_data: SseData) {
+    pub(crate) fn broadcast(&mut self, sse_data: SseData) {
         let event_index = self.event_indexer.next_index();
         let _ = self.sse_data_sender.send((event_index, sse_data));
     }

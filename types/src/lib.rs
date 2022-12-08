@@ -4,6 +4,10 @@ mod testing;
 use std::sync::Arc;
 
 #[cfg(feature = "sse-data-testing")]
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "sse-data-testing")]
 use casper_node::types::Block;
 use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
@@ -11,10 +15,6 @@ use casper_types::testing::TestRng;
 use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
-
-#[cfg(feature = "sse-data-testing")]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
 
 /// A filter for event types a client has subscribed to receive.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]

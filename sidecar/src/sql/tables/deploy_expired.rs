@@ -29,6 +29,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .big_unsigned()
                 .not_null(),
         )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeployExpired")
+                .col(DeployExpired::DeployHash),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_log_id")

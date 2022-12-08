@@ -1,24 +1,42 @@
-node_connections = [
-    { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true },
-    { ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = false }
-]
+[[connections]]
+    ip_address = "127.0.0.1"
+    sse_port = 18101
+    max_retries = 5
+    delay_between_retries_in_seconds = 5
+    allow_partial_connection = false
+    enable_logging = true
+
+[[connections]]
+    ip_address = "127.0.0.1"
+    sse_port = 18102
+    max_retries = 5
+    delay_between_retries_in_seconds = 5
+    allow_partial_connection = false
+    enable_logging = false
+
+[[connections]]
+    ip_address = "127.0.0.1"
+    sse_port = 18103
+    max_retries = 5
+    delay_between_retries_in_seconds = 5
+    allow_partial_connection = false
+    enable_logging = false
 
 [storage]
 storage_path = "./target/storage"
 
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
-max_write_connections = 10
-max_read_connections = 100
+max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 
 [rest_server]
-ip_address = "127.0.0.1"
-port = 17777
+port = 18888
+max_concurrent_requests = 50
+max_requests_per_second = 50
 
 [event_stream_server]
-ip_address = "127.0.0.1"
 port = 19999
 max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
