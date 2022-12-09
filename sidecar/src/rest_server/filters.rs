@@ -36,7 +36,6 @@ fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reject
 
 /// Handle the case where an invalid path was provided.
 /// Return: a message that an invalid path was provided.
-/// 
 /// Example: curl http://127.0.0.1:18888/other
 /// {"code":400,"message":"Invalid request path provided"}
 fn root_and_invalid_path(
