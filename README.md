@@ -14,7 +14,7 @@ Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) t
 
 * Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicate's the SSE interface of the node and it's filters (i.e., `/main`, `/deploys` and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
 
-* Provide a new RESTful endpoint that is discoverable to node operators.
+* Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
 The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history if they use the `start_from` URL query.
 
