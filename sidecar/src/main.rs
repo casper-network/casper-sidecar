@@ -13,6 +13,7 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Error};
@@ -36,14 +37,21 @@ use crate::{
     },
 };
 
-const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
+const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config(CONFIG_PATH).context("Error constructing config")?;
+    let args: Vec<String> = env::args().collect();
+    let config_path = if args.len() > 1 {
+        &args[1]
+    } else {
+        LOCAL_CONFIG_PATH
+    };
+    let config = read_config(config_path).context("Error constructing config")?;
+
     info!("Configuration loaded");
 
     run(config).await
@@ -59,7 +67,6 @@ async fn run(config: Config) -> Result<(), Error> {
             connection.max_retries,
             connection.delay_between_retries_in_seconds,
             connection.allow_partial_connection,
-            connection.filter_priority.clone(),
         )
         .await?;
         event_listeners.push(event_listener);
