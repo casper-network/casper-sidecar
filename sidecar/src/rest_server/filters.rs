@@ -27,7 +27,6 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
 
 /// Handle the case where no filter URL was specified after the root address (HOST:PORT).
 /// Return: a message that an invalid path was provided.
-/// 
 /// Example: curl http://127.0.0.1:18888
 /// {"code":400,"message":"Invalid request path provided"}
 fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -73,9 +72,7 @@ fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about the last block added to the linear chain.
 /// Input: the database with data to be filtered.
 /// Return: data about the latest block.
-///
 /// Path URL: block
-/// 
 /// Example: curl http://127.0.0.1:18888/block
 fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -89,9 +86,7 @@ fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about a block given its block hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the block specified.
-///
 /// Path URL: block/<block-hash>
-///
 /// Example: curl http://127.0.0.1:18888/block/c0292d8408e9d83d1aaceadfbeb25dc38cda36bcb91c3d403a0deb594dc3d63f
 fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -105,9 +100,7 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about a block given a specific block height.
 /// Input: the database with data to be filtered.
 /// Return: data about the block requested.
-///
 /// Path URL: block/<block-height>
-///
 /// Example: curl http://127.0.0.1:18888/block/630151
 fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -121,9 +114,7 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about a deploy sent to the network given its deploy hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the deploy specified.
-///
 /// Path URL: deploy/<deploy-hash>
-///
 /// Example: curl http://127.0.0.1:18888/deploy/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -137,9 +128,7 @@ fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about an accepted deploy given its deploy hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the accepted deploy.
-///
 /// Path URL: deploy/accepted/<deploy-hash>
-///
 /// Example: curl http://127.0.0.1:18888/deploy/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -153,9 +142,7 @@ fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about a deploy that expired given its deploy hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the expired deploy.
-///
 /// Path URL: deploy/expired/<deploy-hash>
-///
 /// Example: curl http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -169,9 +156,7 @@ fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return information about a deploy that was processed given its deploy hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the processed deploy.
-///
 /// Path URL: deploy/processed/<deploy-hash>
-///
 /// Example: curl http://127.0.0.1:18888/deploy/processed/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
 fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -185,9 +170,7 @@ fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return the faults associated with a validator's public key.
 /// Input: the database with data to be filtered.
 /// Return: faults caused by the validator specified.
-///
 /// Path URL: faults/<public-key>
-///
 /// Example: curl http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -201,9 +184,7 @@ fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return the faults associated with an era given a valid era identifier.
 /// Input: the database with data to be filtered.
 /// Return: fault information for a given era.
-///
 /// Path URL: faults/<era-ID>
-///
 /// Example: curl http://127.0.0.1:18888/faults/2304
 fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -217,9 +198,7 @@ fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return the finality signatures in a block given its block hash.
 /// Input: the database with data to be filtered.
 /// Return: the finality signatures for the block specified.
-///
 /// Path URL: signatures/<block-hash>
-///
 /// Example: curl http://127.0.0.1:18888/signatures/c0292d8408e9d83d1aaceadfbeb25dc38cda36bcb91c3d403a0deb594dc3d63f
 fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
@@ -233,9 +212,7 @@ fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return the step event emitted at the end of an era, given a valid era identifier.
 /// Input: the database with data to be filtered.
 /// Return: the step event for a given era.
-///
 /// Path URL: step/<era-ID>
-///
 /// Example: curl http://127.0.0.1:18888/step/2304
 fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
