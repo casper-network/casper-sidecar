@@ -110,7 +110,8 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_height)
 }
 
-/// Return information about a deploy sent to the network given its deploy hash.
+/// Return an aggregate of the different states for the given deploy. This is a synthetic JSON not emitted by the node.
+/// The output differs depending on the deploy's status, which changes over time as the deploy goes through its lifecycle.
 /// Input: the database with data to be filtered.
 /// Return: data about the deploy specified.
 /// Path URL: deploy/<deploy-hash>
