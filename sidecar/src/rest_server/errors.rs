@@ -34,7 +34,7 @@ impl reject::Reject for Unexpected {}
 /// Handle various REST server errors:
 /// - Unexpected internal server errors
 /// - Queries returning empty result sets
-/// - Serialisation errors
+/// - Serialization errors
 /// - Database errors
 /// - Invalid request path errors
 /// - Invalid parameters in the request query
