@@ -35,7 +35,7 @@ impl reject::Reject for Unexpected {}
 /// - Unexpected internal server errors
 /// - Queries returning empty result sets
 /// - Serialization errors
-/// - Database errors
+/// - Database-related errors
 /// - Invalid request path errors
 /// - Invalid parameters in the request query
 pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
