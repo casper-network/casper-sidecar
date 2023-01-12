@@ -1,26 +1,29 @@
 [[connections]]
     ip_address = "127.0.0.1"
     sse_port = 18101
-    max_retries = 5
+    rest_port = 14101
+    max_retries = 20
     delay_between_retries_in_seconds = 5
     allow_partial_connection = false
     enable_logging = true
 
-[[connections]]
-    ip_address = "127.0.0.1"
-    sse_port = 18102
-    max_retries = 5
-    delay_between_retries_in_seconds = 5
-    allow_partial_connection = false
-    enable_logging = false
-
-[[connections]]
-    ip_address = "127.0.0.1"
-    sse_port = 18103
-    max_retries = 5
-    delay_between_retries_in_seconds = 5
-    allow_partial_connection = false
-    enable_logging = false
+#[[connections]]
+#    ip_address = "127.0.0.1"
+#    sse_port = 18102
+#    rest_port = 14102
+#    max_retries = 20
+#    delay_between_retries_in_seconds = 5
+#    allow_partial_connection = false
+#    enable_logging = false
+#
+#[[connections]]
+#    ip_address = "127.0.0.1"
+#    sse_port = 18103
+#    rest_port = 14103
+#    max_retries = 20
+#    delay_between_retries_in_seconds = 5
+#    allow_partial_connection = false
+#    enable_logging = false
 
 [storage]
 storage_path = "./target/storage"

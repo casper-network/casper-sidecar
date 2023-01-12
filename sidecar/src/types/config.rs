@@ -21,8 +21,9 @@ pub struct Config {
 pub struct Connection {
     pub ip_address: String,
     pub sse_port: u16,
-    pub max_retries: u8,
-    pub delay_between_retries_in_seconds: u8,
+    pub rest_port: u16,
+    pub max_retries: usize,
+    pub delay_between_retries_in_seconds: usize,
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
 }
@@ -65,6 +66,7 @@ mod tests {
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
                     sse_port: 18101,
+                    rest_port: 14101,
                     max_retries: 5,
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
@@ -73,6 +75,7 @@ mod tests {
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
                     sse_port: 18102,
+                    rest_port: 14102,
                     max_retries: 5,
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
@@ -81,6 +84,7 @@ mod tests {
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
                     sse_port: 18103,
+                    rest_port: 14103,
                     max_retries: 5,
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
@@ -118,6 +122,7 @@ mod tests {
             Self {
                 ip_address: "127.0.0.1".to_string(),
                 sse_port: 18101,
+                rest_port: 14101,
                 allow_partial_connection: false,
                 max_retries: 3,
                 delay_between_retries_in_seconds: 5,

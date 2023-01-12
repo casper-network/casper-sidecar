@@ -10,10 +10,11 @@ casper-event-types = { path = "../types", version = "0.1.0"}
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 eventsource-stream = "0.2.3"
 futures = "0.3.24"
-reqwest = { version = "0.11", features = ["stream"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 thiserror = "1.0.37"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tracing = "0.1"
+url = "2.3.1"

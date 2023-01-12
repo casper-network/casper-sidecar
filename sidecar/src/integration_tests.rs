@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+use std::net::IpAddr;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -8,18 +10,20 @@ use http::StatusCode;
 use tempfile::tempdir;
 use tokio::time::Instant;
 
-use casper_event_listener::EventListener;
+use casper_event_listener::{EventListener, NodeConnectionInterface};
 use casper_event_types::SseData;
 use casper_types::testing::TestRng;
+use tokio::sync::mpsc;
 
 use super::run;
 use crate::{
     event_stream_server::Config as EssConfig,
-    performance_tests::EventType,
+    // performance_tests::EventType,
     testing::{
         fake_event_stream::{
             spin_up_fake_event_stream, Bound, GenericScenarioSettings, Restart, Scenario,
         },
+        shared::EventType,
         testing_config::prepare_config,
     },
     types::sse_events::BlockAdded,
@@ -32,7 +36,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
 
     let ess_config = EssConfig::new(port_for_connection, None, None);
 
@@ -62,7 +66,7 @@ async fn should_allow_client_connection_to_sse() {
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
 
     let ess_config = EssConfig::new(port_for_connection, None, None);
 
@@ -106,7 +110,7 @@ async fn should_send_shutdown_to_sse_client() {
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
     testing_config.set_retries_for_node(port_for_connection, 0, 0);
 
     let ess_config = EssConfig::new(port_for_connection, None, None);
@@ -149,7 +153,7 @@ async fn should_respond_to_rest_query() {
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
 
     let ess_config = EssConfig::new(port_for_connection, None, None);
 
@@ -314,7 +318,7 @@ async fn partial_connection_test(
     //      - Set the sidecar to reattempt connection only once after a 2 second delay.
     //      - Allow partial based on the value passed to the function.
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
     testing_config.set_retries_for_node(port_for_connection, 1, 2);
     testing_config
         .set_allow_partial_connection_for_node(port_for_connection, allow_partial_connection);
@@ -339,19 +343,35 @@ async fn partial_connection_test(
     // Run the Sidecar in another task with the prepared config.
     tokio::spawn(run(testing_config.inner()));
 
-    // URL for connecting to the Sidecar's event stream.
-    let sidecar_bind_address = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
+    let (event_tx, mut event_rx) = mpsc::channel(100);
 
-    let test_event_listener = try_connect_listener(sidecar_bind_address).await;
+    let mut test_event_listener = EventListener::new(
+        NodeConnectionInterface {
+            ip_address: IpAddr::from([127, 0, 0, 1]),
+            sse_port: testing_config.event_stream_server_port(),
+            rest_port: testing_config.rest_server_port(),
+        },
+        5,
+        Duration::from_secs(1),
+        false,
+        event_tx,
+    );
 
-    let mut combined_receiver = test_event_listener.consume_combine_streams().await.unwrap();
+    tokio::spawn(async move {
+        let res = test_event_listener.stream_aggregated_events().await;
+
+        if res.is_err() {
+            println!("Listener Error: {}", res.err().unwrap())
+        }
+    });
 
     let mut event_types_received = Vec::new();
 
-    while let Some(event) = combined_receiver.recv().await {
-        if !matches!(event.data, SseData::ApiVersion(_)) && !matches!(event.data, SseData::Shutdown)
+    while let Some(event) = event_rx.recv().await {
+        if !matches!(event.data(), SseData::ApiVersion(_))
+            && !matches!(event.data(), SseData::Shutdown)
         {
-            event_types_received.push(event.data.into())
+            event_types_received.push(event.data().into())
         }
     }
 
@@ -363,8 +383,8 @@ async fn partial_connection_test(
 }
 
 async fn reconnection_test(
-    max_retries: u8,
-    delay_between_retries: u8,
+    max_retries: usize,
+    delay_between_retries: usize,
     shutdown_after: Bound,
     restart_after: Duration,
 ) -> Duration {
@@ -372,7 +392,7 @@ async fn reconnection_test(
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    let port_for_connection = testing_config.add_connection(None, None, None);
     testing_config.set_retries_for_node(port_for_connection, max_retries, delay_between_retries);
 
     let ess_config = EssConfig::new(port_for_connection, None, None);
@@ -422,18 +442,4 @@ async fn try_connect_to_single_stream(
     }
 
     event_stream.expect("Unable to connect to stream")
-}
-
-async fn try_connect_listener(bind_address: String) -> EventListener {
-    let mut event_listener = None;
-    for _ in 0..10 {
-        let listener = EventListener::new(bind_address.clone(), 3, 3, false).await;
-        if listener.is_ok() {
-            event_listener = Some(listener.unwrap());
-            break;
-        } else {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    }
-    event_listener.expect("Unable to connect to stream")
 }

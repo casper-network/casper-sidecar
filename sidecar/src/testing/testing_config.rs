@@ -36,18 +36,25 @@ impl TestingConfig {
         self.config.storage.storage_path = path;
     }
 
-    pub(crate) fn add_connection(&mut self, ip_address: Option<String>, port: Option<u16>) -> u16 {
-        let random_port = portpicker::pick_unused_port().unwrap();
+    pub(crate) fn add_connection(
+        &mut self,
+        ip_address: Option<String>,
+        sse_port: Option<u16>,
+        rest_port: Option<u16>,
+    ) -> u16 {
+        let random_port_for_sse = portpicker::pick_unused_port().unwrap();
+        let random_port_for_rest = portpicker::pick_unused_port().unwrap();
         let connection = Connection {
             ip_address: ip_address.unwrap_or("127.0.0.1".to_string()),
-            sse_port: port.unwrap_or(random_port),
+            sse_port: sse_port.unwrap_or(random_port_for_sse),
+            rest_port: rest_port.unwrap_or(random_port_for_rest),
             max_retries: 0,
             delay_between_retries_in_seconds: 0,
             allow_partial_connection: false,
             enable_logging: false,
         };
         self.config.connections.push(connection);
-        random_port
+        random_port_for_sse
     }
 
     /// Set how the sidecar should handle the case where it is only able to connect to one or two of the node's filters.
@@ -70,8 +77,8 @@ impl TestingConfig {
     pub(crate) fn set_retries_for_node(
         &mut self,
         port_of_node: u16,
-        max_retries: u8,
-        delay_between_retries_in_seconds: u8,
+        max_retries: usize,
+        delay_between_retries_in_seconds: usize,
     ) {
         for mut connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {

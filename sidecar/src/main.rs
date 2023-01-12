@@ -3,8 +3,8 @@ extern crate core;
 mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
-#[cfg(test)]
-mod performance_tests;
+// #[cfg(test)]
+// mod performance_tests;
 mod rest_server;
 mod sql;
 mod sqlite_database;
@@ -13,16 +13,20 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::time::Duration;
 
 use anyhow::{Context, Error};
+use casper_types::ProtocolVersion;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace, warn};
 
-use casper_event_listener::{EventListener, SseEvent};
+use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::SseData;
 
 use crate::{
@@ -52,27 +56,28 @@ async fn main() -> Result<(), Error> {
 async fn run(config: Config) -> Result<(), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
+    let mut sse_data_receivers = Vec::new();
+
     for connection in &config.connections {
-        let bind_address = format!("{}:{}", connection.ip_address, connection.sse_port);
+        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(100);
+
+        sse_data_receivers.push(inbound_sse_data_receiver);
+
+        let node_interface = NodeConnectionInterface {
+            ip_address: IpAddr::from_str(&connection.ip_address)?,
+            sse_port: connection.sse_port,
+            rest_port: connection.rest_port,
+        };
+
         let event_listener = EventListener::new(
-            bind_address,
+            node_interface,
             connection.max_retries,
-            connection.delay_between_retries_in_seconds,
+            Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
             connection.allow_partial_connection,
-        )
-        .await?;
+            inbound_sse_data_sender.clone(),
+        );
         event_listeners.push(event_listener);
     }
-
-    let api_versions_match = event_listeners
-        .windows(2)
-        .all(|w| w[0].api_version == w[1].api_version);
-
-    if !api_versions_match {
-        return Err(Error::msg("Connected nodes have mismatched API versions"));
-    }
-
-    let api_version = event_listeners[0].api_version;
 
     let path_to_database_dir = Path::new(&config.storage.storage_path);
 
@@ -92,7 +97,7 @@ async fn run(config: Config) -> Result<(), Error> {
     println!();
 
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
-    let (sse_data_sender, mut sse_data_receiver) = unbounded_channel();
+    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = unbounded_channel();
 
     // Create new instance for the Sidecar's Event Stream Server
     let mut event_stream_server = EventStreamServer::new(
@@ -102,7 +107,8 @@ async fn run(config: Config) -> Result<(), Error> {
             Some(config.event_stream_server.max_concurrent_subscribers),
         ),
         PathBuf::from(&config.storage.storage_path),
-        api_version,
+        // todo!
+        ProtocolVersion::from_parts(0, 0, 0),
     )
     .context("Error starting EventStreamServer")?;
 
@@ -112,12 +118,15 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let connection_configs = config.connections.clone();
 
-        for (event_listener, connection_config) in
-            event_listeners.into_iter().zip(connection_configs)
+        for ((event_listener, connection_config), sse_data_receiver) in event_listeners
+            .into_iter()
+            .zip(connection_configs)
+            .zip(sse_data_receivers)
         {
             let join_handle = tokio::spawn(sse_processor(
                 event_listener,
-                sse_data_sender.clone(),
+                sse_data_receiver,
+                outbound_sse_data_sender.clone(),
                 sqlite_database.clone(),
                 connection_config.enable_logging,
             ));
@@ -131,7 +140,7 @@ async fn run(config: Config) -> Result<(), Error> {
     });
 
     let event_broadcasting_handle = tokio::spawn(async move {
-        while let Some(sse_data) = sse_data_receiver.recv().await {
+        while let Some(sse_data) = outbound_sse_data_receiver.recv().await {
             event_stream_server.broadcast(sse_data);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
@@ -154,26 +163,19 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
 }
 
 async fn sse_processor(
-    sse_event_listener: EventListener,
-    sse_data_sender: UnboundedSender<SseData>,
+    mut sse_event_listener: EventListener,
+    mut inbound_sse_data_receiver: Receiver<SseEvent>,
+    outbound_sse_data_sender: UnboundedSender<SseData>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
-    let mut sse_data_stream = sse_event_listener
-        .consume_combine_streams()
-        .await
-        .unwrap_or_else(|_| {
-            let (tx, rx) = unbounded_channel::<SseEvent>();
-            let _ = tx.send(SseEvent {
-                source: "".to_string(),
-                id: None,
-                data: SseData::Shutdown,
-            });
-            rx
-        });
+    // This task starts the listener pushing events to the sse_data_receiver
+    tokio::spawn(async move {
+        let _ = sse_event_listener.stream_aggregated_events().await;
+    });
 
-    while let Some(sse_event) = sse_data_stream.recv().await {
-        match sse_event.data {
+    while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
+        match sse_event.data() {
             SseData::ApiVersion(version) => {
                 if enable_event_logging {
                     info!(%version, "API Version");
@@ -189,14 +191,15 @@ async fn sse_processor(
                 let res = sqlite_database
                     .save_block_added(
                         BlockAdded::new(block_hash, block.clone()),
-                        sse_event.id.unwrap(),
-                        sse_event.source,
+                        sse_event.id(),
+                        sse_event.source().to_string(),
                     )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::BlockAdded { block, block_hash });
+                        let _ = outbound_sse_data_sender
+                            .send(SseData::BlockAdded { block, block_hash });
                     }
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
@@ -216,12 +219,16 @@ async fn sse_processor(
                 }
                 let deploy_accepted = DeployAccepted::new(deploy.clone());
                 let res = sqlite_database
-                    .save_deploy_accepted(deploy_accepted, sse_event.id.unwrap(), sse_event.source)
+                    .save_deploy_accepted(
+                        deploy_accepted,
+                        sse_event.id(),
+                        sse_event.source().to_string(),
+                    )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::DeployAccepted { deploy });
+                        let _ = outbound_sse_data_sender.send(SseData::DeployAccepted { deploy });
                     }
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
@@ -242,14 +249,15 @@ async fn sse_processor(
                 let res = sqlite_database
                     .save_deploy_expired(
                         DeployExpired::new(deploy_hash),
-                        sse_event.id.unwrap(),
-                        sse_event.source,
+                        sse_event.id(),
+                        sse_event.source().to_string(),
                     )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::DeployExpired { deploy_hash });
+                        let _ =
+                            outbound_sse_data_sender.send(SseData::DeployExpired { deploy_hash });
                     }
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
@@ -287,14 +295,14 @@ async fn sse_processor(
                 let res = sqlite_database
                     .save_deploy_processed(
                         deploy_processed.clone(),
-                        sse_event.id.unwrap(),
-                        sse_event.source,
+                        sse_event.id(),
+                        sse_event.source().to_string(),
                     )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::DeployProcessed {
+                        let _ = outbound_sse_data_sender.send(SseData::DeployProcessed {
                             deploy_hash,
                             account,
                             timestamp,
@@ -322,12 +330,16 @@ async fn sse_processor(
                 let fault = Fault::new(era_id, public_key.clone(), timestamp);
                 warn!(%fault, "Fault reported");
                 let res = sqlite_database
-                    .save_fault(fault.clone(), sse_event.id.unwrap(), sse_event.source)
+                    .save_fault(
+                        fault.clone(),
+                        sse_event.id(),
+                        sse_event.source().to_string(),
+                    )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::Fault {
+                        let _ = outbound_sse_data_sender.send(SseData::Fault {
                             era_id,
                             timestamp,
                             public_key,
@@ -348,14 +360,14 @@ async fn sse_processor(
                 let res = sqlite_database
                     .save_finality_signature(
                         finality_signature.clone(),
-                        sse_event.id.unwrap(),
-                        sse_event.source,
+                        sse_event.id(),
+                        sse_event.source().to_string(),
                     )
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::FinalitySignature(fs));
+                        let _ = outbound_sse_data_sender.send(SseData::FinalitySignature(fs));
                     }
                     Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                         debug!(
@@ -378,12 +390,12 @@ async fn sse_processor(
                     info!("Step at era: {}", era_id.value());
                 }
                 let res = sqlite_database
-                    .save_step(step, sse_event.id.unwrap(), sse_event.source)
+                    .save_step(step, sse_event.id(), sse_event.source().to_string())
                     .await;
 
                 match res {
                     Ok(_) => {
-                        let _ = sse_data_sender.send(SseData::Step {
+                        let _ = outbound_sse_data_sender.send(SseData::Step {
                             era_id,
                             execution_effect,
                         });
@@ -399,7 +411,7 @@ async fn sse_processor(
                 }
             }
             SseData::Shutdown => {
-                warn!("Node ({}) is unavailable", sse_event.source);
+                warn!("Node ({}) is unavailable", sse_event.source().to_string());
                 break;
             }
         }

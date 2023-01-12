@@ -1,327 +1,376 @@
-mod utils;
-
-use std::{
-    fmt::{Debug, Display, Formatter},
-    time::Duration,
-};
-
-use anyhow::Error;
-use bytes::Bytes;
-use eventsource_stream::{EventStream, Eventsource};
-use futures::StreamExt;
-use reqwest::Client;
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    oneshot::{channel as oneshot_channel, Sender as OneshotSender},
-};
-use tokio_stream::Stream;
-use tracing::{error, info, warn};
-
+use anyhow::{Context, Error};
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
+use eventsource_stream::{Event, Eventsource};
+use futures::{Stream, StreamExt};
+use reqwest::Client;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fmt::{Debug, Display, Formatter};
+use std::net::IpAddr;
+use std::str::FromStr;
+use std::time::Duration;
+use tokio::sync::mpsc::Sender;
+use tracing::log::warn;
+use tracing::{debug, error, trace};
+use url::Url;
 
-use crate::utils::resolve_address;
+const API_VERSION_KEY: &str = "api_version";
 
-#[derive(Clone)]
-pub enum SseFilter {
+pub struct NodeConnectionInterface {
+    pub ip_address: IpAddr,
+    pub sse_port: u16,
+    pub rest_port: u16,
+}
+
+pub struct SseEvent {
+    id: u32,
+    data: SseData,
+    source: Url,
+}
+
+impl SseEvent {
+    fn new(id: u32, data: SseData, mut source: Url) -> Self {
+        // This is to remove the path e.g. /events/main
+        // Leaving just the IP and port
+        source.set_path("");
+        Self { id, data, source }
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn data(&self) -> SseData {
+        self.data.clone()
+    }
+
+    pub fn source(&self) -> Url {
+        self.source.clone()
+    }
+}
+
+impl Display for SseEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{id: {}, source: {}, event: {:?}}}",
+            self.id, self.source, self.data
+        )
+    }
+}
+
+#[derive(Hash, Eq, PartialEq)]
+enum Filter {
+    Events,
     Main,
     Deploys,
     Sigs,
 }
 
-impl Display for SseFilter {
+impl Display for Filter {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            SseFilter::Main => write!(f, "main"),
-            SseFilter::Deploys => write!(f, "deploys"),
-            SseFilter::Sigs => write!(f, "sigs"),
+            Filter::Events => write!(f, "events"),
+            Filter::Main => write!(f, "events/main"),
+            Filter::Deploys => write!(f, "events/deploys"),
+            Filter::Sigs => write!(f, "events/sigs"),
         }
     }
 }
 
-#[derive(Clone)]
 pub struct EventListener {
-    bind_address: String,
-    pub api_version: ProtocolVersion,
-    current_event_id: Option<u32>,
-    max_retries: u8,
-    delay_between_retries: u8,
+    api_version: ProtocolVersion,
+    node: NodeConnectionInterface,
+    max_connection_attempts: usize,
+    delay_between_attempts: Duration,
     allow_partial_connection: bool,
-}
-
-pub struct SseEvent {
-    pub source: String,
-    pub id: Option<u32>,
-    pub data: SseData,
+    sse_event_sender: Sender<SseEvent>,
 }
 
 impl EventListener {
-    /// Returns an instance of [EventListener] based on the given `bind_address`.  
-    /// `delay_between_retries` should be provided in seconds.
-    ///
-    /// Will error if:
-    /// - `bind_address` cannot be parsed into a network address.
-    /// - It is unable to connect to the source.
-    /// - The source doesn't send a valid [ApiVersion] as the first event.
-    pub async fn new(
-        bind_address: String,
-        max_retries: u8,
-        delay_between_retries: u8,
+    pub fn new(
+        node: NodeConnectionInterface,
+        max_connection_attempts: usize,
+        delay_between_attempts: Duration,
         allow_partial_connection: bool,
-    ) -> Result<Self, Error> {
-        resolve_address(&bind_address)?;
-        let prefixed_address = format!("http://{}", bind_address);
-
-        let address_with_filter = format!("{}/events/main", prefixed_address);
-        let stream = Client::new()
-            .get(&address_with_filter)
-            .send()
-            .await?
-            .bytes_stream()
-            .eventsource();
-
-        let (api_version, _) = parse_api_version(stream).await?;
-
-        Ok(Self {
-            bind_address: prefixed_address,
-            api_version,
-            current_event_id: None,
-            max_retries,
-            delay_between_retries,
+        sse_event_sender: Sender<SseEvent>,
+    ) -> Self {
+        Self {
+            api_version: ProtocolVersion::from_parts(0, 0, 0),
+            node,
+            max_connection_attempts,
+            delay_between_attempts,
             allow_partial_connection,
-        })
+            sse_event_sender,
+        }
     }
 
-    pub async fn consume_combine_streams(&self) -> Result<UnboundedReceiver<SseEvent>, Error> {
-        let (sse_tx, sse_rx) = unbounded_channel::<SseEvent>();
+    fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
+        let url_str = format!(
+            "http://{}:{}/{}",
+            self.node.ip_address, self.node.sse_port, filter
+        );
+        Url::parse(&url_str).map_err(Error::from)
+    }
 
-        let (main_connected_tx, main_connected_rx) = oneshot_channel();
-        let main_filter_handle = tokio::spawn(connect_with_retry(
-            sse_tx.clone(),
-            self.bind_address.clone(),
-            SseFilter::Main,
-            self.current_event_id,
-            self.max_retries,
-            self.delay_between_retries,
-            main_connected_tx,
-        ));
+    pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
+        let mut attempts = 0;
 
-        let (deploys_connected_tx, deploys_connected_rx) = oneshot_channel();
-        let deploys_filter_handle = tokio::spawn(connect_with_retry(
-            sse_tx.clone(),
-            self.bind_address.clone(),
-            SseFilter::Deploys,
-            self.current_event_id,
-            self.max_retries,
-            self.delay_between_retries,
-            deploys_connected_tx,
-        ));
+        while attempts < self.max_connection_attempts {
+            attempts += 1;
 
-        let (sigs_connected_tx, sigs_connected_rx) = oneshot_channel();
-        let sigs_filter_handle = tokio::spawn(connect_with_retry(
-            sse_tx.clone(),
-            self.bind_address.clone(),
-            SseFilter::Sigs,
-            self.current_event_id,
-            self.max_retries,
-            self.delay_between_retries,
-            sigs_connected_tx,
-        ));
-
-        let allow_partial_connection = self.allow_partial_connection;
-        let bind_address = self.bind_address.clone();
-        tokio::spawn(async move {
-            if allow_partial_connection {
-                let _ = tokio::join!(
-                    main_filter_handle,
-                    deploys_filter_handle,
-                    sigs_filter_handle
-                );
-                warn!("All filters have disconnected");
-            } else {
-                tokio::select! {
-                    result = main_filter_handle => {
-                       warn!(?result, "Failed to connect to MAIN filter - allow_partial_connection is set to false - disconnecting from node")
-                    },
-                    result = deploys_filter_handle => {
-                       warn!(?result, "Failed to connect to DEPLOYS filter - allow_partial_connection is set to false - disconnecting from node")
-                    },
-                    result = sigs_filter_handle => {
-                       warn!(?result, "Failed to connect to SIGS filter - allow_partial_connection is set to false - disconnecting from node")
-                    }
+            let mut api_fetch_attempts = 0;
+            loop {
+                if api_fetch_attempts > self.max_connection_attempts {
+                    return Err(Error::msg(
+                        "Unable to retrieve API version from node status",
+                    ));
                 }
-            }
-            // Retries have been exhausted without a successful connection - send Shutdown.
-            let _ = sse_tx.send(SseEvent {
-                source: bind_address,
-                id: None,
-                data: SseData::Shutdown,
-            });
-        });
 
-        // If partial connection is acceptable then we can return the receiver immediately.
-        if allow_partial_connection {
-            Ok(sse_rx)
-        } else {
-            // Otherwise we need to wait for all filters to report they're connected
-            let connected_to_all = main_connected_rx.await.is_ok()
-                && deploys_connected_rx.await.is_ok()
-                && sigs_connected_rx.await.is_ok();
+                let api_version_res = self.fetch_api_version_from_status().await;
+                if api_version_res.is_ok() {
+                    let new_api_version = api_version_res.unwrap();
 
-            // If all filters are not connected then we need to return an Err since partial connection is not allowed
-            if !connected_to_all {
-                return Err(Error::msg("Partial connection is disabled, the listener was unable to connect all filters"));
+                    // Compare versions to reset attempts in the case that the version changed.
+                    // This guards against endlessly retrying when the version hasn't changed, suggesting
+                    // that the node is unavailable.
+                    if new_api_version != self.api_version {
+                        attempts = 0;
+                    }
+
+                    self.api_version = new_api_version;
+
+                    break;
+                }
+
+                error!(
+                    "Error fetching API version: {}",
+                    api_version_res.err().unwrap()
+                );
+                tokio::time::sleep(self.delay_between_attempts).await;
+                api_fetch_attempts += 1;
             }
-            Ok(sse_rx)
+
+            let filters = filters_from_version(self.api_version);
+
+            let mut connections = HashMap::new();
+
+            for filter in filters {
+                let bind_address_for_filter = self.filtered_sse_url(&filter)?;
+
+                let connection = ConnectionManager::new(
+                    bind_address_for_filter,
+                    self.max_connection_attempts,
+                    self.sse_event_sender.clone(),
+                );
+
+                connections.insert(filter, connection);
+            }
+
+            let mut connection_join_handles = Vec::new();
+
+            for (filter, mut connection) in connections.drain() {
+                debug!("Connecting filter... {}", filter);
+                let handle = tokio::spawn(async move {
+                    connection.connect_with_retry().await;
+                });
+                connection_join_handles.push(handle);
+            }
+
+            if self.allow_partial_connection {
+                // Await completion of all connections
+                futures::future::join_all(connection_join_handles).await;
+            } else {
+                // Return on the first completed connection
+                let _ = futures::future::select_all(connection_join_handles).await;
+            }
         }
+
+        Ok(())
+    }
+
+    fn status_endpoint(&self) -> Result<Url, Error> {
+        let status_endpoint_str = format!(
+            "http://{}:{}/status",
+            self.node.ip_address, self.node.rest_port
+        );
+        Url::from_str(&status_endpoint_str).map_err(Error::from)
+    }
+
+    // Fetch the api version by requesting the status from the node's rest server.
+    async fn fetch_api_version_from_status(&mut self) -> Result<ProtocolVersion, Error> {
+        debug!(
+            "Fetching API version for {}",
+            self.status_endpoint().unwrap()
+        );
+
+        let status_endpoint = self
+            .status_endpoint()
+            .context("Should have created status URL")?;
+
+        let status_response = reqwest::get(status_endpoint)
+            .await
+            .context("Should have responded with status")?;
+
+        // The exact structure of the response varies over the versions but there is an assertion made
+        // that .api_version is always valid. So the key is accessed without deserialising the full response.
+        let response_json: Value = status_response
+            .json()
+            .await
+            .context("Should have parsed JSON from response")?;
+
+        let maybe_api_version_json = response_json
+            .get(API_VERSION_KEY)
+            .context("Response should have contained API version")?
+            .to_owned();
+
+        serde_json::from_value(maybe_api_version_json).map_err(Error::from)
     }
 }
 
-async fn connect_with_retry(
-    event_sender: UnboundedSender<SseEvent>,
-    bind_address: String,
-    filter: SseFilter,
-    start_from_id: Option<u32>,
-    max_retries: u8,
-    delay_between: u8,
-    connected_reporter: OneshotSender<()>,
-) {
-    let mut retry_count = 0;
-    let mut current_event_id = start_from_id;
+struct ConnectionManager {
+    bind_address: Url,
+    current_event_id: Option<u32>,
+    attempts: usize,
+    max_attempts: usize,
+    delay_between_attempts: Duration,
+    sse_event_sender: Sender<SseEvent>,
+}
 
-    let mut exhaustible_connected_reporter = Some(connected_reporter);
+impl ConnectionManager {
+    fn new(bind_address: Url, max_attempts: usize, sse_data_sender: Sender<SseEvent>) -> Self {
+        trace!("Creating connection manager for: {}", bind_address);
 
-    while retry_count <= max_retries {
-        if retry_count > 0 {
-            info!(
-                bind_address,
-                %filter, "Attempting to reconnect... ({}/{})", retry_count, max_retries
-            );
+        Self {
+            bind_address,
+            current_event_id: None,
+            attempts: 0,
+            max_attempts,
+            delay_between_attempts: Duration::from_secs(1),
+            sse_event_sender: sse_data_sender,
         }
+    }
 
-        let mut url = format!("{}/events/{}", bind_address, filter);
-        if let Some(event_id) = current_event_id {
-            let start_from_query = format!("?start_from={}", event_id);
-            url.push_str(&start_from_query);
-        }
+    fn attempts(&self) -> usize {
+        self.attempts
+    }
 
-        let (api_version, mut event_stream) = match connect(url).await {
-            Ok(ok_val) => ok_val,
-            Err(_) => {
-                // increment retry counter since the connection failed
-                retry_count += 1;
-                if retry_count > max_retries {
-                    error!(
-                        %bind_address,
-                        %filter,
-                        "Error connecting, retries exhausted"
-                    );
-                } else {
-                    error!(
-                        %bind_address,
-                        %filter,
-                        "Error connecting, retrying in {}s",
-                        delay_between
-                    );
+    fn increment_attempts(&mut self) {
+        self.attempts += 1;
+        trace!(
+            "Incrementing attempts...{}/{}",
+            self.attempts,
+            self.max_attempts
+        );
+    }
+
+    fn reset_attempts(&mut self) {
+        trace!("Resetting attempts...");
+        self.attempts = 0;
+    }
+
+    async fn connect_with_retry(&mut self) {
+        while self.attempts() <= self.max_attempts {
+            let mut bind_address = self.bind_address.clone();
+
+            if let Some(event_id) = self.current_event_id {
+                let query = format!("start_from={}", event_id);
+                bind_address.set_query(Some(&query))
+            }
+
+            debug!("Connecting to node...\t{}", bind_address);
+            let sse_response = Client::new().get(bind_address).send().await;
+
+            match sse_response {
+                Ok(response) => {
+                    self.reset_attempts();
+
+                    let event_source = response.bytes_stream().eventsource();
+
+                    self.handle_stream(event_source).await;
                 }
-
-                // wait the configured delay before continuing
-                tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
-                continue;
+                Err(req_err) => {
+                    error!("EventStream Error: {}", req_err);
+                    self.increment_attempts();
+                    tokio::time::sleep(self.delay_between_attempts).await;
+                }
             }
-        };
-
-        if let Some(reporter) = exhaustible_connected_reporter.take() {
-            let _ = reporter.send(());
         }
+    }
 
-        info!(%bind_address, %filter, %api_version, "Connected to event stream{}", {
-            if let Some(event_id) = start_from_id {
-                format!(", resuming from id: {}", event_id)
-            } else {
-                "".to_string()
-            }
-        });
-
+    async fn handle_stream<E, S>(&mut self, mut event_stream: S)
+    where
+        E: Debug,
+        S: Stream<Item = Result<Event, E>> + Sized + Unpin,
+    {
         while let Some(event) = event_stream.next().await {
             match event {
                 Ok(event) => {
-                    let event_id: u32 = event.id.parse().expect("Error parsing id into u32");
-                    current_event_id = Some(event_id);
+                    self.reset_attempts();
 
-                    let cloned_sender = event_sender.clone();
-
-                    match serde_json::from_str::<SseData>(&event.data) {
-                        Ok(SseData::Shutdown) | Err(_) => {
-                            error!(
-                                %bind_address,
-                                %filter,
-                                "Error connecting, retrying in {}s",
-                                delay_between
-                            );
-                            retry_count += 1;
-                            tokio::time::sleep(Duration::from_secs(delay_between as u64)).await;
-                            break;
-                        }
-                        Ok(sse_data) => {
-                            retry_count = 0;
-                            let _ = cloned_sender.send(SseEvent {
-                                source: bind_address.clone(),
-                                id: Some(event_id),
-                                data: sse_data,
-                            });
+                    match event.id.parse::<u32>() {
+                        Ok(id) => self.current_event_id = Some(id),
+                        Err(parse_error) => {
+                            self.increment_attempts();
+                            // ApiVersion events have no ID so this may be a trivial error
+                            warn!("Parse Error: {}", parse_error);
                         }
                     }
+
+                    self.handle_event(event).await;
                 }
-                Err(event_stream_err) => {
-                    warn!(%bind_address, %filter, message = "Error returned from event stream", error=?event_stream_err)
+                Err(stream_error) => {
+                    println!("EventStream Error: {:?}", stream_error);
+                    self.increment_attempts();
                 }
             }
         }
     }
-    warn!(%bind_address, %filter, "Error connecting to node - if allow_partial_connection = true, listener will stay connected on other filters");
-}
 
-async fn connect(
-    url: String,
-) -> Result<
-    (
-        ProtocolVersion,
-        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
-    ),
-    Error,
-> {
-    let event_stream = Client::new()
-        .get(&url)
-        .send()
-        .await?
-        .bytes_stream()
-        .eventsource();
+    async fn handle_event(&mut self, event: Event) {
+        match serde_json::from_str::<SseData>(&event.data) {
+            Ok(sse_data) => {
+                self.reset_attempts();
 
-    // Parse the first event to see if the connection was successful
-    let (api_version, event_stream) = parse_api_version(event_stream).await?;
-
-    Ok((api_version, event_stream))
-}
-
-async fn parse_api_version<S, E>(
-    mut stream: EventStream<S>,
-) -> Result<(ProtocolVersion, EventStream<S>), Error>
-where
-    E: Debug,
-    S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
-{
-    match stream.next().await {
-        None => Err(Error::msg("First event was empty")),
-        Some(Err(error)) => Err(Error::msg(format!(
-            "failed to get first event: {:?}",
-            error
-        ))),
-        Some(Ok(event)) => match serde_json::from_str::<SseData>(&event.data) {
-            Ok(SseData::ApiVersion(api_version)) => Ok((api_version, stream)),
-            Ok(_) => Err(Error::msg("First event should have been API version")),
-            Err(serde_err) => Err(Error::from(serde_err)
-                .context("First event could not be deserialized into ApiVersion")),
-        },
+                let sse_event = SseEvent::new(
+                    event.id.parse().unwrap_or(0),
+                    sse_data,
+                    self.bind_address.clone(),
+                );
+                let _ = self.sse_event_sender.send(sse_event).await;
+            }
+            Err(serde_error) => {
+                self.increment_attempts();
+                error!("Serde Error: {}", serde_error);
+            }
+        }
     }
+}
+
+fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
+    trace!("Getting filters for version...\t{}", api_version);
+
+    // Prior to this the node only had an /events endpoint producing all events.
+    let one_three_zero = ProtocolVersion::from_parts(1, 3, 0);
+    // From 1.3.X the node had /events/main and /events/sigs
+    let one_four_zero = ProtocolVersion::from_parts(1, 4, 0);
+    // From 1.4.X the node added /events/deploys (in addition to /events/main and /events/sigs)
+
+    let mut filters = Vec::new();
+
+    if api_version.lt(&one_three_zero) {
+        filters.push(Filter::Events);
+    } else if api_version.lt(&one_four_zero) {
+        filters.push(Filter::Main);
+        filters.push(Filter::Sigs);
+    } else {
+        filters.push(Filter::Main);
+        filters.push(Filter::Sigs);
+        filters.push(Filter::Deploys);
+    }
+
+    // filters
+
+    vec![Filter::Main, Filter::Deploys, Filter::Sigs]
 }
