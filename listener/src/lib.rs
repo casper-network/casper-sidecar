@@ -386,7 +386,5 @@ fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
         filters.push(Filter::Deploys);
     }
 
-    // filters
-
-    vec![Filter::Main, Filter::Deploys, Filter::Sigs]
+    filters
 }
