@@ -1,19 +1,22 @@
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display, Formatter},
+    net::IpAddr,
+    str::FromStr,
+    time::Duration,
+};
+
 use anyhow::{Context, Error};
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
 use eventsource_stream::{Event, Eventsource};
 use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
-use std::net::IpAddr;
-use std::str::FromStr;
-use std::time::Duration;
 use tokio::sync::mpsc::Sender;
-use tracing::log::warn;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 use url::Url;
+
+use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
 
 const API_VERSION_KEY: &str = "api_version";
 
@@ -81,6 +84,7 @@ impl Display for Filter {
 
 pub struct EventListener {
     api_version: ProtocolVersion,
+    api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     node: NodeConnectionInterface,
     max_connection_attempts: usize,
     delay_between_attempts: Duration,
@@ -91,6 +95,7 @@ pub struct EventListener {
 impl EventListener {
     pub fn new(
         node: NodeConnectionInterface,
+        api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
         max_connection_attempts: usize,
         delay_between_attempts: Duration,
         allow_partial_connection: bool,
@@ -98,6 +103,7 @@ impl EventListener {
     ) -> Self {
         Self {
             api_version: ProtocolVersion::from_parts(0, 0, 0),
+            api_version_reporter,
             node,
             max_connection_attempts,
             delay_between_attempts,
@@ -122,7 +128,11 @@ impl EventListener {
 
             let mut api_fetch_attempts = 0;
             loop {
-                if api_fetch_attempts > self.max_connection_attempts {
+                if api_fetch_attempts >= self.max_connection_attempts {
+                    let _ = self
+                        .api_version_reporter
+                        .send(Err(Error::msg("Couldn't fetch api version")))
+                        .await;
                     return Err(Error::msg(
                         "Unable to retrieve API version from node status",
                     ));
@@ -131,6 +141,8 @@ impl EventListener {
                 let api_version_res = self.fetch_api_version_from_status().await;
                 if api_version_res.is_ok() {
                     let new_api_version = api_version_res.unwrap();
+
+                    let _ = self.api_version_reporter.send(Ok(new_api_version)).await;
 
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
@@ -145,7 +157,8 @@ impl EventListener {
                 }
 
                 error!(
-                    "Error fetching API version: {}",
+                    "Error fetching API version (for {}): {}",
+                    self.node.ip_address,
                     api_version_res.err().unwrap()
                 );
                 tokio::time::sleep(self.delay_between_attempts).await;
@@ -312,16 +325,19 @@ impl ConnectionManager {
                     match event.id.parse::<u32>() {
                         Ok(id) => self.current_event_id = Some(id),
                         Err(parse_error) => {
-                            self.increment_attempts();
-                            // ApiVersion events have no ID so this may be a trivial error
-                            warn!("Parse Error: {}", parse_error);
+                            // ApiVersion events have no ID so parsing "" to u32 will fail.
+                            // This gate saves displaying a warning for a trivial error.
+                            if !event.data.contains("ApiVersion") {
+                                self.increment_attempts();
+                                warn!("Parse Error: {}", parse_error);
+                            }
                         }
                     }
 
                     self.handle_event(event).await;
                 }
                 Err(stream_error) => {
-                    println!("EventStream Error: {:?}", stream_error);
+                    error!("EventStream Error: {:?}", stream_error);
                     self.increment_attempts();
                 }
             }

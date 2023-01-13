@@ -1,6 +1,4 @@
-use std::fmt::{Display, Formatter};
-use std::net::IpAddr;
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
@@ -8,17 +6,15 @@ use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
 use tempfile::tempdir;
-use tokio::time::Instant;
+use tokio::{sync::mpsc, time::Instant};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface};
 use casper_event_types::SseData;
 use casper_types::testing::TestRng;
-use tokio::sync::mpsc;
 
 use super::run;
 use crate::{
     event_stream_server::Config as EssConfig,
-    // performance_tests::EventType,
     testing::{
         fake_event_stream::{
             spin_up_fake_event_stream, Bound, GenericScenarioSettings, Restart, Scenario,
@@ -344,6 +340,7 @@ async fn partial_connection_test(
     tokio::spawn(run(testing_config.inner()));
 
     let (event_tx, mut event_rx) = mpsc::channel(100);
+    let (api_version_tx, _api_version_rx) = mpsc::channel(100);
 
     let mut test_event_listener = EventListener::new(
         NodeConnectionInterface {
@@ -351,6 +348,7 @@ async fn partial_connection_test(
             sse_port: testing_config.event_stream_server_port(),
             rest_port: testing_config.rest_server_port(),
         },
+        api_version_tx,
         5,
         Duration::from_secs(1),
         false,
@@ -360,8 +358,8 @@ async fn partial_connection_test(
     tokio::spawn(async move {
         let res = test_event_listener.stream_aggregated_events().await;
 
-        if res.is_err() {
-            println!("Listener Error: {}", res.err().unwrap())
+        if let Err(error) = res {
+            println!("Listener Error: {}", error)
         }
     });
 

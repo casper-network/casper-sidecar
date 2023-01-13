@@ -13,21 +13,25 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
-use std::net::IpAddr;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::time::Duration;
+use std::{
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 use anyhow::{Context, Error};
-use casper_types::ProtocolVersion;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-use tokio::sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender};
-use tokio::task::JoinHandle;
+use tokio::{
+    sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender},
+    task::JoinHandle,
+};
 use tracing::{debug, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::SseData;
+use casper_types::ProtocolVersion;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -57,6 +61,7 @@ async fn run(config: Config) -> Result<(), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
+    let (api_version_tx, mut api_version_rx) = mpsc_channel::<Result<ProtocolVersion, Error>>(100);
 
     for connection in &config.connections {
         let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(100);
@@ -71,6 +76,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let event_listener = EventListener::new(
             node_interface,
+            api_version_tx.clone(),
             connection.max_retries,
             Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
             connection.allow_partial_connection,
@@ -93,30 +99,14 @@ async fn run(config: Config) -> Result<(), Error> {
         sqlite_database.clone(),
     ));
 
-    // Adds space under setup logs before stream starts for readability
-    println!();
-
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = unbounded_channel();
 
-    // Create new instance for the Sidecar's Event Stream Server
-    let mut event_stream_server = EventStreamServer::new(
-        SseConfig::new(
-            config.event_stream_server.port,
-            Some(config.event_stream_server.event_stream_buffer_length),
-            Some(config.event_stream_server.max_concurrent_subscribers),
-        ),
-        PathBuf::from(&config.storage.storage_path),
-        // todo!
-        ProtocolVersion::from_parts(0, 0, 0),
-    )
-    .context("Error starting EventStreamServer")?;
+    let connection_configs = config.connections.clone();
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
-
-        let connection_configs = config.connections.clone();
 
         for ((event_listener, connection_config), sse_data_receiver) in event_listeners
             .into_iter()
@@ -140,6 +130,36 @@ async fn run(config: Config) -> Result<(), Error> {
     });
 
     let event_broadcasting_handle = tokio::spawn(async move {
+        // Wait for the listener to report the API version before spinning up the Event Stream Server.
+        let mut api_versions = Vec::new();
+        while let Some(api_fetch_res) = api_version_rx.recv().await {
+            if let Ok(version) = api_fetch_res {
+                api_versions.push(version);
+            }
+        }
+
+        let api_versions_match = api_versions.windows(2).all(|window| window[0] == window[1]);
+
+        if !api_versions_match {
+            return Err(Error::msg("Couldn't start Event Stream Server due to inbound streams with mismatched API Versions"));
+        } else if api_versions.is_empty() {
+            return Err(Error::msg(
+                "Couldn't start Event Stream Server - no inbound streams reported API version",
+            ));
+        }
+
+        // Create new instance for the Sidecar's Event Stream Server
+        let mut event_stream_server = EventStreamServer::new(
+            SseConfig::new(
+                config.event_stream_server.port,
+                Some(config.event_stream_server.event_stream_buffer_length),
+                Some(config.event_stream_server.max_concurrent_subscribers),
+            ),
+            PathBuf::from(&config.storage.storage_path),
+            api_versions[0],
+        )
+        .context("Error starting EventStreamServer")?;
+
         while let Some(sse_data) = outbound_sse_data_receiver.recv().await {
             event_stream_server.broadcast(sse_data);
         }

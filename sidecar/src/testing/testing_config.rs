@@ -1,3 +1,4 @@
+use portpicker::Port;
 use tempfile::TempDir;
 
 use crate::types::config::{Config, Connection};
@@ -41,7 +42,7 @@ impl TestingConfig {
         ip_address: Option<String>,
         sse_port: Option<u16>,
         rest_port: Option<u16>,
-    ) -> u16 {
+    ) -> Port {
         let random_port_for_sse = portpicker::pick_unused_port().unwrap();
         let random_port_for_rest = portpicker::pick_unused_port().unwrap();
         let connection = Connection {
