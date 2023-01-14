@@ -24,7 +24,7 @@ use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender},
+    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
 };
 use tracing::{debug, info, trace, warn};
@@ -61,10 +61,11 @@ async fn run(config: Config) -> Result<(), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
-    let (api_version_tx, mut api_version_rx) = mpsc_channel::<Result<ProtocolVersion, Error>>(100);
+    let (api_version_tx, mut api_version_rx) =
+        mpsc_channel::<Result<ProtocolVersion, Error>>(config.connections.len() + 10);
 
     for connection in &config.connections {
-        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(100);
+        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(500);
 
         sse_data_receivers.push(inbound_sse_data_receiver);
 
@@ -100,7 +101,7 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
-    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = unbounded_channel();
+    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = mpsc_channel(500);
 
     let connection_configs = config.connections.clone();
 
@@ -185,7 +186,7 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
 async fn sse_processor(
     mut sse_event_listener: EventListener,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: UnboundedSender<SseData>,
+    outbound_sse_data_sender: Sender<SseData>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
