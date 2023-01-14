@@ -14,6 +14,7 @@ casper-execution-engine = { git = "https://github.com/casper-network/casper-node
 casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
 casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+clap = { version = "4.0.32", features = ["derive"] }
 derive-new = "0.5.9"
 eventsource-stream = "0.2.3"
 futures = "0.3.17"
