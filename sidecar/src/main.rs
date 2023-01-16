@@ -14,6 +14,7 @@ mod types;
 mod utils;
 
 use std::{
+    env,
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -44,14 +45,21 @@ use crate::{
     },
 };
 
-const CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
+const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let config: Config = read_config(CONFIG_PATH).context("Error constructing config")?;
+    let args: Vec<String> = env::args().collect();
+    let config_path = if args.len() > 1 {
+        &args[1]
+    } else {
+        LOCAL_CONFIG_PATH
+    };
+    let config = read_config(config_path).context("Error constructing config")?;
+
     info!("Configuration loaded");
 
     run(config).await
