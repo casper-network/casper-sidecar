@@ -61,10 +61,11 @@ async fn run(config: Config) -> Result<(), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
-    let (api_version_tx, mut api_version_rx) = mpsc_channel::<Result<ProtocolVersion, Error>>(100);
+    let (api_version_tx, mut api_version_rx) =
+        mpsc_channel::<Result<ProtocolVersion, Error>>(config.connections.len() + 10);
 
     for connection in &config.connections {
-        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(100);
+        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(500);
 
         sse_data_receivers.push(inbound_sse_data_receiver);
 
