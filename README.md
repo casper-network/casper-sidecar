@@ -132,8 +132,8 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 
 The following command will run the sidecar application with the `INFO` log level.
 
-```
-RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
+```bash
+RUST_LOG=info cargo run -p casper-event-sidecar -- "EXAMPLE_CONFIG.toml"
 ```
 
 The log levels, listed in order of increasing verbosity, are:
