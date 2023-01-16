@@ -2,7 +2,7 @@
 
 ## Summary of Purpose
 
-The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribers to monitor the event stream through the Sidecar, while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
+The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribers to monitor the event stream through the Sidecar while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
@@ -12,9 +12,9 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicate's the SSE interface of the node and it's filters (i.e., `/main`, `/deploys` and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
+* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
 
-* Provide a new RESTful endpoint that is discoverable to node operators.
+* Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
 The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history if they use the `start_from` URL query.
 
@@ -28,7 +28,7 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 
 ## Configuration
 
-The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted prior to running the application.
+The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted before running the application.
 
 ### Node Connections
 
@@ -43,20 +43,21 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port, `9999` by default.
-* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to reconnect.
+* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to reconnect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
-* `allow_partial_connection` - Determing whether the sidecar will allow a partial connection to this node.
-* `enable_event_logging` - This enables logging of events from the node in question.
+* `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
+* `enable_event_logging` - This enables the logging of events from the node in question.
 
 ### Storage
+
+This directory stores the SQLite database for the Sidecar and the SSE cache.
 
 ```
 [storage]
 storage_path = "./target/storage"
 ```
-The directory that stores the sqlite database for the Sidecar and the SSE cache.
 
-### Sqlite Database
+### SQLite Database
 
 ```
 [storage.sqlite_config]
@@ -66,7 +67,7 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 ```
 
-This section includes configurations for the `sqlite` database.
+This section includes configurations for the SQLite database.
 
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
@@ -119,7 +120,7 @@ cargo test -- --include-ignored
 
 ## Running the Sidecar
 
-Once you are happy with the configuration you can run it using Cargo:
+Once you are happy with the configuration, you can run it using Cargo:
 
 ```shell
 cargo run
@@ -145,8 +146,8 @@ Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/
 
 ## Testing Sidecar with a Local Network using NCTL
 
-Your instance of the Sidecar application can be tested against a local network by using NCTL.
+Your instance of the Sidecar application can be tested against a local network using NCTL.
 
 Instructions for setting up NCTL can be found [here](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
 
-The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network, if one is running. The Sidecar should function in the same way that it would with a live node, displaying events as they occur in the local NCTL network.
+The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would with a live node, displaying events as they occur in the local NCTL network.
