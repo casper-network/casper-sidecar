@@ -37,7 +37,7 @@ use crate::{
     },
 };
 
-const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
+const LOCAL_CONFIG_PATH: &str = "config.toml";
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {

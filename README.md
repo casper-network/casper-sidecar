@@ -12,23 +12,23 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
+- Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
 
-* Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
+- Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
 The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history if they use the `start_from` URL query.
 
 ## Prerequisites
 
-* CMake 3.1.4 or greater
-* [Rust](https://www.rust-lang.org/tools/install)
-* pkg-config
-* gcc
-* g++
+- CMake 3.1.4 or greater
+- [Rust](https://www.rust-lang.org/tools/install)
+- pkg-config
+- gcc
+- g++
 
 ## Configuration
 
-The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted before running the application.
+The file _example_config.toml_ in the base _event-sidecar_ directory contains default configuration details for your instance of the Sidecar application. These must be adjusted before running the application.
 
 ### Node Connections
 
@@ -41,12 +41,12 @@ node_connections = [
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
-* `ip_address` - The IP address of the node to monitor.
-* `sse_port` - The node's event stream (SSE) port, `9999` by default.
-* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to reconnect.
-* `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
-* `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
-* `enable_event_logging` - This enables the logging of events from the node in question.
+- `ip_address` - The IP address of the node to monitor.
+- `sse_port` - The node's event stream (SSE) port, `9999` by default.
+- `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to reconnect.
+- `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
+- `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
+- `enable_event_logging` - This enables the logging of events from the node in question.
 
 ### Storage
 
@@ -69,9 +69,9 @@ wal_autocheckpointing_interval = 1000
 
 This section includes configurations for the SQLite database.
 
-* `file_name` - The database file path.
-* `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
-* `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
+- `file_name` - The database file path.
+- `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
+- `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
 ### Rest & Event Stream Criteria
 
@@ -85,10 +85,10 @@ request_timeout_in_seconds = 10
 
 This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
-* `port` - The port for accessing the sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
-* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
-* `max_requests_per_second` - The maximum total number of requests that can be made per second.
-* `request_timeout_in_seconds` - The total time before a request times out.
+- `port` - The port for accessing the sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
+- `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
+- `max_requests_per_second` - The maximum total number of requests that can be made per second.
+- `request_timeout_in_seconds` - The total time before a request times out.
 
 ```
 [event_stream_server]
@@ -101,8 +101,8 @@ The `event_stream_server` section specifies a port for the Sidecar's event strea
 
 Additionally, there are the following two options:
 
-* `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
-* `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
+- `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
+- `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
 ## Unit Testing the Sidecar Application
 
@@ -120,6 +120,8 @@ cargo test -- --include-ignored
 
 ## Running the Sidecar
 
+You need to create `config.toml` to run Sidecar. To integrate Sidecar with NCTL, you can copy `EXAMPLE_CONFIG.toml` to the project folder and name it to `config.toml`.
+
 Once you are happy with the configuration, you can run it using Cargo:
 
 ```shell
@@ -136,11 +138,11 @@ RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_CONFIG.toml"
 
 The log levels, listed in order of increasing verbosity, are:
 
-* `ERROR`
-* `WARN`
-* `INFO`
-* `DEBUG`
-* `TRACE`
+- `ERROR`
+- `WARN`
+- `INFO`
+- `DEBUG`
+- `TRACE`
 
 Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
