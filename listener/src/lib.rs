@@ -12,7 +12,7 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
 use casper_event_types::SseData;
@@ -84,7 +84,6 @@ impl Display for Filter {
 
 pub struct EventListener {
     api_version: ProtocolVersion,
-    api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     node: NodeConnectionInterface,
     max_connection_attempts: usize,
     delay_between_attempts: Duration,
@@ -95,15 +94,13 @@ pub struct EventListener {
 impl EventListener {
     pub fn new(
         node: NodeConnectionInterface,
-        api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
         max_connection_attempts: usize,
         delay_between_attempts: Duration,
         allow_partial_connection: bool,
         sse_event_sender: Sender<SseEvent>,
     ) -> Self {
         Self {
-            api_version: ProtocolVersion::from_parts(0, 0, 0),
-            api_version_reporter,
+            api_version: ProtocolVersion::from_parts(1, 0, 0),
             node,
             max_connection_attempts,
             delay_between_attempts,
@@ -120,49 +117,57 @@ impl EventListener {
         Url::parse(&url_str).map_err(Error::from)
     }
 
-    pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
+    pub async fn stream_aggregated_events(
+        &mut self,
+        initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
+    ) -> Result<(), Error> {
         let mut attempts = 0;
+
+        // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
+        let mut single_use_reporter = Some(initial_api_version_sender);
 
         while attempts < self.max_connection_attempts {
             attempts += 1;
 
-            let mut api_fetch_attempts = 0;
-            loop {
-                if api_fetch_attempts >= self.max_connection_attempts {
-                    let _ = self
-                        .api_version_reporter
-                        .send(Err(Error::msg("Couldn't fetch api version")))
-                        .await;
-                    return Err(Error::msg(
-                        "Unable to retrieve API version from node status",
-                    ));
-                }
+            info!(
+                "Attempting to connect...\t{}/{}",
+                attempts, self.max_connection_attempts
+            );
 
-                let api_version_res = self.fetch_api_version_from_status().await;
-                if api_version_res.is_ok() {
-                    let new_api_version = api_version_res.unwrap();
+            match self.fetch_api_version_from_status().await {
+                Ok(version) => {
+                    let new_api_version = version;
 
-                    let _ = self.api_version_reporter.send(Ok(new_api_version)).await;
+                    if let Some(sender) = single_use_reporter.take() {
+                        let _ = sender.send(Ok(new_api_version)).await;
+                    }
 
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
                     // that the node is unavailable.
+                    // If the connection has been failing and we see the API version change we reset
+                    // the attempts as it may have down for an upgrade.
                     if new_api_version != self.api_version {
                         attempts = 0;
                     }
 
                     self.api_version = new_api_version;
-
-                    break;
                 }
+                Err(fetch_err) => {
+                    error!(
+                        "Error fetching API version (for {}): {fetch_err}",
+                        self.node.ip_address
+                    );
 
-                error!(
-                    "Error fetching API version (for {}): {}",
-                    self.node.ip_address,
-                    api_version_res.err().unwrap()
-                );
-                tokio::time::sleep(self.delay_between_attempts).await;
-                api_fetch_attempts += 1;
+                    if attempts >= self.max_connection_attempts {
+                        return Err(Error::msg(
+                            "Unable to retrieve API version from node status",
+                        ));
+                    }
+
+                    tokio::time::sleep(self.delay_between_attempts).await;
+                    continue;
+                }
             }
 
             let filters = filters_from_version(self.api_version);
@@ -192,10 +197,10 @@ impl EventListener {
             }
 
             if self.allow_partial_connection {
-                // Await completion of all connections
+                // Await completion (which would be caused by an error) of all connections
                 futures::future::join_all(connection_join_handles).await;
             } else {
-                // Return on the first completed connection
+                // Return on the first completed (which would be caused by an error) connection
                 let _ = futures::future::select_all(connection_join_handles).await;
             }
         }
@@ -271,11 +276,18 @@ impl ConnectionManager {
 
     fn increment_attempts(&mut self) {
         self.attempts += 1;
-        trace!(
-            "Incrementing attempts...{}/{}",
-            self.attempts,
-            self.max_attempts
-        );
+        if self.attempts >= self.max_attempts {
+            warn!(
+                "Max attempts reached whilst incrementing attempts... {}/{}",
+                self.attempts, self.max_attempts
+            );
+        } else {
+            trace!(
+                "Incrementing attempts...{}/{}",
+                self.attempts,
+                self.max_attempts
+            );
+        }
     }
 
     fn reset_attempts(&mut self) {
@@ -285,6 +297,8 @@ impl ConnectionManager {
 
     async fn connect_with_retry(&mut self) {
         while self.attempts() <= self.max_attempts {
+            self.increment_attempts();
+
             let mut bind_address = self.bind_address.clone();
 
             if let Some(event_id) = self.current_event_id {
@@ -297,15 +311,12 @@ impl ConnectionManager {
 
             match sse_response {
                 Ok(response) => {
-                    self.reset_attempts();
-
                     let event_source = response.bytes_stream().eventsource();
 
                     self.handle_stream(event_source).await;
                 }
                 Err(req_err) => {
                     error!("EventStream Error: {}", req_err);
-                    self.increment_attempts();
                     tokio::time::sleep(self.delay_between_attempts).await;
                 }
             }
@@ -320,8 +331,6 @@ impl ConnectionManager {
         while let Some(event) = event_stream.next().await {
             match event {
                 Ok(event) => {
-                    self.reset_attempts();
-
                     match event.id.parse::<u32>() {
                         Ok(id) => self.current_event_id = Some(id),
                         Err(parse_error) => {

@@ -1,3 +1,8 @@
+// This allow is required to suppress warnings originating from filters.rs.
+// The type has an implied bound that it isn't explicitly listed.
+// The implied bound is a private type and can't be listed as the lint suggests.
+#![allow(opaque_hidden_inferred_bound)]
+
 extern crate core;
 
 mod event_stream_server;
@@ -28,11 +33,12 @@ use tokio::{
     sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender},
     task::JoinHandle,
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
+use tokio::sync::mpsc;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -85,7 +91,6 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let event_listener = EventListener::new(
             node_interface,
-            api_version_tx.clone(),
             connection.max_retries,
             Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
             connection.allow_partial_connection,
@@ -124,6 +129,7 @@ async fn run(config: Config) -> Result<(), Error> {
         {
             let join_handle = tokio::spawn(sse_processor(
                 event_listener,
+                api_version_tx.clone(),
                 sse_data_receiver,
                 outbound_sse_data_sender.clone(),
                 sqlite_database.clone(),
@@ -133,17 +139,24 @@ async fn run(config: Config) -> Result<(), Error> {
             join_handles.push(join_handle);
         }
 
+        // The original sender needs to be dropped here as it's existence prevents the event broadcasting logic to proceed
+        drop(api_version_tx);
+
         let _ = join_all(join_handles).await;
 
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     });
 
     let event_broadcasting_handle = tokio::spawn(async move {
-        // Wait for the listener to report the API version before spinning up the Event Stream Server.
+        // Wait for the listeners to report the API version before spinning up the Event Stream Server.
         let mut api_versions = Vec::new();
         while let Some(api_fetch_res) = api_version_rx.recv().await {
-            if let Ok(version) = api_fetch_res {
-                api_versions.push(version);
+            match api_fetch_res {
+                Ok(version) => api_versions.push(version),
+                Err(err) => {
+                    error!("Error fetching API version from connected node(s): {err}");
+                    return Err(err);
+                }
             }
         }
 
@@ -193,6 +206,7 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
 
 async fn sse_processor(
     mut sse_event_listener: EventListener,
+    api_version_reporter: mpsc::Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: UnboundedSender<SseData>,
     sqlite_database: SqliteDatabase,
@@ -200,7 +214,9 @@ async fn sse_processor(
 ) {
     // This task starts the listener pushing events to the sse_data_receiver
     tokio::spawn(async move {
-        let _ = sse_event_listener.stream_aggregated_events().await;
+        let _ = sse_event_listener
+            .stream_aggregated_events(api_version_reporter)
+            .await;
     });
 
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {

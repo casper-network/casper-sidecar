@@ -348,7 +348,6 @@ async fn partial_connection_test(
             sse_port: testing_config.event_stream_server_port(),
             rest_port: testing_config.rest_server_port(),
         },
-        api_version_tx,
         5,
         Duration::from_secs(1),
         false,
@@ -356,7 +355,9 @@ async fn partial_connection_test(
     );
 
     tokio::spawn(async move {
-        let res = test_event_listener.stream_aggregated_events().await;
+        let res = test_event_listener
+            .stream_aggregated_events(api_version_tx)
+            .await;
 
         if let Err(error) = res {
             println!("Listener Error: {}", error)
