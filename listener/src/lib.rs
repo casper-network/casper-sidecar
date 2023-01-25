@@ -355,6 +355,14 @@ impl ConnectionManager {
 
     async fn handle_event(&mut self, event: Event) {
         match serde_json::from_str::<SseData>(&event.data) {
+            Ok(SseData::Shutdown) => {
+                self.increment_attempts();
+                error!("Received Shutdown message ({})", self.bind_address);
+            }
+            Err(serde_error) => {
+                self.increment_attempts();
+                error!("Serde Error: {}", serde_error);
+            }
             Ok(sse_data) => {
                 self.reset_attempts();
 
@@ -364,10 +372,6 @@ impl ConnectionManager {
                     self.bind_address.clone(),
                 );
                 let _ = self.sse_event_sender.send(sse_event).await;
-            }
-            Err(serde_error) => {
-                self.increment_attempts();
-                error!("Serde Error: {}", serde_error);
             }
         }
     }
