@@ -5,7 +5,7 @@ use crate::types::config::{Config, Connection};
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
 pub(crate) struct TestingConfig {
-    config: Config,
+    pub(crate) config: Config,
 }
 
 /// Prepares an instance of [TestingConfig]. The instance has default values except:
@@ -49,10 +49,11 @@ impl TestingConfig {
             ip_address: ip_address.unwrap_or("127.0.0.1".to_string()),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
             rest_port: rest_port.unwrap_or(random_port_for_rest),
-            max_retries: 0,
+            max_retries: 2,
             delay_between_retries_in_seconds: 0,
             allow_partial_connection: false,
             enable_logging: false,
+            connection_timeout_in_seconds: Some(100),
         };
         self.config.connections.push(connection);
         random_port_for_sse
