@@ -1,9 +1,3 @@
-// This allow is required to suppress warnings originating from filters.rs.
-// The type has an implied bound that it isn't explicitly listed.
-// The implied bound is a private type and can't be listed as the lint suggests.
-#![allow(unknown_lints)]
-#![allow(opaque_hidden_inferred_bound)]
-
 extern crate core;
 
 mod event_stream_server;
