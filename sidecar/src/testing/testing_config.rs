@@ -46,7 +46,7 @@ impl TestingConfig {
         let random_port_for_sse = portpicker::pick_unused_port().unwrap();
         let random_port_for_rest = portpicker::pick_unused_port().unwrap();
         let connection = Connection {
-            ip_address: ip_address.unwrap_or("127.0.0.1".to_string()),
+            ip_address: ip_address.unwrap_or_else(|| "127.0.0.1".to_string()),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
             rest_port: rest_port.unwrap_or(random_port_for_rest),
             max_retries: 2,
@@ -106,15 +106,6 @@ impl TestingConfig {
     /// Returns the inner [Config]
     pub(crate) fn inner(&self) -> Config {
         self.config.clone()
-    }
-
-    /// Returns the port that the sidecar is configured to connect to, i.e. the Fake Event Stream port.
-    pub(crate) fn connection_ports(&self) -> Vec<u16> {
-        self.config
-            .connections
-            .iter()
-            .map(|conn| conn.sse_port)
-            .collect::<Vec<u16>>()
     }
 
     /// Returns the port that the sidecar REST server is bound to.
