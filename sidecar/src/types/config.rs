@@ -92,7 +92,7 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: false,
-                    connection_timeout_in_seconds: Some(7),
+                    connection_timeout_in_seconds: Some(3),
                 },
             ],
             storage: StorageConfig {
