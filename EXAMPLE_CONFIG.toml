@@ -24,6 +24,7 @@
     delay_between_retries_in_seconds = 5
     allow_partial_connection = false
     enable_logging = false
+    connection_timeout_in_seconds = 3
 
 [storage]
 storage_path = "./target/storage"

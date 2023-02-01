@@ -1,66 +1,26 @@
+mod connection_manager;
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display, Formatter},
+    fmt::{Display, Formatter},
     net::IpAddr,
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
 use anyhow::{Context, Error};
-use eventsource_stream::{Event, Eventsource};
-use futures::{Stream, StreamExt};
-use reqwest::Client;
-use serde_json::Value;
-use tokio::sync::mpsc::Sender;
-use tracing::{debug, error, info, trace, warn};
-use url::Url;
-
-use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
-
+pub use connection_manager::{ConnectionManager, SseEvent};
+use serde_json::Value;
+use tokio::sync::{mpsc::Sender, Barrier};
+use tracing::{debug, error, info, trace};
+use url::Url;
 const API_VERSION_KEY: &str = "api_version";
 
 pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
     pub sse_port: u16,
     pub rest_port: u16,
-}
-
-pub struct SseEvent {
-    id: u32,
-    data: SseData,
-    source: Url,
-}
-
-impl SseEvent {
-    fn new(id: u32, data: SseData, mut source: Url) -> Self {
-        // This is to remove the path e.g. /events/main
-        // Leaving just the IP and port
-        source.set_path("");
-        Self { id, data, source }
-    }
-
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    pub fn data(&self) -> SseData {
-        self.data.clone()
-    }
-
-    pub fn source(&self) -> Url {
-        self.source.clone()
-    }
-}
-
-impl Display for SseEvent {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{id: {}, source: {}, event: {:?}}}",
-            self.id, self.source, self.data
-        )
-    }
 }
 
 #[derive(Hash, Eq, PartialEq)]
@@ -89,6 +49,7 @@ pub struct EventListener {
     delay_between_attempts: Duration,
     allow_partial_connection: bool,
     sse_event_sender: Sender<SseEvent>,
+    connection_timeout: Duration,
 }
 
 impl EventListener {
@@ -98,6 +59,7 @@ impl EventListener {
         delay_between_attempts: Duration,
         allow_partial_connection: bool,
         sse_event_sender: Sender<SseEvent>,
+        connection_timeout: Duration,
     ) -> Self {
         Self {
             api_version: ProtocolVersion::from_parts(1, 0, 0),
@@ -106,9 +68,9 @@ impl EventListener {
             delay_between_attempts,
             allow_partial_connection,
             sse_event_sender,
+            connection_timeout,
         }
     }
-
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
             "http://{}:{}/{}",
@@ -125,7 +87,9 @@ impl EventListener {
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
         let mut single_use_reporter = Some(initial_api_version_sender);
-
+        let connection_synchronization_timeout = Duration::from_secs(
+            ((self.max_connection_attempts) as u64) * self.connection_timeout.as_secs(),
+        );
         while attempts < self.max_connection_attempts {
             attempts += 1;
 
@@ -173,14 +137,25 @@ impl EventListener {
             let filters = filters_from_version(self.api_version);
 
             let mut connections = HashMap::new();
+            let wait_for_others_to_connect_barrier = Arc::new(Barrier::new(filters.len()));
+            let connected_barrier = Arc::new(Barrier::new(filters.len()));
 
             for filter in filters {
+                let mut exhaustible_initial_barrier = None;
+                let mut exhaustible_connected_barrier = None;
+                if !self.allow_partial_connection {
+                    exhaustible_initial_barrier = Some(wait_for_others_to_connect_barrier.clone());
+                    exhaustible_connected_barrier = Some(connected_barrier.clone())
+                }
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
-
                 let connection = ConnectionManager::new(
                     bind_address_for_filter,
                     self.max_connection_attempts,
                     self.sse_event_sender.clone(),
+                    exhaustible_initial_barrier,
+                    exhaustible_connected_barrier,
+                    connection_synchronization_timeout,
+                    self.connection_timeout,
                 );
 
                 connections.insert(filter, connection);
@@ -191,7 +166,8 @@ impl EventListener {
             for (filter, mut connection) in connections.drain() {
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
-                    connection.connect_with_retry().await;
+                    let err = connection.start_handling().await;
+                    error!("Error on start_handling: {}", err);
                 });
                 connection_join_handles.push(handle);
             }
@@ -244,136 +220,6 @@ impl EventListener {
             .to_owned();
 
         serde_json::from_value(maybe_api_version_json).map_err(Error::from)
-    }
-}
-
-struct ConnectionManager {
-    bind_address: Url,
-    current_event_id: Option<u32>,
-    attempts: usize,
-    max_attempts: usize,
-    delay_between_attempts: Duration,
-    sse_event_sender: Sender<SseEvent>,
-}
-
-impl ConnectionManager {
-    fn new(bind_address: Url, max_attempts: usize, sse_data_sender: Sender<SseEvent>) -> Self {
-        trace!("Creating connection manager for: {}", bind_address);
-
-        Self {
-            bind_address,
-            current_event_id: None,
-            attempts: 0,
-            max_attempts,
-            delay_between_attempts: Duration::from_secs(1),
-            sse_event_sender: sse_data_sender,
-        }
-    }
-
-    fn attempts(&self) -> usize {
-        self.attempts
-    }
-
-    fn increment_attempts(&mut self) {
-        self.attempts += 1;
-        if self.attempts >= self.max_attempts {
-            warn!(
-                "Max attempts reached whilst incrementing attempts... {}/{}",
-                self.attempts, self.max_attempts
-            );
-        } else {
-            trace!(
-                "Incrementing attempts...{}/{}",
-                self.attempts,
-                self.max_attempts
-            );
-        }
-    }
-
-    fn reset_attempts(&mut self) {
-        trace!("Resetting attempts...");
-        self.attempts = 0;
-    }
-
-    async fn connect_with_retry(&mut self) {
-        while self.attempts() <= self.max_attempts {
-            self.increment_attempts();
-
-            let mut bind_address = self.bind_address.clone();
-
-            if let Some(event_id) = self.current_event_id {
-                let query = format!("start_from={}", event_id);
-                bind_address.set_query(Some(&query))
-            }
-
-            debug!("Connecting to node...\t{}", bind_address);
-            let sse_response = Client::new().get(bind_address).send().await;
-
-            match sse_response {
-                Ok(response) => {
-                    let event_source = response.bytes_stream().eventsource();
-
-                    self.handle_stream(event_source).await;
-                }
-                Err(req_err) => {
-                    error!("EventStream Error: {}", req_err);
-                    tokio::time::sleep(self.delay_between_attempts).await;
-                }
-            }
-        }
-    }
-
-    async fn handle_stream<E, S>(&mut self, mut event_stream: S)
-    where
-        E: Debug,
-        S: Stream<Item = Result<Event, E>> + Sized + Unpin,
-    {
-        while let Some(event) = event_stream.next().await {
-            match event {
-                Ok(event) => {
-                    match event.id.parse::<u32>() {
-                        Ok(id) => self.current_event_id = Some(id),
-                        Err(parse_error) => {
-                            // ApiVersion events have no ID so parsing "" to u32 will fail.
-                            // This gate saves displaying a warning for a trivial error.
-                            if !event.data.contains("ApiVersion") {
-                                self.increment_attempts();
-                                warn!("Parse Error: {}", parse_error);
-                            }
-                        }
-                    }
-
-                    self.handle_event(event).await;
-                }
-                Err(stream_error) => {
-                    error!("EventStream Error: {:?}", stream_error);
-                    self.increment_attempts();
-                }
-            }
-        }
-    }
-
-    async fn handle_event(&mut self, event: Event) {
-        match serde_json::from_str::<SseData>(&event.data) {
-            Ok(SseData::Shutdown) => {
-                self.increment_attempts();
-                error!("Received Shutdown message ({})", self.bind_address);
-            }
-            Err(serde_error) => {
-                self.increment_attempts();
-                error!("Serde Error: {}", serde_error);
-            }
-            Ok(sse_data) => {
-                self.reset_attempts();
-
-                let sse_event = SseEvent::new(
-                    event.id.parse().unwrap_or(0),
-                    sse_data,
-                    self.bind_address.clone(),
-                );
-                let _ = self.sse_event_sender.send(sse_event).await;
-            }
-        }
     }
 }
 
