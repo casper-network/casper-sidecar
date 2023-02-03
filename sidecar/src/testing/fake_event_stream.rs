@@ -230,7 +230,7 @@ pub(crate) async fn spin_up_fake_event_stream(
         log_details,
         start.elapsed().as_secs()
     );
-    return returned_test_rng;
+    returned_test_rng
 }
 
 fn plus_twenty_percent(base_value: u64) -> u64 {

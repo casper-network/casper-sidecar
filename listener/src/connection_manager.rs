@@ -1,6 +1,5 @@
 use std::{
     fmt::{Debug, Display, Formatter},
-    sync::Arc,
     time::Duration,
 };
 
@@ -15,15 +14,14 @@ use tracing::{debug, error, trace, warn};
 
 use casper_event_types::SseData;
 use reqwest::Url;
-use tokio::{
-    sync::{mpsc::Sender, Barrier},
-    time::timeout,
-};
+use tokio::sync::mpsc::Sender;
+
+use super::ConnectionTasks;
 
 pub struct SseEvent {
-    id: u32,
-    data: SseData,
-    source: Url,
+    pub id: u32,
+    pub data: SseData,
+    pub source: Url,
 }
 
 impl SseEvent {
@@ -32,18 +30,6 @@ impl SseEvent {
         // Leaving just the IP and port
         source.set_path("");
         Self { id, data, source }
-    }
-
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    pub fn data(&self) -> SseData {
-        self.data.clone()
-    }
-
-    pub fn source(&self) -> Url {
-        self.source.clone()
     }
 }
 
@@ -57,27 +43,23 @@ impl Display for SseEvent {
     }
 }
 
-pub struct ConnectionManager {
+pub(super) struct ConnectionManager {
     bind_address: Url,
     current_event_id: Option<u32>,
     attempts: usize,
     max_attempts: usize,
     delay_between_attempts: Duration,
     sse_event_sender: Sender<SseEvent>,
-    exhaustible_initial_barrier: Option<Arc<Barrier>>,
-    exhaustible_connected_barrier: Option<Arc<Barrier>>,
-    connection_synchronization_timeout: Duration,
+    maybe_tasks: Option<ConnectionTasks>,
     connection_timeout: Duration,
 }
 
 impl ConnectionManager {
-    pub fn new(
+    pub(super) fn new(
         bind_address: Url,
         max_attempts: usize,
         sse_data_sender: Sender<SseEvent>,
-        exhaustible_initial_barrier: Option<Arc<Barrier>>,
-        exhaustible_connected_barrier: Option<Arc<Barrier>>,
-        connection_synchronization_timeout: Duration,
+        maybe_tasks: Option<ConnectionTasks>,
         connection_timeout: Duration,
     ) -> Self {
         trace!("Creating connection manager for: {}", bind_address);
@@ -89,15 +71,13 @@ impl ConnectionManager {
             max_attempts,
             delay_between_attempts: Duration::from_secs(1),
             sse_event_sender: sse_data_sender,
-            exhaustible_initial_barrier,
-            exhaustible_connected_barrier,
-            connection_synchronization_timeout,
+            maybe_tasks,
             connection_timeout,
         }
     }
 
     ///This function is blocking, it will return an Error result if something went wrong while processing.
-    pub async fn start_handling(&mut self) -> Error {
+    pub(super) async fn start_handling(&mut self) -> Error {
         match self.do_start_handling().await {
             Ok(_) => Error::msg("Unexpected Ok() from do_start_handling"),
             Err(e) => e,
@@ -168,34 +148,27 @@ impl ConnectionManager {
     }
 
     async fn do_start_handling(&mut self) -> Result<(), Error> {
-        let mut event_stream = self.connect_with_retries().await?;
+        let mut event_stream = match self.connect_with_retries().await {
+            Ok(stream) => {
+                if let Some(tasks) = &self.maybe_tasks {
+                    tasks.register_success()
+                };
+                stream
+            }
+            Err(error) => {
+                if let Some(tasks) = &self.maybe_tasks {
+                    tasks.register_failure()
+                };
+                return Err(error);
+            }
+        };
 
-        if let Some(barrier) = self.exhaustible_initial_barrier.take() {
-            if timeout(self.connection_synchronization_timeout, barrier.wait())
-                .await
-                .is_err()
-            {
-                return Err(didnt_get_synchronised(
-                    self.bind_address.clone(),
-                    self.connection_synchronization_timeout,
-                ));
-            } else {
-                match self.exhaustible_connected_barrier.take() {
-                    None => {
-                        return Err(wrong_barrier_setup(self.bind_address.clone()));
-                    }
-                    Some(barrier) => {
-                        if timeout(self.connection_synchronization_timeout, barrier.wait())
-                            .await
-                            .is_err()
-                        {
-                            return Err(didnt_get_synchronised(
-                                self.bind_address.clone(),
-                                self.connection_synchronization_timeout,
-                            ));
-                        }
-                    }
-                }
+        if let Some(tasks) = &self.maybe_tasks {
+            if !tasks.wait().await {
+                return Err(Error::msg(format!(
+                    "Failed to connect to all filters. Disconnecting from {}",
+                    self.bind_address
+                )));
             }
         }
 
@@ -293,14 +266,6 @@ where
     }
 }
 
-fn wrong_barrier_setup(url: Url) -> Error {
-    let message = format!(
-        "Error in initialization, cannot have exhaustible_initial_barrier Some and exhaustible_connected_barrier None. Filter: {:?}",
-        url.as_str()
-    );
-    Error::msg(message)
-}
-
 fn couldnt_connect(last_error: Option<Error>, url: Url, attempts: usize) -> Error {
     let message = format!(
         "Couldn't connect to address {:?} in {:?} attempts",
@@ -311,14 +276,6 @@ fn couldnt_connect(last_error: Option<Error>, url: Url, attempts: usize) -> Erro
         None => Error::msg(message),
         Some(err) => err.context(message),
     }
-}
-fn didnt_get_synchronised(url: Url, timeout: Duration) -> Error {
-    let message = format!(
-        "Didn't get synchronized with other filters. Filter: {:?}. Waited for {:?}",
-        url.as_str(),
-        timeout
-    );
-    Error::msg(message)
 }
 
 fn decorate_with_event_stream_closed(address: Url) -> Error {
