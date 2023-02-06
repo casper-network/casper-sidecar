@@ -3,7 +3,6 @@ use std::sync::{
     Arc,
 };
 use tokio::sync::Notify;
-
 /// An object to support synchronizing connections to multiple filters.
 ///
 /// This should be used when support for partial connections is disallowed.  In that case, a
@@ -39,14 +38,14 @@ impl ConnectionTasks {
     pub(super) fn register_success(&self) {
         let successes = self.successes.fetch_add(1, Ordering::SeqCst) + 1;
         if successes >= self.total || self.failure.load(Ordering::SeqCst) {
-            self.notify.notify_waiters();
+            self.notify.notify_one();
         }
     }
 
     /// Sets `failure` to true and notifies other tasks currently awaiting an overall result.
     pub(super) fn register_failure(&self) {
         self.failure.store(true, Ordering::SeqCst);
-        self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
     /// Waits for an overall result and returns true when `successes == total` or false if
@@ -56,7 +55,6 @@ impl ConnectionTasks {
             if self.failure.load(Ordering::SeqCst) {
                 return false;
             }
-
             let successes = self.successes.load(Ordering::SeqCst);
             if successes >= self.total {
                 debug_assert_eq!(
@@ -65,8 +63,8 @@ impl ConnectionTasks {
                 );
                 return true;
             }
-
             self.notify.notified().await;
+            self.notify.notify_one();
         }
     }
 }
