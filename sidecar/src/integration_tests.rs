@@ -373,10 +373,9 @@ async fn partial_connection_test(
     let mut event_types_received = Vec::new();
 
     while let Some(event) = event_rx.recv().await {
-        if !matches!(event.data(), SseData::ApiVersion(_))
-            && !matches!(event.data(), SseData::Shutdown)
+        if !matches!(event.data, SseData::ApiVersion(_)) && !matches!(event.data, SseData::Shutdown)
         {
-            event_types_received.push(event.data().into())
+            event_types_received.push(event.data.into())
         }
     }
 
@@ -482,7 +481,7 @@ async fn reconnection_test_with_port_dropping(
         let mut event_types_received = Vec::new();
 
         while let Some(event) = event_rx.recv().await {
-            event_types_received.push(event.data().into())
+            event_types_received.push(event.data.into())
         }
         event_types_received
     });

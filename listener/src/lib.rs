@@ -1,18 +1,21 @@
 mod connection_manager;
+mod connection_tasks;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
     net::IpAddr,
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
 use anyhow::{Context, Error};
 use casper_types::ProtocolVersion;
-pub use connection_manager::{ConnectionManager, SseEvent};
+use connection_manager::ConnectionManager;
+pub use connection_manager::SseEvent;
+use connection_tasks::ConnectionTasks;
 use serde_json::Value;
-use tokio::sync::{mpsc::Sender, Barrier};
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use url::Url;
 const API_VERSION_KEY: &str = "api_version";
@@ -71,6 +74,7 @@ impl EventListener {
             connection_timeout,
         }
     }
+
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
             "http://{}:{}/{}",
@@ -87,9 +91,6 @@ impl EventListener {
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
         let mut single_use_reporter = Some(initial_api_version_sender);
-        let connection_synchronization_timeout = Duration::from_secs(
-            ((self.max_connection_attempts) as u64) * self.connection_timeout.as_secs(),
-        );
         while attempts < self.max_connection_attempts {
             attempts += 1;
 
@@ -137,24 +138,16 @@ impl EventListener {
             let filters = filters_from_version(self.api_version);
 
             let mut connections = HashMap::new();
-            let wait_for_others_to_connect_barrier = Arc::new(Barrier::new(filters.len()));
-            let connected_barrier = Arc::new(Barrier::new(filters.len()));
+            let maybe_tasks =
+                (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
 
             for filter in filters {
-                let mut exhaustible_initial_barrier = None;
-                let mut exhaustible_connected_barrier = None;
-                if !self.allow_partial_connection {
-                    exhaustible_initial_barrier = Some(wait_for_others_to_connect_barrier.clone());
-                    exhaustible_connected_barrier = Some(connected_barrier.clone())
-                }
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
                 let connection = ConnectionManager::new(
                     bind_address_for_filter,
                     self.max_connection_attempts,
                     self.sse_event_sender.clone(),
-                    exhaustible_initial_barrier,
-                    exhaustible_connected_barrier,
-                    connection_synchronization_timeout,
+                    maybe_tasks.clone(),
                     self.connection_timeout,
                 );
 

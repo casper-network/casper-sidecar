@@ -583,18 +583,12 @@ async fn push_timestamped_events_to_vecs(
             }
 
             let received_timestamp = Instant::now();
-            events_vec.push(TimestampedEvent::new(
-                event.data().into(),
-                received_timestamp,
-            ));
+            events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
         }
     } else {
         while let Some(event) = event_stream.recv().await {
             let received_timestamp = Instant::now();
-            events_vec.push(TimestampedEvent::new(
-                event.data().into(),
-                received_timestamp,
-            ));
+            events_vec.push(TimestampedEvent::new(event.data, received_timestamp));
         }
     }
 

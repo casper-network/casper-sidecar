@@ -210,7 +210,7 @@ async fn handle_single_event(
     enable_event_logging: bool,
     outbound_sse_data_sender: UnboundedSender<SseData>,
 ) {
-    match sse_event.data() {
+    match sse_event.data {
         SseData::ApiVersion(version) => {
             if enable_event_logging {
                 info!(%version, "API Version");
@@ -226,8 +226,8 @@ async fn handle_single_event(
             let res = sqlite_database
                 .save_block_added(
                     BlockAdded::new(block_hash, block.clone()),
-                    sse_event.id(),
-                    sse_event.source().to_string(),
+                    sse_event.id,
+                    sse_event.source.to_string(),
                 )
                 .await;
 
@@ -254,11 +254,7 @@ async fn handle_single_event(
             }
             let deploy_accepted = DeployAccepted::new(deploy.clone());
             let res = sqlite_database
-                .save_deploy_accepted(
-                    deploy_accepted,
-                    sse_event.id(),
-                    sse_event.source().to_string(),
-                )
+                .save_deploy_accepted(deploy_accepted, sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
@@ -284,8 +280,8 @@ async fn handle_single_event(
             let res = sqlite_database
                 .save_deploy_expired(
                     DeployExpired::new(deploy_hash),
-                    sse_event.id(),
-                    sse_event.source().to_string(),
+                    sse_event.id,
+                    sse_event.source.to_string(),
                 )
                 .await;
 
@@ -329,8 +325,8 @@ async fn handle_single_event(
             let res = sqlite_database
                 .save_deploy_processed(
                     deploy_processed.clone(),
-                    sse_event.id(),
-                    sse_event.source().to_string(),
+                    sse_event.id,
+                    sse_event.source.to_string(),
                 )
                 .await;
 
@@ -364,11 +360,7 @@ async fn handle_single_event(
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
             let res = sqlite_database
-                .save_fault(
-                    fault.clone(),
-                    sse_event.id(),
-                    sse_event.source().to_string(),
-                )
+                .save_fault(fault.clone(), sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
@@ -394,8 +386,8 @@ async fn handle_single_event(
             let res = sqlite_database
                 .save_finality_signature(
                     finality_signature.clone(),
-                    sse_event.id(),
-                    sse_event.source().to_string(),
+                    sse_event.id,
+                    sse_event.source.to_string(),
                 )
                 .await;
 
@@ -424,7 +416,7 @@ async fn handle_single_event(
                 info!("Step at era: {}", era_id.value());
             }
             let res = sqlite_database
-                .save_step(step, sse_event.id(), sse_event.source().to_string())
+                .save_step(step, sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
@@ -445,7 +437,7 @@ async fn handle_single_event(
             }
         }
         SseData::Shutdown => {
-            warn!("Node ({}) is unavailable", sse_event.source().to_string());
+            warn!("Node ({}) is unavailable", sse_event.source.to_string());
         }
     }
 }
