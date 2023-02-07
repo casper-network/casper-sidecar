@@ -8,7 +8,7 @@ use colored::Colorize;
 use derive_new::new;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
-use tokio::{sync::mpsc::UnboundedReceiver, time::Instant};
+use tokio::{sync::mpsc, time::Instant};
 
 use casper_event_listener::SseEvent;
 use casper_types::{testing::TestRng, AsymmetricType};
@@ -18,7 +18,10 @@ use crate::testing::fake_event_stream::Bound;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
-        fake_event_stream::{spin_up_fake_event_stream, GenericScenarioSettings, Scenario},
+        fake_event_stream::{
+            setup_mock_api_version_server, spin_up_fake_event_stream, GenericScenarioSettings,
+            Scenario,
+        },
         testing_config::prepare_config,
     },
     utils::display_duration,
@@ -30,7 +33,6 @@ const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 #[ignore]
 async fn check_latency_on_realistic_scenario() {
     let duration = Duration::from_secs(120);
-
     performance_check(
         Scenario::Realistic(GenericScenarioSettings::new(Bound::Timed(duration), None)),
         duration,
@@ -208,9 +210,12 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
-    let port_for_connection = testing_config.add_connection(None, None);
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
 
-    let ess_config = EssConfig::new(port_for_connection, None, None);
+    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
 
@@ -218,35 +223,67 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("127.0.0.1:{}", port_for_connection);
-    let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
-    let source_event_receiver = source_event_listener
-        .consume_combine_streams()
-        .await
-        .unwrap();
+    let node_interface = NodeConnectionInterface {
+        ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
+        sse_port: node_port_for_sse_connection,
+        rest_port: node_port_for_rest_connection,
+    };
+    let (node_event_tx, node_event_rx) = mpsc::channel(100);
+    let (node_api_version_tx, _node_api_version_rx) = mpsc::channel(100);
 
-    let sidecar_url = format!("127.0.0.1:{}", testing_config.event_stream_server_port());
-    let sidecar_event_listener = EventListener::new(sidecar_url, 0, 0, false).await.unwrap();
-    let sidecar_event_receiver = sidecar_event_listener
-        .consume_combine_streams()
-        .await
-        .unwrap();
+    let mut node_event_listener = EventListener::new(
+        node_interface,
+        5,
+        Duration::from_secs(1),
+        false,
+        node_event_tx,
+        Duration::from_secs(100),
+    );
 
-    let source_task_handle =
-        tokio::spawn(push_timestamped_events_to_vecs(source_event_receiver, None));
+    tokio::spawn(async move {
+        let res = node_event_listener
+            .stream_aggregated_events(node_api_version_tx)
+            .await;
+        if let Err(error) = res {
+            println!("Node listener Error: {}", error)
+        }
+    });
 
-    let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(
-        sidecar_event_receiver,
-        None,
-    ));
+    let (sidecar_event_tx, sidecar_event_rx) = mpsc::channel(100);
+    let (sidecar_api_version_tx, _sidecar_api_version_rx) = mpsc::channel(100);
 
-    let (source_task_result, sidecar_task_result) =
-        tokio::join!(source_task_handle, sidecar_task_handle);
+    let sidecar_node_interface = NodeConnectionInterface {
+        ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
+        sse_port: node_port_for_sse_connection,
+        rest_port: node_port_for_rest_connection,
+    };
 
-    let events_from_source = source_task_result.expect("Error recording events from source");
-    let events_from_sidecar = sidecar_task_result.expect("Error recording events from sidecar");
+    let mut sidecar_event_listener = EventListener::new(
+        sidecar_node_interface,
+        5,
+        Duration::from_secs(1),
+        false,
+        sidecar_event_tx,
+        Duration::from_secs(100),
+    );
+    tokio::spawn(async move {
+        let res = sidecar_event_listener
+            .stream_aggregated_events(sidecar_api_version_tx)
+            .await;
+        if let Err(error) = res {
+            println!("Sidecar listener Error: {}", error)
+        }
+    });
 
-    let event_latencies = compare_events_collect_latencies(events_from_source, events_from_sidecar);
+    let node_task_handle = tokio::spawn(push_timestamped_events_to_vecs(node_event_rx, None));
+
+    let sidecar_task_handle = tokio::spawn(push_timestamped_events_to_vecs(sidecar_event_rx, None));
+
+    let (node_task_result, sidecar_task_result) =
+        tokio::join!(node_task_handle, sidecar_task_handle);
+    let node_events = node_task_result.expect("Error recording events from node");
+    let sidecar_events = sidecar_task_result.expect("Error recording events from sidecar");
+    let event_latencies = compare_events_collect_latencies(node_events, sidecar_events);
 
     assert!(
         !event_latencies.is_empty(),
@@ -276,7 +313,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 }
 
 // This is only used by the `check_latency_against_live_node` test which is generally commented out.
-#[allow(unused)]
+/*#[allow(unused)]
 async fn live_performance_check(
     ip_address: String,
     port: u16,
@@ -348,7 +385,7 @@ async fn live_performance_check(
     println!("{}", results_table);
 
     check_latencies_are_acceptable(average_latencies, acceptable_latency);
-}
+}*/
 
 fn check_latencies_are_acceptable(
     average_latencies: HashMap<String, Duration>,
@@ -372,8 +409,9 @@ fn check_latencies_are_acceptable(
 
         assert!(
             average_latency_for_type < &acceptable_latency,
-            "Latency of {} events exceeded acceptable value",
-            event_type
+            "Latency of {} events exceeded acceptable value. Acceptable value {} [s]",
+            event_type,
+            acceptable_latency.as_secs_f64(),
         )
     }
 }
@@ -531,7 +569,7 @@ fn extract_latencies_by_type(
 
 /// `timeout` should be set for live tests where the source is not expected to shutdown, because the receiver won't run out of events and therefore will never exit.
 async fn push_timestamped_events_to_vecs(
-    mut event_stream: UnboundedReceiver<SseEvent>,
+    mut event_stream: Receiver<SseEvent>,
     duration: Option<Duration>,
 ) -> Vec<TimestampedEvent> {
     let mut events_vec: Vec<TimestampedEvent> = Vec::new();
