@@ -46,7 +46,8 @@ jobs:
       - name: audit
         # Hope to get to here:
         # run: cargo audit --deny warnings
-        run: cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071
+        # RUSTSEC-2023-0003 should be removed once casper-node gets bumped to > 1.4.8
+        run: cargo audit --ignore RUSTSEC-2023-0003
 
       - name: test
         run: cargo test
