@@ -10,11 +10,11 @@ use tokio::sync::Notify;
 /// from the stream(s).
 #[derive(Clone)]
 pub(super) struct ConnectionTasks {
-    /// The total number filters to which the sidecar is attempting to connect.
+    /// The total number filters to which the [ConnectionManager](super::ConnectionManager) is attempting to connect.
     total: usize,
     /// The number of filters to which successful connections have been established.
     successes: Arc<AtomicUsize>,
-    /// Whether the sidecar has given up trying to connect to any filter.
+    /// Whether the [ConnectionManager](super::ConnectionManager) has given up trying to connect to any filter.
     failure: Arc<AtomicBool>,
     /// A notifier to wake connection tasks before checking whether an overall result has been
     /// reached.
