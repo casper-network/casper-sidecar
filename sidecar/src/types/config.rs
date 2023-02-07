@@ -26,6 +26,7 @@ pub struct Connection {
     pub delay_between_retries_in_seconds: usize,
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
+    pub connection_timeout_in_seconds: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -71,6 +72,7 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: true,
+                    connection_timeout_in_seconds: None,
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -80,6 +82,7 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: false,
+                    connection_timeout_in_seconds: None,
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -89,6 +92,7 @@ mod tests {
                     delay_between_retries_in_seconds: 5,
                     allow_partial_connection: false,
                     enable_logging: false,
+                    connection_timeout_in_seconds: Some(3),
                 },
             ],
             storage: StorageConfig {
@@ -127,6 +131,7 @@ mod tests {
                 max_retries: 3,
                 delay_between_retries_in_seconds: 5,
                 enable_logging: false,
+                connection_timeout_in_seconds: None,
             }
         }
     }

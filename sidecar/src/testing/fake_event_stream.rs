@@ -20,6 +20,7 @@ use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
     utils::display_duration,
 };
+use warp::Filter;
 
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
@@ -86,7 +87,7 @@ pub(crate) async fn spin_up_fake_event_stream(
     test_rng: &'static mut TestRng,
     ess_config: EssConfig,
     scenario: Scenario,
-) {
+) -> &'static mut TestRng {
     let cloned_address = ess_config.address.clone();
     let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
     let log_details = format!("Fake Event Stream(:{}) :: Scenario: {}", port, scenario);
@@ -105,7 +106,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
     let (events_sender, mut events_receiver) = mpsc_channel(500);
 
-    match scenario {
+    let returned_test_rng = match scenario {
         Scenario::Counted(settings) => {
             let scenario_task = tokio::spawn(async move {
                 counted_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
@@ -121,6 +122,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     tokio::time::sleep(delay_before_restart).await;
                     counted_event_streaming(test_rng, events_sender, final_phase).await;
                 }
+                test_rng
             });
 
             let broadcasting_task = tokio::spawn(async move {
@@ -129,7 +131,8 @@ pub(crate) async fn spin_up_fake_event_stream(
                 }
             });
 
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+            test_rng.expect("Should have returned TestRng for re-use")
         }
         Scenario::Realistic(settings) => {
             let scenario_task = tokio::spawn(async move {
@@ -146,6 +149,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     tokio::time::sleep(delay_before_restart).await;
                     realistic_event_streaming(test_rng, events_sender, final_phase).await;
                 }
+                test_rng
             });
 
             let broadcasting_task = tokio::spawn(async move {
@@ -154,7 +158,8 @@ pub(crate) async fn spin_up_fake_event_stream(
                 }
             });
 
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+            test_rng.expect("Should have returned TestRng for re-use")
         }
         Scenario::LoadTestingStep(settings, frequency) => {
             let scenario_task = tokio::spawn(async move {
@@ -176,6 +181,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_step(test_rng, events_sender, final_phase, frequency).await;
                 }
+                test_rng
             });
 
             let broadcasting_task = tokio::spawn(async move {
@@ -184,7 +190,8 @@ pub(crate) async fn spin_up_fake_event_stream(
                 }
             });
 
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+            test_rng.expect("Should have returned TestRng for re-use")
         }
         Scenario::LoadTestingDeploy(settings, num_in_burst) => {
             let scenario_task = tokio::spawn(async move {
@@ -206,6 +213,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
                 }
+                test_rng
             });
 
             let broadcasting_task = tokio::spawn(async move {
@@ -214,15 +222,17 @@ pub(crate) async fn spin_up_fake_event_stream(
                 }
             });
 
-            let _ = tokio::join!(scenario_task, broadcasting_task);
+            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+            test_rng.expect("Should have returned TestRng for re-use")
         }
-    }
+    };
 
     println!(
         "{} :: Completed ({}s)",
         log_details,
         start.elapsed().as_secs()
     );
+    returned_test_rng
 }
 
 fn plus_twenty_percent(base_value: u64) -> u64 {
@@ -417,4 +427,9 @@ async fn load_testing_deploy(
             }
         }
     }
+}
+
+pub async fn setup_mock_api_version_server(port: u16) {
+    let api = warp::path("status").map(|| "{\"api_version\":\"1.4.10\"}");
+    warp::serve(api).run(([127, 0, 0, 1], port)).await;
 }
