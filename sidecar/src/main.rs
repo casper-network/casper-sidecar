@@ -33,7 +33,6 @@ use tracing::{debug, error, info, trace, warn};
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
-use tokio::sync::mpsc;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -208,7 +207,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: UnboundedSender<SseData>,
+    outbound_sse_data_sender: Sender<SseData>,
 ) {
     match sse_event.data {
         SseData::ApiVersion(version) => {
@@ -444,7 +443,7 @@ async fn handle_single_event(
 
 async fn sse_processor(
     mut sse_event_listener: EventListener,
-    api_version_reporter: mpsc::Sender<Result<ProtocolVersion, Error>>,
+    api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: Sender<SseData>,
     sqlite_database: SqliteDatabase,
