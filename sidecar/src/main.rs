@@ -53,6 +53,8 @@ struct CmdLineArgs {
     path_to_config: String,
 }
 
+const DEFAULT_CHANNEL_SIZE: usize = 1000;
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Install global collector for tracing
@@ -76,7 +78,8 @@ async fn run(config: Config) -> Result<(), Error> {
         mpsc_channel::<Result<ProtocolVersion, Error>>(config.connections.len() + 10);
 
     for connection in &config.connections {
-        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(500);
+        let (inbound_sse_data_sender, inbound_sse_data_receiver) =
+            mpsc_channel(config.inbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
         sse_data_receivers.push(inbound_sse_data_receiver);
 
@@ -112,7 +115,8 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
-    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = mpsc_channel(500);
+    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) =
+        mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
 
