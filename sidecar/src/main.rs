@@ -14,7 +14,6 @@ mod types;
 mod utils;
 
 use std::{
-    env,
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -22,6 +21,7 @@ use std::{
 };
 
 use anyhow::{Context, Error};
+use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
@@ -45,7 +45,14 @@ use crate::{
     },
 };
 
-const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct CmdLineArgs {
+    /// Path to the TOML-formatted config file
+    #[arg(short, long, value_name = "FILE")]
+    path_to_config: String,
+}
+
 const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
 #[tokio::main]
@@ -53,14 +60,11 @@ async fn main() -> Result<(), Error> {
     // Install global collector for tracing
     tracing_subscriber::fmt::init();
 
-    let args: Vec<String> = env::args().collect();
-    let config_path = if args.len() > 1 {
-        &args[1]
-    } else {
-        LOCAL_CONFIG_PATH
-    };
-    let config = read_config(config_path).context("Error constructing config")?;
+    let args = CmdLineArgs::parse();
 
+    let path_to_config = args.path_to_config;
+
+    let config: Config = read_config(&path_to_config).context("Error constructing config")?;
     info!("Configuration loaded");
 
     run(config).await
