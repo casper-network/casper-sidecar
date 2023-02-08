@@ -25,7 +25,7 @@ use anyhow::{Context, Error};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, unbounded_channel, Receiver, UnboundedSender},
+    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
@@ -33,7 +33,6 @@ use tracing::{debug, error, info, trace, warn};
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::SseData;
 use casper_types::ProtocolVersion;
-use tokio::sync::mpsc;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -47,6 +46,7 @@ use crate::{
 };
 
 const LOCAL_CONFIG_PATH: &str = "EXAMPLE_CONFIG.toml";
+const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -74,7 +74,8 @@ async fn run(config: Config) -> Result<(), Error> {
         mpsc_channel::<Result<ProtocolVersion, Error>>(config.connections.len() + 10);
 
     for connection in &config.connections {
-        let (inbound_sse_data_sender, inbound_sse_data_receiver) = mpsc_channel(500);
+        let (inbound_sse_data_sender, inbound_sse_data_receiver) =
+            mpsc_channel(config.inbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
         sse_data_receivers.push(inbound_sse_data_receiver);
 
@@ -110,7 +111,8 @@ async fn run(config: Config) -> Result<(), Error> {
     ));
 
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
-    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) = unbounded_channel();
+    let (outbound_sse_data_sender, mut outbound_sse_data_receiver) =
+        mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
 
@@ -208,7 +210,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: UnboundedSender<SseData>,
+    outbound_sse_data_sender: Sender<SseData>,
 ) {
     match sse_event.data {
         SseData::ApiVersion(version) => {
@@ -444,9 +446,9 @@ async fn handle_single_event(
 
 async fn sse_processor(
     mut sse_event_listener: EventListener,
-    api_version_reporter: mpsc::Sender<Result<ProtocolVersion, Error>>,
+    api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: UnboundedSender<SseData>,
+    outbound_sse_data_sender: Sender<SseData>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {

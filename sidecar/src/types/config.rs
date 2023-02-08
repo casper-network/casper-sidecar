@@ -11,6 +11,8 @@ pub fn read_config(config_path: &str) -> Result<Config, Error> {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(Default))]
 pub struct Config {
+    pub inbound_channel_size: Option<usize>,
+    pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
     pub storage: StorageConfig,
     pub rest_server: RestServerConfig,
@@ -63,6 +65,8 @@ mod tests {
     #[test]
     fn should_parse_config_toml() {
         let example_config = Config {
+            inbound_channel_size: None,
+            outbound_channel_size: None,
             connections: vec![
                 Connection {
                     ip_address: "127.0.0.1".to_string(),

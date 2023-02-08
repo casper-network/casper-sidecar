@@ -8,8 +8,10 @@ use std::{
 use derive_new::new;
 use itertools::Itertools;
 use tempfile::TempDir;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::time::Instant;
+use tokio::{
+    sync::mpsc::{channel as mpsc_channel, Sender},
+    time::Instant,
+};
 
 use casper_event_types::SseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
@@ -102,7 +104,7 @@ pub(crate) async fn spin_up_fake_event_stream(
     )
     .expect("Error spinning up Event Stream Server");
 
-    let (events_sender, mut events_receiver) = unbounded_channel();
+    let (events_sender, mut events_receiver) = mpsc_channel(500);
 
     let returned_test_rng = match scenario {
         Scenario::Counted(settings) => {
@@ -240,7 +242,7 @@ fn plus_twenty_percent(base_value: u64) -> u64 {
 
 async fn counted_event_streaming(
     test_rng: &mut TestRng,
-    event_sender: UnboundedSender<SseData>,
+    event_sender: Sender<SseData>,
     count: Bound,
 ) {
     if let Bound::Counted(count) = count {
@@ -260,7 +262,7 @@ async fn counted_event_streaming(
 
 async fn realistic_event_streaming(
     test_rng: &mut TestRng,
-    events_sender: UnboundedSender<SseData>,
+    events_sender: Sender<SseData>,
     bound: Bound,
 ) {
     let start = Instant::now();
@@ -367,7 +369,7 @@ async fn realistic_event_streaming(
 
 async fn load_testing_step(
     test_rng: &mut TestRng,
-    event_sender: UnboundedSender<SseData>,
+    event_sender: Sender<SseData>,
     bound: Bound,
     frequency: u8,
 ) {
@@ -393,7 +395,7 @@ async fn load_testing_step(
 
 async fn load_testing_deploy(
     test_rng: &mut TestRng,
-    events_sender: UnboundedSender<SseData>,
+    events_sender: Sender<SseData>,
     bound: Bound,
     burst_size: u64,
 ) {
