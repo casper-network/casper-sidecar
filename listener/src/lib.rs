@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Error};
+use anyhow::{anyhow, Context, Error};
 use casper_types::ProtocolVersion;
 use connection_manager::ConnectionManager;
 pub use connection_manager::SseEvent;
@@ -18,7 +18,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use url::Url;
-const API_VERSION_KEY: &str = "api_version";
+const BUILD_VERSION_KEY: &str = "build_version";
 
 pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
@@ -207,12 +207,27 @@ impl EventListener {
             .await
             .context("Should have parsed JSON from response")?;
 
-        let maybe_api_version_json = response_json
-            .get(API_VERSION_KEY)
-            .context("Response should have contained API version")?
-            .to_owned();
+        try_resolve_version(response_json)
+    }
+}
 
-        serde_json::from_value(maybe_api_version_json).map_err(Error::from)
+fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
+    match raw_response.get(BUILD_VERSION_KEY) {
+        Some(build_version_value) if build_version_value.is_string() => {
+            let raw = build_version_value
+                .as_str()
+                .context("build_version_value should be a string")?
+                .split('-')
+                .next()
+                .context("splitting build_version_value should always return at least one slice")?;
+            ProtocolVersion::from_str(raw)
+                .map_err(|error| anyhow!("failed parsing build version from '{}': {}", raw, error))
+        }
+        _ => Err(anyhow!(
+            "failed to get {} from status response {}",
+            BUILD_VERSION_KEY,
+            raw_response
+        )),
     }
 }
 
@@ -239,4 +254,47 @@ fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
     }
 
     filters
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use anyhow::Error;
+    use casper_types::{ProtocolVersion, SemVer};
+    use serde_json::{json, Value};
+
+    use crate::{try_resolve_version, BUILD_VERSION_KEY};
+
+    #[test]
+    fn try_resolve_version_should_interpret_correct_build_version() {
+        let mut protocol = test_by_build_version(Some("5.1.111-b94c4f79a")).unwrap();
+        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(5, 1, 111)));
+
+        protocol = test_by_build_version(Some("6.2.112-b94c4f79a-casper-mainnet")).unwrap();
+        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(6, 2, 112)));
+
+        protocol = test_by_build_version(Some("7.3.113")).unwrap();
+        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(7, 3, 113)));
+    }
+
+    #[test]
+    fn try_resolve_should_fail_if_build_version_is_absent() {
+        let ret = test_by_build_version(None);
+        assert!(ret.is_err());
+    }
+
+    #[test]
+    fn try_resolve_should_fail_if_build_version_is_bogus() {
+        let ret = test_by_build_version(Some("not-a-semver"));
+        assert!(ret.is_err());
+    }
+
+    fn test_by_build_version(build_version: Option<&str>) -> Result<ProtocolVersion, Error> {
+        let json_object = match build_version {
+            Some(version) => json!({ BUILD_VERSION_KEY: version }),
+            None => json!({}),
+        };
+        try_resolve_version(json_object)
+    }
 }
