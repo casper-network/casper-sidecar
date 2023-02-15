@@ -20,7 +20,7 @@ curl -sN http://<HOST:PORT>/events/<TYPE>
 - `PORT` - The port number where the Sidecar emits events
 - `TYPE` - The type of emitted event
 
-Given this [example configuration](EXAMPLE_CONFIG.toml), the command would look like this:
+Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), the command would look like this:
 
 ```json
 curl -sN http://127.0.0.1:19999/events/deploys
