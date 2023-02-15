@@ -27,7 +27,6 @@ use crate::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -59,7 +58,6 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_client_connection_to_sse() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -106,7 +104,6 @@ async fn should_allow_client_connection_to_sse() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_send_shutdown_to_sse_client() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -151,7 +148,6 @@ async fn should_send_shutdown_to_sse_client() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_respond_to_rest_query() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -211,35 +207,30 @@ async fn should_respond_to_rest_query() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_partial_connection_on_one_filter() {
     let received_event_types = partial_connection_test(100, 1, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_partial_connection_on_two_filters() {
     let received_event_types = partial_connection_test(100, 2, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_disallow_partial_connection_on_one_filter() {
     let received_event_types = partial_connection_test(100, 1, false).await;
     assert!(received_event_types.is_none())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_disallow_partial_connection_on_two_filters() {
     let received_event_types = partial_connection_test(100, 2, false).await;
     assert!(received_event_types.is_none())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
 async fn should_not_attempt_reconnection() {
     // Configure the sidecar to make 0 retries
     let max_retries = 0;
@@ -264,7 +255,6 @@ async fn should_not_attempt_reconnection() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
 async fn should_successfully_reconnect() {
     // Configure the sidecar to make 5 retries
     let max_retries = 5;
@@ -282,7 +272,6 @@ async fn should_successfully_reconnect() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
 async fn should_fail_to_reconnect() {
     let max_retries = 2;
     let delay_between_retries = 3;
