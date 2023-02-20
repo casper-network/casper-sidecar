@@ -258,11 +258,10 @@ fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use anyhow::Error;
     use casper_types::{ProtocolVersion, SemVer};
-    use serde_json::{json, Value};
+    use serde_json::json;
 
     use crate::{try_resolve_version, BUILD_VERSION_KEY};
 
@@ -285,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn try_resolve_should_fail_if_build_version_is_bogus() {
+    fn try_resolve_should_fail_if_build_version_is_invalid() {
         let ret = test_by_build_version(Some("not-a-semver"));
         assert!(ret.is_err());
     }
