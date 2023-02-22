@@ -276,13 +276,14 @@ async fn should_fail_to_reconnect() {
     let max_retries = 2;
     let delay_between_retries = 3;
 
-    let restart_after = Duration::from_secs(15);
+    let restart_after = Duration::from_secs(20);
 
     let read_messages =
         reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from one round of messages
+    assert!(length > 2); //We want more than ApiVersion and Shutdown
     assert!(length <= 60);
 }
 

@@ -117,7 +117,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown);
+                    let _ = events_sender.send(SseData::Shutdown).await;
 
                     tokio::time::sleep(delay_before_restart).await;
                     counted_event_streaming(test_rng, events_sender, final_phase).await;
@@ -144,7 +144,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown);
+                    let _ = events_sender.send(SseData::Shutdown).await;
 
                     tokio::time::sleep(delay_before_restart).await;
                     realistic_event_streaming(test_rng, events_sender, final_phase).await;
@@ -176,7 +176,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown);
+                    let _ = events_sender.send(SseData::Shutdown).await;
 
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_step(test_rng, events_sender, final_phase, frequency).await;
@@ -208,7 +208,7 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown);
+                    let _ = events_sender.send(SseData::Shutdown).await;
 
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
@@ -249,9 +249,9 @@ async fn counted_event_streaming(
         let mut events_sent = 0;
 
         while events_sent <= count {
-            let _ = event_sender.send(SseData::random_deploy_accepted(test_rng).0);
-            let _ = event_sender.send(SseData::random_block_added(test_rng));
-            let _ = event_sender.send(SseData::random_finality_signature(test_rng));
+            let _ = event_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
+            let _ = event_sender.send(SseData::random_block_added(test_rng)).await;
+            let _ = event_sender.send(SseData::random_finality_signature(test_rng)).await;
             events_sent += 3;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -331,36 +331,36 @@ async fn realistic_event_streaming(
 
             // Prior to each BlockAdded emit FinalitySignatures
             for _ in 0..NUMBER_OF_VALIDATORS {
-                let _ = events_sender.send(finality_signature_events.pop().unwrap());
+                let _ = events_sender.send(finality_signature_events.pop().unwrap()).await;
             }
             events_sent += NUMBER_OF_VALIDATORS as u64;
 
             // Emit DeployProcessed events for the next BlockAdded
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender.send(deploy_processed_events.pop().unwrap());
+                let _ = events_sender.send(deploy_processed_events.pop().unwrap()).await;
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
 
             // Emit the BlockAdded
-            let _ = events_sender.send(block_added_events.pop().unwrap());
+            let _ = events_sender.send(block_added_events.pop().unwrap()).await;
             events_sent += 1;
 
             // Emit DeployAccepted Events
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender.send(deploy_accepted_events.pop().unwrap().0);
+                let _ = events_sender.send(deploy_accepted_events.pop().unwrap().0).await;
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
         }
 
         if era_counter % 2 == 0 {
-            let _ = events_sender.send(deploy_expired_events.pop().unwrap());
+            let _ = events_sender.send(deploy_expired_events.pop().unwrap()).await;
         } else {
-            let _ = events_sender.send(fault_events.pop().unwrap());
+            let _ = events_sender.send(fault_events.pop().unwrap()).await;
         }
         events_sent += 1;
 
         // Then a Step
-        let _ = events_sender.send(step_events.pop().unwrap());
+        let _ = events_sender.send(step_events.pop().unwrap()).await;
         events_sent += 1;
 
         era_counter += 1;
@@ -378,14 +378,14 @@ async fn load_testing_step(
     match bound {
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
-                let _ = event_sender.send(SseData::random_step(test_rng));
+                let _ = event_sender.send(SseData::random_step(test_rng)).await;
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
         }
         Bound::Counted(count) => {
             let mut events_sent = 0;
             while events_sent <= count {
-                let _ = event_sender.send(SseData::random_step(test_rng));
+                let _ = event_sender.send(SseData::random_step(test_rng)).await;
                 events_sent += 1;
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
@@ -405,11 +405,11 @@ async fn load_testing_deploy(
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0);
+                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng));
+                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng)).await;
                 }
             }
         }
@@ -417,11 +417,11 @@ async fn load_testing_deploy(
             let mut events_sent = 0;
             while events_sent <= count {
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0);
+                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng));
+                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng)).await;
                 }
                 events_sent += burst_size * 2;
             }
