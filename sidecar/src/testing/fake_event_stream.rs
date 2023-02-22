@@ -249,9 +249,15 @@ async fn counted_event_streaming(
         let mut events_sent = 0;
 
         while events_sent <= count {
-            let _ = event_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
-            let _ = event_sender.send(SseData::random_block_added(test_rng)).await;
-            let _ = event_sender.send(SseData::random_finality_signature(test_rng)).await;
+            let _ = event_sender
+                .send(SseData::random_deploy_accepted(test_rng).0)
+                .await;
+            let _ = event_sender
+                .send(SseData::random_block_added(test_rng))
+                .await;
+            let _ = event_sender
+                .send(SseData::random_finality_signature(test_rng))
+                .await;
             events_sent += 3;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -331,13 +337,17 @@ async fn realistic_event_streaming(
 
             // Prior to each BlockAdded emit FinalitySignatures
             for _ in 0..NUMBER_OF_VALIDATORS {
-                let _ = events_sender.send(finality_signature_events.pop().unwrap()).await;
+                let _ = events_sender
+                    .send(finality_signature_events.pop().unwrap())
+                    .await;
             }
             events_sent += NUMBER_OF_VALIDATORS as u64;
 
             // Emit DeployProcessed events for the next BlockAdded
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender.send(deploy_processed_events.pop().unwrap()).await;
+                let _ = events_sender
+                    .send(deploy_processed_events.pop().unwrap())
+                    .await;
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
 
@@ -347,13 +357,17 @@ async fn realistic_event_streaming(
 
             // Emit DeployAccepted Events
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender.send(deploy_accepted_events.pop().unwrap().0).await;
+                let _ = events_sender
+                    .send(deploy_accepted_events.pop().unwrap().0)
+                    .await;
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
         }
 
         if era_counter % 2 == 0 {
-            let _ = events_sender.send(deploy_expired_events.pop().unwrap()).await;
+            let _ = events_sender
+                .send(deploy_expired_events.pop().unwrap())
+                .await;
         } else {
             let _ = events_sender.send(fault_events.pop().unwrap()).await;
         }
@@ -405,11 +419,15 @@ async fn load_testing_deploy(
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
+                    let _ = events_sender
+                        .send(SseData::random_deploy_accepted(test_rng).0)
+                        .await;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng)).await;
+                    let _ = events_sender
+                        .send(SseData::random_deploy_processed(test_rng))
+                        .await;
                 }
             }
         }
@@ -417,11 +435,15 @@ async fn load_testing_deploy(
             let mut events_sent = 0;
             while events_sent <= count {
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_accepted(test_rng).0).await;
+                    let _ = events_sender
+                        .send(SseData::random_deploy_accepted(test_rng).0)
+                        .await;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender.send(SseData::random_deploy_processed(test_rng)).await;
+                    let _ = events_sender
+                        .send(SseData::random_deploy_processed(test_rng))
+                        .await;
                 }
                 events_sent += burst_size * 2;
             }
