@@ -147,7 +147,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    events_sender.send(SseData::Shutdown).await.expect("Scenario::Realistic failed sending SseData::Shutdown");
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::Realistic failed sending SseData::Shutdown");
 
                     tokio::time::sleep(delay_before_restart).await;
                     realistic_event_streaming(test_rng, events_sender, final_phase).await;
@@ -179,7 +182,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    events_sender.send(SseData::Shutdown).await.expect("Scenario::LoadTestingStep failed sending SseData::Shutdown");
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::LoadTestingStep failed sending SseData::Shutdown");
 
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_step(test_rng, events_sender, final_phase, frequency).await;
@@ -385,12 +391,18 @@ async fn realistic_event_streaming(
                 .await
                 .expect("Failed sending deploy_expired_event");
         } else {
-            events_sender.send(fault_events.pop().unwrap()).await.expect("Failed sending fault_event");
+            events_sender
+                .send(fault_events.pop().unwrap())
+                .await
+                .expect("Failed sending fault_event");
         }
         events_sent += 1;
 
         // Then a Step
-        events_sender.send(step_events.pop().unwrap()).await.expect("Failed sending step_event");
+        events_sender
+            .send(step_events.pop().unwrap())
+            .await
+            .expect("Failed sending step_event");
         events_sent += 1;
 
         era_counter += 1;
@@ -408,14 +420,20 @@ async fn load_testing_step(
     match bound {
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
-                event_sender.send(SseData::random_step(test_rng)).await.expect("Bound::Timed Failed sending random_step");
+                event_sender
+                    .send(SseData::random_step(test_rng))
+                    .await
+                    .expect("Bound::Timed Failed sending random_step");
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
         }
         Bound::Counted(count) => {
             let mut events_sent = 0;
             while events_sent <= count {
-                event_sender.send(SseData::random_step(test_rng)).await.expect("Bound::Counted Failed sending random_step");
+                event_sender
+                    .send(SseData::random_step(test_rng))
+                    .await
+                    .expect("Bound::Counted Failed sending random_step");
                 events_sent += 1;
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
@@ -437,13 +455,15 @@ async fn load_testing_deploy(
                 for _ in 0..burst_size {
                     events_sender
                         .send(SseData::random_deploy_accepted(test_rng).0)
-                        .await.expect("failed sending random_deploy_accepted");
+                        .await
+                        .expect("failed sending random_deploy_accepted");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
                     events_sender
                         .send(SseData::random_deploy_processed(test_rng))
-                        .await.expect("failed sending random_deploy_processed");
+                        .await
+                        .expect("failed sending random_deploy_processed");
                 }
             }
         }
@@ -453,13 +473,15 @@ async fn load_testing_deploy(
                 for _ in 0..burst_size {
                     events_sender
                         .send(SseData::random_deploy_accepted(test_rng).0)
-                        .await.expect("failed sending random_deploy_accepted");
+                        .await
+                        .expect("failed sending random_deploy_accepted");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
                     events_sender
                         .send(SseData::random_deploy_processed(test_rng))
-                        .await.expect("failed sending random_deploy_processed");
+                        .await
+                        .expect("failed sending random_deploy_processed");
                 }
                 events_sent += burst_size * 2;
             }
