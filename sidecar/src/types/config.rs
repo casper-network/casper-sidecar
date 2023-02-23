@@ -119,8 +119,8 @@ mod tests {
             },
         };
 
-        let parsed_config =
-            read_config("../EXAMPLE_NCTL_CONFIG.toml").expect("Error parsing EXAMPLE_NCTL_CONFIG.toml");
+        let parsed_config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
+            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml");
 
         assert_eq!(parsed_config, example_config);
     }
