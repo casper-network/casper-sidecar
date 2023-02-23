@@ -430,6 +430,6 @@ async fn load_testing_deploy(
 }
 
 pub async fn setup_mock_api_version_server(port: u16) {
-    let api = warp::path("status").map(|| "{\"api_version\":\"1.4.10\"}");
+    let api = warp::path("status").map(|| "{\"build_version\":\"1.4.10\"}");
     warp::serve(api).run(([127, 0, 0, 1], port)).await;
 }
