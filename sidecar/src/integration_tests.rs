@@ -27,6 +27,25 @@ use crate::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_not_allow_multiple_connections() {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    testing_config.add_connection(None, None, None);
+    testing_config.add_connection(None, None, None);
+
+    let shutdown_error = run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err on shutdown");
+
+    assert_eq!(
+        shutdown_error.to_string(),
+        "Unable to run with multiple connections specified in config"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 

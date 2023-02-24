@@ -65,12 +65,20 @@ async fn main() -> Result<(), Error> {
     let path_to_config = args.path_to_config;
 
     let config: Config = read_config(&path_to_config).context("Error constructing config")?;
+
     info!("Configuration loaded");
 
     run(config).await
 }
 
 async fn run(config: Config) -> Result<(), Error> {
+    // This is a temporary constraint whilst we iron out the details of handling connection to multiple nodes
+    if config.connections.len() > 1 {
+        return Err(Error::msg(
+            "Unable to run with multiple connections specified in config",
+        ));
+    }
+
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
