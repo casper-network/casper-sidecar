@@ -45,7 +45,13 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 // This can be replaced with better syntax when https://github.com/SeaQL/sea-query/pull/428 merges.
                 .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
         )
-        .col(ColumnDef::new(EventLog::EmittedTimestamp).timestamp())
+        .col(
+            ColumnDef::new(EventLog::EmittedTimestamp)
+                .timestamp()
+                .not_null()
+                // This can be replaced with better syntax when https://github.com/SeaQL/sea-query/pull/428 merges.
+                .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
+        )
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_type_id")
