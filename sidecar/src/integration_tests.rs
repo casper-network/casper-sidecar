@@ -252,7 +252,7 @@ async fn should_disallow_partial_connection_on_two_filters() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_not_attempt_reconnection() {
     // Configure the sidecar to make 0 retries
-    let max_retries = 0;
+    let max_attempts = 0;
     let delay_between_retries = 0;
 
     // Configure the Fake Event Stream to shutdown after 30s
@@ -261,7 +261,7 @@ async fn should_not_attempt_reconnection() {
     let restart_after = Duration::from_secs(10);
 
     let time_for_sidecar_to_shutdown = reconnection_test(
-        max_retries,
+        max_attempts,
         delay_between_retries,
         Bound::Timed(shutdown_after),
         restart_after,
@@ -276,14 +276,14 @@ async fn should_not_attempt_reconnection() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_successfully_reconnect() {
     // Configure the sidecar to make 5 retries
-    let max_retries = 5;
+    let max_attempts = 5;
     let delay_between_retries = 1;
 
     // And then resume after 5s e.g. less than the total retry window
     let restart_after = Duration::from_secs(5);
 
     let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
+        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from two rounds of messages
@@ -292,13 +292,13 @@ async fn should_successfully_reconnect() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_fail_to_reconnect() {
-    let max_retries = 3;
+    let max_attempts = 3;
     let delay_between_retries = 3;
 
     let restart_after = Duration::from_secs(20);
 
     let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
+        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from one round of messages
@@ -396,7 +396,7 @@ async fn partial_connection_test(
 }
 
 async fn reconnection_test(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     shutdown_after: Bound,
     restart_after: Duration,
@@ -411,7 +411,7 @@ async fn reconnection_test(
     tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
 
@@ -444,7 +444,7 @@ async fn reconnection_test(
 }
 
 async fn reconnection_test_with_port_dropping(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     restart_after: Duration,
 ) -> Vec<EventType> {
@@ -456,7 +456,7 @@ async fn reconnection_test_with_port_dropping(
     tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
     let event_stream_server_port = testing_config.event_stream_server_port();
