@@ -99,7 +99,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let event_listener = EventListener::new(
             node_interface,
-            connection.max_retries,
+            connection.max_attempts,
             Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
             connection.allow_partial_connection,
             inbound_sse_data_sender,

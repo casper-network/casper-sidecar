@@ -49,7 +49,7 @@ impl TestingConfig {
             ip_address: ip_address.unwrap_or_else(|| "127.0.0.1".to_string()),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
             rest_port: rest_port.unwrap_or(random_port_for_rest),
-            max_retries: 2,
+            max_attempts: 2,
             delay_between_retries_in_seconds: 0,
             allow_partial_connection: false,
             enable_logging: false,
@@ -74,17 +74,17 @@ impl TestingConfig {
     }
 
     /// Specify the retry configuration settings. By default they are set as follows:
-    /// - `max_retries`: 3
+    /// - `max_attempts`: 3
     /// - `delay_between_retries_in_seconds`: 5
     pub(crate) fn set_retries_for_node(
         &mut self,
         port_of_node: u16,
-        max_retries: usize,
+        max_attempts: usize,
         delay_between_retries_in_seconds: usize,
     ) {
         for mut connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
-                connection.max_retries = max_retries;
+                connection.max_attempts = max_attempts;
                 connection.delay_between_retries_in_seconds = delay_between_retries_in_seconds;
                 break;
             }
