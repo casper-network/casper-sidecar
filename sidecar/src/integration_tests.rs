@@ -35,9 +35,14 @@ async fn should_not_allow_multiple_connections() {
     testing_config.add_connection(None, None, None);
     testing_config.add_connection(None, None, None);
 
-    let shutdown_error = run(testing_config.inner()).await.expect_err("Sidecar should return an Err on shutdown");
+    let shutdown_error = run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err on shutdown");
 
-    assert_eq!(shutdown_error.to_string(), "Unable to run with multiple connections specified in config");
+    assert_eq!(
+        shutdown_error.to_string(),
+        "Unable to run with multiple connections specified in config"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -73,7 +73,9 @@ async fn main() -> Result<(), Error> {
 
 async fn run(config: Config) -> Result<(), Error> {
     if config.connections.len() > 1 {
-        return Err(Error::msg("Unable to run with multiple connections specified in config"));
+        return Err(Error::msg(
+            "Unable to run with multiple connections specified in config",
+        ));
     }
 
     let mut event_listeners = Vec::with_capacity(config.connections.len());
