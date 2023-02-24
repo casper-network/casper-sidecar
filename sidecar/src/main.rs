@@ -246,9 +246,15 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::BlockAdded { block, block_hash })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -273,9 +279,15 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::DeployAccepted { deploy })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -303,9 +315,15 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::DeployExpired { deploy_hash })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -350,7 +368,7 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::DeployProcessed {
                             deploy_hash,
                             account,
@@ -360,7 +378,13 @@ async fn handle_single_event(
                             block_hash,
                             execution_result,
                         })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -385,13 +409,19 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::Fault {
                             era_id,
                             timestamp,
                             public_key,
                         })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!("Already received Fault ({:#?}), logged in event_log", fault);
@@ -415,9 +445,15 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::FinalitySignature(fs))
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -445,12 +481,18 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender
+                    if let Err(error) = outbound_sse_data_sender
                         .send(SseData::Step {
                             era_id,
                             execution_effect,
                         })
-                        .await;
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(

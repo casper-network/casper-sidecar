@@ -117,7 +117,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown).await;
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::Counted failed sending shutdown message!");
 
                     tokio::time::sleep(delay_before_restart).await;
                     counted_event_streaming(test_rng, events_sender, final_phase).await;
@@ -144,7 +147,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown).await;
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::Realistic failed sending SseData::Shutdown");
 
                     tokio::time::sleep(delay_before_restart).await;
                     realistic_event_streaming(test_rng, events_sender, final_phase).await;
@@ -176,7 +182,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown).await;
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::LoadTestingStep failed sending SseData::Shutdown");
 
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_step(test_rng, events_sender, final_phase, frequency).await;
@@ -208,7 +217,10 @@ pub(crate) async fn spin_up_fake_event_stream(
                     final_phase,
                 }) = settings.restart
                 {
-                    let _ = events_sender.send(SseData::Shutdown).await;
+                    events_sender
+                        .send(SseData::Shutdown)
+                        .await
+                        .expect("Scenario::LoadTestingDeploy failed sending shutdown message!");
 
                     tokio::time::sleep(delay_before_restart).await;
                     load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
@@ -249,15 +261,18 @@ async fn counted_event_streaming(
         let mut events_sent = 0;
 
         while events_sent <= count {
-            let _ = event_sender
+            event_sender
                 .send(SseData::random_deploy_accepted(test_rng).0)
-                .await;
-            let _ = event_sender
+                .await
+                .expect("counted_event_streaming failed sending random_deploy_accepted!");
+            event_sender
                 .send(SseData::random_block_added(test_rng))
-                .await;
-            let _ = event_sender
+                .await
+                .expect("counted_event_streaming failed sending random_block_added!");
+            event_sender
                 .send(SseData::random_finality_signature(test_rng))
-                .await;
+                .await
+                .expect("counted_event_streaming failed sending random_finality_signature!");
             events_sent += 3;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -337,44 +352,57 @@ async fn realistic_event_streaming(
 
             // Prior to each BlockAdded emit FinalitySignatures
             for _ in 0..NUMBER_OF_VALIDATORS {
-                let _ = events_sender
+                events_sender
                     .send(finality_signature_events.pop().unwrap())
-                    .await;
+                    .await
+                    .expect("Failed sending finality_signature_event");
             }
             events_sent += NUMBER_OF_VALIDATORS as u64;
 
             // Emit DeployProcessed events for the next BlockAdded
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender
+                events_sender
                     .send(deploy_processed_events.pop().unwrap())
-                    .await;
+                    .await
+                    .expect("Failed sending deploy_processed_events");
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
 
             // Emit the BlockAdded
-            let _ = events_sender.send(block_added_events.pop().unwrap()).await;
+            events_sender
+                .send(block_added_events.pop().unwrap())
+                .await
+                .expect("Failed sending block_added_event");
             events_sent += 1;
 
             // Emit DeployAccepted Events
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                let _ = events_sender
+                events_sender
                     .send(deploy_accepted_events.pop().unwrap().0)
-                    .await;
+                    .await
+                    .expect("Failed sending deploy_accepted_event");
             }
             events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
         }
 
         if era_counter % 2 == 0 {
-            let _ = events_sender
+            events_sender
                 .send(deploy_expired_events.pop().unwrap())
-                .await;
+                .await
+                .expect("Failed sending deploy_expired_event");
         } else {
-            let _ = events_sender.send(fault_events.pop().unwrap()).await;
+            events_sender
+                .send(fault_events.pop().unwrap())
+                .await
+                .expect("Failed sending fault_event");
         }
         events_sent += 1;
 
         // Then a Step
-        let _ = events_sender.send(step_events.pop().unwrap()).await;
+        events_sender
+            .send(step_events.pop().unwrap())
+            .await
+            .expect("Failed sending step_event");
         events_sent += 1;
 
         era_counter += 1;
@@ -392,14 +420,20 @@ async fn load_testing_step(
     match bound {
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
-                let _ = event_sender.send(SseData::random_step(test_rng)).await;
+                event_sender
+                    .send(SseData::random_step(test_rng))
+                    .await
+                    .expect("Bound::Timed Failed sending random_step");
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
         }
         Bound::Counted(count) => {
             let mut events_sent = 0;
             while events_sent <= count {
-                let _ = event_sender.send(SseData::random_step(test_rng)).await;
+                event_sender
+                    .send(SseData::random_step(test_rng))
+                    .await
+                    .expect("Bound::Counted Failed sending random_step");
                 events_sent += 1;
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
@@ -419,15 +453,17 @@ async fn load_testing_deploy(
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
                 for _ in 0..burst_size {
-                    let _ = events_sender
+                    events_sender
                         .send(SseData::random_deploy_accepted(test_rng).0)
-                        .await;
+                        .await
+                        .expect("failed sending random_deploy_accepted");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender
+                    events_sender
                         .send(SseData::random_deploy_processed(test_rng))
-                        .await;
+                        .await
+                        .expect("failed sending random_deploy_processed");
                 }
             }
         }
@@ -435,15 +471,17 @@ async fn load_testing_deploy(
             let mut events_sent = 0;
             while events_sent <= count {
                 for _ in 0..burst_size {
-                    let _ = events_sender
+                    events_sender
                         .send(SseData::random_deploy_accepted(test_rng).0)
-                        .await;
+                        .await
+                        .expect("failed sending random_deploy_accepted");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
-                    let _ = events_sender
+                    events_sender
                         .send(SseData::random_deploy_processed(test_rng))
-                        .await;
+                        .await
+                        .expect("failed sending random_deploy_processed");
                 }
                 events_sent += burst_size * 2;
             }
