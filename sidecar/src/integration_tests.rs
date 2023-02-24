@@ -46,6 +46,26 @@ async fn should_not_allow_multiple_connections() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_not_allow_zero_max_attempts() {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    let sse_port_for_node = testing_config.add_connection(None, None, None);
+
+    testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
+
+    let shutdown_error = run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err on shutdown");
+
+    assert_eq!(
+        shutdown_error.to_string(),
+        "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -252,7 +272,7 @@ async fn should_disallow_partial_connection_on_two_filters() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_not_attempt_reconnection() {
     // Configure the sidecar to make 0 retries
-    let max_retries = 0;
+    let max_attempts = 0;
     let delay_between_retries = 0;
 
     // Configure the Fake Event Stream to shutdown after 30s
@@ -261,7 +281,7 @@ async fn should_not_attempt_reconnection() {
     let restart_after = Duration::from_secs(10);
 
     let time_for_sidecar_to_shutdown = reconnection_test(
-        max_retries,
+        max_attempts,
         delay_between_retries,
         Bound::Timed(shutdown_after),
         restart_after,
@@ -276,14 +296,14 @@ async fn should_not_attempt_reconnection() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_successfully_reconnect() {
     // Configure the sidecar to make 5 retries
-    let max_retries = 5;
+    let max_attempts = 5;
     let delay_between_retries = 1;
 
     // And then resume after 5s e.g. less than the total retry window
     let restart_after = Duration::from_secs(5);
 
     let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
+        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from two rounds of messages
@@ -292,13 +312,13 @@ async fn should_successfully_reconnect() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_fail_to_reconnect() {
-    let max_retries = 3;
+    let max_attempts = 3;
     let delay_between_retries = 3;
 
     let restart_after = Duration::from_secs(20);
 
     let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
+        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from one round of messages
@@ -396,7 +416,7 @@ async fn partial_connection_test(
 }
 
 async fn reconnection_test(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     shutdown_after: Bound,
     restart_after: Duration,
@@ -411,7 +431,7 @@ async fn reconnection_test(
     tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
 
@@ -444,7 +464,7 @@ async fn reconnection_test(
 }
 
 async fn reconnection_test_with_port_dropping(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     restart_after: Duration,
 ) -> Vec<EventType> {
@@ -456,7 +476,7 @@ async fn reconnection_test_with_port_dropping(
     tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
     let event_stream_server_port = testing_config.event_stream_server_port();

@@ -25,8 +25,8 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 ```rust
 node_connections = [
-    {  ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries = 5, enable_event_logging = true  },
-    {  ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries = 5, enable_event_logging = false  },
+    {  ip_address = "127.0.0.1", sse_port = 18101, max_attempts = 5, delay_between_retries = 5, enable_event_logging = true  },
+    {  ip_address = "127.0.0.1", sse_port = 18102, max_attempts = 5, delay_between_retries = 5, enable_event_logging = false  },
 ]
 ```
 
@@ -34,9 +34,9 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port, `9999` by default.
-* `max_retries` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to reconnect.
+* `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
-* `allow_partial_connection` - Determing whether the sidecar will allow a partial connection to this node.
+* `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
 * `enable_event_logging` - This enables logging of events from the node in question.
 
 ### Storage
