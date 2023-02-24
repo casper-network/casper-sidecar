@@ -72,6 +72,7 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
+    // This is a temporary constraint whilst we iron out the details of handling connection to multiple nodes
     if config.connections.len() > 1 {
         return Err(Error::msg(
             "Unable to run with multiple connections specified in config",
