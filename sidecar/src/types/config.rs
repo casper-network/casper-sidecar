@@ -7,7 +7,7 @@ pub fn read_config(config_path: &str) -> Result<Config, Error> {
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
 }
 
-// This struct is used to parse the EXAMPLE_NCTL_CONFIG.toml so the values can be utilised in the code.
+// This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(Default))]
 pub struct Config {
