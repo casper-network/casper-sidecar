@@ -78,7 +78,7 @@ pub fn create_insert_stmt(
     event_type_id: u8,
     event_source_address: &str,
     event_id: u32,
-    event_key: &str
+    event_key: &str,
 ) -> SqResult<InsertStatement> {
     let insert_stmt = Query::insert()
         .into_table(EventLog::Table)
@@ -86,13 +86,13 @@ pub fn create_insert_stmt(
             EventLog::EventTypeId,
             EventLog::EventSourceAddress,
             EventLog::EventId,
-            EventLog::EventKey
+            EventLog::EventKey,
         ])
         .values(vec![
             event_type_id.into(),
             event_source_address.into(),
             event_id.into(),
-            event_key.into()
+            event_key.into(),
         ])
         .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
 

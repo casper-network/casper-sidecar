@@ -34,7 +34,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::BlockAdded as u8,
             &event_source_address,
             event_id,
-            &encoded_hash
+            &encoded_hash,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -70,7 +70,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployAccepted as u8,
             &event_source_address,
             event_id,
-            &encoded_hash
+            &encoded_hash,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -106,7 +106,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployProcessed as u8,
             &event_source_address,
             event_id,
-            &encoded_hash
+            &encoded_hash,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -141,7 +141,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployExpired as u8,
             &event_source_address,
             event_id,
-            &encoded_hash
+            &encoded_hash,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -180,7 +180,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::Fault as u8,
             &event_source_address,
             event_id,
-            &event_key
+            &event_key,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -215,7 +215,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::FinalitySignature as u8,
             &event_source_address,
             event_id,
-            &event_key
+            &event_key,
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -251,7 +251,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::Step as u8,
             &event_source_address,
             event_id,
-            &era_id.to_string()
+            &era_id.to_string(),
         )?
         .to_string(SqliteQueryBuilder);
 
