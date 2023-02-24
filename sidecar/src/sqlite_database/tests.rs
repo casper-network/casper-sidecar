@@ -22,7 +22,7 @@ async fn should_save_and_retrieve_a_u32max_id() {
         .await
         .expect("Error opening database in memory");
 
-    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX)
+    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key")
         .expect("Error creating event_log insert SQL")
         .to_string(SqliteQueryBuilder);
 

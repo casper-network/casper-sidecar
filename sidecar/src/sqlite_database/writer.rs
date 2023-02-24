@@ -34,6 +34,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::BlockAdded as u8,
             &event_source_address,
             event_id,
+            &encoded_hash
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -69,6 +70,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployAccepted as u8,
             &event_source_address,
             event_id,
+            &encoded_hash
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -104,6 +106,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployProcessed as u8,
             &event_source_address,
             event_id,
+            &encoded_hash
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -138,6 +141,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::DeployExpired as u8,
             &event_source_address,
             event_id,
+            &encoded_hash
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -170,10 +174,13 @@ impl DatabaseWriter for SqliteDatabase {
         let era_id = fault.era_id.value();
         let public_key = fault.public_key.to_hex();
 
+        let event_key = format!("{era_id} {public_key}");
+
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
             EventTypeId::Fault as u8,
             &event_source_address,
             event_id,
+            &event_key
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -202,10 +209,13 @@ impl DatabaseWriter for SqliteDatabase {
         let block_hash = finality_signature.hex_encoded_block_hash();
         let public_key = finality_signature.hex_encoded_public_key();
 
+        let event_key = format!("{block_hash} {public_key}");
+
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
             EventTypeId::FinalitySignature as u8,
             &event_source_address,
             event_id,
+            &event_key
         )?
         .to_string(SqliteQueryBuilder);
 
@@ -241,6 +251,7 @@ impl DatabaseWriter for SqliteDatabase {
             EventTypeId::Step as u8,
             &event_source_address,
             event_id,
+            &era_id.to_string()
         )?
         .to_string(SqliteQueryBuilder);
 
