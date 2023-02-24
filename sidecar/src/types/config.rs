@@ -130,18 +130,16 @@ mod tests {
         let expected_config = Config {
             inbound_channel_size: None,
             outbound_channel_size: None,
-            connections: vec![
-                Connection {
-                    ip_address: "127.0.0.1".to_string(),
-                    sse_port: 9999,
-                    rest_port: 8888,
-                    max_attempts: 10,
-                    delay_between_retries_in_seconds: 5,
-                    allow_partial_connection: false,
-                    enable_logging: true,
-                    connection_timeout_in_seconds: None,
-                },
-            ],
+            connections: vec![Connection {
+                ip_address: "127.0.0.1".to_string(),
+                sse_port: 9999,
+                rest_port: 8888,
+                max_attempts: 10,
+                delay_between_retries_in_seconds: 5,
+                allow_partial_connection: false,
+                enable_logging: true,
+                connection_timeout_in_seconds: None,
+            }],
             storage: StorageConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
                 sqlite_config: SqliteConfig {
