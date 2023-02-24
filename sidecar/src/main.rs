@@ -79,6 +79,16 @@ async fn run(config: Config) -> Result<(), Error> {
         ));
     }
 
+    if config
+        .connections
+        .iter()
+        .any(|connection| connection.max_attempts < 1)
+    {
+        return Err(Error::msg(
+            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+        ));
+    }
+
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
