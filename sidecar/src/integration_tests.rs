@@ -312,7 +312,6 @@ async fn should_successfully_reconnect() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_fail_to_reconnect() {
-    //Focusing on this test
     let max_attempts = 3;
     let delay_between_retries = 3;
 
@@ -383,7 +382,7 @@ async fn partial_connection_test(
             sse_port: testing_config.event_stream_server_port(),
             rest_port: node_port_for_rest_connection,
         },
-        1,
+        3,
         Duration::from_secs(1),
         false,
         event_tx,
@@ -490,7 +489,7 @@ async fn reconnection_test_with_port_dropping(
             sse_port: event_stream_server_port,
             rest_port: node_port_for_rest_connection,
         },
-        1,
+        3,
         Duration::from_secs(1),
         false,
         event_tx,
