@@ -312,7 +312,7 @@ async fn should_successfully_reconnect() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn should_fail_to_reconnect() {
-    
+    //Focusing on this test
     let max_attempts = 3;
     let delay_between_retries = 3;
 
