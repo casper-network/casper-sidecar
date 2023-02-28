@@ -32,21 +32,35 @@ The file *example_config.toml* in the base *event-sidecar* directory contains de
 
 ### Node Connections
 
-```rust
-node_connections = [
-    {  ip_address = "127.0.0.1", sse_port = 18101, max_attempts = 5, delay_between_retries = 5, enable_event_logging = true  },
-    {  ip_address = "127.0.0.1", sse_port = 18102, max_attempts = 5, delay_between_retries = 5, enable_event_logging = false  },
-]
+```
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 18101
+rest_port = 14101
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
+
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 18102
+rest_port = 14102
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
 ```
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port, `9999` by default.
+* `rest_port` - The node's REST endpoint for status and metrics, `8888` by default.
 * `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
-* `enable_event_logging` - This enables the logging of events from the node in question.
+* `enable_logging` - This enables the logging of events from the node in question.
 
 ### Storage
 
