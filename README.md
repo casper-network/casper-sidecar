@@ -50,6 +50,16 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = false
+
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 18103
+rest_port = 14103
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
+connection_timeout_in_seconds = 3
 ```
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
@@ -61,6 +71,7 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
+* `connection_timeout_in_seconds` - The total time before the connection request times out.
 
 ### Storage
 
