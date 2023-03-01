@@ -36,7 +36,7 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::ProtocolVersion;
 
 use crate::utils::{resolve_address, ListeningError};

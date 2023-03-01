@@ -31,7 +31,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::ProtocolVersion;
 
 use crate::{

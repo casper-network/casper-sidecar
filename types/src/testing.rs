@@ -13,7 +13,7 @@ use casper_types::testing::TestRng;
 use casper_types::{runtime_args, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512};
 
 /// Creates a test deploy created at given instant and with given ttl.
-pub(crate) fn create_test_deploy(
+pub fn create_test_deploy(
     created_ago: TimeDiff,
     ttl: TimeDiff,
     now: Timestamp,
@@ -23,7 +23,7 @@ pub(crate) fn create_test_deploy(
 }
 
 /// Creates a random deploy that is considered expired.
-pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
+pub fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(
         TimeDiff::from_seconds(20),
         TimeDiff::from_seconds(10),

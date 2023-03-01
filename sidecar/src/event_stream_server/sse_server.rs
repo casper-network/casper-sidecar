@@ -28,7 +28,8 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_event_types::{EventFilter, SseData};
+use casper_event_types::sse_data::EventFilter;
+use casper_event_types::sse_data::SseData;
 use casper_node::types::Deploy;
 #[cfg(test)]
 use casper_node::types::DeployHash;

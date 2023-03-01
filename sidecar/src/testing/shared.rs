@@ -1,4 +1,4 @@
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]

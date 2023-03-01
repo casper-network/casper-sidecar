@@ -9,7 +9,7 @@ use tempfile::tempdir;
 use tokio::{sync::mpsc, time::Instant};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface};
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::testing::TestRng;
 
 use super::run;

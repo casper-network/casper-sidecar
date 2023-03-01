@@ -384,12 +384,14 @@ dependencies = [
 name = "casper-event-types"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "casper-execution-engine",
  "casper-hashing",
  "casper-node",
  "casper-types",
  "rand 0.8.5",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

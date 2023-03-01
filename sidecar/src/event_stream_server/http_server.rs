@@ -7,7 +7,7 @@ use tokio::{
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::ProtocolVersion;
 
 use super::{

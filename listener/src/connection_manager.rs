@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::Error;
 use bytes::Bytes;
+use casper_types::ProtocolVersion;
 use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
@@ -12,11 +13,11 @@ use reqwest::Client;
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
-use casper_event_types::SseData;
 use reqwest::Url;
 use tokio::sync::mpsc::Sender;
 
 use super::ConnectionTasks;
+use casper_event_types::sse_data::{deserialize, SseData};
 
 pub struct SseEvent {
     pub id: u32,
@@ -52,6 +53,7 @@ pub(super) struct ConnectionManager {
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
     connection_timeout: Duration,
+    deserialization_fn: fn(&str) -> Result<SseData, Error>,
 }
 
 impl ConnectionManager {
@@ -61,8 +63,10 @@ impl ConnectionManager {
         sse_data_sender: Sender<SseEvent>,
         maybe_tasks: Option<ConnectionTasks>,
         connection_timeout: Duration,
+        api_version: ProtocolVersion,
     ) -> Self {
         trace!("Creating connection manager for: {}", bind_address);
+        let deserialization_fn = determine_deserializer(api_version);
 
         Self {
             bind_address,
@@ -73,6 +77,7 @@ impl ConnectionManager {
             sse_event_sender: sse_data_sender,
             maybe_tasks,
             connection_timeout,
+            deserialization_fn,
         }
     }
 
@@ -224,7 +229,7 @@ impl ConnectionManager {
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
-        match serde_json::from_str::<SseData>(&event.data) {
+        match (self.deserialization_fn)(&event.data) {
             Ok(SseData::Shutdown) => {
                 error!("Received Shutdown message ({})", self.bind_address);
             }
@@ -303,4 +308,76 @@ fn expected_first_message_to_be_api_version(data: String) -> Error {
         "Expected first message to be ApiVersion, got: {:?}",
         data
     ))
+}
+
+fn determine_deserializer(api_version: ProtocolVersion) -> fn(&str) -> Result<SseData, Error> {
+    let one_zero_zero = ProtocolVersion::from_parts(1, 0, 0);
+    if api_version.eq(&one_zero_zero) {
+        casper_event_types::sse_data_1_0_0::deserialize
+    } else {
+        deserialize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    macro_rules! is_of_var {
+        ($val:ident, $var:path) => {
+            match $val {
+                $var { .. } => true,
+                _ => false,
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_0_0_should_return_1_0_0_deserializer() {
+        let legacy_block_added_raw = "{\"BlockAdded\":{\"block\":{\"body\":{\"deploy_hashes\": [], \"proposer\": \"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\", \"transfer_hashes\": []}, \"hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\", \"header\":{\"accumulated_seed\": \"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\", \"body_hash\": \"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\", \"era_end\":{\"era_report\":{\"equivocators\": [], \"inactive_validators\": [], \"rewards\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": 1559249876159, \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": 25892675444}}, \"next_era_validator_weights\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": \"50359181028146696\", \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": \"836257197475108\"}}, \"era_id\": 18, \"height\": 2075, \"parent_hash\": \"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\", \"protocol_version\": \"1.0.0\", \"random_bit\": true, \"state_root_hash\": \"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\", \"timestamp\": \"2021-04-02T05:03:29.792Z\"}, \"proofs\": []}, \"block_hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\"}}".to_string();
+        let new_format_block_added_raw = "{\"BlockAdded\":{\"block_hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"block\":{\"hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"header\":{\"parent_hash\":\"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\",\"state_root_hash\":\"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\",\"body_hash\":\"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\",\"random_bit\":true,\"accumulated_seed\":\"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\",\"era_end\":{\"era_report\":{\"equivocators\":[],\"rewards\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"amount\":1559249876159},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"amount\":25892675444}],\"inactive_validators\":[]},\"next_era_validator_weights\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"weight\":\"50359181028146696\"},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"weight\":\"836257197475108\"}]},\"timestamp\":\"2021-04-02T05:03:29.792Z\",\"era_id\":18,\"height\":2075,\"protocol_version\":\"1.0.0\"},\"body\":{\"proposer\":\"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\",\"deploy_hashes\":[],\"transfer_hashes\":[]},\"proofs\":[]}}}".to_string();
+        let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+
+        assert!(is_of_var!(sse_data, SseData::BlockAdded));
+        if let SseData::BlockAdded {
+            block_hash: _,
+            block,
+        } = sse_data.clone()
+        {
+            assert!(block.proofs.is_empty());
+            let raw = serde_json::to_string(&sse_data);
+            assert_eq!(raw.unwrap(), new_format_block_added_raw);
+        }
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_fails_on_legacy_block_added(
+    ) {
+        let legacy_block_added_raw = "{\"BlockAdded\":{\"block\":{\"body\":{\"deploy_hashes\": [], \"proposer\": \"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\", \"transfer_hashes\": []}, \"hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\", \"header\":{\"accumulated_seed\": \"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\", \"body_hash\": \"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\", \"era_end\":{\"era_report\":{\"equivocators\": [], \"inactive_validators\": [], \"rewards\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": 1559249876159, \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": 25892675444}}, \"next_era_validator_weights\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": \"50359181028146696\", \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": \"836257197475108\"}}, \"era_id\": 18, \"height\": 2075, \"parent_hash\": \"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\", \"protocol_version\": \"1.0.0\", \"random_bit\": true, \"state_root_hash\": \"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\", \"timestamp\": \"2021-04-02T05:03:29.792Z\"}, \"proofs\": []}, \"block_hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\"}}".to_string();
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let result = (deserializer)(&legacy_block_added_raw);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_deserializes_new_block_added(
+    ) {
+        let block_added_raw = "{\"BlockAdded\":{\"block_hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"block\":{\"hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"header\":{\"parent_hash\":\"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\",\"state_root_hash\":\"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\",\"body_hash\":\"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\",\"random_bit\":true,\"accumulated_seed\":\"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\",\"era_end\":{\"era_report\":{\"equivocators\":[],\"rewards\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"amount\":1559249876159},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"amount\":25892675444}],\"inactive_validators\":[]},\"next_era_validator_weights\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"weight\":\"50359181028146696\"},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"weight\":\"836257197475108\"}]},\"timestamp\":\"2021-04-02T05:03:29.792Z\",\"era_id\":18,\"height\":2075,\"protocol_version\":\"1.0.0\"},\"body\":{\"proposer\":\"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\",\"deploy_hashes\":[],\"transfer_hashes\":[]},\"proofs\":[]}}}".to_string();
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let sse_data = (deserializer)(&block_added_raw).unwrap();
+
+        assert!(is_of_var!(sse_data, SseData::BlockAdded));
+        if let SseData::BlockAdded {
+            block_hash: _,
+            block,
+        } = sse_data.clone()
+        {
+            assert!(block.proofs.is_empty());
+            let raw = serde_json::to_string(&sse_data);
+            assert_eq!(raw.unwrap(), block_added_raw);
+        }
+    }
 }

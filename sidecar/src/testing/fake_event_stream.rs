@@ -13,7 +13,7 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{

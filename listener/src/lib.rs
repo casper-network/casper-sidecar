@@ -149,6 +149,7 @@ impl EventListener {
                     self.sse_event_sender.clone(),
                     maybe_tasks.clone(),
                     self.connection_timeout,
+                    self.api_version,
                 );
 
                 connections.insert(filter, connection);
