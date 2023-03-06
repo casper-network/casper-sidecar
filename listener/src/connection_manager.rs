@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
 
@@ -10,6 +10,7 @@ use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
 
+use serde_json::Value;
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
@@ -23,14 +24,25 @@ pub struct SseEvent {
     pub id: u32,
     pub data: SseData,
     pub source: Url,
+    pub json_data: Option<serde_json::Value>,
 }
 
 impl SseEvent {
-    pub fn new(id: u32, data: SseData, mut source: Url) -> Self {
+    pub fn new(
+        id: u32,
+        data: SseData,
+        mut source: Url,
+        json_data: Option<serde_json::Value>,
+    ) -> Self {
         // This is to remove the path e.g. /events/main
         // Leaving just the IP and port
         source.set_path("");
-        Self { id, data, source }
+        Self {
+            id,
+            data,
+            source,
+            json_data,
+        }
     }
 }
 
@@ -53,7 +65,38 @@ pub(super) struct ConnectionManager {
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
     connection_timeout: Duration,
+    api_version: ProtocolVersion,
     deserialization_fn: fn(&str) -> Result<SseData, Error>,
+}
+
+pub enum ConnectionManagerError {
+    ProtocolChangedError {
+        endpoint: String,
+        old: ProtocolVersion,
+        new: ProtocolVersion,
+    },
+    OtherError {
+        error: Error,
+    },
+}
+
+impl Display for ConnectionManagerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::OtherError { error } => {
+                write!(f, "ConnectionManagerError: {}", error)
+            }
+            Self::ProtocolChangedError { endpoint, old, new } => {
+                write!(f, "ProtocolChangedError: endpoint {} got an ApiVersion message that changed the protocol from {} to {}", endpoint, old, new)
+            }
+        }
+    }
+}
+
+impl ConnectionManagerError {
+    fn to_other_error(error: Error) -> ConnectionManagerError {
+        ConnectionManagerError::OtherError { error }
+    }
 }
 
 impl ConnectionManager {
@@ -77,14 +120,17 @@ impl ConnectionManager {
             sse_event_sender: sse_data_sender,
             maybe_tasks,
             connection_timeout,
+            api_version,
             deserialization_fn,
         }
     }
 
-    ///This function is blocking, it will return an Error result if something went wrong while processing.
-    pub(super) async fn start_handling(&mut self) -> Error {
+    ///This function is blocking, it will return an ConnectionManagerError result if something went wrong while processing.
+    pub(super) async fn start_handling(&mut self) -> ConnectionManagerError {
         match self.do_start_handling().await {
-            Ok(_) => Error::msg("Unexpected Ok() from do_start_handling"),
+            Ok(_) => ConnectionManagerError::to_other_error(Error::msg(
+                "Unexpected Ok() from do_start_handling",
+            )),
             Err(e) => e,
         }
     }
@@ -114,12 +160,18 @@ impl ConnectionManager {
 
     async fn connect_with_retries(
         &mut self,
-    ) -> Result<EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>, Error> {
+    ) -> Result<
+        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
+        ConnectionManagerError,
+    > {
         let mut retry_count = 0;
         let mut last_error = None;
         while retry_count <= self.max_attempts {
             match self.connect().await {
                 Ok(event_stream) => return Ok(event_stream),
+                Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new }) => {
+                    return Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new })
+                }
                 Err(err) => last_error = Some(err),
             }
             retry_count += 1;
@@ -134,7 +186,10 @@ impl ConnectionManager {
 
     async fn connect(
         &mut self,
-    ) -> Result<EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>, Error> {
+    ) -> Result<
+        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
+        ConnectionManagerError,
+    > {
         let mut bind_address = self.bind_address.clone();
 
         if let Some(event_id) = self.current_event_id {
@@ -145,14 +200,19 @@ impl ConnectionManager {
         debug!("Connecting to node...\t{}", bind_address);
         let client = Client::builder()
             .connect_timeout(self.connection_timeout)
-            .build()?;
-        let sse_response = client.get(bind_address).send().await?;
+            .build()
+            .map_err(|err| ConnectionManagerError::to_other_error(Error::new(err)))?;
+        let sse_response = client
+            .get(bind_address)
+            .send()
+            .await
+            .map_err(|err| ConnectionManagerError::to_other_error(Error::new(err)))?;
         let event_source = sse_response.bytes_stream().eventsource();
         // Parse the first event to see if the connection was successful
-        consume_api_version(event_source).await
+        self.consume_api_version(event_source).await
     }
 
-    async fn do_start_handling(&mut self) -> Result<(), Error> {
+    async fn do_start_handling(&mut self) -> Result<(), ConnectionManagerError> {
         let mut event_stream = match self.connect_with_retries().await {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
@@ -170,10 +230,11 @@ impl ConnectionManager {
 
         if let Some(tasks) = &self.maybe_tasks {
             if !tasks.wait().await {
-                return Err(Error::msg(format!(
+                let error = Error::msg(format!(
                     "Failed to connect to all filters. Disconnecting from {}",
                     self.bind_address
-                )));
+                ));
+                return Err(ConnectionManagerError::to_other_error(error));
             }
         }
 
@@ -183,7 +244,15 @@ impl ConnectionManager {
                 Ok(_) => {
                     return Err(decorate_with_event_stream_closed(self.bind_address.clone()));
                 }
-                Err(error) => error,
+                Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new }) => {
+                    //This error can't be retried, we need to restart the whole event listener
+                    return Err(ConnectionManagerError::ProtocolChangedError {
+                        endpoint,
+                        old,
+                        new,
+                    });
+                }
+                Err(ConnectionManagerError::OtherError { error }) => error,
             };
             if !self.increment_attempts() {
                 // We are counting these attempts in case there is some weird scenario in which we are
@@ -198,7 +267,10 @@ impl ConnectionManager {
         }
     }
 
-    async fn handle_stream<E, S>(&mut self, mut event_stream: S) -> Result<(), Error>
+    async fn handle_stream<E, S>(
+        &mut self,
+        mut event_stream: S,
+    ) -> Result<(), ConnectionManagerError>
     where
         E: Debug,
         S: Stream<Item = Result<Event, E>> + Sized + Unpin,
@@ -211,17 +283,23 @@ impl ConnectionManager {
                         Err(parse_error) => {
                             // ApiVersion events have no ID so parsing "" to u32 will fail.
                             // This gate saves displaying a warning for a trivial error.
-                            if !event.data.contains("ApiVersion") {
+                            if event.data.contains("ApiVersion") {
+                                self.validate_api_version(&event.data)?;
+                            } else {
                                 warn!("Parse Error: {}", parse_error);
                             }
                         }
                     }
-                    self.handle_event(event).await?;
+                    self.handle_event(event)
+                        .await
+                        .map_err(ConnectionManagerError::to_other_error)?;
                 }
                 Err(stream_error) => {
                     let error_message = format!("EventStream Error: {:?}", stream_error);
                     error!(error_message);
-                    return Err(Error::msg(error_message));
+                    return Err(ConnectionManagerError::to_other_error(Error::msg(
+                        error_message,
+                    )));
                 }
             }
         }
@@ -240,74 +318,145 @@ impl ConnectionManager {
             }
             Ok(sse_data) => {
                 self.reset_attempts();
-
+                let json_data: Value = serde_json::from_str(&event.data)?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
                     sse_data,
                     self.bind_address.clone(),
+                    Some(json_data),
                 );
-                let _ = self.sse_event_sender.send(sse_event).await;
+                self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                    Error::msg(
+                        "Error when trying to send message in ConnectionManager#handle_event",
+                    )
+                })?
             }
         }
         Ok(())
     }
-}
 
-async fn consume_api_version<S, E>(mut stream: EventStream<S>) -> Result<EventStream<S>, Error>
-where
-    E: Debug,
-    S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
-{
-    match stream.next().await {
-        None => Err(Error::msg("First event was empty")),
-        Some(Err(error)) => Err(failed_to_get_first_event(error)),
-        Some(Ok(event)) => {
-            if event.data.contains("ApiVersion") {
-                Ok(stream)
-            } else {
-                Err(expected_first_message_to_be_api_version(event.data))
+    async fn consume_api_version<S, E>(
+        &self,
+        mut stream: EventStream<S>,
+    ) -> Result<EventStream<S>, ConnectionManagerError>
+    where
+        E: Debug,
+        S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
+    {
+        match stream.next().await {
+            None => Err(ConnectionManagerError::to_other_error(Error::msg(
+                "First event was empty",
+            ))),
+            Some(Err(error)) => Err(failed_to_get_first_event(error)),
+            Some(Ok(event)) => {
+                if event.data.contains("ApiVersion") {
+                    self.validate_api_version(&event.data)?;
+                    match (self.deserialization_fn)(&event.data) {
+                        Ok(SseData::ApiVersion(semver)) => {
+                            let sse_event = SseEvent::new(
+                                0,
+                                SseData::ApiVersion(semver),
+                                self.bind_address.clone(),
+                                None,
+                            );
+                            self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                            ConnectionManagerError::to_other_error(Error::msg(
+                                "Error when trying to send message in ConnectionManager#handle_event",
+                            ))
+                        })?
+                        }
+                        Ok(_sse_data) => {
+                            return Err(ConnectionManagerError::to_other_error(Error::msg(
+                                "When trying to deserialize ApiVersion got other type of message",
+                            )))
+                        }
+                        Err(x) => {
+                            return Err(ConnectionManagerError::to_other_error(Error::msg(
+                                format!("Error when trying to deserialize ApiVersion {}", x),
+                            )))
+                        }
+                    }
+
+                    Ok(stream)
+                } else {
+                    Err(expected_first_message_to_be_api_version(event.data))
+                }
+            }
+        }
+    }
+
+    fn validate_api_version(&self, data: &str) -> Result<(), ConnectionManagerError> {
+        let sse_data = serde_json::from_str::<SseData>(data).map_err(|serde_error| {
+            ConnectionManagerError::to_other_error(Error::msg(serde_error).context("Serde Error"))
+        })?;
+        match sse_data {
+            SseData::ApiVersion(semver) if !semver.eq(&self.api_version) => {
+                Err(ConnectionManagerError::ProtocolChangedError {
+                    endpoint: self.bind_address.to_string(),
+                    old: self.api_version,
+                    new: semver,
+                })
+            }
+            SseData::ApiVersion(..) => Ok(()),
+            _ => {
+                let err = Error::msg("Received a message that contains \"ApiVersion\", but is not an ApiVersion message...");
+                Err(ConnectionManagerError::to_other_error(err))
             }
         }
     }
 }
 
-fn couldnt_connect(last_error: Option<Error>, url: Url, attempts: usize) -> Error {
+fn couldnt_connect(
+    last_error: Option<ConnectionManagerError>,
+    url: Url,
+    attempts: usize,
+) -> ConnectionManagerError {
     let message = format!(
         "Couldn't connect to address {:?} in {:?} attempts",
         url.as_str(),
         attempts
     );
     match last_error {
-        None => Error::msg(message),
-        Some(err) => err.context(message),
+        None => ConnectionManagerError::to_other_error(Error::msg(message)),
+        Some(ConnectionManagerError::OtherError { error }) => ConnectionManagerError::OtherError {
+            error: error.context(message),
+        },
+        Some(x) => x, //This shouldn't happen in a realistic scenario
     }
 }
 
-fn decorate_with_event_stream_closed(address: Url) -> Error {
+fn decorate_with_event_stream_closed(address: Url) -> ConnectionManagerError {
     let message = format!("Event stream closed for filter: {:?}", address.as_str());
-    Error::msg(message)
+    ConnectionManagerError::OtherError {
+        error: Error::msg(message),
+    }
 }
 
-fn decorate_with_error_handling_stream(error: Error, address: Url) -> Error {
+fn decorate_with_error_handling_stream(error: Error, address: Url) -> ConnectionManagerError {
     let message = format!(
         "Error while handling event stream for filter {:?}",
         address.as_str()
     );
-    error.context(message)
+    ConnectionManagerError::OtherError {
+        error: error.context(message),
+    }
 }
 
-fn failed_to_get_first_event<T>(error: T) -> Error
+fn failed_to_get_first_event<T>(error: T) -> ConnectionManagerError
 where
     T: Debug,
 {
-    Error::msg(format!("failed to get first event: {:?}", error))
+    ConnectionManagerError::to_other_error(Error::msg(format!(
+        "failed to get first event: {:?}",
+        error
+    )))
 }
 
-fn expected_first_message_to_be_api_version(data: String) -> Error {
-    Error::msg(format!(
+fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerError {
+    ConnectionManagerError::to_other_error(Error::msg(format!(
         "Expected first message to be ApiVersion, got: {:?}",
         data
-    ))
+    )))
 }
 
 fn determine_deserializer(api_version: ProtocolVersion) -> fn(&str) -> Result<SseData, Error> {

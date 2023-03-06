@@ -11,8 +11,8 @@ use std::{
 
 use anyhow::{anyhow, Context, Error};
 use casper_types::ProtocolVersion;
-use connection_manager::ConnectionManager;
 pub use connection_manager::SseEvent;
+use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
 use tokio::sync::mpsc::Sender;
@@ -85,12 +85,11 @@ impl EventListener {
 
     pub async fn stream_aggregated_events(
         &mut self,
-        initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
+        api_version_sender: Sender<Result<ProtocolVersion, Error>>,
     ) -> Result<(), Error> {
         let mut attempts = 0;
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
-        let mut single_use_reporter = Some(initial_api_version_sender);
         while attempts < self.max_connection_attempts {
             attempts += 1;
 
@@ -102,10 +101,7 @@ impl EventListener {
             match self.fetch_api_version_from_status().await {
                 Ok(version) => {
                     let new_api_version = version;
-
-                    if let Some(sender) = single_use_reporter.take() {
-                        let _ = sender.send(Ok(new_api_version)).await;
-                    }
+                    api_version_sender.send(Ok(new_api_version)).await?;
 
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
@@ -154,7 +150,6 @@ impl EventListener {
 
                 connections.insert(filter, connection);
             }
-
             let mut connection_join_handles = Vec::new();
 
             for (filter, mut connection) in connections.drain() {
@@ -162,13 +157,33 @@ impl EventListener {
                 let handle = tokio::spawn(async move {
                     let err = connection.start_handling().await;
                     error!("Error on start_handling: {}", err);
+                    err
                 });
                 connection_join_handles.push(handle);
             }
 
             if self.allow_partial_connection {
-                // Await completion (which would be caused by an error) of all connections
-                futures::future::join_all(connection_join_handles).await;
+                // Await completion (which would be caused by an error) of all connections OR one of the connection raising ProtocolChangedError
+                loop {
+                    let select_result = futures::future::select_all(connection_join_handles).await;
+                    let task_result = select_result.0;
+                    let futures_left = select_result.2;
+                    if task_result.is_err() {
+                        break;
+                    }
+                    match task_result.unwrap() {
+                        ConnectionManagerError::ProtocolChangedError { .. } => {
+                            break;
+                        }
+                        ConnectionManagerError::OtherError { error: _error } => {
+                            //No futures_left means no more filters active, we need to restart the whole listener
+                            if futures_left.is_empty() {
+                                break;
+                            }
+                        }
+                    }
+                    connection_join_handles = futures_left
+                }
             } else {
                 // Return on the first completed (which would be caused by an error) connection
                 let _ = futures::future::select_all(connection_join_handles).await;

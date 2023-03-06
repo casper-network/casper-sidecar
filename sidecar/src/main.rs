@@ -17,6 +17,7 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
@@ -25,7 +26,10 @@ use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
+    sync::{
+        mpsc::{channel as mpsc_channel, Receiver, Sender},
+        Mutex, Notify, RwLock,
+    },
     task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
@@ -73,6 +77,7 @@ async fn main() -> Result<(), Error> {
 
 async fn run(config: Config) -> Result<(), Error> {
     // This is a temporary constraint whilst we iron out the details of handling connection to multiple nodes
+    // Beofre we remove it we need to figure out how we want to handle api versioning for multiple nodes
     if config.connections.len() > 1 {
         return Err(Error::msg(
             "Unable to run with multiple connections specified in config",
@@ -161,35 +166,46 @@ async fn run(config: Config) -> Result<(), Error> {
 
         // The original sender needs to be dropped here as it's existence prevents the event broadcasting logic to proceed
         drop(api_version_tx);
-        drop(outbound_sse_data_sender);
+        //drop(outbound_sse_data_sender);
 
         let _ = join_all(join_handles).await;
 
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     });
 
+    //TODO currently api version handling DOES NOT account for possibility of multiple connections
+
+    // Note - using dummy 0.0.0 version in api_version_provider so that we can have a cleaner api
+    // down the line with RwLock<ProtocolVersion> instead of RwLock<Option<ProtocolVersion>>. Notify
+    // makes sure that we don't send 0.0.0 to event stream
+    let api_version_provider = Arc::new(RwLock::new(ProtocolVersion::from_parts(0, 0, 0)));
+    let api_version_provider_for_write = api_version_provider.clone();
+    let api_version_reported = Arc::new(Notify::new());
+    let api_version_reported_for_write = api_version_reported.clone();
     let event_broadcasting_handle = tokio::spawn(async move {
-        // Wait for the listeners to report the API version before spinning up the Event Stream Server.
-        let mut api_versions = Vec::new();
-        while let Some(api_fetch_res) = api_version_rx.recv().await {
-            match api_fetch_res {
-                Ok(version) => api_versions.push(version),
-                Err(err) => {
-                    error!("Error fetching API version from connected node(s): {err}");
-                    return Err(err);
+        tokio::spawn(async move {
+            let mut error = Error::msg("Api version update unexpectedly stopped");
+            while let Some(api_fetch_res) = api_version_rx.recv().await {
+                match api_fetch_res {
+                    Ok(version) => {
+                        let mut guard = api_version_provider_for_write.write().await;
+                        *guard = version;
+                        // We got a protocol version, event listener can start
+                        drop(guard);
+                        api_version_reported_for_write.notify_one();
+                    }
+                    Err(err) => {
+                        error!("Error fetching API version from connected node(s): {err}");
+                        error = err;
+                        break;
+                    }
                 }
             }
-        }
+            error
+        });
 
-        let api_versions_match = api_versions.windows(2).all(|window| window[0] == window[1]);
-
-        if !api_versions_match {
-            return Err(Error::msg("Couldn't start Event Stream Server due to inbound streams with mismatched API Versions"));
-        } else if api_versions.is_empty() {
-            return Err(Error::msg(
-                "Couldn't start Event Stream Server - no inbound streams reported API version",
-            ));
-        }
+        //TODO maybe this should timeout?
+        api_version_reported.notified().await;
 
         // Create new instance for the Sidecar's Event Stream Server
         let mut event_stream_server = EventStreamServer::new(
@@ -199,12 +215,12 @@ async fn run(config: Config) -> Result<(), Error> {
                 Some(config.event_stream_server.max_concurrent_subscribers),
             ),
             PathBuf::from(&config.storage.storage_path),
-            api_versions[0],
+            api_version_provider.clone(),
         )
         .context("Error starting EventStreamServer")?;
 
-        while let Some(sse_data) = outbound_sse_data_receiver.recv().await {
-            event_stream_server.broadcast(sse_data);
+        while let Some((sse_data, maybe_json_data)) = outbound_sse_data_receiver.recv().await {
+            event_stream_server.broadcast(sse_data, maybe_json_data);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
     });
@@ -232,10 +248,29 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<SseData>,
+    outbound_sse_data_sender: Sender<(SseData, Option<serde_json::Value>)>,
+    last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
         SseData::ApiVersion(version) => {
+            let mut guard = last_reported_protocol_version.lock().await;
+            match &mut *guard {
+                Some(old_version) if old_version.eq(&&version) => {
+                    //do nothing
+                }
+                None | Some(_) => {
+                    *guard = Some(version);
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((SseData::ApiVersion(version), None))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
+                }
+            }
             if enable_event_logging {
                 info!(%version, "API Version");
             }
@@ -258,7 +293,10 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::BlockAdded { block, block_hash })
+                        .send((
+                            SseData::BlockAdded { block, block_hash },
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -291,7 +329,7 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::DeployAccepted { deploy })
+                        .send((SseData::DeployAccepted { deploy }, sse_event.json_data))
                         .await
                     {
                         debug!(
@@ -327,7 +365,7 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::DeployExpired { deploy_hash })
+                        .send((SseData::DeployExpired { deploy_hash }, sse_event.json_data))
                         .await
                     {
                         debug!(
@@ -380,15 +418,18 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::DeployProcessed {
-                            deploy_hash,
-                            account,
-                            timestamp,
-                            ttl,
-                            dependencies,
-                            block_hash,
-                            execution_result,
-                        })
+                        .send((
+                            SseData::DeployProcessed {
+                                deploy_hash,
+                                account,
+                                timestamp,
+                                ttl,
+                                dependencies,
+                                block_hash,
+                                execution_result,
+                            },
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -421,11 +462,14 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::Fault {
-                            era_id,
-                            timestamp,
-                            public_key,
-                        })
+                        .send((
+                            SseData::Fault {
+                                era_id,
+                                timestamp,
+                                public_key,
+                            },
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -457,7 +501,7 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::FinalitySignature(fs))
+                        .send((SseData::FinalitySignature(fs), sse_event.json_data))
                         .await
                     {
                         debug!(
@@ -493,10 +537,13 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send(SseData::Step {
-                            era_id,
-                            execution_effect,
-                        })
+                        .send((
+                            SseData::Step {
+                                era_id,
+                                execution_effect,
+                            },
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -525,7 +572,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<SseData>,
+    outbound_sse_data_sender: Sender<(SseData, Option<serde_json::Value>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {
@@ -535,12 +582,14 @@ async fn sse_processor(
             .stream_aggregated_events(api_version_reporter)
             .await;
     });
+    let last_reported_api_version: Arc<Mutex<Option<ProtocolVersion>>> = Arc::new(Mutex::new(None));
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
             sqlite_database.clone(),
             enable_event_logging,
             outbound_sse_data_sender.clone(),
+            last_reported_api_version.clone(),
         )
         .await
     }

@@ -188,7 +188,7 @@ impl Drop for ServerStopper {
 struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
-    events: Vec<SseData>,
+    events: Vec<(SseData, Option<Value>)>,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -204,7 +204,7 @@ impl TestFixture {
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
         let mut deploys = HashMap::new();
-        let events = (0..EVENT_COUNT)
+        let events: Vec<(SseData, Option<Value>)> = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
@@ -219,8 +219,8 @@ impl TestFixture {
                 6 => SseData::random_finality_signature(rng),
                 _ => unreachable!(),
             })
+            .map(|x| (x, None))
             .collect();
-
         TestFixture {
             storage_dir,
             protocol_version,
@@ -261,10 +261,11 @@ impl TestFixture {
                 .unwrap_or(Config::default().max_concurrent_subscribers),
             ..Default::default()
         };
+        let api_version_provider = Arc::new(RwLock::new(self.protocol_version));
         let mut server = EventStreamServer::new(
             config,
             self.storage_dir.path().to_path_buf(),
-            self.protocol_version,
+            api_version_provider,
         )
         .unwrap();
 
@@ -274,14 +275,18 @@ impl TestFixture {
         let server_address = server.listening_address;
         let events = self.events.clone();
         let server_stopper = self.server_stopper.clone();
-
+        let protocol_version = self.protocol_version;
         let join_handle = tokio::spawn(async move {
             let event_count = if server_behavior.repeat_events {
                 MAX_EVENT_COUNT
             } else {
                 EVENT_COUNT
             };
-            for (id, event) in events.iter().cycle().enumerate().take(event_count as usize) {
+            let api_version_event = SseData::ApiVersion(protocol_version);
+            server.broadcast(api_version_event.clone(), None);
+            for (id, (event, maybe_json_data)) in
+                events.iter().cycle().enumerate().take(event_count as usize)
+            {
                 if server_stopper.should_stop() {
                     debug!("stopping server early");
                     return;
@@ -289,7 +294,7 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                server.broadcast(event.clone());
+                server.broadcast(event.clone(), maybe_json_data.clone());
                 server_behavior.sleep_if_required().await;
             }
 
@@ -364,23 +369,27 @@ impl TestFixture {
         };
 
         let filter = sse_server::get_filter(final_path_element).unwrap();
-        let events: Vec<_> = iter::once(api_version_event)
-            .chain(self.events.iter().enumerate().filter_map(|(id, event)| {
-                let id = id as u128 + self.first_event_id as u128;
-                if event.should_include(filter) {
-                    id_filter(id, event)
-                } else {
-                    None
-                }
-            }))
+        let events: Vec<ReceivedEvent> = iter::once(api_version_event)
+            .chain(
+                self.events
+                    .iter()
+                    .filter(|(event, _)| !matches!(event, SseData::ApiVersion(..)))
+                    .enumerate()
+                    .filter_map(|(id, event)| {
+                        let id = id as u128 + self.first_event_id as u128;
+                        if event.0.should_include(filter) {
+                            id_filter(id, &event.0)
+                        } else {
+                            None
+                        }
+                    }),
+            )
             .collect();
-
         let final_id = events
             .last()
             .expect("should have events")
             .id
             .expect("should have ID");
-
         (events, final_id)
     }
 
@@ -415,10 +424,18 @@ fn url(
 }
 
 /// The representation of an SSE event as received by a subscribed client.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq)]
 struct ReceivedEvent {
     id: Option<Id>,
     data: String,
+}
+
+impl PartialEq for ReceivedEvent {
+    fn eq(&self, other: &Self) -> bool {
+        let this_data = serde_json::from_str::<SseData>(&self.data).unwrap();
+        let that_data = serde_json::from_str::<SseData>(&other.data).unwrap();
+        self.id.eq(&other.id) && this_data.eq(&that_data)
+    }
 }
 
 /// Runs a client, consuming all SSE events until the server has emitted the event with ID
