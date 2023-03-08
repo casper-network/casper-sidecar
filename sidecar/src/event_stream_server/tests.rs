@@ -21,7 +21,7 @@ use tokio::{
 };
 use tracing::debug;
 
-use casper_types::testing::TestRng;
+use casper_types::{testing::TestRng, ProtocolVersion};
 
 use super::*;
 use sse_server::{
@@ -261,13 +261,8 @@ impl TestFixture {
                 .unwrap_or(Config::default().max_concurrent_subscribers),
             ..Default::default()
         };
-        let api_version_provider = Arc::new(RwLock::new(self.protocol_version));
-        let mut server = EventStreamServer::new(
-            config,
-            self.storage_dir.path().to_path_buf(),
-            api_version_provider,
-        )
-        .unwrap();
+        let mut server =
+            EventStreamServer::new(config, self.storage_dir.path().to_path_buf()).unwrap();
 
         self.first_event_id = server.event_indexer.current_index();
 
@@ -894,7 +889,6 @@ async fn should_handle_bad_url_path() {
         format!("http://{}?{}=0", server_address, QUERY_FIELD),
         format!("http://{}/bad", server_address),
         format!("http://{}/bad?{}=0", server_address, QUERY_FIELD),
-        format!("http://{}/{}", server_address, ROOT_PATH),
         format!("http://{}/{}?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
         format!("http://{}/{}/bad", server_address, ROOT_PATH),
         format!("http://{}/{}/bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH),

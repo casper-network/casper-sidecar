@@ -27,18 +27,17 @@ mod sse_server;
 #[cfg(test)]
 mod tests;
 
-use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
 use serde_json::Value;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
-    oneshot, RwLock,
+    oneshot,
 };
 use tracing::{info, warn};
 use warp::Filter;
 
 use casper_event_types::sse_data::SseData;
-use casper_types::ProtocolVersion;
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
@@ -65,11 +64,7 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(
-        config: Config,
-        storage_path: PathBuf,
-        api_version_provider: Arc<RwLock<ProtocolVersion>>,
-    ) -> Result<Self, ListeningError> {
+    pub(crate) fn new(config: Config, storage_path: PathBuf) -> Result<Self, ListeningError> {
         let required_address = resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
@@ -110,7 +105,6 @@ impl EventStreamServer {
 
         tokio::spawn(http_server::run(
             config,
-            api_version_provider,
             server_with_shutdown,
             shutdown_sender,
             sse_data_receiver,

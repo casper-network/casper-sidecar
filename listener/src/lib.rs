@@ -6,6 +6,7 @@ use std::{
     fmt::{Display, Formatter},
     net::IpAddr,
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
@@ -15,7 +16,7 @@ pub use connection_manager::SseEvent;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::Sender, Mutex};
 use tracing::{debug, error, info, trace};
 use url::Url;
 const BUILD_VERSION_KEY: &str = "build_version";
@@ -26,7 +27,7 @@ pub struct NodeConnectionInterface {
     pub rest_port: u16,
 }
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
 enum Filter {
     Events,
     Main,
@@ -85,12 +86,16 @@ impl EventListener {
 
     pub async fn stream_aggregated_events(
         &mut self,
-        api_version_sender: Sender<Result<ProtocolVersion, Error>>,
+        initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
     ) -> Result<(), Error> {
         let mut attempts = 0;
+        let last_event_ids_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
+        let mut single_use_reporter = Some(initial_api_version_sender);
+        let last_event_ids_for_filter_clone = last_event_ids_for_filter.clone();
         while attempts < self.max_connection_attempts {
+            let last_event_ids_for_filter_clone = last_event_ids_for_filter_clone.clone();
             attempts += 1;
 
             info!(
@@ -101,7 +106,10 @@ impl EventListener {
             match self.fetch_api_version_from_status().await {
                 Ok(version) => {
                     let new_api_version = version;
-                    api_version_sender.send(Ok(new_api_version)).await?;
+
+                    if let Some(sender) = single_use_reporter.take() {
+                        let _ = sender.send(Ok(new_api_version)).await;
+                    }
 
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
@@ -138,6 +146,10 @@ impl EventListener {
                 (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
 
             for filter in filters {
+                let last_event_ids_for_filter_clone = last_event_ids_for_filter_clone.clone();
+                let guard = last_event_ids_for_filter_clone.lock().await;
+                let maybe_event_id = guard.get(&filter).copied();
+                drop(guard);
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
                 let connection = ConnectionManager::new(
                     bind_address_for_filter,
@@ -145,25 +157,35 @@ impl EventListener {
                     self.sse_event_sender.clone(),
                     maybe_tasks.clone(),
                     self.connection_timeout,
-                    self.api_version,
+                    maybe_event_id,
+                    filter.clone(),
                 );
 
                 connections.insert(filter, connection);
             }
+
             let mut connection_join_handles = Vec::new();
 
             for (filter, mut connection) in connections.drain() {
+                let filter_map_lock_clone = last_event_ids_for_filter_clone.clone();
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
-                    let err = connection.start_handling().await;
+                    let (filter, maybe_last_event_id, err) = connection.start_handling().await;
                     error!("Error on start_handling: {}", err);
+                    let mut guard = filter_map_lock_clone.lock().await;
+                    if let Some(event_id) = maybe_last_event_id {
+                        guard.insert(filter, event_id);
+                    } else {
+                        guard.remove(&filter);
+                    }
+                    drop(guard);
                     err
                 });
                 connection_join_handles.push(handle);
             }
 
             if self.allow_partial_connection {
-                // Await completion (which would be caused by an error) of all connections OR one of the connection raising ProtocolChangedError
+                // Await completion (which would be caused by an error) of all connections OR one of the connection raising NonRecoverableError
                 loop {
                     let select_result = futures::future::select_all(connection_join_handles).await;
                     let task_result = select_result.0;
@@ -172,12 +194,18 @@ impl EventListener {
                         break;
                     }
                     match task_result.unwrap() {
-                        ConnectionManagerError::ProtocolChangedError { .. } => {
+                        ConnectionManagerError::NonRecoverableError { error } => {
+                            error!(
+                                "Restarting event listener {} because of NonRecoverableError: {} ",
+                                self.node.ip_address.to_string(),
+                                error
+                            );
                             break;
                         }
-                        ConnectionManagerError::OtherError { error: _error } => {
+                        ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
+                                error!("Restarting event listener {} because of NonRecoverableError: {} ", self.node.ip_address.to_string(), error);
                                 break;
                             }
                         }
@@ -189,7 +217,6 @@ impl EventListener {
                 let _ = futures::future::select_all(connection_join_handles).await;
             }
         }
-
         Ok(())
     }
 

@@ -50,6 +50,7 @@ portpicker = "0.1.1"
 reqwest = { version = "0.11.3", features = ["stream"] }
 tabled = { version = "0.10.0", features = ["derive", "color"] }
 tempfile = "3"
+async-stream = "0.3.4"
 
 [package.metadata.deb]
 revision = "0"

@@ -17,6 +17,8 @@ use tracing::{debug, error, trace, warn};
 use reqwest::Url;
 use tokio::sync::mpsc::Sender;
 
+use crate::Filter;
+
 use super::ConnectionTasks;
 use casper_event_types::sse_data::{deserialize, SseData};
 
@@ -56,47 +58,44 @@ impl Display for SseEvent {
     }
 }
 
+type DeserializationFn = fn(&str) -> Result<SseData, Error>;
+
 pub(super) struct ConnectionManager {
     bind_address: Url,
     current_event_id: Option<u32>,
-    attempts: usize,
     max_attempts: usize,
     delay_between_attempts: Duration,
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
     connection_timeout: Duration,
-    api_version: ProtocolVersion,
-    deserialization_fn: fn(&str) -> Result<SseData, Error>,
+    api_version: Option<ProtocolVersion>,
+    filter: Filter,
+    deserialization_fn: Option<DeserializationFn>,
 }
 
 pub enum ConnectionManagerError {
-    ProtocolChangedError {
-        endpoint: String,
-        old: ProtocolVersion,
-        new: ProtocolVersion,
-    },
-    OtherError {
-        error: Error,
-    },
+    NonRecoverableError { error: Error },
+    InitialConnectionError { error: Error },
 }
 
 impl Display for ConnectionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::OtherError { error } => {
-                write!(f, "ConnectionManagerError: {}", error)
+            Self::NonRecoverableError { error } => {
+                write!(f, "NonRecoverableError: {}", error)
             }
-            Self::ProtocolChangedError { endpoint, old, new } => {
-                write!(f, "ProtocolChangedError: endpoint {} got an ApiVersion message that changed the protocol from {} to {}", endpoint, old, new)
+            Self::InitialConnectionError { error } => {
+                write!(f, "InitialConnectionError: {}", error)
             }
         }
     }
 }
 
-impl ConnectionManagerError {
-    fn to_other_error(error: Error) -> ConnectionManagerError {
-        ConnectionManagerError::OtherError { error }
-    }
+fn non_recoverable_error(error: Error) -> ConnectionManagerError {
+    ConnectionManagerError::NonRecoverableError { error }
+}
+fn recoverable_error(error: Error) -> ConnectionManagerError {
+    ConnectionManagerError::InitialConnectionError { error }
 }
 
 impl ConnectionManager {
@@ -106,56 +105,32 @@ impl ConnectionManager {
         sse_data_sender: Sender<SseEvent>,
         maybe_tasks: Option<ConnectionTasks>,
         connection_timeout: Duration,
-        api_version: ProtocolVersion,
+        start_from_event_id: Option<u32>,
+        filter: Filter,
     ) -> Self {
         trace!("Creating connection manager for: {}", bind_address);
-        let deserialization_fn = determine_deserializer(api_version);
 
         Self {
             bind_address,
-            current_event_id: None,
-            attempts: 0,
+            current_event_id: start_from_event_id,
             max_attempts,
             delay_between_attempts: Duration::from_secs(1),
             sse_event_sender: sse_data_sender,
             maybe_tasks,
             connection_timeout,
-            api_version,
-            deserialization_fn,
+            api_version: None,
+            filter,
+            deserialization_fn: None,
         }
     }
 
     ///This function is blocking, it will return an ConnectionManagerError result if something went wrong while processing.
-    pub(super) async fn start_handling(&mut self) -> ConnectionManagerError {
-        match self.do_start_handling().await {
-            Ok(_) => ConnectionManagerError::to_other_error(Error::msg(
-                "Unexpected Ok() from do_start_handling",
-            )),
+    pub(super) async fn start_handling(&mut self) -> (Filter, Option<u32>, ConnectionManagerError) {
+        let err = match self.do_start_handling().await {
+            Ok(_) => non_recoverable_error(Error::msg("Unexpected Ok() from do_start_handling")),
             Err(e) => e,
-        }
-    }
-
-    fn increment_attempts(&mut self) -> bool {
-        self.attempts += 1;
-        if self.attempts >= self.max_attempts {
-            warn!(
-                "Max attempts reached whilst incrementing attempts... {}/{}",
-                self.attempts, self.max_attempts
-            );
-            false
-        } else {
-            trace!(
-                "Incrementing attempts...{}/{}",
-                self.attempts,
-                self.max_attempts
-            );
-            true
-        }
-    }
-
-    fn reset_attempts(&mut self) {
-        trace!("Resetting attempts...");
-        self.attempts = 0;
+        };
+        (self.filter.clone(), self.current_event_id, err)
     }
 
     async fn connect_with_retries(
@@ -169,8 +144,8 @@ impl ConnectionManager {
         while retry_count <= self.max_attempts {
             match self.connect().await {
                 Ok(event_stream) => return Ok(event_stream),
-                Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new }) => {
-                    return Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new })
+                Err(ConnectionManagerError::NonRecoverableError { error }) => {
+                    return Err(ConnectionManagerError::NonRecoverableError { error })
                 }
                 Err(err) => last_error = Some(err),
             }
@@ -201,19 +176,19 @@ impl ConnectionManager {
         let client = Client::builder()
             .connect_timeout(self.connection_timeout)
             .build()
-            .map_err(|err| ConnectionManagerError::to_other_error(Error::new(err)))?;
+            .map_err(|err| recoverable_error(Error::new(err)))?;
         let sse_response = client
             .get(bind_address)
             .send()
             .await
-            .map_err(|err| ConnectionManagerError::to_other_error(Error::new(err)))?;
+            .map_err(|err| recoverable_error(Error::new(err)))?;
         let event_source = sse_response.bytes_stream().eventsource();
         // Parse the first event to see if the connection was successful
         self.consume_api_version(event_source).await
     }
 
     async fn do_start_handling(&mut self) -> Result<(), ConnectionManagerError> {
-        let mut event_stream = match self.connect_with_retries().await {
+        let event_stream = match self.connect_with_retries().await {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
                     tasks.register_success()
@@ -234,37 +209,17 @@ impl ConnectionManager {
                     "Failed to connect to all filters. Disconnecting from {}",
                     self.bind_address
                 ));
-                return Err(ConnectionManagerError::to_other_error(error));
+                return Err(non_recoverable_error(error));
             }
         }
 
-        loop {
-            let outcome = self.handle_stream(event_stream).await;
-            let error = match outcome {
-                Ok(_) => {
-                    return Err(decorate_with_event_stream_closed(self.bind_address.clone()));
-                }
-                Err(ConnectionManagerError::ProtocolChangedError { endpoint, old, new }) => {
-                    //This error can't be retried, we need to restart the whole event listener
-                    return Err(ConnectionManagerError::ProtocolChangedError {
-                        endpoint,
-                        old,
-                        new,
-                    });
-                }
-                Err(ConnectionManagerError::OtherError { error }) => error,
-            };
-            if !self.increment_attempts() {
-                // We are counting these attempts in case there is some weird scenario in which we are
-                // able to connect to the nodes filter, but we are unable to understand the events from it
-                return Err(decorate_with_error_handling_stream(
-                    error,
-                    self.bind_address.clone(),
-                ));
-            }
-            event_stream = self.connect_with_retries().await?;
-            self.reset_attempts();
-        }
+        let outcome = self.handle_stream(event_stream).await;
+        //If we loose connection for some reason we need to go back to the event listener and do
+        // the whole handshake process again
+        Err(match outcome {
+            Ok(_) => decorate_with_event_stream_closed(self.bind_address.clone()),
+            Err(err) => err,
+        })
     }
 
     async fn handle_stream<E, S>(
@@ -292,14 +247,12 @@ impl ConnectionManager {
                     }
                     self.handle_event(event)
                         .await
-                        .map_err(ConnectionManagerError::to_other_error)?;
+                        .map_err(non_recoverable_error)?;
                 }
                 Err(stream_error) => {
                     let error_message = format!("EventStream Error: {:?}", stream_error);
                     error!(error_message);
-                    return Err(ConnectionManagerError::to_other_error(Error::msg(
-                        error_message,
-                    )));
+                    return Err(non_recoverable_error(Error::msg(error_message)));
                 }
             }
         }
@@ -307,7 +260,10 @@ impl ConnectionManager {
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
-        match (self.deserialization_fn)(&event.data) {
+        match (self
+            .deserialization_fn
+            .expect("deserialization_fn should be set by now"))(&event.data)
+        {
             Ok(SseData::Shutdown) => {
                 error!("Received Shutdown message ({})", self.bind_address);
             }
@@ -317,7 +273,6 @@ impl ConnectionManager {
                 return Err(Error::msg(error_message));
             }
             Ok(sse_data) => {
-                self.reset_attempts();
                 let json_data: Value = serde_json::from_str(&event.data)?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
@@ -336,7 +291,7 @@ impl ConnectionManager {
     }
 
     async fn consume_api_version<S, E>(
-        &self,
+        &mut self,
         mut stream: EventStream<S>,
     ) -> Result<EventStream<S>, ConnectionManagerError>
     where
@@ -344,14 +299,15 @@ impl ConnectionManager {
         S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
     {
         match stream.next().await {
-            None => Err(ConnectionManagerError::to_other_error(Error::msg(
-                "First event was empty",
-            ))),
+            None => Err(recoverable_error(Error::msg("First event was empty"))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
                 if event.data.contains("ApiVersion") {
                     self.validate_api_version(&event.data)?;
-                    match (self.deserialization_fn)(&event.data) {
+
+                    match deserialize(&event.data) {
+                        //at this point we
+                        // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
                         Ok(SseData::ApiVersion(semver)) => {
                             let sse_event = SseEvent::new(
                                 0,
@@ -360,23 +316,23 @@ impl ConnectionManager {
                                 None,
                             );
                             self.sse_event_sender.send(sse_event).await.map_err(|_| {
-                            ConnectionManagerError::to_other_error(Error::msg(
+                                non_recoverable_error(Error::msg(
                                 "Error when trying to send message in ConnectionManager#handle_event",
                             ))
                         })?
                         }
                         Ok(_sse_data) => {
-                            return Err(ConnectionManagerError::to_other_error(Error::msg(
+                            return Err(non_recoverable_error(Error::msg(
                                 "When trying to deserialize ApiVersion got other type of message",
                             )))
                         }
                         Err(x) => {
-                            return Err(ConnectionManagerError::to_other_error(Error::msg(
-                                format!("Error when trying to deserialize ApiVersion {}", x),
-                            )))
+                            return Err(non_recoverable_error(Error::msg(format!(
+                            "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
+                            x, event.data
+                        ))))
                         }
                     }
-
                     Ok(stream)
                 } else {
                     Err(expected_first_message_to_be_api_version(event.data))
@@ -385,22 +341,26 @@ impl ConnectionManager {
         }
     }
 
-    fn validate_api_version(&self, data: &str) -> Result<(), ConnectionManagerError> {
+    fn validate_api_version(&mut self, data: &str) -> Result<(), ConnectionManagerError> {
         let sse_data = serde_json::from_str::<SseData>(data).map_err(|serde_error| {
-            ConnectionManagerError::to_other_error(Error::msg(serde_error).context("Serde Error"))
+            non_recoverable_error(Error::msg(serde_error).context("Serde Error"))
         })?;
-        match sse_data {
-            SseData::ApiVersion(semver) if !semver.eq(&self.api_version) => {
-                Err(ConnectionManagerError::ProtocolChangedError {
-                    endpoint: self.bind_address.to_string(),
-                    old: self.api_version,
-                    new: semver,
-                })
+        match (sse_data, self.api_version) {
+            (SseData::ApiVersion(incoming_semver), Some(old_semver))
+                if !incoming_semver.eq(&old_semver) =>
+            {
+                let err = Error::msg(format!("protocol changed error: endpoint {} got an ApiVersion message that changed the protocol from {:?} to {:?}", self.bind_address, self.api_version, incoming_semver));
+                Err(ConnectionManagerError::NonRecoverableError { error: err })
             }
-            SseData::ApiVersion(..) => Ok(()),
+            (SseData::ApiVersion(semver), None) => {
+                self.api_version = Some(semver);
+                self.deserialization_fn = Some(determine_deserializer(semver));
+                Ok(())
+            }
+            (SseData::ApiVersion(..), Some(..)) => Ok(()),
             _ => {
                 let err = Error::msg("Received a message that contains \"ApiVersion\", but is not an ApiVersion message...");
-                Err(ConnectionManagerError::to_other_error(err))
+                Err(non_recoverable_error(err))
             }
         }
     }
@@ -417,28 +377,24 @@ fn couldnt_connect(
         attempts
     );
     match last_error {
-        None => ConnectionManagerError::to_other_error(Error::msg(message)),
-        Some(ConnectionManagerError::OtherError { error }) => ConnectionManagerError::OtherError {
-            error: error.context(message),
-        },
-        Some(x) => x, //This shouldn't happen in a realistic scenario
+        None => non_recoverable_error(Error::msg(message)),
+        Some(ConnectionManagerError::InitialConnectionError { error }) => {
+            ConnectionManagerError::InitialConnectionError {
+                error: error.context(message),
+            }
+        }
+        Some(ConnectionManagerError::NonRecoverableError { error }) => {
+            ConnectionManagerError::NonRecoverableError {
+                error: error.context(message),
+            }
+        }
     }
 }
 
 fn decorate_with_event_stream_closed(address: Url) -> ConnectionManagerError {
     let message = format!("Event stream closed for filter: {:?}", address.as_str());
-    ConnectionManagerError::OtherError {
+    ConnectionManagerError::NonRecoverableError {
         error: Error::msg(message),
-    }
-}
-
-fn decorate_with_error_handling_stream(error: Error, address: Url) -> ConnectionManagerError {
-    let message = format!(
-        "Error while handling event stream for filter {:?}",
-        address.as_str()
-    );
-    ConnectionManagerError::OtherError {
-        error: error.context(message),
     }
 }
 
@@ -446,22 +402,23 @@ fn failed_to_get_first_event<T>(error: T) -> ConnectionManagerError
 where
     T: Debug,
 {
-    ConnectionManagerError::to_other_error(Error::msg(format!(
+    non_recoverable_error(Error::msg(format!(
         "failed to get first event: {:?}",
         error
     )))
 }
 
 fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerError {
-    ConnectionManagerError::to_other_error(Error::msg(format!(
+    non_recoverable_error(Error::msg(format!(
         "Expected first message to be ApiVersion, got: {:?}",
         data
     )))
 }
 
-fn determine_deserializer(api_version: ProtocolVersion) -> fn(&str) -> Result<SseData, Error> {
-    let one_zero_zero = ProtocolVersion::from_parts(1, 0, 0);
-    if api_version.eq(&one_zero_zero) {
+fn determine_deserializer(api_version: ProtocolVersion) -> DeserializationFn {
+    //AFAIK the format of messages changed in a backwards-incompatible way in 1.2.0
+    let one_two_zero = ProtocolVersion::from_parts(1, 2, 0);
+    if api_version.lt(&one_two_zero) {
         casper_event_types::sse_data_1_0_0::deserialize
     } else {
         deserialize
@@ -470,25 +427,87 @@ fn determine_deserializer(api_version: ProtocolVersion) -> fn(&str) -> Result<Ss
 
 #[cfg(test)]
 mod tests {
+    use casper_event_types::{
+        sse_data::tests::{example_block_added_1_4_10, BLOCK_HASH_1},
+        sse_data_1_0_0::tests::example_block_added_1_0_0,
+    };
+
     use super::*;
-    macro_rules! is_of_var {
-        ($val:ident, $var:path) => {
-            match $val {
-                $var { .. } => true,
-                _ => false,
-            }
-        };
-    }
 
     #[tokio::test]
     async fn given_determine_deserializer_and_1_0_0_should_return_1_0_0_deserializer() {
-        let legacy_block_added_raw = "{\"BlockAdded\":{\"block\":{\"body\":{\"deploy_hashes\": [], \"proposer\": \"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\", \"transfer_hashes\": []}, \"hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\", \"header\":{\"accumulated_seed\": \"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\", \"body_hash\": \"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\", \"era_end\":{\"era_report\":{\"equivocators\": [], \"inactive_validators\": [], \"rewards\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": 1559249876159, \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": 25892675444}}, \"next_era_validator_weights\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": \"50359181028146696\", \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": \"836257197475108\"}}, \"era_id\": 18, \"height\": 2075, \"parent_hash\": \"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\", \"protocol_version\": \"1.0.0\", \"random_bit\": true, \"state_root_hash\": \"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\", \"timestamp\": \"2021-04-02T05:03:29.792Z\"}, \"proofs\": []}, \"block_hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\"}}".to_string();
-        let new_format_block_added_raw = "{\"BlockAdded\":{\"block_hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"block\":{\"hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"header\":{\"parent_hash\":\"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\",\"state_root_hash\":\"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\",\"body_hash\":\"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\",\"random_bit\":true,\"accumulated_seed\":\"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\",\"era_end\":{\"era_report\":{\"equivocators\":[],\"rewards\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"amount\":1559249876159},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"amount\":25892675444}],\"inactive_validators\":[]},\"next_era_validator_weights\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"weight\":\"50359181028146696\"},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"weight\":\"836257197475108\"}]},\"timestamp\":\"2021-04-02T05:03:29.792Z\",\"era_id\":18,\"height\":2075,\"protocol_version\":\"1.0.0\"},\"body\":{\"proposer\":\"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\",\"deploy_hashes\":[],\"transfer_hashes\":[]},\"proofs\":[]}}}".to_string();
+        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
+        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
         let deserializer = determine_deserializer(protocol_version);
         let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
 
-        assert!(is_of_var!(sse_data, SseData::BlockAdded));
+        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
+        if let SseData::BlockAdded {
+            block_hash: _,
+            block,
+        } = sse_data.clone()
+        {
+            assert!(block.proofs.is_empty());
+            //let raw = serde_json::to_string(&sse_data);
+            assert_eq!(
+                sse_data,
+                serde_json::from_str::<SseData>(&new_format_block_added_raw).unwrap()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_fails_on_contemporary_block_added(
+    ) {
+        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let result = (deserializer)(&new_format_block_added_raw);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_deserializes_legacy_block_added(
+    ) {
+        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
+        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+
+        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
+        if let SseData::BlockAdded {
+            block_hash: _,
+            block,
+        } = sse_data.clone()
+        {
+            assert!(block.proofs.is_empty());
+            let sse_data_1_4_10 =
+                serde_json::from_str::<SseData>(&new_format_block_added_raw).unwrap();
+            assert_eq!(sse_data, sse_data_1_4_10);
+        }
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_2_0_should_return_generic_deserializer_which_fails_on_legacy_block_added(
+    ) {
+        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let result = (deserializer)(&legacy_block_added_raw);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn given_determine_deserializer_and_1_2_0_should_deserialize_contemporary_block_added_payload(
+    ) {
+        let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
+        let deserializer = determine_deserializer(protocol_version);
+        let sse_data = (deserializer)(&block_added_raw).unwrap();
+
+        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
             block_hash: _,
             block,
@@ -496,29 +515,29 @@ mod tests {
         {
             assert!(block.proofs.is_empty());
             let raw = serde_json::to_string(&sse_data);
-            assert_eq!(raw.unwrap(), new_format_block_added_raw);
+            assert_eq!(raw.unwrap(), block_added_raw);
         }
     }
 
     #[tokio::test]
-    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_fails_on_legacy_block_added(
+    async fn given_determine_deserializer_and_1_4_10_should_return_generic_deserializer_which_fails_on_legacy_block_added(
     ) {
-        let legacy_block_added_raw = "{\"BlockAdded\":{\"block\":{\"body\":{\"deploy_hashes\": [], \"proposer\": \"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\", \"transfer_hashes\": []}, \"hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\", \"header\":{\"accumulated_seed\": \"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\", \"body_hash\": \"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\", \"era_end\":{\"era_report\":{\"equivocators\": [], \"inactive_validators\": [], \"rewards\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": 1559249876159, \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": 25892675444}}, \"next_era_validator_weights\":{\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\": \"50359181028146696\", \"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\": \"836257197475108\"}}, \"era_id\": 18, \"height\": 2075, \"parent_hash\": \"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\", \"protocol_version\": \"1.0.0\", \"random_bit\": true, \"state_root_hash\": \"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\", \"timestamp\": \"2021-04-02T05:03:29.792Z\"}, \"proofs\": []}, \"block_hash\": \"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\"}}".to_string();
-        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let result = (deserializer)(&legacy_block_added_raw);
+        let result = (deserializer)(&block_added_raw);
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_deserializes_new_block_added(
+    async fn given_determine_deserializer_and_1_4_10_should_deserialize_contemporary_block_added_payload(
     ) {
-        let block_added_raw = "{\"BlockAdded\":{\"block_hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"block\":{\"hash\":\"e871418f5d47424514b385f48cf1b56c2e7309fbe47746d396b573111a6c9cd9\",\"header\":{\"parent_hash\":\"d2e919792d752bc58ca3df1351e3d569cebf6bf77470475ab8321d6b2abb7ad4\",\"state_root_hash\":\"442e82950da702cc47460b318e43ace0cd3345fe2288280d304409adebb3744d\",\"body_hash\":\"43f3da1d596220f2d7202ca222c3c11f1ec100102e7fa0bee1e8e40f8ed4497c\",\"random_bit\":true,\"accumulated_seed\":\"32f33577d757609af354f4e18f21af684ae793fe9469388aa605a75bad9dc86b\",\"era_end\":{\"era_report\":{\"equivocators\":[],\"rewards\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"amount\":1559249876159},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"amount\":25892675444}],\"inactive_validators\":[]},\"next_era_validator_weights\":[{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"weight\":\"50359181028146696\"},{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"weight\":\"836257197475108\"}]},\"timestamp\":\"2021-04-02T05:03:29.792Z\",\"era_id\":18,\"height\":2075,\"protocol_version\":\"1.0.0\"},\"body\":{\"proposer\":\"0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1\",\"deploy_hashes\":[],\"transfer_hashes\":[]},\"proofs\":[]}}}".to_string();
-        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+        let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
+        let protocol_version = ProtocolVersion::from_parts(1, 4, 10);
         let deserializer = determine_deserializer(protocol_version);
         let sse_data = (deserializer)(&block_added_raw).unwrap();
 
-        assert!(is_of_var!(sse_data, SseData::BlockAdded));
+        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
             block_hash: _,
             block,

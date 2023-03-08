@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::{
     broadcast::{self, error::RecvError},
-    mpsc,
+    mpsc::{self, UnboundedSender},
 };
 use tokio_stream::wrappers::{
     errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
@@ -262,6 +262,65 @@ pub(super) struct ChannelsAndFilter {
     pub(super) sse_filter: BoxedFilter<(Response,)>,
 }
 
+fn serve_sse_response_handler(
+    path_param: Option<String>,
+    query: HashMap<String, String>,
+    cloned_broadcaster: tokio::sync::broadcast::Sender<BroadcastChannelMessage>,
+    max_concurrent_subscribers: u32,
+    new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
+) -> http::Response<Body> {
+    // If we already have the maximum number of subscribers, reject this new one.
+    if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+        info!(
+            %max_concurrent_subscribers,
+            "event stream server has max subscribers: rejecting new one"
+        );
+        return create_503();
+    }
+
+    // If `path_param` is not a valid string, return a 404.
+    let event_filter = match get_filter(
+        path_param
+            .unwrap_or_else(|| SSE_API_MAIN_PATH.to_string())
+            .as_str(),
+    ) {
+        Some(filter) => filter,
+        None => return create_404(),
+    };
+
+    let start_from = match parse_query(query) {
+        Ok(maybe_id) => maybe_id,
+        Err(error_response) => return error_response,
+    };
+
+    // Create a channel for the client's handler to receive the stream of initial
+    // events.
+    let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
+
+    // Supply the server with the sender part of the channel along with the client's
+    // requested starting point.
+    let new_subscriber_info = NewSubscriberInfo {
+        start_from,
+        initial_events_sender,
+    };
+    if new_subscriber_info_sender
+        .send(new_subscriber_info)
+        .is_err()
+    {
+        error!("failed to send new subscriber info");
+    }
+
+    // Create a channel for the client's handler to receive the stream of ongoing
+    // events.
+    let ongoing_events_receiver = cloned_broadcaster.subscribe();
+
+    sse::reply(sse::keep_alive().stream(stream_to_client(
+        initial_events_receiver,
+        ongoing_events_receiver,
+        event_filter,
+    )))
+    .into_response()
+}
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
@@ -273,61 +332,26 @@ impl ChannelsAndFilter {
         // Create a channel for `NewSubscriberInfo`s to pass the information required to handle a
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
-
+        let opt = warp::path::param::<String>()
+            .map(Some)
+            .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
         let sse_filter = warp::get()
-            .and(path(SSE_API_ROOT_PATH))
-            .and(path::param::<String>())
+            .and(warp::path!("events" / ..))
+            .and(opt)
             .and(path::end())
             .and(warp::query())
-            .map(move |path_param: String, query: HashMap<String, String>| {
-                // If we already have the maximum number of subscribers, reject this new one.
-                if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
-                    info!(
-                        %max_concurrent_subscribers,
-                        "event stream server has max subscribers: rejecting new one"
-                    );
-                    return create_503();
-                }
-
-                // If `path_param` is not a valid string, return a 404.
-                let event_filter = match get_filter(path_param.as_str()) {
-                    Some(filter) => filter,
-                    None => return create_404(),
-                };
-
-                let start_from = match parse_query(query) {
-                    Ok(maybe_id) => maybe_id,
-                    Err(error_response) => return error_response,
-                };
-
-                // Create a channel for the client's handler to receive the stream of initial
-                // events.
-                let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
-
-                // Supply the server with the sender part of the channel along with the client's
-                // requested starting point.
-                let new_subscriber_info = NewSubscriberInfo {
-                    start_from,
-                    initial_events_sender,
-                };
-                if new_subscriber_info_sender
-                    .send(new_subscriber_info)
-                    .is_err()
-                {
-                    error!("failed to send new subscriber info");
-                }
-
-                // Create a channel for the client's handler to receive the stream of ongoing
-                // events.
-                let ongoing_events_receiver = cloned_broadcaster.subscribe();
-
-                sse::reply(sse::keep_alive().stream(stream_to_client(
-                    initial_events_receiver,
-                    ongoing_events_receiver,
-                    event_filter,
-                )))
-                .into_response()
-            })
+            .map(
+                move |maybe_path_param: Option<String>, query: HashMap<String, String>| {
+                    let new_subscriber_info_sender_clone = new_subscriber_info_sender.clone();
+                    serve_sse_response_handler(
+                        maybe_path_param,
+                        query,
+                        cloned_broadcaster.clone(),
+                        max_concurrent_subscribers,
+                        new_subscriber_info_sender_clone,
+                    )
+                },
+            )
             .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
             .boxed();
 

@@ -1,12 +1,10 @@
-use std::{ops::Deref, sync::Arc};
-
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
     sync::{
         broadcast,
         mpsc::{self, error::SendError},
-        oneshot, RwLock,
+        oneshot,
     },
     task,
 };
@@ -35,7 +33,6 @@ use super::{
 ///   with the requested number of historical events.
 pub(super) async fn run(
     config: Config,
-    api_version_provider: Arc<RwLock<ProtocolVersion>>,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
     mut data_receiver: mpsc::UnboundedReceiver<(
@@ -98,6 +95,8 @@ pub(super) async fn run(
                             }) {
                                 // As per sending `SSE_INITIAL_EVENT`, we don't care if this errors.
                                 let (protocol, event) = tuple;
+                                // If one of the stored events belongs to a different api version than the previous one we
+                                // need to emit an ApiVersion event to the outbound
                                 if observed_protocol_version.is_none() || !observed_protocol_version.unwrap().eq(protocol) {
                                     let _ = subscriber.initial_events_sender.send(ServerSentEvent::initial_event(*protocol));
                                     observed_protocol_version = Some(*protocol);
@@ -106,10 +105,13 @@ pub(super) async fn run(
                                 observed_events = true;
                             }
                         }
-
                         if !observed_events {
-                            // If no messages were sent (not start_from or no matching messages in buffer) - we need to push from global state
-                            let _ = send_api_version_from_global_state(api_version_provider.clone(), subscriber).await;
+                            match latest_protocol_version{
+                                None => {},
+                                Some(v) => {
+                                    let _ = send_api_version_from_global_state(v, subscriber).await;
+                                }
+                            }
                         }
                     }
                 }
@@ -161,13 +163,10 @@ pub(super) async fn run(
 }
 
 async fn send_api_version_from_global_state(
-    api_version_provider: Arc<RwLock<ProtocolVersion>>,
+    protocol_version: ProtocolVersion,
     subscriber: NewSubscriberInfo,
 ) -> Result<(), SendError<ServerSentEvent>> {
-    let api_version_guard = api_version_provider.read().await;
-    let api_version = *api_version_guard.deref();
-    drop(api_version_guard);
     subscriber
         .initial_events_sender
-        .send(ServerSentEvent::initial_event(api_version))
+        .send(ServerSentEvent::initial_event(protocol_version))
 }
