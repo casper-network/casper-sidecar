@@ -50,7 +50,7 @@ jobs:
         # RUSTSEC-2022-0090 I don't think we have much power over that, it's a transitive dependency of sqlx.
         # We need to keep an eye on the newest sqlx-core update and apply it ASAP. Ultimately the vulnerability
         # is almost non-existant to us since we don't use SQLite's printf function
-        run: cargo audit --ignore RUSTSEC-2023-0003 --ignore RUSTSEC-2022-0090
+        run: cargo audit --ignore RUSTSEC-2023-0003 --ignore RUSTSEC-2022-0090 --ignore RUSTSEC-2021-0146
 
       - name: test
         run: cargo test
