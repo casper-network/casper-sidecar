@@ -17,7 +17,7 @@ use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{
-            setup_mock_api_version_server, spin_up_fake_event_stream, Bound,
+            setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
             GenericScenarioSettings, Restart, Scenario,
         },
         shared::EventType,
@@ -74,7 +74,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
@@ -105,7 +105,7 @@ async fn should_allow_client_connection_to_sse() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -151,7 +151,7 @@ async fn should_send_shutdown_to_sse_client() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -195,7 +195,7 @@ async fn should_respond_to_rest_query() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -342,7 +342,7 @@ async fn partial_connection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(node_port_for_sse_connection, 1, 2);
     testing_config.set_allow_partial_connection_for_node(
         node_port_for_sse_connection,
@@ -428,7 +428,7 @@ async fn reconnection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
         max_attempts,
@@ -473,7 +473,7 @@ async fn reconnection_test_with_port_dropping(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_api_version_server(node_port_for_rest_connection);
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
         max_attempts,

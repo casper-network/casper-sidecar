@@ -20,7 +20,7 @@ use tokio::sync::mpsc::Sender;
 use crate::Filter;
 
 use super::ConnectionTasks;
-use casper_event_types::sse_data::{deserialize, SseData};
+use casper_event_types::sse_data::{deserialize, SseData, SseDataDeserializeError};
 
 pub struct SseEvent {
     pub id: u32,
@@ -58,7 +58,7 @@ impl Display for SseEvent {
     }
 }
 
-type DeserializationFn = fn(&str) -> Result<SseData, Error>;
+type DeserializationFn = fn(&str) -> Result<SseData, SseDataDeserializeError>;
 
 pub(super) struct ConnectionManager {
     bind_address: Url,
@@ -68,9 +68,8 @@ pub(super) struct ConnectionManager {
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
     connection_timeout: Duration,
-    api_version: Option<ProtocolVersion>,
     filter: Filter,
-    deserialization_fn: Option<DeserializationFn>,
+    deserialization_fn: DeserializationFn,
 }
 
 pub enum ConnectionManagerError {
@@ -97,33 +96,35 @@ fn non_recoverable_error(error: Error) -> ConnectionManagerError {
 fn recoverable_error(error: Error) -> ConnectionManagerError {
     ConnectionManagerError::InitialConnectionError { error }
 }
+pub struct ConnectionManagerBuilder {
+    pub(super) bind_address: Url,
+    pub(super) max_attempts: usize,
+    pub(super) sse_data_sender: Sender<SseEvent>,
+    pub(super) maybe_tasks: Option<ConnectionTasks>,
+    pub(super) connection_timeout: Duration,
+    pub(super) start_from_event_id: Option<u32>,
+    pub(super) filter: Filter,
+    pub(super) node_build_version: ProtocolVersion,
+}
 
-impl ConnectionManager {
-    pub(super) fn new(
-        bind_address: Url,
-        max_attempts: usize,
-        sse_data_sender: Sender<SseEvent>,
-        maybe_tasks: Option<ConnectionTasks>,
-        connection_timeout: Duration,
-        start_from_event_id: Option<u32>,
-        filter: Filter,
-    ) -> Self {
-        trace!("Creating connection manager for: {}", bind_address);
-
-        Self {
-            bind_address,
-            current_event_id: start_from_event_id,
-            max_attempts,
+impl ConnectionManagerBuilder {
+    pub(super) fn build(self) -> ConnectionManager {
+        trace!("Creating connection manager for: {}", self.bind_address);
+        ConnectionManager {
+            bind_address: self.bind_address,
+            current_event_id: self.start_from_event_id,
+            max_attempts: self.max_attempts,
             delay_between_attempts: Duration::from_secs(1),
-            sse_event_sender: sse_data_sender,
-            maybe_tasks,
-            connection_timeout,
-            api_version: None,
-            filter,
-            deserialization_fn: None,
+            sse_event_sender: self.sse_data_sender,
+            maybe_tasks: self.maybe_tasks,
+            connection_timeout: self.connection_timeout,
+            filter: self.filter,
+            deserialization_fn: determine_deserializer(self.node_build_version),
         }
     }
+}
 
+impl ConnectionManager {
     ///This function is blocking, it will return an ConnectionManagerError result if something went wrong while processing.
     pub(super) async fn start_handling(&mut self) -> (Filter, Option<u32>, ConnectionManagerError) {
         let err = match self.do_start_handling().await {
@@ -238,9 +239,7 @@ impl ConnectionManager {
                         Err(parse_error) => {
                             // ApiVersion events have no ID so parsing "" to u32 will fail.
                             // This gate saves displaying a warning for a trivial error.
-                            if event.data.contains("ApiVersion") {
-                                self.validate_api_version(&event.data)?;
-                            } else {
+                            if !event.data.contains("ApiVersion") {
                                 warn!("Parse Error: {}", parse_error);
                             }
                         }
@@ -260,10 +259,7 @@ impl ConnectionManager {
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
-        match (self
-            .deserialization_fn
-            .expect("deserialization_fn should be set by now"))(&event.data)
-        {
+        match (self.deserialization_fn)(&event.data) {
             Ok(SseData::Shutdown) => {
                 error!("Received Shutdown message ({})", self.bind_address);
             }
@@ -303,8 +299,6 @@ impl ConnectionManager {
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
                 if event.data.contains("ApiVersion") {
-                    self.validate_api_version(&event.data)?;
-
                     match deserialize(&event.data) {
                         //at this point we
                         // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
@@ -337,30 +331,6 @@ impl ConnectionManager {
                 } else {
                     Err(expected_first_message_to_be_api_version(event.data))
                 }
-            }
-        }
-    }
-
-    fn validate_api_version(&mut self, data: &str) -> Result<(), ConnectionManagerError> {
-        let sse_data = serde_json::from_str::<SseData>(data).map_err(|serde_error| {
-            non_recoverable_error(Error::msg(serde_error).context("Serde Error"))
-        })?;
-        match (sse_data, self.api_version) {
-            (SseData::ApiVersion(incoming_semver), Some(old_semver))
-                if !incoming_semver.eq(&old_semver) =>
-            {
-                let err = Error::msg(format!("protocol changed error: endpoint {} got an ApiVersion message that changed the protocol from {:?} to {:?}", self.bind_address, self.api_version, incoming_semver));
-                Err(ConnectionManagerError::NonRecoverableError { error: err })
-            }
-            (SseData::ApiVersion(semver), None) => {
-                self.api_version = Some(semver);
-                self.deserialization_fn = Some(determine_deserializer(semver));
-                Ok(())
-            }
-            (SseData::ApiVersion(..), Some(..)) => Ok(()),
-            _ => {
-                let err = Error::msg("Received a message that contains \"ApiVersion\", but is not an ApiVersion message...");
-                Err(non_recoverable_error(err))
             }
         }
     }
@@ -415,10 +385,10 @@ fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerEr
     )))
 }
 
-fn determine_deserializer(api_version: ProtocolVersion) -> DeserializationFn {
-    //AFAIK the format of messages changed in a backwards-incompatible way in 1.2.0
+fn determine_deserializer(node_build_version: ProtocolVersion) -> DeserializationFn {
+    //AFAIK the format of messages changed in a backwards-incompatible way in casper-node v1.2.0
     let one_two_zero = ProtocolVersion::from_parts(1, 2, 0);
-    if api_version.lt(&one_two_zero) {
+    if node_build_version.lt(&one_two_zero) {
         casper_event_types::sse_data_1_0_0::deserialize
     } else {
         deserialize
@@ -428,8 +398,8 @@ fn determine_deserializer(api_version: ProtocolVersion) -> DeserializationFn {
 #[cfg(test)]
 mod tests {
     use casper_event_types::{
-        sse_data::tests::{example_block_added_1_4_10, BLOCK_HASH_1},
-        sse_data_1_0_0::tests::example_block_added_1_0_0,
+        sse_data::test_support::{example_block_added_1_4_10, BLOCK_HASH_1},
+        sse_data_1_0_0::test_support::example_block_added_1_0_0,
     };
 
     use super::*;

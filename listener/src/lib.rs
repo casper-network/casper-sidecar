@@ -12,13 +12,15 @@ use std::{
 
 use anyhow::{anyhow, Context, Error};
 use casper_types::ProtocolVersion;
+use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
-use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
 use tokio::sync::{mpsc::Sender, Mutex};
 use tracing::{debug, error, info, trace};
 use url::Url;
+
+use crate::connection_manager::ConnectionManagerBuilder;
 const BUILD_VERSION_KEY: &str = "build_version";
 
 pub struct NodeConnectionInterface {
@@ -47,7 +49,7 @@ impl Display for Filter {
 }
 
 pub struct EventListener {
-    api_version: ProtocolVersion,
+    node_build_version: ProtocolVersion,
     node: NodeConnectionInterface,
     max_connection_attempts: usize,
     delay_between_attempts: Duration,
@@ -66,7 +68,7 @@ impl EventListener {
         connection_timeout: Duration,
     ) -> Self {
         Self {
-            api_version: ProtocolVersion::from_parts(1, 0, 0),
+            node_build_version: ProtocolVersion::from_parts(1, 0, 0),
             node,
             max_connection_attempts,
             delay_between_attempts,
@@ -103,34 +105,34 @@ impl EventListener {
                 attempts, self.max_connection_attempts
             );
 
-            match self.fetch_api_version_from_status().await {
+            match self.fetch_build_version_from_status().await {
                 Ok(version) => {
-                    let new_api_version = version;
+                    let new_node_build_version = version;
 
                     if let Some(sender) = single_use_reporter.take() {
-                        let _ = sender.send(Ok(new_api_version)).await;
+                        let _ = sender.send(Ok(new_node_build_version)).await;
                     }
 
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
                     // that the node is unavailable.
-                    // If the connection has been failing and we see the API version change we reset
+                    // If the connection has been failing and we see the build version change we reset
                     // the attempts as it may have down for an upgrade.
-                    if new_api_version != self.api_version {
+                    if new_node_build_version != self.node_build_version {
                         attempts = 0;
                     }
 
-                    self.api_version = new_api_version;
+                    self.node_build_version = new_node_build_version;
                 }
                 Err(fetch_err) => {
                     error!(
-                        "Error fetching API version (for {}): {fetch_err}",
+                        "Error fetching build version (for {}): {fetch_err}",
                         self.node.ip_address
                     );
 
                     if attempts >= self.max_connection_attempts {
                         return Err(Error::msg(
-                            "Unable to retrieve API version from node status",
+                            "Unable to retrieve build version from node status",
                         ));
                     }
 
@@ -139,7 +141,7 @@ impl EventListener {
                 }
             }
 
-            let filters = filters_from_version(self.api_version);
+            let filters = filters_from_version(self.node_build_version);
 
             let mut connections = HashMap::new();
             let maybe_tasks =
@@ -148,20 +150,21 @@ impl EventListener {
             for filter in filters {
                 let last_event_ids_for_filter_clone = last_event_ids_for_filter_clone.clone();
                 let guard = last_event_ids_for_filter_clone.lock().await;
-                let maybe_event_id = guard.get(&filter).copied();
+                let start_from_event_id = guard.get(&filter).copied();
                 drop(guard);
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
-                let connection = ConnectionManager::new(
-                    bind_address_for_filter,
-                    self.max_connection_attempts,
-                    self.sse_event_sender.clone(),
-                    maybe_tasks.clone(),
-                    self.connection_timeout,
-                    maybe_event_id,
-                    filter.clone(),
-                );
+                let builder = ConnectionManagerBuilder {
+                    bind_address: bind_address_for_filter,
+                    max_attempts: self.max_connection_attempts,
+                    sse_data_sender: self.sse_event_sender.clone(),
+                    maybe_tasks: maybe_tasks.clone(),
+                    connection_timeout: self.connection_timeout,
+                    start_from_event_id,
+                    filter: filter.clone(),
+                    node_build_version: self.node_build_version,
+                };
 
-                connections.insert(filter, connection);
+                connections.insert(filter, builder.build());
             }
 
             let mut connection_join_handles = Vec::new();
@@ -228,10 +231,10 @@ impl EventListener {
         Url::from_str(&status_endpoint_str).map_err(Error::from)
     }
 
-    // Fetch the api version by requesting the status from the node's rest server.
-    async fn fetch_api_version_from_status(&mut self) -> Result<ProtocolVersion, Error> {
+    // Fetch the build version by requesting the status from the node's rest server.
+    async fn fetch_build_version_from_status(&mut self) -> Result<ProtocolVersion, Error> {
         debug!(
-            "Fetching API version for {}",
+            "Fetching build version for {}",
             self.status_endpoint().unwrap()
         );
 
@@ -244,7 +247,7 @@ impl EventListener {
             .context("Should have responded with status")?;
 
         // The exact structure of the response varies over the versions but there is an assertion made
-        // that .api_version is always valid. So the key is accessed without deserialising the full response.
+        // that .build_version is always valid. So the key is accessed without deserialising the full response.
         let response_json: Value = status_response
             .json()
             .await
@@ -274,8 +277,8 @@ fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
     }
 }
 
-fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
-    trace!("Getting filters for version...\t{}", api_version);
+fn filters_from_version(build_version: ProtocolVersion) -> Vec<Filter> {
+    trace!("Getting filters for version...\t{}", build_version);
 
     // Prior to this the node only had an /events endpoint producing all events.
     let one_three_zero = ProtocolVersion::from_parts(1, 3, 0);
@@ -285,9 +288,9 @@ fn filters_from_version(api_version: ProtocolVersion) -> Vec<Filter> {
 
     let mut filters = Vec::new();
 
-    if api_version.lt(&one_three_zero) {
+    if build_version.lt(&one_three_zero) {
         filters.push(Filter::Events);
-    } else if api_version.lt(&one_four_zero) {
+    } else if build_version.lt(&one_four_zero) {
         filters.push(Filter::Main);
         filters.push(Filter::Sigs);
     } else {

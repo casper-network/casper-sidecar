@@ -503,11 +503,11 @@ async fn load_testing_deploy(
     }
 }
 
-pub fn setup_mock_api_version_server(port: u16) -> () {
-    let _ = setup_mock_api_version_server_with_version(port, "1.4.10".to_string());
+pub fn setup_mock_build_version_server(port: u16) -> () {
+    let _ = setup_mock_build_version_server_with_version(port, "1.4.10".to_string());
 }
 
-pub fn setup_mock_api_version_server_with_version(
+pub fn setup_mock_build_version_server_with_version(
     port: u16,
     initial_version: String,
 ) -> Sender<String> {
