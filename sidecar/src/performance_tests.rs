@@ -19,7 +19,7 @@ use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{
-            setup_mock_api_version_server, spin_up_fake_event_stream, GenericScenarioSettings,
+            setup_mock_build_version_server, spin_up_fake_event_stream, GenericScenarioSettings,
             Scenario,
         },
         testing_config::prepare_config,
@@ -153,7 +153,7 @@ impl TimestampedEvent {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
-            SseData::DeployAccepted { deploy } => deploy.id().to_string(),
+            SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
             SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),
             SseData::DeployExpired { deploy_hash } => deploy_hash.to_string(),
             SseData::Fault {
@@ -213,7 +213,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 

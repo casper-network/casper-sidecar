@@ -36,7 +36,7 @@ impl BlockAdded {
         let block = Block::random(rng);
         Self {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
+            block: Box::new(JsonBlock::new(&block, None)),
         }
     }
 }
@@ -70,11 +70,11 @@ impl DeployAccepted {
 
     #[cfg(test)]
     pub fn deploy_hash(&self) -> DeployHash {
-        self.deploy.id().to_owned()
+        self.deploy.hash().to_owned()
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy.id().inner())
+        hex::encode(self.deploy.hash().inner())
     }
 }
 
@@ -95,7 +95,7 @@ impl DeployProcessed {
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
         let deploy = Deploy::random(rng);
         Self {
-            deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.id())),
+            deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -121,7 +121,7 @@ impl DeployExpired {
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
         let deploy = Deploy::random(rng);
         Self {
-            deploy_hash: with_deploy_hash.unwrap_or(*deploy.id()),
+            deploy_hash: with_deploy_hash.unwrap_or(*deploy.hash()),
         }
     }
 

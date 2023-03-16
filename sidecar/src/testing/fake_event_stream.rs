@@ -1,19 +1,20 @@
+use derive_new::new;
+use itertools::Itertools;
+use serde_json::json;
 use std::{
     fmt::{Display, Formatter},
     iter,
-    ops::Div,
+    ops::{Deref, Div},
+    sync::{Arc, Mutex},
     time::Duration,
 };
-
-use derive_new::new;
-use itertools::Itertools;
 use tempfile::TempDir;
 use tokio::{
     sync::mpsc::{channel as mpsc_channel, Sender},
     time::Instant,
 };
 
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{
@@ -26,6 +27,7 @@ const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
 const NUMBER_OF_VALIDATORS: u16 = 100;
 const NUMBER_OF_DEPLOYS_PER_BLOCK: u16 = 20;
+const API_VERSION_1_4_0: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 10);
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u64;
@@ -97,12 +99,9 @@ pub(crate) async fn spin_up_fake_event_stream(
 
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-    let mut event_stream_server = EventStreamServer::new(
-        ess_config.clone(),
-        temp_dir.path().to_path_buf(),
-        ProtocolVersion::V1_0_0,
-    )
-    .expect("Error spinning up Event Stream Server");
+    let mut event_stream_server =
+        EventStreamServer::new(ess_config.clone(), temp_dir.path().to_path_buf())
+            .expect("Error spinning up Event Stream Server");
 
     let (events_sender, mut events_receiver) = mpsc_channel(500);
 
@@ -130,7 +129,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
+                    event_stream_server.broadcast(event, None);
                 }
             });
 
@@ -160,7 +159,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
+                    event_stream_server.broadcast(event, None);
                 }
             });
 
@@ -195,7 +194,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
+                    event_stream_server.broadcast(event, None);
                 }
             });
 
@@ -230,7 +229,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event);
+                    event_stream_server.broadcast(event, None);
                 }
             });
 
@@ -258,6 +257,10 @@ async fn counted_event_streaming(
     count: Bound,
 ) {
     if let Bound::Counted(count) = count {
+        event_sender
+            .send(SseData::ApiVersion(API_VERSION_1_4_0))
+            .await
+            .unwrap();
         let mut events_sent = 0;
 
         while events_sent <= count {
@@ -332,6 +335,10 @@ async fn realistic_event_streaming(
 
     let mut interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
 
+    events_sender
+        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .await
+        .unwrap();
     let mut era_counter: u16 = 0;
     let mut events_sent = 0;
     'outer: loop {
@@ -416,7 +423,10 @@ async fn load_testing_step(
     frequency: u8,
 ) {
     let start_time = Instant::now();
-
+    event_sender
+        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .await
+        .unwrap();
     match bound {
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
@@ -449,6 +459,10 @@ async fn load_testing_deploy(
 ) {
     let start_time = Instant::now();
 
+    events_sender
+        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .await
+        .unwrap();
     match bound {
         Bound::Timed(duration) => {
             while start_time.elapsed() < duration {
@@ -489,7 +503,40 @@ async fn load_testing_deploy(
     }
 }
 
-pub async fn setup_mock_api_version_server(port: u16) {
-    let api = warp::path("status").map(|| "{\"build_version\":\"1.4.10\"}");
-    warp::serve(api).run(([127, 0, 0, 1], port)).await;
+pub fn setup_mock_build_version_server(port: u16) -> () {
+    let _ = setup_mock_build_version_server_with_version(port, "1.4.10".to_string());
+}
+
+pub fn setup_mock_build_version_server_with_version(
+    port: u16,
+    initial_version: String,
+) -> Sender<String> {
+    let m = Arc::new(Mutex::new(initial_version));
+    let m1 = m.clone();
+    let (tx, mut rx) = mpsc_channel(20);
+    let version_store = warp::any().map(move || m1.clone());
+
+    let api = warp::path!("status")
+        .and(version_store.clone())
+        .and_then(get_version);
+    let server = warp::serve(api).run(([127, 0, 0, 1], port));
+    tokio::spawn(async move {
+        server.await;
+        println!("terminating api version server");
+    });
+    tokio::spawn(async move {
+        while let Some(ver) = rx.recv().await {
+            let mut v = m.lock().unwrap();
+            *v = ver;
+            drop(v);
+        }
+    });
+    tx
+}
+
+async fn get_version(version: Arc<Mutex<String>>) -> Result<impl warp::Reply, warp::Rejection> {
+    let v = version.lock().unwrap();
+
+    let result = json!({ "build_version": v.deref() });
+    Ok(warp::reply::json(&result))
 }

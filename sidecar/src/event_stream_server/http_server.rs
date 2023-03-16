@@ -1,13 +1,17 @@
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
-    sync::{broadcast, mpsc, oneshot},
+    sync::{
+        broadcast,
+        mpsc::{self, error::SendError},
+        oneshot,
+    },
     task,
 };
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
 
-use casper_event_types::SseData;
+use casper_event_types::sse_data::SseData;
 use casper_types::ProtocolVersion;
 
 use super::{
@@ -29,33 +33,38 @@ use super::{
 ///   with the requested number of historical events.
 pub(super) async fn run(
     config: Config,
-    api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
-    mut data_receiver: mpsc::UnboundedReceiver<(EventIndex, SseData)>,
+    mut data_receiver: mpsc::UnboundedReceiver<(
+        Option<EventIndex>,
+        SseData,
+        Option<serde_json::Value>,
+    )>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
     let server_joiner = task::spawn(server_with_shutdown);
-
-    // Initialize the index and buffer for the SSEs.
-    let mut buffer = WheelBuf::new(vec![
-        ServerSentEvent::initial_event(api_version);
+    let zero_version = ProtocolVersion::from_parts(0, 0, 0);
+    let mut buffer: WheelBuf<
+        Vec<(ProtocolVersion, ServerSentEvent)>,
+        (ProtocolVersion, ServerSentEvent),
+    > = WheelBuf::new(vec![
+        (
+            zero_version,
+            ServerSentEvent::initial_event(zero_version)
+        );
         config.event_stream_buffer_length as usize
     ]);
 
     // Start handling received messages from the two channels; info on new client subscribers and
     // incoming events announced by node components.
     let event_stream_fut = async {
+        let mut latest_protocol_version: Option<ProtocolVersion> = None;
         loop {
             select! {
                 maybe_new_subscriber = new_subscriber_info_receiver.recv() => {
                     if let Some(subscriber) = maybe_new_subscriber {
-                        // First send the client the `ApiVersion` event.  We don't care if this
-                        // errors - the client may have disconnected already.
-                        let _ = subscriber
-                            .initial_events_sender
-                            .send(ServerSentEvent::initial_event(api_version));
+                        let mut observed_events = false;
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {
@@ -66,25 +75,42 @@ pub(super) async fn run(
                             // the buffered events' IDs when considering which events to include in
                             // the requested initial events, effectively shifting all the IDs past
                             // the wrapping transition.
+                            let mut observed_protocol_version: Option<ProtocolVersion> = None;
                             let buffer_size = buffer.capacity() as Id;
                             let in_wraparound_zone = buffer
                                 .iter()
                                 .next()
                                 .map(|event| {
-                                    let id = event.id.unwrap();
+                                    let id = event.1.id.unwrap();
                                     id > Id::MAX - buffer_size || id < buffer_size
                                 })
                                 .unwrap_or_default();
-                            for event in buffer.iter().skip_while(|event| {
+                            for tuple in buffer.iter().skip_while(|tuple| {
                                 if in_wraparound_zone {
-                                    event.id.unwrap().wrapping_add(buffer_size)
+                                    tuple.1.id.unwrap().wrapping_add(buffer_size)
                                         < start_index.wrapping_add(buffer_size)
                                 } else {
-                                    event.id.unwrap() < start_index
+                                    tuple.1.id.unwrap() < start_index
                                 }
                             }) {
                                 // As per sending `SSE_INITIAL_EVENT`, we don't care if this errors.
+                                let (protocol, event) = tuple;
+                                // If one of the stored events belongs to a different api version than the previous one we
+                                // need to emit an ApiVersion event to the outbound
+                                if observed_protocol_version.is_none() || !observed_protocol_version.unwrap().eq(protocol) {
+                                    let _ = subscriber.initial_events_sender.send(ServerSentEvent::initial_event(*protocol));
+                                    observed_protocol_version = Some(*protocol);
+                                }
                                 let _ = subscriber.initial_events_sender.send(event.clone());
+                                observed_events = true;
+                            }
+                        }
+                        if !observed_events {
+                            match latest_protocol_version{
+                                None => {},
+                                Some(v) => {
+                                    let _ = send_api_version_from_global_state(v, subscriber).await;
+                                }
                             }
                         }
                     }
@@ -92,11 +118,23 @@ pub(super) async fn run(
 
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
-                        Some((event_index, data)) => {
+                        Some((maybe_event_index, data, maybe_json_data)) => {
                             // Buffer the data and broadcast it to subscribed clients.
-                            trace!("Event stream server received {:?}", data);
-                            let event = ServerSentEvent { id: Some(event_index), data };
-                            buffer.push(event.clone());
+                            trace!("Event stream server received {:?}", data.clone());
+                            let event = ServerSentEvent { id: maybe_event_index, data: data.clone(), json_data: maybe_json_data };
+                            match data {
+                                SseData::ApiVersion(v) => latest_protocol_version = Some(v),
+                                _ => {
+                                    match latest_protocol_version{
+                                        None => {
+                                            error!("Trying to buffer data without an api version observed beforehand");
+                                        },
+                                        Some(v) => {
+                                            buffer.push((v, event.clone()));
+                                        }
+                                    }
+                                },
+                            };
                             let message = BroadcastChannelMessage::ServerSentEvent(event);
                             // This can validly fail if there are no connected clients, so don't log
                             // the error.
@@ -122,4 +160,13 @@ pub(super) async fn run(
     let _ = server_shutdown_sender.send(());
 
     trace!("Event stream server stopped");
+}
+
+async fn send_api_version_from_global_state(
+    protocol_version: ProtocolVersion,
+    subscriber: NewSubscriberInfo,
+) -> Result<(), SendError<ServerSentEvent>> {
+    subscriber
+        .initial_events_sender
+        .send(ServerSentEvent::initial_event(protocol_version))
 }
