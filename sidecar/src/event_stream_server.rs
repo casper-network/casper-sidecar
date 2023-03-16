@@ -29,6 +29,7 @@ mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
+use serde_json::Value;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
@@ -36,8 +37,7 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_event_types::SseData;
-use casper_types::ProtocolVersion;
+use casper_event_types::sse_data::SseData;
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
@@ -56,7 +56,7 @@ const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
+    sse_data_sender: UnboundedSender<(Option<EventIndex>, SseData, Option<serde_json::Value>)>,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -64,11 +64,7 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(
-        config: Config,
-        storage_path: PathBuf,
-        api_version: ProtocolVersion,
-    ) -> Result<Self, ListeningError> {
+    pub(crate) fn new(config: Config, storage_path: PathBuf) -> Result<Self, ListeningError> {
         let required_address = resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
@@ -109,7 +105,6 @@ impl EventStreamServer {
 
         tokio::spawn(http_server::run(
             config,
-            api_version,
             server_with_shutdown,
             shutdown_sender,
             sse_data_receiver,
@@ -125,14 +120,19 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    pub(crate) fn broadcast(&mut self, sse_data: SseData) {
-        let event_index = self.event_indexer.next_index();
-        let _ = self.sse_data_sender.send((event_index, sse_data));
+    pub(crate) fn broadcast(&mut self, sse_data: SseData, maybe_json_data: Option<Value>) {
+        let event_index = match sse_data {
+            SseData::ApiVersion(..) => None,
+            _ => Some(self.event_indexer.next_index()),
+        };
+        let _ = self
+            .sse_data_sender
+            .send((event_index, sse_data, maybe_json_data));
     }
 }
 
 impl Drop for EventStreamServer {
     fn drop(&mut self) {
-        self.broadcast(SseData::Shutdown);
+        self.broadcast(SseData::Shutdown, None);
     }
 }
