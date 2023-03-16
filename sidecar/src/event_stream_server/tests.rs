@@ -426,7 +426,7 @@ struct ReceivedEvent {
 }
 
 /// We used to compare ReceivedEvents `.data` by string equality, but it seems that after changes with sending json_data to outbound
-/// serde json produces an json objects with alphabetical ordered for Value but for structs it retains the order in which they are defined.
+/// serde json produces a json object with alphabetically ordered fields for serde_json::Value. For structs it retains the order in which the fields are defined.
 /// Obviously json is field-order agnostic - so the json objects we get in ReceivedEvents might denote the same json object, but they are
 /// not the same string. Hence we need to deserialize `.data` and compare structures.
 impl PartialEq for ReceivedEvent {

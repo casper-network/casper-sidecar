@@ -50,9 +50,9 @@ mod tests {
             .send("1.4.10".to_string())
             .await
             .unwrap();
-        thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         shutdown_tx.send(()).unwrap();
         let mut events_received = Vec::new();
         while let Some(Ok(event)) = main_event_stream.next().await {
@@ -124,10 +124,10 @@ mod tests {
             .await
             .unwrap();
         shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let shutdown_tx =
             sse_server_example_data_1_1_0_with_legacy_message(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         shutdown_tx.send(()).unwrap();
         let mut events_received = Vec::new();
         while let Some(Ok(event)) = main_event_stream.next().await {
@@ -167,10 +167,10 @@ mod tests {
             .await
             .unwrap();
         shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let shutdown_tx =
             sse_server_example_data_1_3_9_with_sigs(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         shutdown_tx.send(()).unwrap();
         let mut events_received = Vec::new();
         while let Some(Ok(event)) = main_event_stream.next().await {
