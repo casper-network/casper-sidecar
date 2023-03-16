@@ -23,27 +23,32 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 ### Node Connections
 
-```rust
-node_connections = [
-    {  ip_address = "127.0.0.1", sse_port = 18101, max_attempts = 5, delay_between_retries = 5, enable_event_logging = true  },
-    {  ip_address = "127.0.0.1", sse_port = 18102, max_attempts = 5, delay_between_retries = 5, enable_event_logging = false  },
-]
+```
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 9999
+rest_port = 8888
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
 ```
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 * `ip_address` - The IP address of the node to monitor.
-* `sse_port` - The node's event stream (SSE) port, `9999` by default.
-* `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the sidecar will not attempt to connect.
+* `sse_port` - The node's event stream (SSE) port. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
+* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
+* `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
-* `enable_event_logging` - This enables logging of events from the node in question.
+* `enable_logging` - This enables logging of events from the node in question.
 
 ### Storage
 
 ```
 [storage]
-storage_path = "/var/lib/casper-event-stream"
+storage_path = "/var/lib/casper-event-sidecar"
 ```
 This directory stores the SQLite database for the Sidecar and the SSE cache.
 
