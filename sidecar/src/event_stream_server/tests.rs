@@ -209,7 +209,7 @@ impl TestFixture {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
-                    assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                    assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                     event
                 }
                 2 => SseData::random_deploy_processed(rng),
@@ -425,6 +425,10 @@ struct ReceivedEvent {
     data: String,
 }
 
+/// We used to compare ReceivedEvents `.data` by string equality, but it seems that after changes with sending json_data to outbound
+/// serde json produces an json objects with alphabetical ordered for Value but for structs it retains the order in which they are defined.
+/// Obviously json is field-order agnostic - so the json objects we get in ReceivedEvents might denote the same json object, but they are
+/// not the same string. Hence we need to deserialize `.data` and compare structures.
 impl PartialEq for ReceivedEvent {
     fn eq(&self, other: &Self) -> bool {
         let this_data = serde_json::from_str::<SseData>(&self.data).unwrap();

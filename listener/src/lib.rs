@@ -6,7 +6,6 @@ use std::{
     fmt::{Display, Formatter},
     net::IpAddr,
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
@@ -16,7 +15,7 @@ use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use url::Url;
 
@@ -91,13 +90,11 @@ impl EventListener {
         initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
     ) -> Result<(), Error> {
         let mut attempts = 0;
-        let last_event_ids_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
+        let mut last_event_id_for_filter = HashMap::<Filter, u32>::new();
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
         let mut single_use_reporter = Some(initial_api_version_sender);
-        let last_event_ids_for_filter_clone = last_event_ids_for_filter.clone();
         while attempts < self.max_connection_attempts {
-            let last_event_ids_for_filter_clone = last_event_ids_for_filter_clone.clone();
             attempts += 1;
 
             info!(
@@ -148,10 +145,7 @@ impl EventListener {
                 (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
 
             for filter in filters {
-                let last_event_ids_for_filter_clone = last_event_ids_for_filter_clone.clone();
-                let guard = last_event_ids_for_filter_clone.lock().await;
-                let start_from_event_id = guard.get(&filter).copied();
-                drop(guard);
+                let start_from_event_id = last_event_id_for_filter.get(&filter).copied();
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
                 let builder = ConnectionManagerBuilder {
                     bind_address: bind_address_for_filter,
@@ -170,19 +164,11 @@ impl EventListener {
             let mut connection_join_handles = Vec::new();
 
             for (filter, mut connection) in connections.drain() {
-                let filter_map_lock_clone = last_event_ids_for_filter_clone.clone();
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
                     let (filter, maybe_last_event_id, err) = connection.start_handling().await;
                     error!("Error on start_handling: {}", err);
-                    let mut guard = filter_map_lock_clone.lock().await;
-                    if let Some(event_id) = maybe_last_event_id {
-                        guard.insert(filter, event_id);
-                    } else {
-                        guard.remove(&filter);
-                    }
-                    drop(guard);
-                    err
+                    (filter, maybe_last_event_id, err)
                 });
                 connection_join_handles.push(handle);
             }
@@ -196,10 +182,16 @@ impl EventListener {
                     if task_result.is_err() {
                         break;
                     }
-                    match task_result.unwrap() {
+                    let (filter, maybe_last_event_id, err) = task_result.unwrap();
+                    if let Some(event_id) = maybe_last_event_id {
+                        last_event_id_for_filter.insert(filter, event_id);
+                    } else {
+                        last_event_id_for_filter.remove(&filter);
+                    }
+                    match err {
                         ConnectionManagerError::NonRecoverableError { error } => {
                             error!(
-                                "Restarting event listener {} because of NonRecoverableError: {} ",
+                                "Restarting event listener {} because of NonRecoverableError: {}",
                                 self.node.ip_address.to_string(),
                                 error
                             );
@@ -208,7 +200,7 @@ impl EventListener {
                         ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
-                                error!("Restarting event listener {} because of NonRecoverableError: {} ", self.node.ip_address.to_string(), error);
+                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
                                 break;
                             }
                         }

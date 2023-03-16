@@ -127,7 +127,7 @@ impl SseData {
         let block = Block::random(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
+            block: Box::new(JsonBlock::new(&block, None)),
         }
     }
 
@@ -144,7 +144,7 @@ impl SseData {
     pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
         SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.id()),
+            deploy_hash: Box::new(*deploy.hash()),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -158,7 +158,7 @@ impl SseData {
     pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
-            deploy_hash: *deploy.id(),
+            deploy_hash: *deploy.hash(),
         }
     }
 

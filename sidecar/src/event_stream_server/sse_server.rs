@@ -141,17 +141,15 @@ async fn filter_map_server_sent_event(
 
     match &event.data {
         &SseData::ApiVersion { .. } => {
-            let value = event
-                .json_data
-                .clone()
-                .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
-            let warp = WarpServerSentEvent::default()
-                .json_data(&value)
-                .unwrap_or_else(|error| {
-                    warn!(%error, ?event, "failed to jsonify sse event");
-                    WarpServerSentEvent::default()
-                });
-            Some(Ok(warp))
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => WarpServerSentEvent::default().json_data(&event.data),
+            }
+            .unwrap_or_else(|error| {
+                warn!(%error, ?event, "failed to jsonify sse event");
+                WarpServerSentEvent::default()
+            });
+            Some(Ok(warp_event))
         }
 
         &SseData::BlockAdded { .. }
@@ -161,33 +159,34 @@ async fn filter_map_server_sent_event(
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_)
         | &SseData::Shutdown => {
-            let value = event
-                .json_data
-                .clone()
-                .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
-            Some(Ok(WarpServerSentEvent::default()
-                .json_data(&value)
-                .unwrap_or_else(|error| {
-                    warn!(%error, ?event, "failed to jsonify sse event");
-                    WarpServerSentEvent::default()
-                })
-                .id(id)))
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => WarpServerSentEvent::default().json_data(&event.data),
+            }
+            .unwrap_or_else(|error| {
+                warn!(%error, ?event, "failed to jsonify sse event");
+                WarpServerSentEvent::default()
+            })
+            .id(id);
+            Some(Ok(warp_event))
         }
 
         SseData::DeployAccepted { deploy } => {
-            let value = event.json_data.clone().unwrap_or_else(|| {
-                let deploy_accepted = &DeployAccepted {
-                    deploy_accepted: deploy.clone(),
-                };
-                serde_json::to_value(deploy_accepted).unwrap()
-            });
-            Some(Ok(WarpServerSentEvent::default()
-                .json_data(&value)
-                .unwrap_or_else(|error| {
-                    warn!(%error, "failed to jsonify sse event");
-                    WarpServerSentEvent::default()
-                })
-                .id(event.id.unwrap().to_string())))
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => {
+                    let deploy_accepted = &DeployAccepted {
+                        deploy_accepted: deploy.clone(),
+                    };
+                    WarpServerSentEvent::default().json_data(deploy_accepted)
+                }
+            }
+            .unwrap_or_else(|error| {
+                warn!(%error, ?event, "failed to jsonify sse event");
+                WarpServerSentEvent::default()
+            })
+            .id(event.id.unwrap().to_string());
+            Some(Ok(warp_event))
         }
     }
 }
@@ -483,7 +482,7 @@ mod tests {
             json_data: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.id(), deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let deploy_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
@@ -577,7 +576,7 @@ mod tests {
             json_data: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.id(), deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let malformed_deploy_processed = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
@@ -644,7 +643,7 @@ mod tests {
                         SSE_API_MAIN_PATH => SseData::random_block_added(rng),
                         SSE_API_DEPLOYS_PATH => {
                             let (event, deploy) = SseData::random_deploy_accepted(rng);
-                            assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                             event
                         }
                         SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),

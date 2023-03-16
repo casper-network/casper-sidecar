@@ -70,7 +70,7 @@ impl From<SseData> for sse_data::SseData {
     fn from(v1_0_0_data: SseData) -> sse_data::SseData {
         match v1_0_0_data {
             SseData::BlockAdded { block_hash, block } => {
-                let json_block = JsonBlock::new(*block, None);
+                let json_block = JsonBlock::new(&block, None);
                 sse_data::SseData::BlockAdded {
                     block_hash,
                     block: Box::new(json_block),
