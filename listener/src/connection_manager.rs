@@ -260,9 +260,6 @@ impl ConnectionManager {
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match (self.deserialization_fn)(&event.data) {
-            Ok(SseData::Shutdown) => {
-                error!("Received Shutdown message ({})", self.bind_address);
-            }
             Err(serde_error) => {
                 let error_message = format!("Serde Error: {}", serde_error);
                 error!(error_message);

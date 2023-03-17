@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
+use chrono::{DateTime, Utc};
 use rand::Rng;
 
 use casper_node::types::FinalitySignature as FinSig;
@@ -212,6 +213,21 @@ impl DatabaseWriter for FakeDatabase {
 
         data.insert(identifier, stringified_event);
 
+        Ok(0)
+    }
+
+    #[allow(unused)]
+    async fn save_shutdown(
+        &self,
+        event_id: u32,
+        event_source_address: String,
+        current_time: DateTime<Utc>,
+    ) -> Result<usize, DatabaseWriteError> {
+        let mut data = self.data.lock().expect("Error acquiring lock on data");
+        let event_key = format!("{}-{}", event_source_address, current_time.to_rfc3339());
+        let stringified_event = serde_json::to_string("{}").expect("Error serialising event data");
+
+        data.insert(event_key, stringified_event);
         Ok(0)
     }
 }

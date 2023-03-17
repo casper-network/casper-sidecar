@@ -534,6 +534,10 @@ pub fn setup_mock_build_version_server_with_version(
     tx
 }
 
+pub fn status_1_0_0_server(port: u16) -> Sender<String> {
+    setup_mock_build_version_server_with_version(port, "1.0.0".to_string())
+}
+
 async fn get_version(version: Arc<Mutex<String>>) -> Result<impl warp::Reply, warp::Rejection> {
     let v = version.lock().unwrap();
 

@@ -1,4 +1,5 @@
-use std::{net::IpAddr, time::Duration};
+use core::time;
+use std::{net::IpAddr, thread, time::Duration};
 
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
@@ -8,19 +9,22 @@ use http::StatusCode;
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::Instant};
 
+use super::run;
 use casper_event_listener::{EventListener, NodeConnectionInterface};
 use casper_event_types::sse_data::SseData;
 use casper_types::testing::TestRng;
+use eventsource_stream::Event;
+use std::fmt::Debug;
 
-use super::run;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{
-            setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
+            setup_mock_build_version_server, spin_up_fake_event_stream, status_1_0_0_server, Bound,
             GenericScenarioSettings, Restart, Scenario,
         },
         shared::EventType,
+        simple_sse_server::tests::{sse_server_example_data_1_4_10, sse_server_shutdown_1_0_0},
         testing_config::prepare_config,
     },
     types::sse_events::BlockAdded,
@@ -326,6 +330,78 @@ async fn should_fail_to_reconnect() {
     assert!(length <= 60);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn if_node_sends_shutdown_sidecar_shutdown_should_be_silenced() {
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar().await;
+    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
+    let _ = status_1_0_0_server(node_port_for_rest_connection);
+    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
+    let main_event_stream_url =
+        format!("http://127.0.0.1:{}/events/main", event_stream_server_port);
+    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    shutdown_tx.send(()).unwrap();
+
+    let events_received = poll_events(main_event_stream).await;
+    assert_eq!(events_received.len(), 2);
+    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn shutdown_should_be_passed_through() {
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar().await;
+    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
+    let _ = status_1_0_0_server(node_port_for_rest_connection);
+    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
+    let main_event_stream_url = format!(
+        "http://127.0.0.1:{}/events/main?start_from=0",
+        event_stream_server_port
+    );
+    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    shutdown_tx.send(()).unwrap();
+    thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+    let events_received = poll_events(main_event_stream).await;
+    assert_eq!(events_received.len(), 4);
+    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(3).unwrap().contains("\"Shutdown\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn shutdown_should_be_passed_through_when_versions_change() {
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar().await;
+    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
+    let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
+    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
+    let main_event_stream_url = format!(
+        "http://127.0.0.1:{}/events/main?start_from=0",
+        event_stream_server_port
+    );
+    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    shutdown_tx.send(()).unwrap();
+    change_api_version_tx
+        .send("1.4.10".to_string())
+        .await
+        .unwrap();
+    thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+    let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
+    thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+    shutdown_tx.send(()).unwrap();
+
+    let events_received = poll_events(main_event_stream).await;
+    assert_eq!(events_received.len(), 6);
+    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(3).unwrap().contains("\"1.4.10\""));
+    assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(5).unwrap().contains("\"Shutdown\""));
+}
+
 async fn partial_connection_test(
     num_of_events_to_send: u64,
     max_subscribers_for_fes: u32,
@@ -561,4 +637,32 @@ pub async fn try_connect_to_single_stream(
     }
 
     event_stream.expect("Unable to connect to stream")
+}
+
+pub async fn start_sidecar() -> (u16, u16, u16) {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    testing_config.set_retries_for_node(node_port_for_sse_connection, 3, 1);
+    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
+    tokio::spawn(run(testing_config.inner())); // starting event sidecar
+    (
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        testing_config.event_stream_server_port(),
+    )
+}
+
+pub async fn poll_events<E, S>(mut stream: S) -> Vec<String>
+where
+    E: Debug,
+    S: Stream<Item = Result<Event, E>> + Sized + Unpin,
+{
+    let mut events_received = Vec::new();
+    while let Some(Ok(event)) = stream.next().await {
+        events_received.push(event.data);
+    }
+    events_received
 }

@@ -129,4 +129,10 @@ pub mod test_support {
         let _ = super::deserialize(&raw_block_added).expect("malformed raw json"); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }
+
+    pub fn shutdown() -> String {
+        let raw_shutdown = "\"Shutdown\"".to_string();
+        let _ = super::deserialize(&raw_shutdown).expect("malformed raw json"); // deserializing to make sure that the raw json string is in correct form
+        raw_shutdown
+    }
 }

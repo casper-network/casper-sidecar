@@ -2,7 +2,10 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
 };
 
 use futures::{future, Stream, StreamExt};
@@ -117,6 +120,7 @@ pub(super) struct NewSubscriberInfo {
 async fn filter_map_server_sent_event(
     event: &ServerSentEvent,
     event_filter: &[EventFilter],
+    was_last_message_shutdown: Arc<AtomicBool>,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     if !event.data.should_include(event_filter) {
         return None;
@@ -141,6 +145,9 @@ async fn filter_map_server_sent_event(
 
     match &event.data {
         &SseData::ApiVersion { .. } => {
+            let _ =
+                was_last_message_shutdown
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(false));
             let warp_event = match &event.json_data {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => WarpServerSentEvent::default().json_data(&event.data),
@@ -157,8 +164,10 @@ async fn filter_map_server_sent_event(
         | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
-        | &SseData::FinalitySignature(_)
-        | &SseData::Shutdown => {
+        | &SseData::FinalitySignature(_) => {
+            let _ =
+                was_last_message_shutdown
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(false));
             let warp_event = match &event.json_data {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => WarpServerSentEvent::default().json_data(&event.data),
@@ -172,6 +181,9 @@ async fn filter_map_server_sent_event(
         }
 
         SseData::DeployAccepted { deploy } => {
+            let _ =
+                was_last_message_shutdown
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(false));
             let warp_event = match &event.json_data {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => {
@@ -185,10 +197,39 @@ async fn filter_map_server_sent_event(
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             })
-            .id(event.id.unwrap().to_string());
+            .id(id);
             Some(Ok(warp_event))
         }
+        &SseData::Shutdown => {
+            //Our outbound is a union of from 1 to 3 filters of the inbound node. If the node goes down each filter will send a "Shutdown" message
+            // thus pushing 3 messages here. By using this AtomicBool we're making sure that sidecar doesn't repeat the "Shutdown" message N times.
+            if let Ok(true) =
+                was_last_message_shutdown
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(true))
+            {
+                None
+            } else {
+                build_event_for_outbound(event, id)
+            }
+        }
     }
+}
+
+fn build_event_for_outbound(
+    event: &ServerSentEvent,
+    id: String,
+) -> Option<Result<WarpServerSentEvent, RecvError>> {
+    let value = event
+        .json_data
+        .clone()
+        .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
+    Some(Ok(WarpServerSentEvent::default()
+        .json_data(&value)
+        .unwrap_or_else(|error| {
+            warn!(%error, ?event, "failed to jsonify sse event");
+            WarpServerSentEvent::default()
+        })
+        .id(id)))
 }
 
 /// Converts the final URL path element to a slice of `EventFilter`s.
@@ -312,11 +353,13 @@ fn serve_sse_response_handler(
     // Create a channel for the client's handler to receive the stream of ongoing
     // events.
     let ongoing_events_receiver = cloned_broadcaster.subscribe();
+    let was_last_message_shutdown = Arc::new(AtomicBool::new(false));
 
     sse::reply(sse::keep_alive().stream(stream_to_client(
         initial_events_receiver,
         ongoing_events_receiver,
         event_filter,
+        was_last_message_shutdown,
     )))
     .into_response()
 }
@@ -380,6 +423,7 @@ fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
     event_filter: &'static [EventFilter],
+    was_last_message_shutdown: Arc<AtomicBool>,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
     let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
@@ -424,10 +468,20 @@ fn stream_to_client(
             Ok(event)
         })
         .chain(ongoing_stream)
-        .filter_map(move |result| async move {
-            match result {
-                Ok(event) => filter_map_server_sent_event(&event, event_filter).await,
-                Err(error) => Some(Err(error)),
+        .filter_map(move |result| {
+            let was_last_message_shutdown_clone = was_last_message_shutdown.clone();
+            async move {
+                match result {
+                    Ok(event) => {
+                        filter_map_server_sent_event(
+                            &event,
+                            event_filter,
+                            was_last_message_shutdown_clone.clone(),
+                        )
+                        .await
+                    }
+                    Err(error) => Some(Err(error)),
+                }
             }
         })
 }
@@ -442,8 +496,11 @@ mod tests {
     use super::*;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
+        let was_last_message_shutdown = Arc::new(AtomicBool::new(false));
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_none(),
+            filter_map_server_sent_event(event, filter, was_last_message_shutdown)
+                .await
+                .is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
@@ -451,8 +508,11 @@ mod tests {
     }
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
+        let was_last_message_shutdown = Arc::new(AtomicBool::new(false));
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_some(),
+            filter_map_server_sent_event(event, filter, was_last_message_shutdown)
+                .await
+                .is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter
@@ -710,6 +770,7 @@ mod tests {
         // Run three cases; where only a single event is duplicated, where five are duplicated, and
         // where the whole initial stream (except the `ApiVersion`) is duplicated.
         for duplicate_count in &[1, 5, NUM_INITIAL_EVENTS] {
+            let was_last_message_shutdown = Arc::new(AtomicBool::new(false));
             // Create the events with the requisite duplicates at the start of the collection.
             let ongoing_events = make_ongoing_events(
                 &mut rng,
@@ -741,6 +802,7 @@ mod tests {
                 initial_events_receiver,
                 ongoing_events_receiver,
                 get_filter(path_filter).unwrap(),
+                was_last_message_shutdown,
             )
             .collect()
             .await;
