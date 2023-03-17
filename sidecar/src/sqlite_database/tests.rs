@@ -344,12 +344,9 @@ async fn should_disallow_duplicate_event_id_from_source() {
         .await
         .is_ok());
     let res = sqlite_db
-            .save_block_added(block_added, event_id, "127.0.0.1".to_string())
-            .await;
-    assert!(matches!(
-        res,
-        Err(DatabaseWriteError::UniqueConstraint(_))
-    ));
+        .save_block_added(block_added, event_id, "127.0.0.1".to_string())
+        .await;
+    assert!(matches!(res, Err(DatabaseWriteError::UniqueConstraint(_))));
     // This check is to ensure that the UNIQUE constraint being broken is from the event_log table rather than from the raw event table.
     if let Err(DatabaseWriteError::UniqueConstraint(uc_err)) = res {
         assert_eq!(uc_err.table, "event_log")
