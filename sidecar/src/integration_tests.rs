@@ -319,7 +319,7 @@ async fn should_fail_to_reconnect() {
     let max_attempts = 2;
     let delay_between_retries = 3;
 
-    let restart_after = Duration::from_secs(20);
+    let restart_after = Duration::from_secs(30);
 
     let read_messages =
         reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
