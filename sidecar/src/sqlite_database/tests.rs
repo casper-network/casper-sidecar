@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use chrono::{DateTime, NaiveDate, Utc};
 use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};

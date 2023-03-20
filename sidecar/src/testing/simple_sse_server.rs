@@ -4,8 +4,11 @@ pub(crate) mod tests {
     use casper_event_types::sse_data::test_support::{
         example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
     };
+    use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
+    use casper_types::testing::TestRng;
     use futures::Stream;
+    use hex_fmt::HexFmt;
     use std::convert::Infallible;
     use tokio::sync::broadcast::{
         channel as broadcast_channel, Receiver as BroadcastReceiver, Sender as BroadcastSender,
@@ -14,6 +17,8 @@ pub(crate) mod tests {
     use warp::path::end;
     use warp::{sse::Event, Filter};
     use warp::{Rejection, Reply};
+
+    use crate::sql::tables::block_added;
 
     fn build_stream(
         mut r: BroadcastReceiver<Option<(Option<String>, String)>>,
@@ -73,6 +78,21 @@ pub(crate) mod tests {
             ),
         ];
         simple_sse_server_with_sigs(port, main_data, sigs_data).await
+    }
+
+    pub async fn sse_server_send_n_block_added(
+        port: u16,
+        number_of_block_added_messages: u32,
+        start_index: u32,
+        rng: TestRng,
+    ) -> (OneshotSender<()>, TestRng) {
+        let (blocks_added, rng) =
+            generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
+
+        let data = vec![(None, "{\"ApiVersion\":\"1.4.10\"}".to_string())];
+        let data = data.into_iter().chain(blocks_added.into_iter()).collect();
+        let sender = simple_sse_server(port, data).await;
+        (sender, rng)
     }
 
     fn build_paths(
@@ -218,5 +238,26 @@ pub(crate) mod tests {
             server.await;
         });
         return shutdown_tx;
+    }
+
+    fn generate_random_blocks_added(
+        number_of_block_added_messages: u32,
+        start_index: u32,
+        mut rng: TestRng,
+    ) -> (Vec<(Option<String>, String)>, TestRng) {
+        let mut blocks_added = Vec::new();
+        for i in 0..number_of_block_added_messages {
+            let index = (i + start_index).to_string();
+            let block_added = SseData::random_block_added(&mut rng);
+            if let SseData::BlockAdded { block_hash, .. } = block_added {
+                let encoded_hash = HexFmt(block_hash.inner()).to_string();
+                let block_added_raw =
+                    example_block_added_1_4_10(encoded_hash.as_str(), index.as_str());
+                blocks_added.push((Some(index), block_added_raw));
+            } else {
+                panic!("random_block_added didn't return SseData::BlockAdded");
+            }
+        }
+        (blocks_added, rng)
     }
 }
