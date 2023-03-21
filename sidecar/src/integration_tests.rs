@@ -353,6 +353,7 @@ async fn should_reconnect() {
     let _ = status_1_4_10_server(node_port_for_rest_connection);
     let main_event_stream =
         connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
     shutdown_tx.send(()).unwrap();
     let join_handle = tokio::spawn(async move { poll_events(main_event_stream).await });
 
