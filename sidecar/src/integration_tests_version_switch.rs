@@ -54,6 +54,7 @@ pub mod tests {
             start_sidecar().await;
         let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
         let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
         shutdown_tx.send(()).unwrap();
         change_api_version_tx
             .send("1.4.10".to_string())
@@ -120,6 +121,7 @@ pub mod tests {
             .send("1.3.9".to_string()) //1.3.x shold have /main and /sigs
             .await
             .unwrap();
+        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and data to propagate
         shutdown_tx.send(()).unwrap();
         thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let shutdown_tx =
