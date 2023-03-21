@@ -62,7 +62,7 @@ pub mod tests {
         thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let main_event_stream = connect_to_sidecar("/events/main", event_stream_server_port).await;
         let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
-        tokio::spawn(async move{
+        tokio::spawn(async move {
             thread::sleep(time::Duration::from_secs(4)); //give some time to poll the data
             shutdown_tx.send(()).unwrap();
         });
