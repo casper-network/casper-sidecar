@@ -325,14 +325,12 @@ async fn should_fail_to_reconnect() {
     let (shutdown_tx, test_rng) =
         sse_server_send_n_block_added(node_port_for_sse_connection, 30, 0, test_rng).await;
     let _ = status_1_4_10_server(node_port_for_rest_connection);
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main?start_from=0",
-        event_stream_server_port
-    );
-    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    thread::sleep(time::Duration::from_secs(4)); // give some time for the first batch of events to propagate
     shutdown_tx.send(()).unwrap();
     let join_handle = tokio::spawn(async move { poll_events(main_event_stream).await });
-    thread::sleep(time::Duration::from_secs(8)); //give some time for the old sse server to go away and sidecar to run out of retries
+    thread::sleep(time::Duration::from_secs(20)); //give some time for the old sse server to go away and sidecar to run out of retries
     let (shutdown_tx, _) =
         sse_server_send_n_block_added(node_port_for_sse_connection, 30, 30, test_rng).await;
     thread::sleep(time::Duration::from_secs(3)); //give some time for the data to propagate. Sidecar should be dead by now,
@@ -345,26 +343,23 @@ async fn should_fail_to_reconnect() {
     assert_eq!(length, 32);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn should_reconnect() {
     let test_rng = TestRng::new();
     let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-        start_sidecar_with_retry_config(4, 1).await;
+        start_sidecar_with_retry_config(5, 1).await;
     let (shutdown_tx, test_rng) =
         sse_server_send_n_block_added(node_port_for_sse_connection, 30, 0, test_rng).await;
     let _ = status_1_4_10_server(node_port_for_rest_connection);
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main?start_from=0",
-        event_stream_server_port
-    );
-    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
     let join_handle = tokio::spawn(async move { poll_events(main_event_stream).await });
 
-    thread::sleep(time::Duration::from_secs(5)); //give some time for the old sse server to go away
+    thread::sleep(time::Duration::from_secs(10)); //give some time for the old sse server to go away
     let (shutdown_tx, _) =
         sse_server_send_n_block_added(node_port_for_sse_connection, 30, 30, test_rng).await;
-    thread::sleep(time::Duration::from_secs(3)); //give some time for the data to propagate
+    thread::sleep(time::Duration::from_secs(10)); //give some time for the data to propagate
     shutdown_tx.send(()).unwrap();
 
     let events_received = tokio::join!(join_handle).0.unwrap();
@@ -379,10 +374,9 @@ async fn if_node_sends_shutdown_sidecar_shutdown_should_be_silenced() {
         start_sidecar().await;
     let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
     let _ = status_1_0_0_server(node_port_for_rest_connection);
-    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-    let main_event_stream_url =
-        format!("http://127.0.0.1:{}/events/main", event_stream_server_port);
-    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    thread::sleep(time::Duration::from_secs(4)); //give some time everything to connect
+    let main_event_stream =
+        connect_to_sidecar("/events/main", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
 
     let events_received = poll_events(main_event_stream).await;
@@ -398,11 +392,8 @@ async fn shutdown_should_be_passed_through() {
     let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
     let _ = status_1_0_0_server(node_port_for_rest_connection);
     thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main?start_from=0",
-        event_stream_server_port
-    );
-    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
     thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
     let events_received = poll_events(main_event_stream).await;
@@ -420,11 +411,8 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
     let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
     thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main?start_from=0",
-        event_stream_server_port
-    );
-    let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
     change_api_version_tx
         .send("1.4.10".to_string())
@@ -707,6 +695,14 @@ pub async fn start_sidecar_with_retry_config(
 
 pub async fn start_sidecar() -> (u16, u16, u16) {
     start_sidecar_with_retry_config(3, 1).await
+}
+
+pub async fn connect_to_sidecar(
+    path: &str,
+    port: u16,
+) -> EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>>> {
+    let main_event_stream_url = format!("http://127.0.0.1:{}{}", port, path,);
+    try_connect_to_single_stream(&main_event_stream_url).await
 }
 
 pub async fn poll_events<E, S>(mut stream: S) -> Vec<String>

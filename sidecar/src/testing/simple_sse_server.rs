@@ -18,8 +18,6 @@ pub(crate) mod tests {
     use warp::{sse::Event, Filter};
     use warp::{Rejection, Reply};
 
-    use crate::sql::tables::block_added;
-
     fn build_stream(
         mut r: BroadcastReceiver<Option<(Option<String>, String)>>,
     ) -> impl Stream<Item = Result<Event, Infallible>> {

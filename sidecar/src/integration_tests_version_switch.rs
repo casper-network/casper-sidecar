@@ -1,7 +1,9 @@
 #[cfg(test)]
 pub mod tests {
     use crate::{
-        integration_tests::{poll_events, start_sidecar, try_connect_to_single_stream},
+        integration_tests::{
+            connect_to_sidecar, poll_events, start_sidecar,
+        },
         testing::{
             fake_event_stream::status_1_0_0_server,
             simple_sse_server::tests::{
@@ -20,20 +22,17 @@ pub mod tests {
             start_sidecar().await;
         let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
         let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-        let main_event_stream_url = format!(
-            "http://127.0.0.1:{}/events/main?start_from=0",
-            event_stream_server_port
-        );
-        let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+        thread::sleep(time::Duration::from_secs(5)); //give some time everything to connect
+        let main_event_stream =
+            connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
         shutdown_tx.send(()).unwrap();
         change_api_version_tx
             .send("1.4.10".to_string())
             .await
             .unwrap();
-        thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(2)); //give some time everything to disconnect
         let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         shutdown_tx.send(()).unwrap();
 
         let events_received = poll_events(main_event_stream).await;
@@ -62,11 +61,9 @@ pub mod tests {
             .send("1.4.10".to_string())
             .await
             .unwrap();
-        let main_event_stream_url =
-            format!("http://127.0.0.1:{}/events/main", event_stream_server_port);
-        let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+        let main_event_stream = connect_to_sidecar("/events/main", event_stream_server_port).await;
         let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(4)); //give some time everything to disconnect
         shutdown_tx.send(()).unwrap();
         let events_received = poll_events(main_event_stream).await;
         assert_eq!(events_received.len(), 3);
@@ -85,11 +82,8 @@ pub mod tests {
         let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
         let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
         thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-        let main_event_stream_url = format!(
-            "http://127.0.0.1:{}/events/main?start_from=0",
-            event_stream_server_port
-        );
-        let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+        let main_event_stream =
+            connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
         change_api_version_tx
             .send("1.1.0".to_string()) //1.1.0 is different but still has the old message format
             .await
@@ -121,21 +115,18 @@ pub mod tests {
             start_sidecar().await;
         let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
         let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
-        let main_event_stream_url = format!(
-            "http://127.0.0.1:{}/events/sigs?start_from=0",
-            event_stream_server_port
-        );
-        let main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
+        let main_event_stream =
+            connect_to_sidecar("/events/sigs?start_from=0", event_stream_server_port).await;
         change_api_version_tx
             .send("1.3.9".to_string()) //1.3.x shold have /main and /sigs
             .await
             .unwrap();
         shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
         let shutdown_tx =
             sse_server_example_data_1_3_9_with_sigs(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         shutdown_tx.send(()).unwrap();
         let events_received = poll_events(main_event_stream).await;
         assert_eq!(events_received.len(), 4);
