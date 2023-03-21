@@ -375,8 +375,7 @@ async fn if_node_sends_shutdown_sidecar_shutdown_should_be_silenced() {
     let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
     let _ = status_1_0_0_server(node_port_for_rest_connection);
     thread::sleep(time::Duration::from_secs(4)); //give some time everything to connect
-    let main_event_stream =
-        connect_to_sidecar("/events/main", event_stream_server_port).await;
+    let main_event_stream = connect_to_sidecar("/events/main", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
 
     let events_received = poll_events(main_event_stream).await;

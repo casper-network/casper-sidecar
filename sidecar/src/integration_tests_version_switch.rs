@@ -1,9 +1,7 @@
 #[cfg(test)]
 pub mod tests {
     use crate::{
-        integration_tests::{
-            connect_to_sidecar, poll_events, start_sidecar,
-        },
+        integration_tests::{connect_to_sidecar, poll_events, start_sidecar},
         testing::{
             fake_event_stream::status_1_0_0_server,
             simple_sse_server::tests::{
