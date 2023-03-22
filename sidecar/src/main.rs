@@ -201,7 +201,9 @@ async fn run(config: Config) -> Result<(), Error> {
         )
         .context("Error starting EventStreamServer")?;
 
-        while let Some((sse_data, inbound_filter, maybe_json_data)) = outbound_sse_data_receiver.recv().await {
+        while let Some((sse_data, inbound_filter, maybe_json_data)) =
+            outbound_sse_data_receiver.recv().await
+        {
             event_stream_server.broadcast(sse_data, inbound_filter, maybe_json_data);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
@@ -312,7 +314,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::DeployAccepted { deploy }, sse_event.inbound_filter, sse_event.json_data))
+                        .send((
+                            SseData::DeployAccepted { deploy },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -348,7 +354,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::DeployExpired { deploy_hash }, sse_event.inbound_filter, sse_event.json_data))
+                        .send((
+                            SseData::DeployExpired { deploy_hash },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -486,7 +496,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::FinalitySignature(fs), sse_event.inbound_filter, sse_event.json_data))
+                        .send((
+                            SseData::FinalitySignature(fs),
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -554,12 +568,16 @@ async fn handle_single_event(
                 .save_shutdown(sse_event.id, sse_event.source.to_string(), Utc::now())
                 .await;
             match res {
-                Ok(_)|Err(DatabaseWriteError::UniqueConstraint(_))=> {
+                Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {
                     // We push to outbound on UniqueConstraint error because in sse_server we match shutdowns to outbounds based on the filter they came from to prevent duplicates.
-                    // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we 
+                    // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we
                     // don't store in DB the information from which filter did shutdown came).
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::Shutdown, sse_event.inbound_filter, sse_event.json_data))
+                        .send((
+                            SseData::Shutdown,
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(

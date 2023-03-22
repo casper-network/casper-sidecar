@@ -1,12 +1,7 @@
 mod connection_manager;
 mod connection_tasks;
 
-use std::{
-    collections::HashMap,
-    net::IpAddr,
-    str::FromStr,
-    time::Duration,
-};
+use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
 
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::filter::Filter;

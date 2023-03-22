@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 
-
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum Filter {
     Events,

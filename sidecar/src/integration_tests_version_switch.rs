@@ -5,8 +5,9 @@ pub mod tests {
         testing::{
             fake_event_stream::status_1_0_0_server,
             simple_sse_server::tests::{
-                sse_server_example_data_1_0_0, sse_server_example_data_1_1_0_with_legacy_message,
-                sse_server_example_data_1_3_9_with_sigs, sse_server_example_data_1_4_10, sse_server_example_data_1_0_0_two_blocks,
+                sse_server_example_data_1_0_0, sse_server_example_data_1_0_0_two_blocks,
+                sse_server_example_data_1_1_0_with_legacy_message,
+                sse_server_example_data_1_3_9_with_sigs, sse_server_example_data_1_4_10,
             },
         },
     };
@@ -78,7 +79,8 @@ pub mod tests {
     async fn should_deserialize_legacy_messages_based_on_status_build_version() {
         let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
             start_sidecar().await;
-        let shutdown_tx = sse_server_example_data_1_0_0_two_blocks(node_port_for_sse_connection).await;
+        let shutdown_tx =
+            sse_server_example_data_1_0_0_two_blocks(node_port_for_sse_connection).await;
         let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
         thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
         let main_event_stream =

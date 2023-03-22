@@ -11,7 +11,7 @@ use tokio::{
 use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
 
-use casper_event_types::{sse_data::SseData, filter::Filter};
+use casper_event_types::{filter::Filter, sse_data::SseData};
 use casper_types::ProtocolVersion;
 
 use super::{

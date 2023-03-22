@@ -203,11 +203,11 @@ async fn filter_map_server_sent_event(
             let should_send_shutdown = match (&event.inbound_filter, stream_filter) {
                 (None, _) => true,
                 (Some(a), b) if a == b => true,
-                (Some(SseFilter::Main), SseFilter::Events) => true, //If this filter handles the `/events` endpoint 
+                (Some(SseFilter::Main), SseFilter::Events) => true, //If this filter handles the `/events` endpoint
                 // then it should also propagate from inbounds `/events/main`
-                (Some(SseFilter::Events), SseFilter::Main) => true, //If we are connected to a legacy node 
+                (Some(SseFilter::Events), SseFilter::Main) => true, //If we are connected to a legacy node
                 // and the client is listening to /events/main we want to get shutdown from that
-                _ => false
+                _ => false,
             };
 
             if should_send_shutdown {
@@ -215,7 +215,6 @@ async fn filter_map_server_sent_event(
             } else {
                 None
             }
-            
         }
     }
 }
@@ -335,7 +334,8 @@ fn serve_sse_response_handler(
 
     // If `path_param` is not a valid string, return a 404.
     let event_filter = match get_filter(
-        path_param.clone()
+        path_param
+            .clone()
             .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
             .as_str(),
     ) {
@@ -381,7 +381,7 @@ fn serve_sse_response_handler(
     sse::reply(sse::keep_alive().stream(stream_to_client(
         initial_events_receiver,
         ongoing_events_receiver,
-        &stream_filter,
+        stream_filter,
         event_filter,
     )))
     .into_response()
@@ -493,7 +493,9 @@ fn stream_to_client(
         .chain(ongoing_stream)
         .filter_map(move |result| async move {
             match result {
-                Ok(event) => filter_map_server_sent_event(&event, stream_filter, event_filter).await,
+                Ok(event) => {
+                    filter_map_server_sent_event(&event, stream_filter, event_filter).await
+                }
                 Err(error) => Some(Err(error)),
             }
         })
@@ -504,14 +506,16 @@ mod tests {
     use regex::Regex;
     use std::iter;
 
-    use casper_types::testing::TestRng;
     use casper_event_types::filter::Filter as SseFilter;
+    use casper_types::testing::TestRng;
 
     use super::*;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &SseFilter::Main, filter).await.is_none(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
@@ -520,7 +524,9 @@ mod tests {
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &SseFilter::Main, filter).await.is_some(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter

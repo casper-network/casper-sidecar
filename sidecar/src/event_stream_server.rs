@@ -56,7 +56,12 @@ const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(Option<EventIndex>, SseData, SseFilter, Option<serde_json::Value>)>,
+    sse_data_sender: UnboundedSender<(
+        Option<EventIndex>,
+        SseData,
+        SseFilter,
+        Option<serde_json::Value>,
+    )>,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -120,7 +125,12 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    pub(crate) fn broadcast(&mut self, sse_data: SseData, inbound_filter: SseFilter, maybe_json_data: Option<Value>) {
+    pub(crate) fn broadcast(
+        &mut self,
+        sse_data: SseData,
+        inbound_filter: SseFilter,
+        maybe_json_data: Option<Value>,
+    ) {
         let event_index = match sse_data {
             SseData::ApiVersion(..) => None,
             _ => Some(self.event_indexer.next_index()),

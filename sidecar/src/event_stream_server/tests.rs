@@ -278,7 +278,7 @@ impl TestFixture {
                 EVENT_COUNT
             };
             let api_version_event = SseData::ApiVersion(protocol_version);
-            
+
             server.broadcast(api_version_event.clone(), SseFilter::Main, None);
             for (id, (event, maybe_json_data)) in
                 events.iter().cycle().enumerate().take(event_count as usize)
