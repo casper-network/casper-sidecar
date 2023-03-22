@@ -14,7 +14,7 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{
@@ -129,7 +129,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -159,7 +159,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -194,7 +194,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -229,7 +229,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 

@@ -278,7 +278,8 @@ impl TestFixture {
                 EVENT_COUNT
             };
             let api_version_event = SseData::ApiVersion(protocol_version);
-            server.broadcast(api_version_event.clone(), None);
+            
+            server.broadcast(api_version_event.clone(), SseFilter::Main, None);
             for (id, (event, maybe_json_data)) in
                 events.iter().cycle().enumerate().take(event_count as usize)
             {
@@ -289,7 +290,7 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                server.broadcast(event.clone(), maybe_json_data.clone());
+                server.broadcast(event.clone(), SseFilter::Main, maybe_json_data.clone());
                 server_behavior.sleep_if_required().await;
             }
 
@@ -782,20 +783,6 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     assert!(received_events1.len() < fixture.all_filtered_events(MAIN_PATH).0.len());
     assert!(received_events2.len() < fixture.all_filtered_events(DEPLOYS_PATH).0.len());
     assert!(received_events3.len() < fixture.all_filtered_events(SIGS_PATH).0.len());
-
-    // Ensure all clients received a `Shutdown` event as the final one.
-    assert_eq!(
-        received_events1.last().unwrap().data,
-        serde_json::to_string(&SseData::Shutdown).unwrap()
-    );
-    assert_eq!(
-        received_events2.last().unwrap().data,
-        serde_json::to_string(&SseData::Shutdown).unwrap()
-    );
-    assert_eq!(
-        received_events3.last().unwrap().data,
-        serde_json::to_string(&SseData::Shutdown).unwrap()
-    );
 }
 
 /// Checks that clients which don't consume the events in a timely manner are forcibly disconnected

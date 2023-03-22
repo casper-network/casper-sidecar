@@ -2,7 +2,7 @@
 pub(crate) mod tests {
     use async_stream::stream;
     use casper_event_types::sse_data::test_support::{
-        example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
+        example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2, BLOCK_HASH_3,
     };
     use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
@@ -43,6 +43,21 @@ pub(crate) mod tests {
             (
                 Some("0".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_1, "1"),
+            ),
+        ];
+        simple_sse_server(port, data).await
+    }
+
+    pub async fn sse_server_example_data_1_0_0_two_blocks(port: u16) -> OneshotSender<()> {
+        let data = vec![
+            (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
+            (
+                Some("0".to_string()),
+                example_block_added_1_0_0(BLOCK_HASH_1, "1"),
+            ),
+            (
+                Some("1".to_string()),
+                example_block_added_1_0_0(BLOCK_HASH_3, "2"),
             ),
         ];
         simple_sse_server(port, data).await
@@ -194,7 +209,7 @@ pub(crate) mod tests {
             (None, "{\"ApiVersion\":\"1.1.0\"}".to_string()),
             (
                 Some("1".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+                example_block_added_1_0_0(BLOCK_HASH_2, "3"),
             ),
         ];
         simple_sse_server(port, data).await

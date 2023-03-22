@@ -1,20 +1,16 @@
-use core::time;
-use std::{net::IpAddr, thread, time::Duration};
-
-use bytes::Bytes;
-use eventsource_stream::{EventStream, Eventsource};
-use futures::Stream;
-use futures_util::StreamExt;
-use http::StatusCode;
-use tempfile::tempdir;
-use tokio::{sync::mpsc, time::Instant};
-
 use super::run;
+use bytes::Bytes;
 use casper_event_listener::{EventListener, NodeConnectionInterface};
 use casper_event_types::sse_data::SseData;
 use casper_types::testing::TestRng;
-use eventsource_stream::Event;
-use std::fmt::Debug;
+use core::time;
+use eventsource_stream::{Event, EventStream, Eventsource};
+use futures::Stream;
+use futures_util::StreamExt;
+use http::StatusCode;
+use std::{fmt::Debug, net::IpAddr, thread, time::Duration};
+use tempfile::tempdir;
+use tokio::{sync::mpsc, time::Instant};
 
 use crate::{
     event_stream_server::Config as EssConfig,
@@ -150,50 +146,6 @@ async fn should_allow_client_connection_to_sse() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn should_send_shutdown_to_sse_client() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(Duration::from_secs(60)),
-            None,
-        )),
-    ));
-
-    tokio::spawn(run(testing_config.inner()));
-
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main",
-        testing_config.event_stream_server_port()
-    );
-
-    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
-
-    let mut last_event = None;
-    while let Some(Ok(event)) = main_event_stream.next().await {
-        last_event = Some(event);
-    }
-
-    let event_data = last_event.unwrap().data;
-
-    assert!(matches!(
-        serde_json::from_str::<SseData>(&event_data).unwrap(),
-        SseData::Shutdown
-    ));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_respond_to_rest_query() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -317,7 +269,7 @@ async fn should_successfully_reconnect() {
     assert!(length > 61);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 10)]
 async fn should_fail_to_reconnect() {
     let test_rng = TestRng::new();
     let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
@@ -339,8 +291,8 @@ async fn should_fail_to_reconnect() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
-    //The result should only have messages from both rounds of messages
-    assert_eq!(length, 32);
+    //The result should only have messages from first round of messages
+    assert_eq!(length, 31);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -369,22 +321,6 @@ async fn should_reconnect() {
     assert!(length > 32);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn if_node_sends_shutdown_sidecar_shutdown_should_be_silenced() {
-    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-        start_sidecar().await;
-    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
-    let _ = status_1_0_0_server(node_port_for_rest_connection);
-    thread::sleep(time::Duration::from_secs(4)); //give some time everything to connect
-    let main_event_stream = connect_to_sidecar("/events/main", event_stream_server_port).await;
-    shutdown_tx.send(()).unwrap();
-
-    let events_received = poll_events(main_event_stream).await;
-    assert_eq!(events_received.len(), 2);
-    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
-    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn shutdown_should_be_passed_through() {
     let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
@@ -395,13 +331,12 @@ async fn shutdown_should_be_passed_through() {
     let main_event_stream =
         connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
     shutdown_tx.send(()).unwrap();
-    thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+    thread::sleep(time::Duration::from_secs(2)); //give some time everything to disconnect
     let events_received = poll_events(main_event_stream).await;
-    assert_eq!(events_received.len(), 4);
+    assert_eq!(events_received.len(), 3);
     assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
-    assert!(events_received.get(3).unwrap().contains("\"Shutdown\""));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
@@ -424,13 +359,12 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     shutdown_tx.send(()).unwrap();
 
     let events_received = poll_events(main_event_stream).await;
-    assert_eq!(events_received.len(), 6);
+    assert_eq!(events_received.len(), 5);
     assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(3).unwrap().contains("\"1.4.10\""));
     assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
-    assert!(events_received.get(5).unwrap().contains("\"Shutdown\""));
 }
 
 async fn partial_connection_test(

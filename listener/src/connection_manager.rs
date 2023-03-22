@@ -17,16 +17,18 @@ use tracing::{debug, error, trace, warn};
 use reqwest::Url;
 use tokio::sync::mpsc::Sender;
 
-use crate::Filter;
-
 use super::ConnectionTasks;
-use casper_event_types::sse_data::{deserialize, SseData, SseDataDeserializeError};
+use casper_event_types::{
+    filter::Filter,
+    sse_data::{deserialize, SseData, SseDataDeserializeError},
+};
 
 pub struct SseEvent {
     pub id: u32,
     pub data: SseData,
     pub source: Url,
     pub json_data: Option<serde_json::Value>,
+    pub inbound_filter: Filter,
 }
 
 impl SseEvent {
@@ -35,6 +37,7 @@ impl SseEvent {
         data: SseData,
         mut source: Url,
         json_data: Option<serde_json::Value>,
+        inbound_filter: Filter,
     ) -> Self {
         // This is to remove the path e.g. /events/main
         // Leaving just the IP and port
@@ -44,6 +47,7 @@ impl SseEvent {
             data,
             source,
             json_data,
+            inbound_filter,
         }
     }
 }
@@ -272,6 +276,7 @@ impl ConnectionManager {
                     sse_data,
                     self.bind_address.clone(),
                     Some(json_data),
+                    self.filter.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     Error::msg(
@@ -305,6 +310,7 @@ impl ConnectionManager {
                                 SseData::ApiVersion(semver),
                                 self.bind_address.clone(),
                                 None,
+                                self.filter.clone(),
                             );
                             self.sse_event_sender.send(sse_event).await.map_err(|_| {
                                 non_recoverable_error(Error::msg(
@@ -416,7 +422,6 @@ mod tests {
         } = sse_data.clone()
         {
             assert!(block.proofs.is_empty());
-            //let raw = serde_json::to_string(&sse_data);
             assert_eq!(
                 sse_data,
                 serde_json::from_str::<SseData>(&new_format_block_added_raw).unwrap()
