@@ -90,6 +90,8 @@ id:3
 
 ## The REST Server
 
+The Sidecar provides a RESTful endpoint for useful queries about the state of the network.
+
 ### Latest Block
 
 Retrieve information about the last block added to the linear chain.
