@@ -1,15 +1,10 @@
 mod connection_manager;
 mod connection_tasks;
 
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter},
-    net::IpAddr,
-    str::FromStr,
-    time::Duration,
-};
+use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
 
 use anyhow::{anyhow, Context, Error};
+use casper_event_types::filter::Filter;
 use casper_types::ProtocolVersion;
 use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
@@ -26,25 +21,6 @@ pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
     pub sse_port: u16,
     pub rest_port: u16,
-}
-
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
-enum Filter {
-    Events,
-    Main,
-    Deploys,
-    Sigs,
-}
-
-impl Display for Filter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Filter::Events => write!(f, "events"),
-            Filter::Main => write!(f, "events/main"),
-            Filter::Deploys => write!(f, "events/deploys"),
-            Filter::Sigs => write!(f, "events/sigs"),
-        }
-    }
 }
 
 pub struct EventListener {

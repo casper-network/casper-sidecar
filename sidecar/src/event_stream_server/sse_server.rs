@@ -29,6 +29,7 @@ use warp::{
     Filter, Reply,
 };
 
+use casper_event_types::filter::Filter as SseFilter;
 use casper_event_types::sse_data::EventFilter;
 use casper_event_types::sse_data::SseData;
 use casper_node::types::Deploy;
@@ -47,6 +48,14 @@ pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
+
+/// The filter associated with `/events` path.
+const EVENTS_FILTER: [EventFilter; 4] = [
+    EventFilter::BlockAdded,
+    EventFilter::DeployProcessed,
+    EventFilter::Fault,
+    EventFilter::FinalitySignature,
+];
 
 /// The filter associated with `/events/main` path.
 const MAIN_FILTER: [EventFilter; 5] = [
@@ -77,6 +86,7 @@ pub(super) struct ServerSentEvent {
     pub(super) id: Option<Id>,
     pub(super) data: SseData,
     pub(super) json_data: Option<Value>,
+    pub(super) inbound_filter: Option<SseFilter>,
 }
 
 impl ServerSentEvent {
@@ -86,6 +96,7 @@ impl ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),
             json_data: None,
+            inbound_filter: None,
         }
     }
 }
@@ -116,6 +127,7 @@ pub(super) struct NewSubscriberInfo {
 /// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
 async fn filter_map_server_sent_event(
     event: &ServerSentEvent,
+    stream_filter: &SseFilter,
     event_filter: &[EventFilter],
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     if !event.data.should_include(event_filter) {
@@ -157,8 +169,7 @@ async fn filter_map_server_sent_event(
         | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
-        | &SseData::FinalitySignature(_)
-        | &SseData::Shutdown => {
+        | &SseData::FinalitySignature(_) => {
             let warp_event = match &event.json_data {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => WarpServerSentEvent::default().json_data(&event.data),
@@ -185,15 +196,59 @@ async fn filter_map_server_sent_event(
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             })
-            .id(event.id.unwrap().to_string());
+            .id(id);
             Some(Ok(warp_event))
+        }
+        &SseData::Shutdown => {
+            let should_send_shutdown = match (&event.inbound_filter, stream_filter) {
+                (None, _) => true,
+                (Some(a), b) if a == b => true,
+                (Some(SseFilter::Main), SseFilter::Events) => true, //If this filter handles the `/events` endpoint
+                // then it should also propagate from inbounds `/events/main`
+                (Some(SseFilter::Events), SseFilter::Main) => true, //If we are connected to a legacy node
+                // and the client is listening to /events/main we want to get shutdown from that
+                _ => false,
+            };
+
+            if should_send_shutdown {
+                build_event_for_outbound(event, id)
+            } else {
+                None
+            }
         }
     }
 }
 
+fn build_event_for_outbound(
+    event: &ServerSentEvent,
+    id: String,
+) -> Option<Result<WarpServerSentEvent, RecvError>> {
+    let value = event
+        .json_data
+        .clone()
+        .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
+    Some(Ok(WarpServerSentEvent::default()
+        .json_data(&value)
+        .unwrap_or_else(|error| {
+            warn!(%error, ?event, "failed to jsonify sse event");
+            WarpServerSentEvent::default()
+        })
+        .id(id)))
+}
+
+pub(super) fn path_to_filter(path_param: &str) -> Option<&'static SseFilter> {
+    match path_param {
+        SSE_API_ROOT_PATH => Some(&SseFilter::Events),
+        SSE_API_MAIN_PATH => Some(&SseFilter::Main),
+        SSE_API_DEPLOYS_PATH => Some(&SseFilter::Deploys),
+        SSE_API_SIGNATURES_PATH => Some(&SseFilter::Sigs),
+        _ => None,
+    }
+}
 /// Converts the final URL path element to a slice of `EventFilter`s.
 pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
     match path_param {
+        SSE_API_ROOT_PATH => Some(&EVENTS_FILTER[..]),
         SSE_API_MAIN_PATH => Some(&MAIN_FILTER[..]),
         SSE_API_DEPLOYS_PATH => Some(&DEPLOYS_FILTER[..]),
         SSE_API_SIGNATURES_PATH => Some(&SIGNATURES_FILTER[..]),
@@ -280,7 +335,17 @@ fn serve_sse_response_handler(
     // If `path_param` is not a valid string, return a 404.
     let event_filter = match get_filter(
         path_param
-            .unwrap_or_else(|| SSE_API_MAIN_PATH.to_string())
+            .clone()
+            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
+            .as_str(),
+    ) {
+        Some(filter) => filter,
+        None => return create_404(),
+    };
+
+    let stream_filter = match path_to_filter(
+        path_param
+            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
             .as_str(),
     ) {
         Some(filter) => filter,
@@ -316,6 +381,7 @@ fn serve_sse_response_handler(
     sse::reply(sse::keep_alive().stream(stream_to_client(
         initial_events_receiver,
         ongoing_events_receiver,
+        stream_filter,
         event_filter,
     )))
     .into_response()
@@ -379,6 +445,7 @@ impl ChannelsAndFilter {
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
+    stream_filter: &'static SseFilter,
     event_filter: &'static [EventFilter],
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
@@ -426,7 +493,9 @@ fn stream_to_client(
         .chain(ongoing_stream)
         .filter_map(move |result| async move {
             match result {
-                Ok(event) => filter_map_server_sent_event(&event, event_filter).await,
+                Ok(event) => {
+                    filter_map_server_sent_event(&event, stream_filter, event_filter).await
+                }
                 Err(error) => Some(Err(error)),
             }
         })
@@ -437,13 +506,16 @@ mod tests {
     use regex::Regex;
     use std::iter;
 
+    use casper_event_types::filter::Filter as SseFilter;
     use casper_types::testing::TestRng;
 
     use super::*;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_none(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
@@ -452,7 +524,9 @@ mod tests {
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_some(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter
@@ -469,17 +543,20 @@ mod tests {
             id: None,
             data: SseData::random_api_version(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let block_added = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_block_added(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
         let deploy_accepted = ServerSentEvent {
             id: Some(rng.gen()),
             data: sse_data,
             json_data: None,
+            inbound_filter: None,
         };
         let mut deploys = HashMap::new();
         let _ = deploys.insert(*deploy.hash(), deploy);
@@ -487,31 +564,37 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let deploy_expired = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_expired(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_fault(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let finality_signature = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_finality_signature(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let step = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_step(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let shutdown = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::Shutdown,
             json_data: None,
+            inbound_filter: None,
         };
 
         // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
@@ -563,17 +646,20 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::random_api_version(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_block_added = ServerSentEvent {
             id: None,
             data: SseData::random_block_added(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
         let malformed_deploy_accepted = ServerSentEvent {
             id: None,
             data: sse_data,
             json_data: None,
+            inbound_filter: None,
         };
         let mut deploys = HashMap::new();
         let _ = deploys.insert(*deploy.hash(), deploy);
@@ -581,31 +667,37 @@ mod tests {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_deploy_expired = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_expired(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_fault = ServerSentEvent {
             id: None,
             data: SseData::random_fault(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_finality_signature = ServerSentEvent {
             id: None,
             data: SseData::random_finality_signature(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_step = ServerSentEvent {
             id: None,
             data: SseData::random_step(&mut rng),
             json_data: None,
+            inbound_filter: None,
         };
         let malformed_shutdown = ServerSentEvent {
             id: None,
             data: SseData::Shutdown,
             json_data: None,
+            inbound_filter: None,
         };
 
         for filter in &[
@@ -653,6 +745,7 @@ mod tests {
                         id: Some(id),
                         data,
                         json_data: None,
+                        inbound_filter: None,
                     }
                 })
                 .collect()
@@ -736,10 +829,12 @@ mod tests {
             drop(initial_events_sender);
             drop(ongoing_events_sender);
 
+            let stream_filter = path_to_filter(path_filter).unwrap();
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
+                &stream_filter,
                 get_filter(path_filter).unwrap(),
             )
             .collect()

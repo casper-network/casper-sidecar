@@ -37,7 +37,7 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
@@ -56,7 +56,12 @@ const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(Option<EventIndex>, SseData, Option<serde_json::Value>)>,
+    sse_data_sender: UnboundedSender<(
+        Option<EventIndex>,
+        SseData,
+        SseFilter,
+        Option<serde_json::Value>,
+    )>,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -120,19 +125,18 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    pub(crate) fn broadcast(&mut self, sse_data: SseData, maybe_json_data: Option<Value>) {
+    pub(crate) fn broadcast(
+        &mut self,
+        sse_data: SseData,
+        inbound_filter: SseFilter,
+        maybe_json_data: Option<Value>,
+    ) {
         let event_index = match sse_data {
             SseData::ApiVersion(..) => None,
             _ => Some(self.event_indexer.next_index()),
         };
         let _ = self
             .sse_data_sender
-            .send((event_index, sse_data, maybe_json_data));
-    }
-}
-
-impl Drop for EventStreamServer {
-    fn drop(&mut self) {
-        self.broadcast(SseData::Shutdown, None);
+            .send((event_index, sse_data, inbound_filter, maybe_json_data));
     }
 }

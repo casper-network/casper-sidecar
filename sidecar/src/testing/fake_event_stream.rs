@@ -14,7 +14,7 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{
@@ -129,7 +129,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -159,7 +159,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -194,7 +194,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -229,7 +229,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, None);
+                    event_stream_server.broadcast(event, SseFilter::Main, None);
                 }
             });
 
@@ -532,6 +532,14 @@ pub fn setup_mock_build_version_server_with_version(
         }
     });
     tx
+}
+
+pub fn status_1_0_0_server(port: u16) -> Sender<String> {
+    setup_mock_build_version_server_with_version(port, "1.0.0".to_string())
+}
+
+pub fn status_1_4_10_server(port: u16) -> Sender<String> {
+    setup_mock_build_version_server_with_version(port, "1.4.10".to_string())
 }
 
 async fn get_version(version: Arc<Mutex<String>>) -> Result<impl warp::Reply, warp::Rejection> {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
@@ -212,6 +213,24 @@ impl DatabaseWriter for FakeDatabase {
 
         data.insert(identifier, stringified_event);
 
+        Ok(0)
+    }
+
+    #[allow(unused)]
+    async fn save_shutdown(
+        &self,
+        event_id: u32,
+        event_source_address: String,
+    ) -> Result<usize, DatabaseWriteError> {
+        let mut data = self.data.lock().expect("Error acquiring lock on data");
+        let unix_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        let event_key = format!("{}-{}", event_source_address, unix_timestamp);
+        let stringified_event = serde_json::to_string("{}").expect("Error serialising event data");
+
+        data.insert(event_key, stringified_event);
         Ok(0)
     }
 }

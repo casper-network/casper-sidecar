@@ -1,5 +1,5 @@
 use rand::Rng;
-use sea_query::{Query, SqliteQueryBuilder};
+use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
 use casper_types::testing::TestRng;
@@ -335,40 +335,17 @@ async fn should_disallow_duplicate_event_id_from_source() {
         .expect("Error opening database in memory");
 
     let block_added = BlockAdded::random(&mut test_rng);
-    let other_block_added = BlockAdded::random(&mut test_rng);
-
-    let mut db_err: Option<DatabaseWriteError> = None;
-    let mut retry_count = 3;
 
     assert!(sqlite_db
-        .save_block_added(block_added, event_id, "127.0.0.1".to_string())
+        .save_block_added(block_added.clone(), event_id, "127.0.0.1".to_string())
         .await
         .is_ok());
-
-    while db_err.is_none() && retry_count > 0 {
-        /*This loop was made as a workaround for the quirkyness of storing event logs. At
-        the time this was written - event logs aren't unique on event log id, they are
-        unique on a tuple (event_id, node_address, creation_timestamp). The creation_timestamp
-        is inserted as NOW() by the db. So there is a chance that the two inserts that happen
-        in this test will have a different creation_timestamp value thus they will be both
-        saved. This should be resolved on a data model level, but before that discussion
-        happens a retry is added to this test so the chance of it failing is lowered.*/
-        let res = sqlite_db
-            .save_block_added(other_block_added.clone(), event_id, "127.0.0.1".to_string())
-            .await;
-        if res.is_err() {
-            db_err = Some(res.unwrap_err());
-        }
-        retry_count = retry_count - 1;
-    }
-
-    assert!(matches!(
-        db_err,
-        Some(DatabaseWriteError::UniqueConstraint(_))
-    ));
-
+    let res = sqlite_db
+        .save_block_added(block_added, event_id, "127.0.0.1".to_string())
+        .await;
+    assert!(matches!(res, Err(DatabaseWriteError::UniqueConstraint(_))));
     // This check is to ensure that the UNIQUE constraint being broken is from the event_log table rather than from the raw event table.
-    if let Some(DatabaseWriteError::UniqueConstraint(uc_err)) = db_err {
+    if let Err(DatabaseWriteError::UniqueConstraint(uc_err)) = res {
         assert_eq!(uc_err.table, "event_log")
     }
 }
@@ -777,4 +754,23 @@ async fn should_save_step_with_correct_event_type_id() {
         .expect("Error getting event_type_id from row");
 
     assert_eq!(event_type_id, EventTypeId::Step as u8)
+}
+
+#[tokio::test]
+async fn should_save_and_retrieve_a_shutdown() {
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
+
+    let sql = Query::select()
+        .expr(Expr::asterisk())
+        .from(tables::shutdown::Shutdown::Table)
+        .to_string(SqliteQueryBuilder);
+    let row = sqlite_db.fetch_one(&sql).await;
+
+    assert_eq!(
+        row.get::<String, &str>("event_source_address"),
+        "xyz".to_string()
+    );
 }
