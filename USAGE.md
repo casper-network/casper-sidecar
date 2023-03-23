@@ -13,7 +13,7 @@ The Sidecar's event stream endpoint is a passthrough for all the events emitted 
 It is possible to monitor the Sidecar's event stream using *cURL*, depending on how the HOST and PORT are configured.
 
 ```json
-curl -sN http://<HOST:PORT>/events/<TYPE>
+curl -s http://<HOST:PORT>/events/<TYPE>
 ```
 
 - `HOST` - The IP address where the Sidecar is running
@@ -37,7 +37,7 @@ The path URL is `<HOST:PORT>/block`.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block
+curl -s http://127.0.0.1:18888/block
 ```
 
 <details> 
@@ -59,7 +59,7 @@ The path URL is `<HOST:PORT>/block/<block-hash>`. Enter a valid block hash.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block/96a989a7f4514909b442faba3acbf643378fb7f57f9c9e32013fdfad64e3c8a5
+curl -s http://127.0.0.1:18888/block/96a989a7f4514909b442faba3acbf643378fb7f57f9c9e32013fdfad64e3c8a5
 ```
 
 <details> 
@@ -80,7 +80,7 @@ The path URL is `<HOST:PORT>/block/<block-height>`. Enter a valid number represe
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block/1278485
+curl -s http://127.0.0.1:18888/block/1278485
 ```
 
 <details> 
@@ -103,7 +103,7 @@ The output differs depending on the deploy's status, which changes over time as 
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 The sample output below is for a deploy that was accepted but has yet to be processed.
@@ -137,7 +137,7 @@ The path URL is `<HOST:PORT>/deploy/accepted/<deploy-hash>`. Enter a valid deplo
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/accepted/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/accepted/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 <details> 
@@ -159,7 +159,7 @@ The path URL is `<HOST:PORT>/deploy/expired/<deploy-hash>`. Enter a valid deploy
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+curl -s http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 ```
 
 ### Processed Deploy by Hash
@@ -170,7 +170,7 @@ The path URL is `<HOST:PORT>/deploy/processed/<deploy-hash>`. Enter a valid depl
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/processed/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/processed/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 <details> 
@@ -191,7 +191,7 @@ The path URL is `<HOST:PORT>/faults/<public-key>`. Enter a valid hexadecimal rep
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
+curl -s http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 ```
 
 ### Faults by Era
@@ -202,7 +202,7 @@ The path URL is: `<HOST:PORT>/faults/<era-ID>`. Enter an era identifier.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/faults/2304
+curl -s http://127.0.0.1:18888/faults/2304
 ```
 
 ### Finality Signatures by Block
@@ -214,7 +214,7 @@ The path URL is: `<HOST:PORT>/signatures/<block-hash>`. Enter a valid block hash
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
+curl -s http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
 ```
 
 ### Step by Era
@@ -226,7 +226,7 @@ The path URL is: `<HOST:PORT>/step/<era-ID>`. Enter a valid era identifier.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/step/7268
+curl -s http://127.0.0.1:18888/step/7268
 ```
 
 ### Missing Filter
