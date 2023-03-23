@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use casper_node::types::FinalitySignature as FinSig;
@@ -98,7 +97,6 @@ pub trait DatabaseWriter {
         &self,
         event_id: u32,
         event_source_address: String,
-        current_time: DateTime<Utc>,
     ) -> Result<usize, DatabaseWriteError>;
 }
 

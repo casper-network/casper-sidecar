@@ -24,7 +24,6 @@ use std::{
 };
 
 use anyhow::{Context, Error};
-use chrono::Utc;
 use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
@@ -565,7 +564,7 @@ async fn handle_single_event(
         SseData::Shutdown => {
             warn!("Node ({}) is unavailable", sse_event.source.to_string());
             let res = sqlite_database
-                .save_shutdown(sse_event.id, sse_event.source.to_string(), Utc::now())
+                .save_shutdown(sse_event.id, sse_event.source.to_string())
                 .await;
             match res {
                 Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {

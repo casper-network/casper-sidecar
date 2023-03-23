@@ -1,4 +1,3 @@
-use chrono::{DateTime, NaiveDate, Utc};
 use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
@@ -762,15 +761,7 @@ async fn should_save_and_retrieve_a_shutdown() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
-    let naivedatetime_utc = NaiveDate::from_ymd_opt(2000, 1, 12)
-        .unwrap()
-        .and_hms_opt(2, 0, 0)
-        .unwrap();
-    let current_time = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
-    assert!(sqlite_db
-        .save_shutdown(15, "xyz".to_string(), current_time)
-        .await
-        .is_ok());
+    assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
 
     let sql = Query::select()
         .expr(Expr::asterisk())
@@ -781,9 +772,5 @@ async fn should_save_and_retrieve_a_shutdown() {
     assert_eq!(
         row.get::<String, &str>("event_source_address"),
         "xyz".to_string()
-    );
-    assert_eq!(
-        row.get::<String, &str>("shutdown_timestamp"),
-        "2000-01-12 02:00:00 +00:00".to_string()
     );
 }

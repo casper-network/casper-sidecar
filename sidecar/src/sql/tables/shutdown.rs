@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use sea_query::{
     error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, Index,
     InsertStatement, Query, Table, TableCreateStatement,
@@ -27,7 +26,8 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(
             ColumnDef::new(Shutdown::ShutdownTimestamp)
                 .date_time()
-                .not_null(),
+                .not_null()
+                .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
         )
         .col(
             ColumnDef::new(Shutdown::EventLogId)
@@ -55,28 +55,19 @@ pub fn create_table_stmt() -> TableCreateStatement {
 
 pub fn create_insert_stmt(
     event_source_address: String,
-    shutdown_time: DateTime<Utc>,
     event_log_id: u32,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Shutdown::Table)
-        .columns([
-            Shutdown::EventSourceAddress,
-            Shutdown::ShutdownTimestamp,
-            Shutdown::EventLogId,
-        ])
-        .values(vec![
-            event_source_address.into(),
-            shutdown_time.into(),
-            event_log_id.into(),
-        ])
+        .columns([Shutdown::EventSourceAddress, Shutdown::EventLogId])
+        .values(vec![event_source_address.into(), event_log_id.into()])
         .map(|stmt| stmt.to_owned())
 }
 
 #[test]
 fn create_table_stmt_should_produce_create_table_sql() {
     use sea_query::SqliteQueryBuilder;
-    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Shutdown\" ( \"event_source_address\" text NOT NULL, \"shutdown_timestamp\" text NOT NULL, \"event_log_id\" integer NOT NULL, CONSTRAINT \"PDX_Shutdown\"PRIMARY KEY (\"event_source_address\", \"shutdown_timestamp\"), FOREIGN KEY (\"event_log_id\") REFERENCES \"event_log\" (\"event_log_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
+    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Shutdown\" ( \"event_source_address\" text NOT NULL, \"shutdown_timestamp\" text NOT NULL DEFAULT CURRENT_TIMESTAMP, \"event_log_id\" integer NOT NULL, CONSTRAINT \"PDX_Shutdown\"PRIMARY KEY (\"event_source_address\", \"shutdown_timestamp\"), FOREIGN KEY (\"event_log_id\") REFERENCES \"event_log\" (\"event_log_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
 
     let got_sql = create_table_stmt().to_string(SqliteQueryBuilder);
 
@@ -85,17 +76,11 @@ fn create_table_stmt_should_produce_create_table_sql() {
 
 #[test]
 fn create_insert_stmt_should_produce_insert_sql() {
-    use chrono::NaiveDate;
     use sea_query::SqliteQueryBuilder;
-    let expected_sql = "INSERT INTO \"Shutdown\" (\"event_source_address\", \"shutdown_timestamp\", \"event_log_id\") VALUES ('http://100.100.100.1:1782', '2000-01-12 02:00:00 +00:00', 5)";
+    let expected_sql = "INSERT INTO \"Shutdown\" (\"event_source_address\", \"event_log_id\") VALUES ('http://100.100.100.1:1782', 5)";
     let address = "http://100.100.100.1:1782".to_string();
-    let naivedatetime_utc = NaiveDate::from_ymd_opt(2000, 1, 12)
-        .unwrap()
-        .and_hms_opt(2, 0, 0)
-        .unwrap();
-    let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
 
-    let got_sql = create_insert_stmt(address, datetime_utc, 5)
+    let got_sql = create_insert_stmt(address, 5)
         .unwrap()
         .to_string(SqliteQueryBuilder);
 
