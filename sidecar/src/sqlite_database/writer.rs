@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use anyhow::Context;
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -264,6 +266,37 @@ impl DatabaseWriter for SqliteDatabase {
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
             .to_string(SqliteQueryBuilder);
 
+        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+    }
+
+    async fn save_shutdown(
+        &self,
+        event_id: u32,
+        event_source_address: String,
+    ) -> Result<usize, DatabaseWriteError> {
+        let db_connection = &self.connection_pool;
+        let unix_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        let event_key = format!("{}-{}", event_source_address, unix_timestamp);
+
+        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+            EventTypeId::Shutdown as u8,
+            &event_source_address,
+            event_id,
+            &event_key,
+        )?
+        .to_string(SqliteQueryBuilder);
+
+        let event_log_id = db_connection
+            .fetch_one(insert_to_event_log_stmt.as_str())
+            .await?
+            .try_get::<u32, usize>(0)
+            .context("Error parsing event_log_id from row")?;
+
+        let insert_stmt = tables::shutdown::create_insert_stmt(event_source_address, event_log_id)?
+            .to_string(SqliteQueryBuilder);
         handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
     }
 }

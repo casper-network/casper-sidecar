@@ -37,7 +37,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{filter::Filter, sse_data::SseData};
 use casper_types::ProtocolVersion;
 
 use crate::{
@@ -200,8 +200,10 @@ async fn run(config: Config) -> Result<(), Error> {
         )
         .context("Error starting EventStreamServer")?;
 
-        while let Some((sse_data, maybe_json_data)) = outbound_sse_data_receiver.recv().await {
-            event_stream_server.broadcast(sse_data, maybe_json_data);
+        while let Some((sse_data, inbound_filter, maybe_json_data)) =
+            outbound_sse_data_receiver.recv().await
+        {
+            event_stream_server.broadcast(sse_data, inbound_filter, maybe_json_data);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
     });
@@ -229,7 +231,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
@@ -242,7 +244,7 @@ async fn handle_single_event(
                 None | Some(_) => {
                     *guard = Some(version);
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::ApiVersion(version), None))
+                        .send((SseData::ApiVersion(version), sse_event.inbound_filter, None))
                         .await
                     {
                         debug!(
@@ -276,6 +278,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::BlockAdded { block, block_hash },
+                            sse_event.inbound_filter,
                             sse_event.json_data,
                         ))
                         .await
@@ -310,7 +313,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::DeployAccepted { deploy }, sse_event.json_data))
+                        .send((
+                            SseData::DeployAccepted { deploy },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -346,7 +353,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::DeployExpired { deploy_hash }, sse_event.json_data))
+                        .send((
+                            SseData::DeployExpired { deploy_hash },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -409,6 +420,7 @@ async fn handle_single_event(
                                 block_hash,
                                 execution_result,
                             },
+                            sse_event.inbound_filter,
                             sse_event.json_data,
                         ))
                         .await
@@ -449,6 +461,7 @@ async fn handle_single_event(
                                 timestamp,
                                 public_key,
                             },
+                            sse_event.inbound_filter,
                             sse_event.json_data,
                         ))
                         .await
@@ -482,7 +495,11 @@ async fn handle_single_event(
             match res {
                 Ok(_) => {
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::FinalitySignature(fs), sse_event.json_data))
+                        .send((
+                            SseData::FinalitySignature(fs),
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
                         .await
                     {
                         debug!(
@@ -523,6 +540,7 @@ async fn handle_single_event(
                                 era_id,
                                 execution_effect,
                             },
+                            sse_event.inbound_filter,
                             sse_event.json_data,
                         ))
                         .await
@@ -545,6 +563,30 @@ async fn handle_single_event(
         }
         SseData::Shutdown => {
             warn!("Node ({}) is unavailable", sse_event.source.to_string());
+            let res = sqlite_database
+                .save_shutdown(sse_event.id, sse_event.source.to_string())
+                .await;
+            match res {
+                Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {
+                    // We push to outbound on UniqueConstraint error because in sse_server we match shutdowns to outbounds based on the filter they came from to prevent duplicates.
+                    // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we
+                    // don't store in DB the information from which filter did shutdown came).
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::Shutdown,
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
+                }
+                Err(other_err) => warn!(?other_err, "Unexpected error saving Shutdown"),
+            }
         }
     }
 }
@@ -553,7 +595,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
 ) {

@@ -11,7 +11,7 @@ use tokio::{
 use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
 
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{filter::Filter, sse_data::SseData};
 use casper_types::ProtocolVersion;
 
 use super::{
@@ -38,6 +38,7 @@ pub(super) async fn run(
     mut data_receiver: mpsc::UnboundedReceiver<(
         Option<EventIndex>,
         SseData,
+        Filter,
         Option<serde_json::Value>,
     )>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
@@ -118,10 +119,10 @@ pub(super) async fn run(
 
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
-                        Some((maybe_event_index, data, maybe_json_data)) => {
+                        Some((maybe_event_index, data, inbound_filter, maybe_json_data)) => {
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data.clone());
-                            let event = ServerSentEvent { id: maybe_event_index, data: data.clone(), json_data: maybe_json_data };
+                            let event = ServerSentEvent { id: maybe_event_index, data: data.clone(), json_data: maybe_json_data, inbound_filter: Some(inbound_filter), };
                             match data {
                                 SseData::ApiVersion(v) => latest_protocol_version = Some(v),
                                 _ => {

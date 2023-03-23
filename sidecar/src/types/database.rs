@@ -91,6 +91,13 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError>;
+
+    // Save data about shutdown to the database
+    async fn save_shutdown(
+        &self,
+        event_id: u32,
+        event_source_address: String,
+    ) -> Result<usize, DatabaseWriteError>;
 }
 
 #[derive(Debug)]

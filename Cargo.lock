@@ -379,7 +379,7 @@ dependencies = [
  "casper-hashing",
  "casper-node",
  "casper-types",
- "clap 4.1.8",
+ "clap 4.1.9",
  "colored",
  "derive-new",
  "eventsource-stream",
@@ -428,8 +428,8 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "2.0.1"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#8516bac904c6d0cad14a725eca723e704fcb877a"
+version = "3.0.0"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#87008f44bd0a38eea9cc468b59a4db20eb5ea165"
 dependencies = [
  "anyhow",
  "base16",
@@ -470,7 +470,7 @@ dependencies = [
 [[package]]
 name = "casper-hashing"
 version = "1.4.3"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#8516bac904c6d0cad14a725eca723e704fcb877a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#87008f44bd0a38eea9cc468b59a4db20eb5ea165"
 dependencies = [
  "base16",
  "blake2",
@@ -489,7 +489,7 @@ dependencies = [
 [[package]]
 name = "casper-json-rpc"
 version = "0.1.0"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#8516bac904c6d0cad14a725eca723e704fcb877a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#87008f44bd0a38eea9cc468b59a4db20eb5ea165"
 dependencies = [
  "bytes",
  "futures",
@@ -503,8 +503,8 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.8"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#8516bac904c6d0cad14a725eca723e704fcb877a"
+version = "1.4.13"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#87008f44bd0a38eea9cc468b59a4db20eb5ea165"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -589,7 +589,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "1.5.0"
-source = "git+https://github.com/casper-network/casper-node?branch=dev#8516bac904c6d0cad14a725eca723e704fcb877a"
+source = "git+https://github.com/casper-network/casper-node?branch=dev#87008f44bd0a38eea9cc468b59a4db20eb5ea165"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -661,9 +661,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.1.8"
+version = "4.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d7ae14b20b94cb02149ed21a86c423859cbe18dc7ed69845cace50e52b40a5"
+checksum = "9a9d6ada83c1edcce028902ea27dd929069c70df4c7600b131b4d9a1ad2879cc"
 dependencies = [
  "bitflags",
  "clap_derive",
@@ -676,9 +676,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.1.8"
+version = "4.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bec8e5c9d09e439c4335b1af0abaab56dcf3b94999a936e1bb47b9134288f0"
+checksum = "fddf67631444a3a3e3e5ac51c36a5e01335302de677bd78759eaa90ab1f46644"
 dependencies = [
  "heck 0.4.1",
  "proc-macro-error",
@@ -689,9 +689,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350b9cf31731f9957399229e9b2adc51eeabdfbe9d71d9a0552275fd12710d09"
+checksum = "033f6b7a4acb1f358c742aaca805c939ee73b4c6209ae4318ec7aca81c42e646"
 dependencies = [
  "os_str_bytes",
 ]
@@ -1722,10 +1722,11 @@ dependencies = [
 
 [[package]]
 name = "io-lifetimes"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfa919a82ea574332e2de6e74b4c36e74d41982b335080fa59d4ef31be20fdf3"
+checksum = "76e86b86ae312accbf05ade23ce76b625e0e47a255712b7414037385a1c05380"
 dependencies = [
+ "hermit-abi 0.3.1",
  "libc",
  "windows-sys 0.45.0",
 ]
