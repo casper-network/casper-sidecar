@@ -8,7 +8,7 @@ This document outlines the functionality of the Sidecar's [event stream endpoint
 
 ## The Event Stream
 
-The Sidecar's event stream endpoint is a passthrough for all the events emitted by the node to which the Sidecar connects. For more information on various event types, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/monitoring-events/#event-types) documentation.
+The Sidecar's event stream endpoint is a passthrough for all the events emitted by the node to which the Sidecar connects. For more information on various event types, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
 
 It is possible to monitor the Sidecar's event stream using *cURL*, depending on how the HOST and PORT are configured.
 
@@ -98,7 +98,7 @@ Retrieve an aggregate of the various states a deploy goes through, given its dep
 
 The path URL is `<HOST:PORT>/deploy/<deploy-hash>`. Enter a valid deploy hash. 
 
-The output differs depending on the deploy's status, which changes over time as the deploy goes through its [lifecycle](https://docs.casperlabs.io/design/casper-design/#execution-semantics-phases).
+The output differs depending on the deploy's status, which changes over time as the deploy goes through its [lifecycle](https://docs.casperlabs.io/concepts/design/casper-design/#execution-semantics-phases).
 
 Example:
 
