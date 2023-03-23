@@ -26,6 +26,29 @@ Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), the command would 
 curl -sN http://127.0.0.1:19999/events/deploys
 ```
 
+### The API Version of Events
+
+When a client connects to the Sidecar, the Sidecar displays the node’s API version, `ApiVersion`, which it receives from the node. Then, it starts streaming the events coming from the node. The `ApiVersion` may differ from the node’s build version.
+
+If the node goes offline, when it restarts, the `ApiVersion` may differ (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
+
+Here is an example of how the API version would look like while listening on the Sidecar’s `DeployAccepted` event stream:
+
+```
+curl -sN http://127.0.0.1:19999/events/deploys
+
+data:{"ApiVersion”:”1.4.8”}
+
+data:{"DeployAccepted":{"hash":"00eea4fb9baa37af401cba8ffb96a1b96d594234908cb5f9de50effcb5b1c5aa","header":{"account":"0202ed20f3a93b5386bc41b6945722b2bd4250c48f5fa0632adf546e2f3ff6f4ddee","timestamp":"2023-02-28T12:21:14.604Z","ttl":"30m","gas_price":1,"body_hash":"f06261b964600caf712a3ea0dc54448c3fcc008638368580eb4de6832dce8698","dependencies":[],"chain_name":"casper"},"payment":{"ModuleBytes":{"module_bytes":"","args":[["amount",{"cl_type":"U512","bytes":"0400e1f505","parsed":"100000000"}]]}},"session":{"Transfer":{"args":[["amount",{"cl_type":"U512","bytes":"05205d59d832","parsed":"218378100000"}],["target",{"cl_type":{"ByteArray":32},"bytes":"6fbe4634d42aa1ae7820eed35bcbd5c687de5c464e5348650b49a21a17c8dcb5","parsed":"6fbe4634d42aa1ae7820eed35bcbd5c687de5c464e5348650b49a21a17c8dcb5"}],["id",{"cl_type":{"Option":"U64"},"bytes":"00","parsed":null}]]}},"approvals":[{"signer":"0202ed20f3a93b5386bc41b6945722b2bd4250c48f5fa0632adf546e2f3ff6f4ddee","signature":"02b519ecb34f954aeb7afede122c6f999b2124022f6b653304b2891c5428b074795ad9232a409aa0d3e601471331ea50143ca4c378306ffcd0f8ff7a60e13f19db"}]}}
+id:21821471
+
+:
+
+:
+
+:
+```
+
 ## The REST Server
 
 ### Latest Block
