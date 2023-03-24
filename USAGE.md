@@ -30,7 +30,7 @@ curl -sN http://127.0.0.1:19999/events/deploys
 
 When a client connects to the Sidecar, the Sidecar displays the node’s API version, `ApiVersion`, which it receives from the node. Then, it starts streaming the events coming from the node. The `ApiVersion` may differ from the node’s build version.
 
-If the node goes offline, when it restarts, the `ApiVersion` may differ (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
+If the node goes offline, the `ApiVersion` may differ when it restarts (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
 
 Here is an example of how the API version would look like while listening on the Sidecar’s `DeployAccepted` event stream:
 
