@@ -213,7 +213,8 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
+    let (_shutdown_tx, _after_shutdown_rx) =
+        setup_mock_build_version_server(node_port_for_rest_connection).await;
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 

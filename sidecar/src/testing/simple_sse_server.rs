@@ -1,5 +1,6 @@
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::testing::fake_event_stream::wait_for_sse_server_to_be_up;
     use async_stream::stream;
     use casper_event_types::sse_data::test_support::{
         example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
@@ -14,7 +15,7 @@ pub(crate) mod tests {
     use tokio::sync::broadcast::{
         channel as broadcast_channel, Receiver as BroadcastReceiver, Sender as BroadcastSender,
     };
-    use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+    use tokio::sync::mpsc::{channel, Receiver, Sender};
     use warp::path::end;
     use warp::{sse::Event, Filter};
     use warp::{Rejection, Reply};
@@ -38,19 +39,18 @@ pub(crate) mod tests {
         }
     }
 
-    pub async fn sse_server_example_data_1_0_0(port: u16) -> OneshotSender<()> {
-        let data = vec![
+    pub fn example_data_1_0_0() -> Vec<(Option<String>, String)> {
+        vec![
             (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
             (
                 Some("0".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_1, "1"),
             ),
-        ];
-        simple_sse_server(port, data).await
+        ]
     }
 
-    pub async fn sse_server_example_data_1_0_0_two_blocks(port: u16) -> OneshotSender<()> {
-        let data = vec![
+    pub fn example_data_1_0_0_two_blocks() -> Vec<(Option<String>, String)> {
+        vec![
             (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
             (
                 Some("0".to_string()),
@@ -60,53 +60,52 @@ pub(crate) mod tests {
                 Some("1".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_3, "2"),
             ),
-        ];
-        simple_sse_server(port, data).await
+        ]
     }
 
-    pub async fn sse_server_shutdown_1_0_0(port: u16) -> OneshotSender<()> {
-        let data = vec![
+    pub fn sse_server_shutdown_1_0_0_data() -> Vec<(Option<String>, String)> {
+        vec![
             (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
             (Some("0".to_string()), shutdown()),
             (
                 Some("1".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_1, "1"),
             ),
-        ];
-        simple_sse_server(port, data).await
+        ]
     }
 
-    pub async fn sse_server_example_data_1_3_9_with_sigs(port: u16) -> OneshotSender<()> {
-        let main_data = vec![
+    pub fn example_data_1_3_9_with_sigs(
+    ) -> (Vec<(Option<String>, String)>, Vec<(Option<String>, String)>) {
+        let main = vec![
             (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_1_4_10(BLOCK_HASH_2, "2"), //1.3.9 should use 1.4.x compliant BlockAdded messages
             ),
         ];
-        let sigs_data = vec![
+        let sigs = vec![
             (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
             (
                 Some("2".to_string()),
                 example_finality_signature_1_4_10(BLOCK_HASH_2), //1.3.9 should use 1.4.x compliant FinalitySingatures messages
             ),
         ];
-        simple_sse_server_with_sigs(port, main_data, sigs_data).await
+        (main, sigs)
     }
 
-    pub async fn sse_server_send_n_block_added(
-        port: u16,
+    pub fn random_n_block_added(
         number_of_block_added_messages: u32,
         start_index: u32,
         rng: TestRng,
-    ) -> (OneshotSender<()>, TestRng) {
+    ) -> (Vec<(Option<String>, String)>, TestRng) {
         let (blocks_added, rng) =
             generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
-
         let data = vec![(None, "{\"ApiVersion\":\"1.4.10\"}".to_string())];
-        let data = data.into_iter().chain(blocks_added.into_iter()).collect();
-        let sender = simple_sse_server(port, data).await;
-        (sender, rng)
+        let mut data: Vec<(Option<String>, String)> =
+            data.into_iter().chain(blocks_added.into_iter()).collect();
+        let shutdown_index = start_index + 31;
+        data.push((Some(shutdown_index.to_string()), shutdown()));
+        (data, rng)
     }
 
     fn build_paths(
@@ -194,64 +193,85 @@ pub(crate) mod tests {
             .and(end())
     }
 
-    pub async fn sse_server_example_data_1_4_10(port: u16) -> OneshotSender<()> {
-        let data = vec![
+    pub fn sse_server_example_1_4_10_data() -> Vec<(Option<String>, String)> {
+        vec![
             (None, "{\"ApiVersion\":\"1.4.10\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_1_4_10(BLOCK_HASH_2, "2"),
             ),
-        ];
-        simple_sse_server(port, data).await
+        ]
     }
 
-    pub async fn sse_server_example_data_1_1_0_with_legacy_message(port: u16) -> OneshotSender<()> {
-        let data = vec![
+    pub fn example_data_1_1_0_with_legacy_message() -> Vec<(Option<String>, String)> {
+        vec![
             (None, "{\"ApiVersion\":\"1.1.0\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_2, "3"),
             ),
-        ];
-        simple_sse_server(port, data).await
+        ]
     }
 
     pub async fn simple_sse_server(
         port: u16,
         data: Vec<(Option<String>, String)>,
-    ) -> OneshotSender<()> {
-        let (shutdown_tx, shutdown_rx) = oneshot_channel();
-        tokio::spawn(async move {
+    ) -> (Sender<()>, Receiver<()>) {
+        let (shutdown_tx, mut shutdown_rx) = channel(1);
+        let (after_shutdown_tx, after_shutdown_rx) = channel(1);
+        let server_thread = tokio::spawn(async move {
             let (api, main_data_tx) = build_paths(data);
             let server = warp::serve(*api)
                 .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                    shutdown_rx.await.ok();
+                    let _ = shutdown_rx.recv().await;
                     let _ = main_data_tx.clone().send(None);
                 })
                 .1;
             server.await;
+            let _ = after_shutdown_tx.send(()).await;
         });
-        return shutdown_tx;
+        tokio::spawn(async move {
+            let result = server_thread.await;
+            if result.is_err() {
+                println!("simple_sse_server: {:?}", result);
+            }
+        });
+        let urls = vec![format!("http://127.0.0.1:{}/events/main", port)];
+        wait_for_sse_server_to_be_up(urls).await;
+        return (shutdown_tx, after_shutdown_rx);
     }
 
     pub async fn simple_sse_server_with_sigs(
         port: u16,
         main_data: Vec<(Option<String>, String)>,
         sigs_data: Vec<(Option<String>, String)>,
-    ) -> OneshotSender<()> {
-        let (shutdown_tx, shutdown_rx) = oneshot_channel();
-        tokio::spawn(async move {
+    ) -> (Sender<()>, Receiver<()>) {
+        let (shutdown_tx, mut shutdown_rx) = channel(10);
+        let (after_shutdown_tx, after_shutdown_rx) = channel(10);
+        let server_thread = tokio::spawn(async move {
             let (api, main_data_tx, sigs_data_tx) = build_paths_with_sigs(main_data, sigs_data);
             let server = warp::serve(*api)
                 .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                    shutdown_rx.await.ok();
+                    shutdown_rx.recv().await.unwrap();
                     let _ = main_data_tx.clone().send(None);
                     let _ = sigs_data_tx.clone().send(None);
                 })
                 .1;
             server.await;
+            after_shutdown_tx.send(()).await.unwrap();
         });
-        return shutdown_tx;
+        tokio::spawn(async move {
+            let result = server_thread.await;
+            if result.is_err() {
+                println!("simple_sse_server_with_sigs: {:?}", result);
+            }
+        });
+        let urls = vec![
+            format!("http://127.0.0.1:{}/events/main", port),
+            format!("http://127.0.0.1:{}/events/sigs", port),
+        ];
+        wait_for_sse_server_to_be_up(urls).await;
+        return (shutdown_tx, after_shutdown_rx);
     }
 
     fn generate_random_blocks_added(
