@@ -32,7 +32,7 @@ When a client connects to the Sidecar, the Sidecar displays the node’s API ver
 
 If the node goes offline, the `ApiVersion` may differ when it restarts (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
 
-Here is an example of how the API version would look like while listening on the Sidecar’s `DeployAccepted` event stream:
+Here is an example of what the API version would look like while listening on the Sidecar’s `DeployAccepted` event stream:
 
 ```
 curl -sN http://127.0.0.1:19999/events/deploys
