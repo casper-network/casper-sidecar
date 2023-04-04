@@ -48,8 +48,7 @@ jobs:
         # run: cargo audit --deny warnings
         # RUSTSEC-2022-0090 I don't think we have much power over that, it's a transitive dependency of sqlx.
         # We need to keep an eye on the newest sqlx-core update and apply it ASAP.
-        # RUSTSEC-2020-0168; RUSTSEC-2023-0028; RUSTSEC-2021-0139 -> there issues are induced by importing casper-node 1.4.13.
-        run: cargo audit --ignore RUSTSEC-2022-0090 --ignore RUSTSEC-2020-0168 --ignore RUSTSEC-2023-0028 --ignore RUSTSEC-2021-0139
+        run: cargo audit --ignore RUSTSEC-2022-0090
 
       - name: test
         run: cargo test
