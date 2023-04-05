@@ -6,7 +6,7 @@ members = [
 ]
 
 [patch.crates-io]
-casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev" }
+casper-execution-engine = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c" }
+casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c" }
+casper-hashing = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c" }
+casper-types = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c" }

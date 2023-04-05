@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev", optional = true }
-casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev", optional = true }
-casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-execution-engine = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c", optional = true }
+casper-hashing = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c", optional = true }
+casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
+casper-types = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
 serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 rand = { version = "0.8.5", optional = true }
