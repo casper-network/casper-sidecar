@@ -15,11 +15,12 @@ pub enum EventFilter {
 
 #[cfg(any(feature = "sse-data-testing", test))]
 use super::testing;
-#[cfg(feature = "sse-data-testing")]
+
 use casper_node::types::Block;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
-use casper_types::testing::TestRng;
+use crate::test_rng::TestRng;
+use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+
 use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use casper_node::types::Block;
 use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
 #[cfg(test)]
-use casper_types::testing::TestRng;
+use casper_event_types::test_rng::TestRng;
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,

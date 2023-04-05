@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-casper-execution-engine = { git = "https://github.com/casper-network/casper-node", branch = "dev", optional = true }
-casper-hashing = { git = "https://github.com/casper-network/casper-node", branch = "dev", optional = true }
-casper-node = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "dev"}
+casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
+casper-types = "1.5.0"
 serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 rand = { version = "0.8.5", optional = true }
 thiserror = "1.0.39"
+rand_pcg = "0.3.1"
+base16 = "0.2.1"
 
 [features]
-sse-data-testing = ["rand", "casper-node/testing", "casper-execution-engine", "casper-hashing"]
+sse-data-testing = ["rand", "casper-node/testing"]
