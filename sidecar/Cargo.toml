@@ -12,9 +12,7 @@ bytes = "1.2.0"
 casper-event-listener = { path = "../listener", version = "0.1.0"}
 casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"]}
 casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
-casper-types = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
-casper-execution-engine = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
-casper-hashing = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c"}
+casper-types = "1.5.0"
 clap = { version = "4.0.32", features = ["derive"] }
 derive-new = "0.5.9"
 eventsource-stream = "0.2.3"

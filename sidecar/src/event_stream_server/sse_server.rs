@@ -507,7 +507,6 @@ mod tests {
     use std::iter;
 
     use casper_event_types::filter::Filter as SseFilter;
-    use casper_types::testing::TestRng;
 
     use super::*;
 

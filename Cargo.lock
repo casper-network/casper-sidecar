@@ -382,7 +382,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "casper-event-types",
- "casper-types",
+ "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "eventsource-stream",
  "futures",
  "reqwest",
@@ -405,10 +405,8 @@ dependencies = [
  "bytes",
  "casper-event-listener",
  "casper-event-types",
- "casper-execution-engine",
- "casper-hashing",
  "casper-node",
- "casper-types",
+ "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 4.2.1",
  "colored",
  "derive-new",
@@ -446,11 +444,11 @@ dependencies = [
 name = "casper-event-types"
 version = "0.1.0"
 dependencies = [
- "casper-execution-engine",
- "casper-hashing",
+ "base16",
  "casper-node",
- "casper-types",
+ "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.8.5",
+ "rand_pcg",
  "serde",
  "serde_json",
  "thiserror",
@@ -465,7 +463,7 @@ dependencies = [
  "base16",
  "bincode",
  "casper-hashing",
- "casper-types",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e5d21032f5590648315787a54546eea6c43e8b5c)",
  "datasize",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
@@ -504,7 +502,7 @@ source = "git+https://github.com/casper-network/casper-node?rev=e5d21032f5590648
 dependencies = [
  "base16",
  "blake2",
- "casper-types",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e5d21032f5590648315787a54546eea6c43e8b5c)",
  "datasize",
  "hex",
  "hex-buffer-serde 0.3.0",
@@ -548,7 +546,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-json-rpc",
- "casper-types",
+ "casper-types 1.5.0 (git+https://github.com/casper-network/casper-node?rev=e5d21032f5590648315787a54546eea6c43e8b5c)",
  "datasize",
  "derive_more",
  "ed25519-dalek",
@@ -614,6 +612,32 @@ dependencies = [
  "vergen",
  "warp",
  "wheelbuf",
+]
+
+[[package]]
+name = "casper-types"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a13e82a13d1784104fd021a38da56c69da94e84b26b03c2cf3d8da3895a16c8c"
+dependencies = [
+ "base16",
+ "base64 0.13.1",
+ "bitflags",
+ "blake2",
+ "ed25519-dalek",
+ "hex",
+ "hex_fmt",
+ "k256",
+ "num",
+ "num-derive",
+ "num-integer",
+ "num-rational 0.4.1",
+ "num-traits",
+ "rand 0.8.5",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "uint",
 ]
 
 [[package]]
@@ -2720,6 +2744,15 @@ name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
+name = "redox_syscall"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567664f262709473930a4bf9e51bf2ebf3348f2e748ccc50dea20646858f8f29"
 dependencies = [
  "bitflags",
 ]
