@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.65"
 bytes = "1.2.0"
 casper-event-types = { path = "../types", version = "0.1.0"}
-casper-types = { path = "../../casper-node/types", features = ["datasize", "json-schema", "std"] }
+casper-types = { git = "https://github.com/casper-network/casper-node.git", branch = "dev" }
 eventsource-stream = "0.2.3"
 futures = "0.3.24"
 reqwest = { version = "0.11", features = ["json", "stream"] }
