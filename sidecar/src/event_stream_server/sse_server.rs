@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -32,9 +33,8 @@ use warp::{
 use casper_event_types::filter::Filter as SseFilter;
 use casper_event_types::sse_data::EventFilter;
 use casper_event_types::sse_data::SseData;
-use casper_node::types::Deploy;
-#[cfg(test)]
-use casper_node::types::DeployHash;
+use casper_event_types::deploy::Deploy;
+
 use casper_types::ProtocolVersion;
 
 /// The URL root path.
@@ -505,6 +505,7 @@ fn stream_to_client(
 mod tests {
     use regex::Regex;
     use std::iter;
+    use casper_types::SecretKey;
 
     use casper_event_types::filter::Filter as SseFilter;
 
@@ -733,7 +734,8 @@ mod tests {
                     let data = match path_filter {
                         SSE_API_MAIN_PATH => SseData::random_block_added(rng),
                         SSE_API_DEPLOYS_PATH => {
-                            let (event, deploy) = SseData::random_deploy_accepted(rng);
+                            let secret_key = SecretKey::random(rng);
+                            let (event, deploy) = SseData::random_deploy_accepted(rng, secret_key);
                             assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                             event
                         }

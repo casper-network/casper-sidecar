@@ -6,4 +6,3 @@ members = [
 ]
 
 [patch.crates-io]
-casper-node = { git = "https://github.com/casper-network/casper-node", rev = "e5d21032f5590648315787a54546eea6c43e8b5c" }

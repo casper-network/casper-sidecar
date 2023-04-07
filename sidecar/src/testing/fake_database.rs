@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
-use casper_node::types::FinalitySignature as FinSig;
 use casper_event_types::test_rng::TestRng;
+use casper_node::types::FinalitySignature as FinSig;
 
 use crate::types::{
     database::{

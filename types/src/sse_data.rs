@@ -16,14 +16,17 @@ pub enum EventFilter {
 #[cfg(any(feature = "sse-data-testing", test))]
 use super::testing;
 
-use casper_node::types::Block;
-#[cfg(feature = "sse-data-testing")]
-use crate::test_rng::TestRng;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+#[cfg(any(feature = "sse-data-testing", test))]
+use casper_types::testing::TestRng;
 
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+// #[cfg(feature = "sse-data-testing")]
+// use crate::test_rng::TestRng;
+use crate::{
+    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock},
+    deploy::{Deploy, DeployHash},
 };
+
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -128,13 +131,13 @@ impl SseData {
         let block = Block::random(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block: Box::new(JsonBlock::new(block, None)),
         }
     }
 
     /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let deploy = Deploy::random(rng);
+    pub fn random_deploy_accepted(rng: &mut TestRng, secret_key: SecretKey) -> (Self, Deploy) {
+        let deploy = Deploy::random(rng, secret_key);
         let event = SseData::DeployAccepted {
             deploy: Arc::new(deploy.clone()),
         };
@@ -142,10 +145,10 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployProcessed`.
-    pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
+    pub fn random_deploy_processed(rng: &mut TestRng, secret_key: SecretKey) -> Self {
+        let deploy = Deploy::random(rng, secret_key);
         SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.hash()),
+            deploy_hash: Box::new(*deploy.id()),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -156,14 +159,16 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployExpired`
+    #[cfg(any(feature = "testing", test))]
     pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
-            deploy_hash: *deploy.hash(),
+            deploy_hash: *deploy.id(),
         }
     }
 
     /// Returns a random `SseData::Fault`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
             era_id: EraId::new(rng.gen()),
@@ -173,10 +178,12 @@ impl SseData {
     }
 
     /// Returns a random `SseData::FinalitySignature`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
+            rng
         )))
     }
 

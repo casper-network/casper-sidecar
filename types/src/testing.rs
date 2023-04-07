@@ -4,21 +4,23 @@
 //! `casper-node` library.
 
 #[cfg(any(feature = "sse-data-testing", test))]
-use casper_node::types::Deploy;
-use crate::test_rng::TestRng;
-use casper_types::{TimeDiff, Timestamp};
+use crate::deploy::Deploy;
+use casper_types::{TimeDiff, Timestamp, testing::TestRng, SecretKey};
 
 /// Creates a test deploy created at given instant and with given ttl.
+#[cfg(any(feature = "testing", test))]
 pub fn create_test_deploy(
     created_ago: TimeDiff,
     ttl: TimeDiff,
     now: Timestamp,
     test_rng: &mut TestRng,
 ) -> Deploy {
-    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl)
+    let secret_key = SecretKey::random(test_rng);
+    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl, secret_key)
 }
 
 /// Creates a random deploy that is considered expired.
+#[cfg(any(feature = "testing", test))]
 pub fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(
         TimeDiff::from_seconds(20),

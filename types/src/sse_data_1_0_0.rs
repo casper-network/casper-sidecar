@@ -1,12 +1,17 @@
 //! Types used to deserialize data from nodes that are in legacy version (prior to 1.0.0-1.2.0)
+use std::sync::Arc;
 
-use crate::sse_data::{self, to_error, SseDataDeserializeError};
-use casper_node::types::{Block, BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+use serde::{Deserialize, Serialize};
+
 use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
+use crate::{
+    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock},
+    deploy::{Deploy, DeployHash},
+    sse_data::{self, to_error, SseDataDeserializeError},
+};
 
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.0.0 compliant) or an SseDataDeserializeError
 ///
@@ -70,7 +75,7 @@ impl From<SseData> for sse_data::SseData {
     fn from(v1_0_0_data: SseData) -> sse_data::SseData {
         match v1_0_0_data {
             SseData::BlockAdded { block_hash, block } => {
-                let json_block = JsonBlock::new(&block, None);
+                let json_block = JsonBlock::new(*block, None);
                 sse_data::SseData::BlockAdded {
                     block_hash,
                     block: Box::new(json_block),

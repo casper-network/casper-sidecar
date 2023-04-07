@@ -3,16 +3,17 @@ use std::{
     sync::Arc,
 };
 
+
 use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use casper_event_types::{deploy::{Deploy, DeployHash},block::{BlockHash, Block, FinalitySignature as FinSig ,json_compatibility::{JsonBlock}}};
 #[cfg(test)]
-use casper_node::types::Block;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
-#[cfg(test)]
-use casper_event_types::test_rng::TestRng;
+use casper_types::testing::TestRng;
+
+
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,
@@ -70,11 +71,11 @@ impl DeployAccepted {
 
     #[cfg(test)]
     pub fn deploy_hash(&self) -> DeployHash {
-        self.deploy.hash().to_owned()
+        self.deploy.id().to_owned()
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy.hash().inner())
+        hex::encode(self.deploy.id().inner())
     }
 }
 

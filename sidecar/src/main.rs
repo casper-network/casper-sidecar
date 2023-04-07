@@ -301,7 +301,7 @@ async fn handle_single_event(
         }
         SseData::DeployAccepted { deploy } => {
             if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy.hash().inner());
+                let hex_deploy_hash = HexFmt(deploy.id().inner());
                 info!("Deploy Accepted: {:18}", hex_deploy_hash);
                 debug!("Deploy Accepted: {}", hex_deploy_hash);
             }
@@ -329,7 +329,7 @@ async fn handle_single_event(
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
                         "Already received DeployAccepted ({}), logged in event_log",
-                        HexFmt(deploy.hash().inner())
+                        HexFmt(deploy.id().inner())
                     );
                     trace!(?uc_err);
                 }
