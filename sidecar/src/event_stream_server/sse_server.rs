@@ -535,7 +535,7 @@ mod tests {
 
     /// This test checks that events with correct IDs (i.e. all types have an ID except for
     /// `ApiVersion`) are filtered properly.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test]
     async fn should_filter_events_with_valid_ids() {
         let mut rng = TestRng::new();
 
@@ -638,7 +638,7 @@ mod tests {
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
     /// `ApiVersion`) are filtered out.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test]
     async fn should_filter_events_with_invalid_ids() {
         let mut rng = TestRng::new();
 
@@ -884,21 +884,21 @@ mod tests {
 
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test]
     async fn should_filter_duplicate_main_events() {
         should_filter_duplicate_events(SSE_API_MAIN_PATH).await
     }
 
     /// This test checks that deploy-accepted events from the initial stream which are duplicated in
     /// the ongoing stream are filtered out.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test]
     async fn should_filter_duplicate_deploys_events() {
         should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
     }
 
     /// This test checks that signature events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test]
     async fn should_filter_duplicate_signature_events() {
         should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
     }

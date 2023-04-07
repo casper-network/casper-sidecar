@@ -7,4 +7,3 @@ pub mod sse_data_1_0_0;
 pub mod digest;
 #[cfg(any(feature = "sse-data-testing", test))]
 mod testing;
-//mod validation;
