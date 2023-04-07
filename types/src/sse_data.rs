@@ -24,6 +24,7 @@ use crate::{
 };
 
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+#[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

@@ -17,7 +17,7 @@ num-traits = "0.2.10"
 schemars = { version = "=0.8.5", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1.0"
-rand = { version = "0.8.5"}
+rand = { version = "0.8.5", optional = true }
 thiserror = "1.0.39"
 tracing = "0.1.18"
 rand_pcg = "0.3.1"
@@ -25,4 +25,4 @@ base16 = "0.2.1"
 blake2 = "0.9.0"
 
 [features]
-sse-data-testing = ["casper-types/testing"]
+sse-data-testing = ["rand", "casper-types/testing"]

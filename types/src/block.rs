@@ -10,7 +10,8 @@ use thiserror::Error;
 use casper_types::{bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512};
 use casper_types::bytesrepr::ToBytes;
 use casper_types::testing::TestRng;
-use rand::Rng;
+#[cfg(feature = "sse-data-testing")]
+use rand::{Rng, RngCore};
 use crate::deploy::{Approval, DeployHash};
 use crate::digest::Digest;
 
@@ -561,8 +562,7 @@ pub struct FinalitySignature {
 }
 
 // #TODO -> replace this with SecretKey::random once casper-types exposes test code
-pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {
-    use rand::RngCore;
+pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {    
     let mut bytes = [0u8; 32];
     rng.fill_bytes(&mut bytes[..]);
     SecretKey::ed25519_from_bytes(bytes).unwrap()
@@ -573,7 +573,7 @@ impl FinalitySignature {
         let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
         
-        let (sec_key, pub_key) = {
+        let (_, pub_key) = {
             let secret_key = random_secret_key(test_rng);
             let public_key = PublicKey::from(&secret_key);
             (secret_key, public_key)
