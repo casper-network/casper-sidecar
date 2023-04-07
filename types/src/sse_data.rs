@@ -16,14 +16,18 @@ pub enum EventFilter {
 #[cfg(any(feature = "sse-data-testing", test))]
 use super::testing;
 
-#[cfg(any(feature = "sse-data-testing", test))]
-use casper_types::testing::TestRng;
 use crate::{
-    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock, random_secret_key},
+    block::{
+        json_compatibility::JsonBlock, random_secret_key, Block, BlockHash, FinalitySignature,
+    },
     deploy::{Deploy, DeployHash},
 };
+#[cfg(any(feature = "sse-data-testing", test))]
+use casper_types::testing::TestRng;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -179,7 +183,7 @@ impl SseData {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
-            rng
+            rng,
         )))
     }
 

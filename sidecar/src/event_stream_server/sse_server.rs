@@ -5,7 +5,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -30,10 +29,10 @@ use warp::{
     Filter, Reply,
 };
 
+use casper_event_types::deploy::Deploy;
 use casper_event_types::filter::Filter as SseFilter;
 use casper_event_types::sse_data::EventFilter;
 use casper_event_types::sse_data::SseData;
-use casper_event_types::deploy::Deploy;
 
 use casper_types::ProtocolVersion;
 
@@ -503,11 +502,11 @@ fn stream_to_client(
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
     use regex::Regex;
     use std::iter;
-    use casper_types::testing::TestRng;
 
-    use casper_event_types::{filter::Filter as SseFilter, deploy::DeployHash};
+    use casper_event_types::{deploy::DeployHash, filter::Filter as SseFilter};
 
     use super::*;
 

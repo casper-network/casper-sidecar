@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use casper_types::AsymmetricType;
 use casper_types::testing::TestRng;
+use casper_types::AsymmetricType;
 use rand::Rng;
 
 use casper_event_types::block::FinalitySignature as FinSig;

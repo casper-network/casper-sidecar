@@ -1,13 +1,16 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Display, Formatter};
 
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use ed25519_dalek::ExpandedSecretKey;
+use itertools::Itertools;
 use k256::ecdsa::{signature::Signer, Signature as Secp256k1Signature};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{bytesrepr::{self}, PublicKey, SecretKey, Signature, TimeDiff, Timestamp, U512, RuntimeArgs, runtime_args};
+use casper_types::{
+    bytesrepr::{self},
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512,
+};
 
 use crate::digest::Digest;
 use crate::executable_deploy_item::ExecutableDeployItem;
@@ -175,7 +178,6 @@ pub struct ExcessiveSizeError {
     pub actual_deploy_size: usize,
 }
 
-
 /// A cryptographic hash uniquely identifying a [`Deploy`].
 #[derive(
     Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
@@ -200,7 +202,6 @@ impl From<Digest> for DeployHash {
         Self(digest)
     }
 }
-
 
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
@@ -374,8 +375,6 @@ impl Deploy {
     /// The default gas price for `Deploy`s, i.e. `1`.
     pub const DEFAULT_GAS_PRICE: u64 = 1;
 
-
-
     /// Constructs a new signed `Deploy`.
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -447,8 +446,6 @@ impl Deploy {
         &self.session
     }
 
-
-
     pub fn random(rng: &mut TestRng, secret_key: SecretKey) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from_millis(rng.gen_range(60_000..3_600_000));
@@ -460,7 +457,7 @@ impl Deploy {
         rng: &mut TestRng,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        secret_key: SecretKey
+        secret_key: SecretKey,
     ) -> Self {
         let gas_price = rng.gen_range(1..100);
 
@@ -495,7 +492,6 @@ impl Deploy {
             None,
         )
     }
-
 }
 
 impl Display for Deploy {

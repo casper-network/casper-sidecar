@@ -1,7 +1,6 @@
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use casper_event_types::block::FinalitySignature as FinSig;
-
+use serde::{Deserialize, Serialize};
 
 use crate::types::sse_events::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,

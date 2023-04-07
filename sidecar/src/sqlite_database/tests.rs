@@ -2,7 +2,7 @@ use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
-use casper_types::{AsymmetricType, EraId, testing::TestRng};
+use casper_types::{testing::TestRng, AsymmetricType, EraId};
 
 use super::SqliteDatabase;
 use crate::{

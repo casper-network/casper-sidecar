@@ -1,3 +1,8 @@
+#[cfg(feature = "sse-data-testing")]
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use casper_types::{
     bytesrepr::{self, ToBytes},
     checksummed_hex,
@@ -9,11 +14,6 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use std::{
     array::TryFromSliceError,
     fmt::{self, Debug, Display, Formatter},
-};
-#[cfg(feature = "sse-data-testing")]
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
 };
 
 /// The output of the hash function.

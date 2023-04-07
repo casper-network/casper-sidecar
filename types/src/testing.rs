@@ -5,7 +5,7 @@
 
 #[cfg(any(feature = "sse-data-testing", test))]
 use crate::deploy::Deploy;
-use casper_types::{TimeDiff, Timestamp, testing::TestRng, SecretKey};
+use casper_types::{testing::TestRng, SecretKey, TimeDiff, Timestamp};
 
 /// Creates a test deploy created at given instant and with given ttl.
 pub fn create_test_deploy(

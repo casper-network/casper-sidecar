@@ -3,19 +3,21 @@ use std::{
     sync::Arc,
 };
 
-
 use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_event_types::{deploy::{Deploy, DeployHash},block::{BlockHash, FinalitySignature as FinSig ,json_compatibility::{JsonBlock}}};
-#[cfg(test)]
-use casper_event_types::block::Block;
-#[cfg(test)]
-use casper_types::testing::TestRng;
 #[cfg(test)]
 use casper_event_types::block::random_secret_key;
+#[cfg(test)]
+use casper_event_types::block::Block;
+use casper_event_types::{
+    block::{json_compatibility::JsonBlock, BlockHash, FinalitySignature as FinSig},
+    deploy::{Deploy, DeployHash},
+};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
@@ -174,7 +176,7 @@ impl FinalitySignature {
         Self(Box::new(FinSig::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
-            rng
+            rng,
         )))
     }
 

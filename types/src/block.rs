@@ -4,16 +4,18 @@ use std::hash::Hash;
 use std::{fmt, iter};
 
 use derive_more::Into;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512};
-use casper_types::bytesrepr::ToBytes;
-use casper_types::testing::TestRng;
-#[cfg(feature = "sse-data-testing")]
-use rand::{Rng, RngCore};
 use crate::deploy::{Approval, DeployHash};
 use crate::digest::Digest;
+use casper_types::bytesrepr::ToBytes;
+use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+};
+#[cfg(feature = "sse-data-testing")]
+use rand::{Rng, RngCore};
 
 const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
@@ -24,7 +26,7 @@ pub enum BlockCreationError {
     /// If one of them is not present while trying to construct an `EraEnd` we must emit an
     /// error.
     #[error(
-    "Cannot create EraEnd unless we have both an EraReport and next era validators. \
+        "Cannot create EraEnd unless we have both an EraReport and next era validators. \
          Era report: {maybe_era_report:?}, \
          Next era validator weights: {maybe_next_era_validator_weights:?}"
     )]
@@ -36,21 +38,9 @@ pub enum BlockCreationError {
     },
 }
 
-
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
 #[derive(
-Copy,
-Clone,
-Default,
-Ord,
-PartialOrd,
-Eq,
-PartialEq,
-Hash,
-Serialize,
-Deserialize,
-Debug,
-Into,
+    Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Into,
 )]
 #[serde(deny_unknown_fields)]
 pub struct BlockHash(Digest);
@@ -176,9 +166,7 @@ impl DeployWithApprovals {
     }
 }
 
-#[derive(
-Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
-)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct BlockPayload {
     deploys: Vec<DeployWithApprovals>,
     transfers: Vec<DeployWithApprovals>,
@@ -270,8 +258,8 @@ impl FinalizedBlock {
                 BTreeSet::new(),
             )
         })
-            .take(deploy_count)
-            .collect();
+        .take(deploy_count)
+        .collect();
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -285,8 +273,8 @@ impl FinalizedBlock {
                 equivocators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
                 })
-                    .take(equivocators_count)
-                    .collect(),
+                .take(equivocators_count)
+                .collect(),
                 rewards: iter::repeat_with(|| {
                     let pub_key = PublicKey::from(
                         &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
@@ -294,13 +282,13 @@ impl FinalizedBlock {
                     let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
-                    .take(rewards_count)
-                    .collect(),
+                .take(rewards_count)
+                .collect(),
                 inactive_validators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
                 })
-                    .take(inactive_count)
-                    .collect(),
+                .take(inactive_count)
+                .collect(),
             })
         } else {
             None
@@ -318,7 +306,6 @@ impl FinalizedBlock {
         )
     }
 }
-
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Block {
@@ -346,7 +333,7 @@ impl Block {
             finalized_block.transfer_hashes,
         );
 
-        let body_hash = Self::hash_block_body( &body);
+        let body_hash = Self::hash_block_body(&body);
 
         let era_end = match (finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
@@ -400,9 +387,7 @@ impl Block {
             ProtocolVersion::V1_0_0,
             is_switch,
         )
-
     }
-
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
     pub fn random_with_specifics(
@@ -429,9 +414,8 @@ impl Block {
             next_era_validator_weights,
             protocol_version,
         )
-            .expect("Could not create random block with specifics")
+        .expect("Could not create random block with specifics")
     }
-
 }
 
 impl ToBytes for Block {
@@ -449,7 +433,6 @@ impl ToBytes for Block {
             + self.body.serialized_length()
     }
 }
-
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -547,7 +530,7 @@ pub struct FinalitySignature {
 }
 
 // #TODO -> replace this with SecretKey::random once casper-types exposes test code
-pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {    
+pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {
     let mut bytes = [0u8; 32];
     rng.fill_bytes(&mut bytes[..]);
     SecretKey::ed25519_from_bytes(bytes).unwrap()
@@ -557,14 +540,14 @@ impl FinalitySignature {
     pub fn random_for_block(block_hash: BlockHash, era_id: u64, test_rng: &mut TestRng) -> Self {
         let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        
+
         let (_, pub_key) = {
             let secret_key = random_secret_key(test_rng);
             let public_key = PublicKey::from(&secret_key);
             (secret_key, public_key)
         };
         let signature = Signature::System;
-        
+
         FinalitySignature::new(block_hash, EraId::new(era_id), signature, pub_key)
     }
 
@@ -593,7 +576,6 @@ pub struct EraEnd {
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
-
 impl EraEnd {
     pub fn new(
         era_report: EraReport,
@@ -608,7 +590,6 @@ impl EraEnd {
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
-
 }
 
 impl ToBytes for EraEnd {
@@ -623,7 +604,6 @@ impl ToBytes for EraEnd {
         self.era_report.serialized_length() + self.next_era_validator_weights.serialized_length()
     }
 }
-
 
 /// A storage representation of finality signatures with the associated block hash.
 #[derive(Clone, Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, Eq, PartialEq)]
@@ -648,8 +628,8 @@ impl BlockSignatures {
 }
 
 pub mod json_compatibility {
-    use casper_types::{PublicKey};
     use super::*;
+    use casper_types::PublicKey;
 
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -658,7 +638,7 @@ pub mod json_compatibility {
         amount: u64,
     }
 
-    #[derive(Serialize, Deserialize, Debug,Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     struct ValidatorWeight {
         validator: PublicKey,
@@ -804,8 +784,6 @@ pub mod json_compatibility {
         }
     }
 
-
-
     /// A JSON-friendly representation of `Body`
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -877,7 +855,6 @@ pub mod json_compatibility {
             &self.body.transfer_hashes
         }
     }
-
 
     impl From<JsonBlock> for Block {
         fn from(block: JsonBlock) -> Self {

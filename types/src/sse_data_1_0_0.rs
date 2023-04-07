@@ -8,7 +8,7 @@ use casper_types::{
 };
 
 use crate::{
-    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock},
+    block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature},
     deploy::{Deploy, DeployHash},
     sse_data::{self, to_error, SseDataDeserializeError},
 };
