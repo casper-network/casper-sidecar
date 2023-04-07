@@ -2,13 +2,10 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{bytesrepr::{self, Bytes, ToBytes}, runtime_args, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs, URef, U512, CLValue};
+use casper_types::{bytesrepr::{self, Bytes, ToBytes}, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs, URef, U512, CLValue};
 use casper_types::system::auction::ARG_AMOUNT;
 use rand::distributions::{Alphanumeric, Distribution, Standard};
 use rand::Rng;
-
-#[cfg(doc)]
-use crate::Deploy;
 
 const TAG_LENGTH: usize = 1;
 const MODULE_BYTES_TAG: u8 = 0;
@@ -17,11 +14,6 @@ const STORED_CONTRACT_BY_NAME_TAG: u8 = 2;
 const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
-const STANDARD_PAYMENT_ARG_AMOUNT: &str = "amount";
-const TRANSFER_ARG_AMOUNT: &str = "amount";
-const TRANSFER_ARG_SOURCE: &str = "source";
-const TRANSFER_ARG_TARGET: &str = "target";
-const TRANSFER_ARG_ID: &str = "id";
 
 /// The payment or session code of a [`Deploy`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]

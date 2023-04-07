@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use casper_event_types::block::FinalitySignature;
+use casper_event_types::block::FinalitySignature as FinSig;
 
 
 use crate::types::sse_events::{
-    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature as FinSig, Step,
+    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
 };
 
 /// Describes a reference for the writing interface of an 'Event Store' database.

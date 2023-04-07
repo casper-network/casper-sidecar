@@ -105,7 +105,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_wait_for_all_to_succeed() {
         // Spawn 3 connection attempts, have all succeed.  Should cause all tasks to return `true`
         // after the maximum delay from all tasks.
@@ -125,7 +125,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_fail_if_any_fails() {
         // Spawn 3 connection attempts, have the second one fail.  Should cause all tasks to return
         // `false` with the first and second returning before the longer delay of the third task.

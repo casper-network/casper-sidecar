@@ -1,7 +1,6 @@
 use http::StatusCode;
 use warp::test::request;
-
-use casper_node::types::FinalitySignature as FinSig;
+use casper_event_types::block::FinalitySignature as FinSig;
 use casper_types::AsymmetricType;
 
 use super::filters;
@@ -37,12 +36,12 @@ async fn should_respond_to_path_with(request_path: String, expected_status: Stat
     assert_eq!(response.status(), expected_status);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn root_should_return_400() {
     should_respond_to_path_with("/".to_string(), StatusCode::BAD_REQUEST).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn root_with_invalid_path_should_return_400() {
     should_respond_to_path_with("/not_block_or_deploy".to_string(), StatusCode::BAD_REQUEST).await;
     should_respond_to_path_with(
@@ -52,7 +51,7 @@ async fn root_with_invalid_path_should_return_400() {
     .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_root_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -70,7 +69,7 @@ async fn block_root_should_return_valid_data() {
     serde_json::from_slice::<BlockAdded>(&body).expect("Error parsing BlockAdded from response");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -94,7 +93,7 @@ async fn block_by_hash_should_return_valid_data() {
     assert_eq!(block_added.hex_encoded_hash(), identifiers.block_added_hash);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_by_height_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -118,7 +117,7 @@ async fn block_by_height_should_return_valid_data() {
     assert_eq!(block_added.get_height(), identifiers.block_added_height);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -145,7 +144,7 @@ async fn deploy_by_hash_should_return_valid_data() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_accepted_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -175,7 +174,7 @@ async fn deploy_accepted_by_hash_should_return_valid_data() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_processed_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -205,7 +204,7 @@ async fn deploy_processed_by_hash_should_return_valid_data() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_expired_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -232,7 +231,7 @@ async fn deploy_expired_by_hash_should_return_valid_data() {
     assert!(deploy_expired);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn step_by_era_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -255,7 +254,7 @@ async fn step_by_era_should_return_valid_data() {
     assert_eq!(step.era_id.value(), identifiers.step_era_id);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn faults_by_public_key_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -279,7 +278,7 @@ async fn faults_by_public_key_should_return_valid_data() {
     assert_eq!(faults[0].public_key.to_hex(), identifiers.fault_public_key);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn faults_by_era_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -303,7 +302,7 @@ async fn faults_by_era_should_return_valid_data() {
     assert_eq!(faults[0].era_id.value(), identifiers.fault_era_id);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn finality_signatures_by_block_should_return_valid_data() {
     let database = FakeDatabase::new();
 
@@ -333,126 +332,126 @@ async fn finality_signatures_by_block_should_return_valid_data() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_by_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", BLOCK, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_by_height_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", BLOCK, 0);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_by_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", DEPLOY, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_accepted_by_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}/{}", DEPLOY, ACCEPTED, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_processed_by_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}/{}", DEPLOY, PROCESSED, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_expired_by_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}/{}", DEPLOY, EXPIRED, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn faults_by_public_key_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", FAULTS, VALID_PUBLIC_KEY);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn faults_by_era_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", FAULTS, VALID_ERA);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn finality_signature_by_block_hash_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", SIGNATURES, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn step_by_era_of_not_stored_should_return_404() {
     let request_path = format!("/{}/{}", STEP, VALID_ERA);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn block_by_invalid_hash_should_return_400() {
     let request_path = format!("/{}/{}", BLOCK, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_by_hash_of_invalid_should_return_400() {
     let request_path = format!("/{}/{}", DEPLOY, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_accepted_by_hash_of_invalid_should_return_400() {
     let request_path = format!("/{}/{}/{}", DEPLOY, ACCEPTED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_processed_by_hash_of_invalid_should_return_400() {
     let request_path = format!("/{}/{}/{}", DEPLOY, PROCESSED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn deploy_expired_by_hash_of_invalid_should_return_400() {
     let request_path = format!("/{}/{}/{}", DEPLOY, EXPIRED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn faults_by_invalid_public_key_should_return_400() {
     let request_path = format!("/{}/{}", FAULTS, INVALID_PUBLIC_KEY);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn finality_signature_by_invalid_block_hash_should_return_400() {
     let request_path = format!("/{}/{}", SIGNATURES, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_have_correct_content_type() {
     let database = FakeDatabase::new();
 

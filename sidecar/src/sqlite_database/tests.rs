@@ -2,8 +2,7 @@ use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
-use casper_event_types::test_rng::TestRng;
-use casper_types::{AsymmetricType, EraId};
+use casper_types::{AsymmetricType, EraId, testing::TestRng};
 
 use super::SqliteDatabase;
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
 
 const MAX_CONNECTIONS: u32 = 100;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_a_u32max_id() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
@@ -43,7 +42,7 @@ async fn should_save_and_retrieve_a_u32max_id() {
     assert_eq!(event_id_u32max, u32::MAX);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_block_added() {
     let mut test_rng = TestRng::new();
 
@@ -73,7 +72,7 @@ async fn should_save_and_retrieve_block_added() {
         .expect("Error getting block_added by height");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_deploy_accepted() {
     let mut test_rng = TestRng::new();
 
@@ -93,7 +92,7 @@ async fn should_save_and_retrieve_deploy_accepted() {
         .expect("Error getting deploy_accepted by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_deploy_processed() {
     let mut test_rng = TestRng::new();
 
@@ -113,7 +112,7 @@ async fn should_save_and_retrieve_deploy_processed() {
         .expect("Error getting deploy_processed by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_deploy_expired() {
     let mut test_rng = TestRng::new();
 
@@ -133,7 +132,7 @@ async fn should_save_and_retrieve_deploy_expired() {
         .expect("Error getting deploy_expired by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_retrieve_deploy_aggregate_of_accepted() {
     let mut test_rng = TestRng::new();
 
@@ -153,7 +152,7 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
         .expect("Error getting deploy aggregate by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_retrieve_deploy_aggregate_of_processed() {
     let mut test_rng = TestRng::new();
 
@@ -180,7 +179,7 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
         .expect("Error getting deploy aggregate by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_retrieve_deploy_aggregate_of_expired() {
     let mut test_rng = TestRng::new();
 
@@ -206,7 +205,7 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
         .expect("Error getting deploy aggregate by hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_fault() {
     let mut test_rng = TestRng::new();
 
@@ -231,7 +230,7 @@ async fn should_save_and_retrieve_fault() {
         .expect("Error getting faults by public key");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_fault_with_a_u64max() {
     let mut test_rng = TestRng::new();
 
@@ -261,7 +260,7 @@ async fn should_save_and_retrieve_fault_with_a_u64max() {
     assert_eq!(faults[0].era_id.value(), u64::MAX);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_finality_signature() {
     let mut test_rng = TestRng::new();
 
@@ -281,7 +280,7 @@ async fn should_save_and_retrieve_finality_signature() {
         .expect("Error getting finality signatures by block_hash");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_step() {
     let mut test_rng = TestRng::new();
 
@@ -301,7 +300,7 @@ async fn should_save_and_retrieve_step() {
         .expect("Error getting step by era");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_a_step_with_u64_max_era() {
     let mut test_rng = TestRng::new();
 
@@ -324,7 +323,7 @@ async fn should_save_and_retrieve_a_step_with_u64_max_era() {
     assert_eq!(retrieved_step.era_id.value(), u64::MAX)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_duplicate_event_id_from_source() {
     let mut test_rng = TestRng::new();
 
@@ -350,7 +349,7 @@ async fn should_disallow_duplicate_event_id_from_source() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_block_added() {
     let mut test_rng = TestRng::new();
 
@@ -378,7 +377,7 @@ async fn should_disallow_insert_of_existing_block_added() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_deploy_accepted() {
     let mut test_rng = TestRng::new();
 
@@ -406,7 +405,7 @@ async fn should_disallow_insert_of_existing_deploy_accepted() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_deploy_expired() {
     let mut test_rng = TestRng::new();
 
@@ -434,7 +433,7 @@ async fn should_disallow_insert_of_existing_deploy_expired() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_deploy_processed() {
     let mut test_rng = TestRng::new();
 
@@ -462,7 +461,7 @@ async fn should_disallow_insert_of_existing_deploy_processed() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_fault() {
     let mut test_rng = TestRng::new();
 
@@ -490,7 +489,7 @@ async fn should_disallow_insert_of_existing_fault() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_finality_signature() {
     let mut test_rng = TestRng::new();
 
@@ -518,7 +517,7 @@ async fn should_disallow_insert_of_existing_finality_signature() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_insert_of_existing_step() {
     let mut test_rng = TestRng::new();
 
@@ -546,7 +545,7 @@ async fn should_disallow_insert_of_existing_step() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_block_added_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -576,7 +575,7 @@ async fn should_save_block_added_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::BlockAdded as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_deploy_accepted_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -606,7 +605,7 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::DeployAccepted as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_deploy_processed_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -636,7 +635,7 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::DeployProcessed as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_deploy_expired_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -666,7 +665,7 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::DeployExpired as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_fault_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -696,7 +695,7 @@ async fn should_save_fault_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::Fault as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_finality_signature_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -726,7 +725,7 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::FinalitySignature as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_step_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
@@ -756,7 +755,7 @@ async fn should_save_step_with_correct_event_type_id() {
     assert_eq!(event_type_id, EventTypeId::Step as u8)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_save_and_retrieve_a_shutdown() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await

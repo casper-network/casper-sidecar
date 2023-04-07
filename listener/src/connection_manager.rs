@@ -407,7 +407,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_0_0_should_return_1_0_0_deserializer() {
         let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
@@ -429,7 +429,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_fails_on_contemporary_block_added(
     ) {
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
@@ -439,7 +439,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_deserializes_legacy_block_added(
     ) {
         let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
@@ -461,7 +461,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_2_0_should_return_generic_deserializer_which_fails_on_legacy_block_added(
     ) {
         let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
@@ -471,7 +471,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_2_0_should_deserialize_contemporary_block_added_payload(
     ) {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
@@ -491,7 +491,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_4_10_should_return_generic_deserializer_which_fails_on_legacy_block_added(
     ) {
         let block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
@@ -501,7 +501,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_determine_deserializer_and_1_4_10_should_deserialize_contemporary_block_added_payload(
     ) {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");

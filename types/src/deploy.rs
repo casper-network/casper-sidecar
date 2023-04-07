@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 
-use casper_types::{bytesrepr::{self}, crypto, PublicKey, SecretKey, Signature, TimeDiff, Timestamp, URef, U512, RuntimeArgs, runtime_args};
+use casper_types::{bytesrepr::{self}, PublicKey, SecretKey, Signature, TimeDiff, Timestamp, U512, RuntimeArgs, runtime_args};
 
 use crate::executable_deploy_item::ExecutableDeployItem;
 
@@ -360,7 +360,7 @@ impl ToBytes for Approval {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Deploy {
-    hash: DeployHash,
+    pub hash: DeployHash,
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,

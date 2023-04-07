@@ -505,9 +505,9 @@ fn stream_to_client(
 mod tests {
     use regex::Regex;
     use std::iter;
-    use casper_types::SecretKey;
+    use casper_types::testing::TestRng;
 
-    use casper_event_types::filter::Filter as SseFilter;
+    use casper_event_types::{filter::Filter as SseFilter, deploy::DeployHash};
 
     use super::*;
 
@@ -535,7 +535,7 @@ mod tests {
 
     /// This test checks that events with correct IDs (i.e. all types have an ID except for
     /// `ApiVersion`) are filtered properly.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_filter_events_with_valid_ids() {
         let mut rng = TestRng::new();
 
@@ -559,7 +559,7 @@ mod tests {
             inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
+        let _ = deploys.insert(deploy.hash, deploy);
         let deploy_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
@@ -638,7 +638,7 @@ mod tests {
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
     /// `ApiVersion`) are filtered out.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_filter_events_with_invalid_ids() {
         let mut rng = TestRng::new();
 
@@ -662,7 +662,7 @@ mod tests {
             inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
+        let _ = deploys.insert(deploy.hash, deploy);
         let malformed_deploy_processed = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
@@ -734,9 +734,8 @@ mod tests {
                     let data = match path_filter {
                         SSE_API_MAIN_PATH => SseData::random_block_added(rng),
                         SSE_API_DEPLOYS_PATH => {
-                            let secret_key = SecretKey::random(rng);
-                            let (event, deploy) = SseData::random_deploy_accepted(rng, secret_key);
-                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
+                            let (event, deploy) = SseData::random_deploy_accepted(rng);
+                            assert!(deploys.insert(deploy.hash, deploy).is_none());
                             event
                         }
                         SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
@@ -885,21 +884,21 @@ mod tests {
 
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_filter_duplicate_main_events() {
         should_filter_duplicate_events(SSE_API_MAIN_PATH).await
     }
 
     /// This test checks that deploy-accepted events from the initial stream which are duplicated in
     /// the ongoing stream are filtered out.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_filter_duplicate_deploys_events() {
         should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
     }
 
     /// This test checks that signature events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_filter_duplicate_signature_events() {
         should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
     }

@@ -153,7 +153,7 @@ impl TimestampedEvent {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
-            SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
+            SseData::DeployAccepted { deploy } => deploy.hash.to_string(),
             SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),
             SseData::DeployExpired { deploy_hash } => deploy_hash.to_string(),
             SseData::Fault {

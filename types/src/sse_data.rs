@@ -18,11 +18,8 @@ use super::testing;
 
 #[cfg(any(feature = "sse-data-testing", test))]
 use casper_types::testing::TestRng;
-
-// #[cfg(feature = "sse-data-testing")]
-// use crate::test_rng::TestRng;
 use crate::{
-    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock},
+    block::{Block, BlockHash, FinalitySignature, json_compatibility::JsonBlock, random_secret_key},
     deploy::{Deploy, DeployHash},
 };
 
@@ -136,7 +133,8 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub fn random_deploy_accepted(rng: &mut TestRng, secret_key: SecretKey) -> (Self, Deploy) {
+    pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
+        let secret_key = random_secret_key(rng);
         let deploy = Deploy::random(rng, secret_key);
         let event = SseData::DeployAccepted {
             deploy: Arc::new(deploy.clone()),
@@ -145,7 +143,8 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployProcessed`.
-    pub fn random_deploy_processed(rng: &mut TestRng, secret_key: SecretKey) -> Self {
+    pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
+        let secret_key = random_secret_key(rng);
         let deploy = Deploy::random(rng, secret_key);
         SseData::DeployProcessed {
             deploy_hash: Box::new(*deploy.id()),
@@ -159,7 +158,6 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployExpired`
-    #[cfg(any(feature = "testing", test))]
     pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
@@ -168,7 +166,6 @@ impl SseData {
     }
 
     /// Returns a random `SseData::Fault`.
-    #[cfg(any(feature = "testing", test))]
     pub fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
             era_id: EraId::new(rng.gen()),
@@ -178,7 +175,6 @@ impl SseData {
     }
 
     /// Returns a random `SseData::FinalitySignature`.
-    #[cfg(any(feature = "testing", test))]
     pub fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),

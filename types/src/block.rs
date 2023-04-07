@@ -199,7 +199,7 @@ impl BlockPayload {
             random_bit,
         }
     }
-
+/* #TODO this is probably safe to delete
     /// Returns the set of validators that are reported as faulty in this block.
     pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
         &self.accusations
@@ -214,7 +214,7 @@ impl BlockPayload {
     pub(crate) fn transfers(&self) -> &Vec<DeployWithApprovals> {
         &self.transfers
     }
-
+*/
     /// An iterator over deploy hashes included in the block, excluding transfers.
     pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
         self.deploys.iter().map(|dwa| dwa.deploy_hash())
@@ -337,7 +337,7 @@ impl FinalizedBlock {
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
-    header: BlockHeader,
+    pub header: BlockHeader,
     body: BlockBody,
 }
 
@@ -560,15 +560,41 @@ pub struct FinalitySignature {
     pub public_key: PublicKey,
 }
 
-impl FinalitySignature {
-    #[cfg(any(feature = "testing", test))]
+// #TODO -> replace this with SecretKey::random once casper-types exposes test code
+pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rng.fill_bytes(&mut bytes[..]);
+    SecretKey::ed25519_from_bytes(bytes).unwrap()
+}
+
+impl FinalitySignature {    
     pub fn random_for_block(block_hash: BlockHash, era_id: u64, test_rng: &mut TestRng) -> Self {
+        let mut bytes = block_hash.inner().into_vec();
+        bytes.extend_from_slice(&era_id.to_le_bytes());
+        
         let (sec_key, pub_key) = {
-            let secret_key = SecretKey::random(rng);
+            let secret_key = random_secret_key(test_rng);
             let public_key = PublicKey::from(&secret_key);
             (secret_key, public_key)
         };
-        FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
+        let signature = Signature::System;
+        
+        FinalitySignature::new(block_hash, EraId::new(era_id), signature, pub_key)
+    }
+
+    pub fn new(
+        block_hash: BlockHash,
+        era_id: EraId,
+        signature: Signature,
+        public_key: PublicKey,
+    ) -> Self {
+        FinalitySignature {
+            block_hash,
+            era_id,
+            signature,
+            public_key,
+        }
     }
 }
 
@@ -623,6 +649,17 @@ pub struct BlockSignatures {
     pub(crate) era_id: EraId,
     /// The signatures associated with the block hash.
     pub(crate) proofs: BTreeMap<PublicKey, Signature>,
+}
+
+impl BlockSignatures {
+    #[cfg(test)]
+    pub(crate) fn new(block_hash: BlockHash, era_id: EraId) -> Self {
+        BlockSignatures {
+            block_hash,
+            era_id,
+            proofs: BTreeMap::new(),
+        }
+    }
 }
 
 pub mod json_compatibility {
@@ -894,7 +931,7 @@ pub mod json_compatibility {
     fn block_json_roundtrip() {
         let mut rng = TestRng::new();
         let block: Block = Block::random(&mut rng);
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
+        let empty_signatures = BlockSignatures::new(*block.hash(), block.header.era_id);
         let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
         let block_deserialized = Block::from(json_block);
         assert_eq!(block, block_deserialized);

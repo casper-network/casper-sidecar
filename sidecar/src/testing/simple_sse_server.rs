@@ -7,7 +7,7 @@ pub(crate) mod tests {
     };
     use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
-    use casper_event_types::test_rng::TestRng;
+    use casper_types::testing::TestRng;
     use futures::Stream;
     use hex_fmt::HexFmt;
     use std::convert::Infallible;

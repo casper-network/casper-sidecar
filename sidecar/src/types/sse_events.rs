@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use casper_event_types::{deploy::{Deploy, DeployHash},block::{BlockHash, Block, FinalitySignature as FinSig ,json_compatibility::{JsonBlock}}};
 #[cfg(test)]
 use casper_types::testing::TestRng;
-
+#[cfg(test)]
+use casper_event_types::block::random_secret_key;
 
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
@@ -37,7 +38,7 @@ impl BlockAdded {
         let block = Block::random(rng);
         Self {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block: Box::new(JsonBlock::new(block, None)),
         }
     }
 }
@@ -63,7 +64,8 @@ pub struct DeployAccepted {
 impl DeployAccepted {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
+        let secret_key = random_secret_key(rng);
+        let deploy = Deploy::random(rng, secret_key);
         Self {
             deploy: Arc::new(deploy),
         }
@@ -94,9 +96,10 @@ pub struct DeployProcessed {
 impl DeployProcessed {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let deploy = Deploy::random(rng);
+        let secret_key = random_secret_key(rng);
+        let deploy = Deploy::random(rng, secret_key);
         Self {
-            deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
+            deploy_hash: Box::new(with_deploy_hash.unwrap_or(deploy.hash)),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -120,9 +123,11 @@ pub struct DeployExpired {
 impl DeployExpired {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let deploy = Deploy::random(rng);
+        let secret_key = random_secret_key(rng);
+
+        let deploy = Deploy::random(rng, secret_key);
         Self {
-            deploy_hash: with_deploy_hash.unwrap_or(*deploy.hash()),
+            deploy_hash: with_deploy_hash.unwrap_or(deploy.hash),
         }
     }
 
@@ -163,9 +168,11 @@ pub struct FinalitySignature(Box<FinSig>);
 impl FinalitySignature {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        //#TODO check if this is right
         Self(Box::new(FinSig::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
+            rng
         )))
     }
 

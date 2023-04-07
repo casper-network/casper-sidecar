@@ -7,7 +7,6 @@ use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
-
 use casper_types::AsymmetricType;
 
 use super::SqliteDatabase;

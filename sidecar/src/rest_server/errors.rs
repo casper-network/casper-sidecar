@@ -107,7 +107,7 @@ async fn get_api_error_from_rejection(rejection: Rejection) -> ApiError {
         .expect("Error parsing ApiError from bytes of body")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_handle_invalid_path() {
     let rejection = reject::custom(InvalidPath);
 
@@ -117,7 +117,7 @@ async fn should_handle_invalid_path() {
     assert_eq!(api_error.message, "Invalid request path provided");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_handle_invalid_param() {
     let rejection = reject::custom(InvalidParam(anyhow::Error::msg("Invalid param provided")));
 
@@ -127,7 +127,7 @@ async fn should_handle_invalid_param() {
     assert!(api_error.message.contains("Invalid parameter in query"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_handle_not_found() {
     let rejection = reject::custom(StorageError(DatabaseReadError::NotFound));
 
@@ -137,7 +137,7 @@ async fn should_handle_not_found() {
     assert_eq!(api_error.message, "Query returned no results");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_handle_serialisation_error() {
     let rejection = serde_json::from_str::<i32>("")
         .map_err(|err| reject::custom(StorageError(DatabaseReadError::Serialisation(err))))
@@ -152,7 +152,7 @@ async fn should_handle_serialisation_error() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[allow(clippy::invalid_regex)]
 async fn should_handle_unexpected_error() {
     let rejection = regex::Regex::new("[")
