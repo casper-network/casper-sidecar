@@ -1,4 +1,3 @@
-use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +16,7 @@ const STORED_CONTRACT_BY_NAME_TAG: u8 = 2;
 const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
+const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 
 /// The payment or session code of a [`Deploy`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
