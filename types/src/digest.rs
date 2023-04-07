@@ -10,6 +10,7 @@ use std::{
     array::TryFromSliceError,
     fmt::{self, Debug, Display, Formatter},
 };
+#[cfg(feature = "sse-data-testing")]
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -24,10 +25,12 @@ impl Digest {
     /// The number of bytes in a `Digest`.
     pub const LENGTH: usize = 32;
 
+    #[cfg(feature = "sse-data-testing")]
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         Self::blake2b_hash(data)
     }
 
+    #[cfg(feature = "sse-data-testing")]
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
     pub(crate) fn blake2b_hash<T: AsRef<[u8]>>(data: T) -> Digest {
         let mut ret = [0u8; Digest::LENGTH];
@@ -38,6 +41,7 @@ impl Digest {
         Digest(ret)
     }
 
+    #[cfg(feature = "sse-data-testing")]
     /// Hashes a pair of byte slices.
     pub fn hash_pair<T: AsRef<[u8]>, U: AsRef<[u8]>>(data1: T, data2: U) -> Digest {
         let mut result = [0; Digest::LENGTH];
@@ -49,24 +53,27 @@ impl Digest {
         });
         Digest(result)
     }
-    
+    #[cfg(feature = "sse-data-testing")]
     pub fn into_vec(self) -> Vec<u8> {
         self.0.to_vec()
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl AsRef<[u8]> for Digest {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl From<[u8; Digest::LENGTH]> for Digest {
     fn from(arr: [u8; Digest::LENGTH]) -> Self {
         Digest(arr)
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl<'a> TryFrom<&'a [u8]> for Digest {
     type Error = TryFromSliceError;
 
@@ -75,6 +82,7 @@ impl<'a> TryFrom<&'a [u8]> for Digest {
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl Serialize for Digest {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -87,6 +95,7 @@ impl Serialize for Digest {
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl<'de> Deserialize<'de> for Digest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
@@ -103,18 +112,21 @@ impl<'de> Deserialize<'de> for Digest {
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl Debug for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:10}", HexFmt(&self.0))
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl ToBytes for Digest {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
