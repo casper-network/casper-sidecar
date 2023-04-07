@@ -200,22 +200,7 @@ impl BlockPayload {
             random_bit,
         }
     }
-/* #TODO this is probably safe to delete
-    /// Returns the set of validators that are reported as faulty in this block.
-    pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
-        &self.accusations
-    }
 
-    /// The list of deploys included in the block, excluding transfers.
-    pub(crate) fn deploys(&self) -> &Vec<DeployWithApprovals> {
-        &self.deploys
-    }
-
-    /// The list of transfers included in the block.
-    pub(crate) fn transfers(&self) -> &Vec<DeployWithApprovals> {
-        &self.transfers
-    }
-*/
     /// An iterator over deploy hashes included in the block, excluding transfers.
     pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
         self.deploys.iter().map(|dwa| dwa.deploy_hash())
