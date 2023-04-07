@@ -23,8 +23,7 @@ use crate::{
     deploy::{Deploy, DeployHash},
 };
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp};
-#[cfg(feature = "sse-data-testing")]
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

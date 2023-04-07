@@ -2,7 +2,7 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{bytesrepr::{self, Bytes, ToBytes}, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs, URef, U512, CLValue};
+use casper_types::{bytesrepr::{self, Bytes, ToBytes}, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs, U512, CLValue};
 use casper_types::system::auction::ARG_AMOUNT;
 use rand::distributions::{Alphanumeric, Distribution, Standard};
 use rand::Rng;

@@ -9,7 +9,9 @@ use derive_new::new;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_event_types::{deploy::{Deploy, DeployHash},block::{BlockHash, Block, FinalitySignature as FinSig ,json_compatibility::{JsonBlock}}};
+use casper_event_types::{deploy::{Deploy, DeployHash},block::{BlockHash, FinalitySignature as FinSig ,json_compatibility::{JsonBlock}}};
+#[cfg(test)]
+use casper_event_types::block::Block;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 #[cfg(test)]

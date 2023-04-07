@@ -7,12 +7,12 @@ use derive_more::Into;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
-use casper_hashing::Digest;
 use casper_types::{bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512};
 use casper_types::bytesrepr::ToBytes;
 use casper_types::testing::TestRng;
 use rand::Rng;
 use crate::deploy::{Approval, DeployHash};
+use crate::digest::Digest;
 
 const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
@@ -568,7 +568,7 @@ pub fn random_secret_key(rng: &mut TestRng) -> SecretKey {
     SecretKey::ed25519_from_bytes(bytes).unwrap()
 }
 
-impl FinalitySignature {    
+impl FinalitySignature {
     pub fn random_for_block(block_hash: BlockHash, era_id: u64, test_rng: &mut TestRng) -> Self {
         let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());

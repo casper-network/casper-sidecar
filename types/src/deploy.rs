@@ -7,10 +7,9 @@ use ed25519_dalek::ExpandedSecretKey;
 use k256::ecdsa::{signature::Signer, Signature as Secp256k1Signature};
 use thiserror::Error;
 
-use casper_hashing::Digest;
-
 use casper_types::{bytesrepr::{self}, PublicKey, SecretKey, Signature, TimeDiff, Timestamp, U512, RuntimeArgs, runtime_args};
 
+use crate::digest::Digest;
 use crate::executable_deploy_item::ExecutableDeployItem;
 
 use casper_types::bytesrepr::ToBytes;
