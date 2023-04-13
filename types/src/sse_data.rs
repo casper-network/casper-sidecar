@@ -17,16 +17,15 @@ pub enum EventFilter {
 use super::testing;
 
 use crate::{
-    block::{
-        json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature,
-    },
+    block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature},
     deploy::{Deploy, DeployHash},
 };
 #[cfg(any(feature = "sse-data-testing", test))]
 use casper_types::testing::TestRng;
 
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, SecretKey,
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
+    Timestamp,
 };
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;

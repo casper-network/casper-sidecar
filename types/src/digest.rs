@@ -19,7 +19,7 @@ use std::{
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Digest(#[schemars(skip, with = "String")]  [u8; Digest::LENGTH]);
+pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.

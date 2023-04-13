@@ -3,10 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use derive_new::new;
-#[cfg(test)]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use casper_event_types::block::Block;
 use casper_event_types::{
@@ -15,10 +11,16 @@ use casper_event_types::{
 };
 #[cfg(test)]
 use casper_types::testing::TestRng;
+use derive_new::new;
+#[cfg(test)]
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 
+#[cfg(test)] 
+use casper_types::SecretKey;
 use casper_types::{
-    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
-    Timestamp,
+    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
 
 /// The version of this node's API server.  This event will always be the first sent to a new
