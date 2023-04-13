@@ -7,9 +7,6 @@ use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-
-#[cfg(test)]
-use casper_event_types::block::random_secret_key;
 #[cfg(test)]
 use casper_event_types::block::Block;
 use casper_event_types::{
@@ -20,7 +17,7 @@ use casper_event_types::{
 use casper_types::testing::TestRng;
 
 use casper_types::{
-    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
+    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
     Timestamp,
 };
 
@@ -68,7 +65,7 @@ pub struct DeployAccepted {
 impl DeployAccepted {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let secret_key = random_secret_key(rng);
+        let secret_key = SecretKey::random(rng);
         let deploy = Deploy::random(rng, secret_key);
         Self {
             deploy: Arc::new(deploy),
@@ -100,7 +97,7 @@ pub struct DeployProcessed {
 impl DeployProcessed {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let secret_key = random_secret_key(rng);
+        let secret_key = SecretKey::random(rng);
         let deploy = Deploy::random(rng, secret_key);
         Self {
             deploy_hash: Box::new(with_deploy_hash.unwrap_or(deploy.hash)),
@@ -127,7 +124,7 @@ pub struct DeployExpired {
 impl DeployExpired {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let secret_key = random_secret_key(rng);
+        let secret_key = SecretKey::random(rng);
 
         let deploy = Deploy::random(rng, secret_key);
         Self {

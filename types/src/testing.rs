@@ -8,6 +8,7 @@ use crate::deploy::Deploy;
 use casper_types::{testing::TestRng, SecretKey, TimeDiff, Timestamp};
 
 /// Creates a test deploy created at given instant and with given ttl.
+#[cfg(feature = "sse-data-testing")]
 pub fn create_test_deploy(
     created_ago: TimeDiff,
     ttl: TimeDiff,
@@ -19,6 +20,7 @@ pub fn create_test_deploy(
 }
 
 /// Creates a random deploy that is considered expired.
+#[cfg(feature = "sse-data-testing")]
 pub fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(
         TimeDiff::from_seconds(20),

@@ -195,6 +195,7 @@ impl ToBytes for ExecutableDeployItem {
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl Distribution<ExecutableDeployItem> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutableDeployItem {
         fn random_bytes<R: Rng + ?Sized>(rng: &mut R) -> Vec<u8> {

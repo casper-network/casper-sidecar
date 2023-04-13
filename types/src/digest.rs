@@ -19,7 +19,7 @@ use std::{
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
+pub struct Digest(#[schemars(skip, with = "String")]  [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -82,7 +82,6 @@ impl<'a> TryFrom<&'a [u8]> for Digest {
     }
 }
 
-#[cfg(feature = "sse-data-testing")]
 impl Serialize for Digest {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -95,7 +94,6 @@ impl Serialize for Digest {
     }
 }
 
-#[cfg(feature = "sse-data-testing")]
 impl<'de> Deserialize<'de> for Digest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {

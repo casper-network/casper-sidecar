@@ -18,7 +18,7 @@ use super::testing;
 
 use crate::{
     block::{
-        json_compatibility::JsonBlock, random_secret_key, Block, BlockHash, FinalitySignature,
+        json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature,
     },
     deploy::{Deploy, DeployHash},
 };
@@ -26,7 +26,7 @@ use crate::{
 use casper_types::testing::TestRng;
 
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, SecretKey,
 };
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
@@ -138,7 +138,7 @@ impl SseData {
 
     /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
     pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let secret_key = random_secret_key(rng);
+        let secret_key = SecretKey::random(rng);
         let deploy = Deploy::random(rng, secret_key);
         let event = SseData::DeployAccepted {
             deploy: Arc::new(deploy.clone()),
@@ -148,7 +148,7 @@ impl SseData {
 
     /// Returns a random `SseData::DeployProcessed`.
     pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let secret_key = random_secret_key(rng);
+        let secret_key = SecretKey::random(rng);
         let deploy = Deploy::random(rng, secret_key);
         SseData::DeployProcessed {
             deploy_hash: Box::new(*deploy.id()),
