@@ -16,11 +16,11 @@ use derive_new::new;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)] 
+#[cfg(test)]
 use casper_types::SecretKey;
 use casper_types::{
-    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp,
 };
 
 /// The version of this node's API server.  This event will always be the first sent to a new
