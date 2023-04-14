@@ -150,7 +150,8 @@ impl DatabaseWriter for FakeDatabase {
         let hash = deploy_expired.hex_encoded_hash();
         // This is suffixed to allow storage of each deploy state event without overwriting.
         let identifier = format!("{}-expired", hash);
-        let stringified_event = serde_json::to_string(&true).expect("Error serialising event data");
+        let stringified_event =
+            serde_json::to_string(&deploy_expired).expect("Error serialising event data");
 
         data.insert(identifier, stringified_event);
 
@@ -290,11 +291,18 @@ impl DatabaseReader for FakeDatabase {
                     deploy_expired: false,
                 })
             } else if data.get(&expired_key).is_some() {
+                let deploy_expired = match data.get(&expired_key) {
+                    None => None,
+                    Some(raw) => Some(
+                        serde_json::from_str::<DeployExpired>(raw)
+                            .map_err(DatabaseReadError::Serialisation)?,
+                    ),
+                };
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
-                    deploy_expired: true,
+                    deploy_expired: deploy_expired.is_some(),
                 })
             } else {
                 Ok(DeployAggregate {
@@ -339,13 +347,16 @@ impl DatabaseReader for FakeDatabase {
         };
     }
 
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError> {
+    async fn get_deploy_expired_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<DeployExpired, DatabaseReadError> {
         let identifier = format!("{}-expired", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<bool>(event).map_err(DatabaseReadError::Serialisation)
+            serde_json::from_str::<DeployExpired>(event).map_err(DatabaseReadError::Serialisation)
         } else {
             Err(DatabaseReadError::NotFound)
         };

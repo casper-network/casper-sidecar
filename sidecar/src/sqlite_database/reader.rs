@@ -78,11 +78,11 @@ impl DatabaseReader for SqliteDatabase {
                     return Err(err);
                 }
                 match self.get_deploy_expired_by_hash(hash).await {
-                    Ok(deploy_has_expired) => Ok(DeployAggregate {
+                    Ok(_) => Ok(DeployAggregate {
                         deploy_hash: hash.to_string(),
                         deploy_accepted: Some(deploy_accepted),
                         deploy_processed: None,
-                        deploy_expired: deploy_has_expired,
+                        deploy_expired: true,
                     }),
                     Err(err) => {
                         // If the error is anything other than NotFound return the error.
@@ -149,7 +149,10 @@ impl DatabaseReader for SqliteDatabase {
             })
     }
 
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError> {
+    async fn get_deploy_expired_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<DeployExpired, DatabaseReadError> {
         let db_connection = &self.connection_pool;
 
         let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
@@ -161,7 +164,12 @@ impl DatabaseReader for SqliteDatabase {
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|maybe_row| match maybe_row {
                 None => Err(DatabaseReadError::NotFound),
-                Some(_) => Ok(true),
+                Some(row) => {
+                    let raw = row
+                        .try_get::<String, &str>("raw")
+                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
+                    deserialize_data::<DeployExpired>(&raw).map_err(wrap_query_error)
+                }
             })
     }
 

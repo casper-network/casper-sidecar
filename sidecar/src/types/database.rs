@@ -197,14 +197,12 @@ pub trait DatabaseReader {
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseReadError>;
-    /// Returns a boolean representing the expired state of the deploy corresponding to the given hex-encoded `hash`.
-    ///
-    /// * If there is a record present it will return `true` meaning the [Deploy] has expired.
-    /// * If there is no record present it will return [NotFound](DatabaseRequestError::NotFound) rather than `false`.
-    /// This is because the lack of a record does not definitely mean it hasn't expired. The deploy could have expired
-    /// prior to sidecar's start point. Calling [get_deploy_aggregate_by_hash] can help in this case, if there is a [DeployAccepted]
-    /// without a corresponding [DeployExpired] then you can assert that it truly has not expired.
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError>;
+
+    /// Returns the [DeployExpired] corresponding to the given hex-encoded `hash`
+    async fn get_deploy_expired_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<DeployExpired, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
     async fn get_faults_by_public_key(
         &self,
