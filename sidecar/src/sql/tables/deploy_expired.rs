@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -23,7 +23,11 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .string()
                 .not_null(),
         )
-        .col(ColumnDef::new(DeployExpired::Raw).boolean().default(true))
+        .col(
+            ColumnDef::new(DeployExpired::Raw)
+                .blob(BlobSize::Tiny)
+                .not_null(),
+        )
         .col(
             ColumnDef::new(DeployExpired::EventLogId)
                 .big_unsigned()
@@ -47,17 +51,25 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_insert_stmt(deploy_hash: String, event_log_id: u32) -> SqResult<InsertStatement> {
+pub fn create_insert_stmt(
+    deploy_hash: String,
+    event_log_id: u32,
+    raw: String,
+) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(DeployExpired::Table)
-        .columns([DeployExpired::DeployHash, DeployExpired::EventLogId])
-        .values(vec![deploy_hash.into(), event_log_id.into()])
+        .columns([
+            DeployExpired::DeployHash,
+            DeployExpired::EventLogId,
+            DeployExpired::Raw,
+        ])
+        .values(vec![deploy_hash.into(), event_log_id.into(), raw.into()])
         .map(|stmt| stmt.to_owned())
 }
 
 pub fn create_get_by_hash_stmt(deploy_hash: String) -> SelectStatement {
     Query::select()
-        .column(DeployExpired::DeployHash)
+        .column(DeployExpired::Raw)
         .from(DeployExpired::Table)
         .and_where(Expr::col(DeployExpired::DeployHash).eq(deploy_hash))
         .to_owned()
