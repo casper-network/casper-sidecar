@@ -214,20 +214,6 @@ impl Approval {
     }
 }
 
-#[cfg(feature = "sse-data-testing")]
-impl ToBytes for Approval {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.signer.to_bytes()?);
-        buffer.extend(self.signature.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.signer.serialized_length() + self.signature.serialized_length()
-    }
-}
-
 /// A signed item sent to the network used to request execution of Wasm.
 ///
 /// Note that constructing a `Deploy` is done via the [`DeployBuilder`].

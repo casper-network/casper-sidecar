@@ -127,7 +127,6 @@ impl DeployExpired {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
         let secret_key = SecretKey::random(rng);
-
         let deploy = Deploy::random(rng, secret_key);
         Self {
             deploy_hash: with_deploy_hash.unwrap_or(deploy.hash),
@@ -171,7 +170,6 @@ pub struct FinalitySignature(Box<FinSig>);
 impl FinalitySignature {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        //#TODO check if this is right
         Self(Box::new(FinSig::random_for_block(
             BlockHash::random(rng),
             rng.gen(),

@@ -33,7 +33,6 @@ use casper_event_types::deploy::Deploy;
 use casper_event_types::filter::Filter as SseFilter;
 use casper_event_types::sse_data::EventFilter;
 use casper_event_types::sse_data::SseData;
-
 use casper_types::ProtocolVersion;
 
 /// The URL root path.

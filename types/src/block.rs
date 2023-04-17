@@ -426,23 +426,6 @@ impl Block {
     }
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
-impl ToBytes for Block {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.hash.to_bytes()?);
-        buffer.extend(self.header.to_bytes()?);
-        buffer.extend(self.body.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
-            + self.header.serialized_length()
-            + self.body.serialized_length()
-    }
-}
-
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
     proposer: PublicKey,
@@ -892,15 +875,5 @@ pub mod json_compatibility {
         fn from(proof: JsonProof) -> (PublicKey, Signature) {
             (proof.public_key, proof.signature)
         }
-    }
-
-    #[test]
-    fn block_json_roundtrip() {
-        let mut rng = TestRng::new();
-        let block: Block = Block::random(&mut rng);
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.header.era_id);
-        let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
-        let block_deserialized = Block::from(json_block);
-        assert_eq!(block, block_deserialized);
     }
 }

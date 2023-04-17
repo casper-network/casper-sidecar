@@ -1,17 +1,14 @@
 //! Types used to deserialize data from nodes that are in legacy version (prior to 1.0.0-1.2.0)
-use std::sync::Arc;
-
-use serde::{Deserialize, Serialize};
-
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
-
 use crate::{
     block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature},
     deploy::{Deploy, DeployHash},
     sse_data::{self, to_error, SseDataDeserializeError},
 };
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.0.0 compliant) or an SseDataDeserializeError
 ///

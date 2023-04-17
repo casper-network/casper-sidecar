@@ -3,7 +3,6 @@ use bytes::Bytes;
 use casper_event_listener::{EventListener, NodeConnectionInterface};
 use casper_event_types::sse_data::SseData;
 use casper_types::testing::TestRng;
-
 use core::time;
 use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;

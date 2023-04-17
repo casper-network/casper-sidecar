@@ -15,7 +15,6 @@ pub enum EventFilter {
 
 #[cfg(any(feature = "sse-data-testing", test))]
 use super::testing;
-
 use crate::{
     block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature},
     deploy::{Deploy, DeployHash},
