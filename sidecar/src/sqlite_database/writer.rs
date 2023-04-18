@@ -136,7 +136,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
         let db_connection = &self.connection_pool;
-
+        let json = serde_json::to_string(&deploy_expired)?;
         let encoded_hash = deploy_expired.hex_encoded_hash();
 
         let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
@@ -154,7 +154,7 @@ impl DatabaseWriter for SqliteDatabase {
             .context("Error parsing event_log_id from row")?;
 
         let batched_insert_stmts = vec![
-            tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id)?,
+            tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id, json)?,
             tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
         ]
         .iter()
