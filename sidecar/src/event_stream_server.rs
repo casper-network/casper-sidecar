@@ -37,12 +37,13 @@ use tokio::sync::{
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
 
 use crate::utils::{resolve_address, ListeningError};
 pub use config::Config;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
+
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
 /// <https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging> for further details).  The

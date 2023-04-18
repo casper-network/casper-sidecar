@@ -153,13 +153,13 @@ impl TimestampedEvent {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
-            SseData::DeployAccepted { deploy } => deploy.hash.to_string(),
+            SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
             SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),
             SseData::DeployExpired { deploy_hash } => deploy_hash.to_string(),
             SseData::Fault {
                 era_id, public_key, ..
             } => format!("{}-{}", era_id.value(), public_key.to_hex()),
-            SseData::FinalitySignature(signature) => signature.signature.to_string(),
+            SseData::FinalitySignature(signature) => signature.signature().to_string(),
             SseData::Step { era_id, .. } => era_id.to_string(),
             SseData::Shutdown => "Shutdown".to_string(),
         }

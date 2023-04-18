@@ -14,7 +14,7 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{

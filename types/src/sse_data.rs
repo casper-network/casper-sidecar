@@ -13,18 +13,14 @@ pub enum EventFilter {
     Step,
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
+#[cfg(feature = "sse-data-testing")]
 use super::testing;
-use crate::{
-    block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature},
-    deploy::{Deploy, DeployHash},
-};
-#[cfg(any(feature = "sse-data-testing", test))]
+use crate::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+#[cfg(feature = "sse-data-testing")]
 use casper_types::testing::TestRng;
 
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
-    Timestamp,
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
@@ -113,7 +109,7 @@ impl SseData {
     }
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
+#[cfg(feature = "sse-data-testing")]
 impl SseData {
     /// Returns a random `SseData::ApiVersion`.
     pub fn random_api_version(rng: &mut TestRng) -> Self {
@@ -127,17 +123,16 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = JsonBlock::random(rng);
         SseData::BlockAdded {
-            block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
+            block_hash: block.hash,
+            block: Box::new(block),
         }
     }
 
     /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
     pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let secret_key = SecretKey::random(rng);
-        let deploy = Deploy::random(rng, secret_key);
+        let deploy = Deploy::random(rng);
         let event = SseData::DeployAccepted {
             deploy: Arc::new(deploy.clone()),
         };
@@ -146,10 +141,9 @@ impl SseData {
 
     /// Returns a random `SseData::DeployProcessed`.
     pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let secret_key = SecretKey::random(rng);
-        let deploy = Deploy::random(rng, secret_key);
+        let deploy = Deploy::random(rng);
         SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.id()),
+            deploy_hash: Box::new(*deploy.hash()),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -163,7 +157,7 @@ impl SseData {
     pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
-            deploy_hash: *deploy.id(),
+            deploy_hash: *deploy.hash(),
         }
     }
 
@@ -199,7 +193,7 @@ impl SseData {
     }
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
+#[cfg(feature = "sse-data-testing")]
 pub mod test_support {
     pub const BLOCK_HASH_1: &str =
         "ca52062424e9d5631a34b7b401e123927ce29d4bd10bc97c7df0aa752f131bb7";

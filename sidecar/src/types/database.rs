@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use casper_event_types::block::FinalitySignature as FinSig;
+use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
 
 use crate::types::sse_events::{

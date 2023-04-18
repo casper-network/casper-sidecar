@@ -4,7 +4,7 @@ mod connection_tasks;
 use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
 
 use anyhow::{anyhow, Context, Error};
-use casper_event_types::filter::Filter;
+use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
 use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
@@ -15,6 +15,7 @@ use tracing::{debug, error, info, trace};
 use url::Url;
 
 use crate::connection_manager::ConnectionManagerBuilder;
+
 const BUILD_VERSION_KEY: &str = "build_version";
 
 pub struct NodeConnectionInterface {

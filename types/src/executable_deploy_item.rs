@@ -1,21 +1,33 @@
 use hex_buffer_serde::{Hex, HexForm};
+#[cfg(feature = "sse-data-testing")]
+use rand::{
+    distributions::{Alphanumeric, Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
-use casper_types::system::auction::ARG_AMOUNT;
+#[cfg(feature = "sse-data-testing")]
+use casper_types::bytesrepr::{self, Bytes, ToBytes};
 use casper_types::{
-    bytesrepr::{self, Bytes, ToBytes},
-    CLValue, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs, U512,
+    system::auction::ARG_AMOUNT, CLValue, ContractHash, ContractPackageHash, ContractVersion,
+    RuntimeArgs, U512,
 };
-use rand::distributions::{Alphanumeric, Distribution, Standard};
-use rand::Rng;
 
+#[cfg(feature = "sse-data-testing")]
 const TAG_LENGTH: usize = 1;
+#[cfg(feature = "sse-data-testing")]
 const MODULE_BYTES_TAG: u8 = 0;
+#[cfg(feature = "sse-data-testing")]
 const STORED_CONTRACT_BY_HASH_TAG: u8 = 1;
+#[cfg(feature = "sse-data-testing")]
 const STORED_CONTRACT_BY_NAME_TAG: u8 = 2;
+#[cfg(feature = "sse-data-testing")]
 const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
+#[cfg(feature = "sse-data-testing")]
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
+#[cfg(feature = "sse-data-testing")]
 const TRANSFER_TAG: u8 = 5;
+#[cfg(feature = "sse-data-testing")]
 const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 
 /// The payment or session code of a [`Deploy`].
@@ -83,6 +95,7 @@ pub enum ExecutableDeployItem {
     },
 }
 
+#[cfg(feature = "sse-data-testing")]
 impl ToBytes for ExecutableDeployItem {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

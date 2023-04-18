@@ -37,7 +37,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{filter::Filter, sse_data::SseData};
+use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
 
 use crate::{
@@ -301,7 +301,7 @@ async fn handle_single_event(
         }
         SseData::DeployAccepted { deploy } => {
             if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy.id().inner());
+                let hex_deploy_hash = HexFmt(deploy.hash().inner());
                 info!("Deploy Accepted: {:18}", hex_deploy_hash);
                 debug!("Deploy Accepted: {}", hex_deploy_hash);
             }
@@ -329,7 +329,7 @@ async fn handle_single_event(
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
                         "Already received DeployAccepted ({}), logged in event_log",
-                        HexFmt(deploy.id().inner())
+                        HexFmt(deploy.hash().inner())
                     );
                     trace!(?uc_err);
                 }
@@ -481,7 +481,11 @@ async fn handle_single_event(
         }
         SseData::FinalitySignature(fs) => {
             if enable_event_logging {
-                debug!("Finality Signature: {} for {}", fs.signature, fs.block_hash);
+                debug!(
+                    "Finality Signature: {} for {}",
+                    fs.signature(),
+                    fs.block_hash()
+                );
             }
             let finality_signature = FinalitySignature::new(fs.clone());
             let res = sqlite_database
@@ -511,7 +515,7 @@ async fn handle_single_event(
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
                         "Already received FinalitySignature ({}), logged in event_log",
-                        fs.signature
+                        fs.signature()
                     );
                     trace!(?uc_err);
                 }
