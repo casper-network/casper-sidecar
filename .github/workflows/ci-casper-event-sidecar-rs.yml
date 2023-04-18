@@ -41,7 +41,7 @@ jobs:
         run: cargo fmt -- --check
 
       - name: clippy
-        run: cargo clippy -- --deny warnings
+        run: cargo clippy --all-targets -- --deny warnings
 
       - name: audit
         # Hope to get to here:

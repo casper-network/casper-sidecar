@@ -829,7 +829,7 @@ mod tests {
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
-                &stream_filter,
+                stream_filter,
                 get_filter(path_filter).unwrap(),
             )
             .collect()
