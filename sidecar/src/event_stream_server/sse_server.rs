@@ -29,10 +29,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_event_types::deploy::Deploy;
-use casper_event_types::filter::Filter as SseFilter;
-use casper_event_types::sse_data::EventFilter;
-use casper_event_types::sse_data::SseData;
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
 use casper_types::ProtocolVersion;
 
 /// The URL root path.
@@ -505,7 +502,7 @@ mod tests {
     use regex::Regex;
     use std::iter;
 
-    use casper_event_types::{deploy::DeployHash, filter::Filter as SseFilter};
+    use casper_event_types::{DeployHash, Filter as SseFilter};
 
     use super::*;
 
@@ -557,7 +554,7 @@ mod tests {
             inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(deploy.hash, deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let deploy_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
@@ -660,7 +657,7 @@ mod tests {
             inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(deploy.hash, deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let malformed_deploy_processed = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
@@ -733,7 +730,7 @@ mod tests {
                         SSE_API_MAIN_PATH => SseData::random_block_added(rng),
                         SSE_API_DEPLOYS_PATH => {
                             let (event, deploy) = SseData::random_deploy_accepted(rng);
-                            assert!(deploys.insert(deploy.hash, deploy).is_none());
+                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                             event
                         }
                         SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
@@ -832,7 +829,7 @@ mod tests {
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
-                &stream_filter,
+                stream_filter,
                 get_filter(path_filter).unwrap(),
             )
             .collect()

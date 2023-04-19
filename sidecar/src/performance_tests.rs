@@ -153,13 +153,13 @@ impl TimestampedEvent {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
-            SseData::DeployAccepted { deploy } => deploy.hash.to_string(),
+            SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
             SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),
             SseData::DeployExpired { deploy_hash } => deploy_hash.to_string(),
             SseData::Fault {
                 era_id, public_key, ..
             } => format!("{}-{}", era_id.value(), public_key.to_hex()),
-            SseData::FinalitySignature(signature) => signature.signature.to_string(),
+            SseData::FinalitySignature(signature) => signature.signature().to_string(),
             SseData::Step { era_id, .. } => era_id.to_string(),
             SseData::Shutdown => "Shutdown".to_string(),
         }
@@ -213,7 +213,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
+    setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 

@@ -7,7 +7,7 @@ use casper_types::testing::TestRng;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
-use casper_event_types::block::FinalitySignature as FinSig;
+use casper_event_types::FinalitySignature as FinSig;
 
 use crate::types::{
     database::{

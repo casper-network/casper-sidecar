@@ -4,11 +4,8 @@ use std::{
 };
 
 #[cfg(test)]
-use casper_event_types::block::Block;
-use casper_event_types::{
-    block::{json_compatibility::JsonBlock, BlockHash, FinalitySignature as FinSig},
-    deploy::{Deploy, DeployHash},
-};
+use casper_event_types::Digest;
+use casper_event_types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use derive_new::new;
@@ -16,8 +13,6 @@ use derive_new::new;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::SecretKey;
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,
@@ -38,10 +33,10 @@ pub struct BlockAdded {
 #[cfg(test)]
 impl BlockAdded {
     pub fn random(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = JsonBlock::random(rng);
         Self {
-            block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
+            block_hash: block.hash,
+            block: Box::new(block),
         }
     }
 }
@@ -67,20 +62,18 @@ pub struct DeployAccepted {
 impl DeployAccepted {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let secret_key = SecretKey::random(rng);
-        let deploy = Deploy::random(rng, secret_key);
         Self {
-            deploy: Arc::new(deploy),
+            deploy: Arc::new(Deploy::random(rng)),
         }
     }
 
     #[cfg(test)]
     pub fn deploy_hash(&self) -> DeployHash {
-        self.deploy.id().to_owned()
+        self.deploy.hash().to_owned()
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy.id().inner())
+        hex::encode(self.deploy.hash().inner())
     }
 }
 
@@ -99,10 +92,9 @@ pub struct DeployProcessed {
 impl DeployProcessed {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let secret_key = SecretKey::random(rng);
-        let deploy = Deploy::random(rng, secret_key);
+        let deploy = Deploy::random(rng);
         Self {
-            deploy_hash: Box::new(with_deploy_hash.unwrap_or(deploy.hash)),
+            deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
             account: Box::new(deploy.header().account().clone()),
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
@@ -126,10 +118,8 @@ pub struct DeployExpired {
 impl DeployExpired {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let secret_key = SecretKey::random(rng);
-        let deploy = Deploy::random(rng, secret_key);
         Self {
-            deploy_hash: with_deploy_hash.unwrap_or(deploy.hash),
+            deploy_hash: with_deploy_hash.unwrap_or_else(|| DeployHash::new(Digest::random(rng))),
         }
     }
 
@@ -182,11 +172,11 @@ impl FinalitySignature {
     }
 
     pub fn hex_encoded_block_hash(&self) -> String {
-        hex::encode(self.0.block_hash.inner())
+        hex::encode(self.0.block_hash().inner())
     }
 
     pub fn hex_encoded_public_key(&self) -> String {
-        self.0.public_key.to_hex()
+        self.0.public_key().to_hex()
     }
 }
 
