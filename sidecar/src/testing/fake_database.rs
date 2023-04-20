@@ -413,6 +413,10 @@ impl DatabaseReader for FakeDatabase {
             Err(DatabaseReadError::NotFound)
         };
     }
+
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        return Ok(0);
+    }
 }
 
 pub struct IdentifiersForStoredEvents {

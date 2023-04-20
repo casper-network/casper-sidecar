@@ -65,6 +65,7 @@ impl EventListener {
     pub async fn stream_aggregated_events(
         &mut self,
         initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
+        is_empty_database: bool,
     ) -> Result<(), Error> {
         let mut attempts = 0;
         let mut last_event_id_for_filter = HashMap::<Filter, u32>::new();
@@ -122,7 +123,10 @@ impl EventListener {
                 (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
 
             for filter in filters {
-                let start_from_event_id = last_event_id_for_filter.get(&filter).copied();
+                let mut start_from_event_id = last_event_id_for_filter.get(&filter).copied();
+                if is_empty_database && start_from_event_id.is_none() {
+                    start_from_event_id = Some(0);
+                }
                 let bind_address_for_filter = self.filtered_sse_url(&filter)?;
                 let builder = ConnectionManagerBuilder {
                     bind_address: bind_address_for_filter,

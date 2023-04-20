@@ -217,6 +217,9 @@ pub trait DatabaseReader {
     ) -> Result<Vec<FinSig>, DatabaseReadError>;
     /// Returns the [Step] event for the given era.
     async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
+
+    /// Returns number of events stored in db
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.

@@ -238,6 +238,22 @@ impl DatabaseReader for SqliteDatabase {
                 }
             })
     }
+
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let stmt = tables::event_log::count().to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_one(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(|row| {
+                row.try_get::<i64, _>(0)
+                    .map(|i| i as u64) //this should never be negative
+                    .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))
+            })
+    }
 }
 
 fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
