@@ -14,7 +14,7 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
 use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{
@@ -503,7 +503,7 @@ async fn load_testing_deploy(
     }
 }
 
-pub fn setup_mock_build_version_server(port: u16) -> () {
+pub fn setup_mock_build_version_server(port: u16) {
     let _ = setup_mock_build_version_server_with_version(port, "1.4.10".to_string());
 }
 
@@ -517,7 +517,7 @@ pub fn setup_mock_build_version_server_with_version(
     let version_store = warp::any().map(move || m1.clone());
 
     let api = warp::path!("status")
-        .and(version_store.clone())
+        .and(version_store)
         .and_then(get_version);
     let server = warp::serve(api).run(([127, 0, 0, 1], port));
     tokio::spawn(async move {

@@ -29,12 +29,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_event_types::filter::Filter as SseFilter;
-use casper_event_types::sse_data::EventFilter;
-use casper_event_types::sse_data::SseData;
-use casper_node::types::Deploy;
-#[cfg(test)]
-use casper_node::types::DeployHash;
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
 use casper_types::ProtocolVersion;
 
 /// The URL root path.
@@ -503,11 +498,11 @@ fn stream_to_client(
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
     use regex::Regex;
     use std::iter;
 
-    use casper_event_types::filter::Filter as SseFilter;
-    use casper_types::testing::TestRng;
+    use casper_event_types::{DeployHash, Filter as SseFilter};
 
     use super::*;
 
@@ -834,7 +829,7 @@ mod tests {
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
-                &stream_filter,
+                stream_filter,
                 get_filter(path_filter).unwrap(),
             )
             .collect()

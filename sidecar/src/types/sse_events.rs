@@ -3,16 +3,16 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+use casper_event_types::Digest;
+use casper_event_types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_node::types::Block;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
-#[cfg(test)]
-use casper_types::testing::TestRng;
 use casper_types::{
     AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
     Timestamp,
@@ -33,10 +33,10 @@ pub struct BlockAdded {
 #[cfg(test)]
 impl BlockAdded {
     pub fn random(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = JsonBlock::random(rng);
         Self {
-            block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block_hash: block.hash,
+            block: Box::new(block),
         }
     }
 }
@@ -62,9 +62,8 @@ pub struct DeployAccepted {
 impl DeployAccepted {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
         Self {
-            deploy: Arc::new(deploy),
+            deploy: Arc::new(Deploy::random(rng)),
         }
     }
 
@@ -119,9 +118,8 @@ pub struct DeployExpired {
 impl DeployExpired {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let deploy = Deploy::random(rng);
         Self {
-            deploy_hash: with_deploy_hash.unwrap_or(*deploy.hash()),
+            deploy_hash: with_deploy_hash.unwrap_or_else(|| DeployHash::new(Digest::random(rng))),
         }
     }
 
@@ -165,6 +163,7 @@ impl FinalitySignature {
         Self(Box::new(FinSig::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
+            rng,
         )))
     }
 
@@ -173,11 +172,11 @@ impl FinalitySignature {
     }
 
     pub fn hex_encoded_block_hash(&self) -> String {
-        hex::encode(self.0.block_hash.inner())
+        hex::encode(self.0.block_hash().inner())
     }
 
     pub fn hex_encoded_public_key(&self) -> String {
-        self.0.public_key.to_hex()
+        self.0.public_key().to_hex()
     }
 }
 

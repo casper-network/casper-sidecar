@@ -11,19 +11,19 @@ pub(crate) mod tests {
     use futures::Stream;
     use hex_fmt::HexFmt;
     use std::convert::Infallible;
-    use tokio::sync::broadcast::{
-        channel as broadcast_channel, Receiver as BroadcastReceiver, Sender as BroadcastSender,
-    };
+    use tokio::sync::broadcast::{self, channel as broadcast_channel};
     use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
     use warp::path::end;
-    use warp::{sse::Event, Filter};
-    use warp::{Rejection, Reply};
+    use warp::{filters::BoxedFilter, sse::Event, Filter, Rejection, Reply};
+
+    type BroadcastSender = broadcast::Sender<Option<(Option<String>, String)>>;
+    type BroadcastReceiver = broadcast::Receiver<Option<(Option<String>, String)>>;
 
     fn build_stream(
-        mut r: BroadcastReceiver<Option<(Option<String>, String)>>,
+        mut broadcast_receiver: BroadcastReceiver,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         stream! {
-            while let Ok(z) = r.recv().await {
+            while let Ok(z) = broadcast_receiver.recv().await {
                 match z {
                     Some(event_data) => {
                         let mut event = Event::default().data(event_data.1);
@@ -111,36 +111,29 @@ pub(crate) mod tests {
 
     fn build_paths(
         main_data: Vec<(Option<String>, String)>,
-    ) -> (
-        Box<impl Filter<Extract = impl Reply, Error = Rejection> + Clone>,
-        BroadcastSender<Option<(Option<String>, String)>>,
-    ) {
+    ) -> (BoxedFilter<(impl Reply,)>, BroadcastSender) {
         let (data_tx, _) = tokio::sync::broadcast::channel(100);
         let api = events_route(main_data.clone(), data_tx.clone())
             .or(main_events_route(main_data, data_tx.clone()));
-        (Box::new(api), data_tx)
+        (api.boxed(), data_tx)
     }
 
     fn build_paths_with_sigs(
         main_data: Vec<(Option<String>, String)>,
         sigs_data: Vec<(Option<String>, String)>,
-    ) -> (
-        Box<impl Filter<Extract = impl Reply, Error = Rejection> + Clone>,
-        BroadcastSender<Option<(Option<String>, String)>>,
-        BroadcastSender<Option<(Option<String>, String)>>,
-    ) {
+    ) -> (BoxedFilter<(impl Reply,)>, BroadcastSender, BroadcastSender) {
         let (data_tx, _) = broadcast_channel(100);
         let (sigs_data_tx, _) = broadcast_channel(100);
         let api = events_route(main_data.clone(), data_tx.clone())
             .or(main_events_route(main_data, data_tx.clone()))
             .or(sigs_events_route(sigs_data, sigs_data_tx.clone()));
-        (Box::new(api), data_tx, sigs_data_tx)
+        (api.boxed(), data_tx, sigs_data_tx)
     }
 
     fn events_route(
         data: Vec<(Option<String>, String)>,
-        sender: BroadcastSender<Option<(Option<String>, String)>>,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        sender: BroadcastSender,
+    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         warp::path!("events")
             .and(warp::get())
             .map(move || {
@@ -158,8 +151,8 @@ pub(crate) mod tests {
 
     fn main_events_route(
         data: Vec<(Option<String>, String)>,
-        sender: BroadcastSender<Option<(Option<String>, String)>>,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        sender: BroadcastSender,
+    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         warp::path!("events" / "main")
             .and(warp::get())
             .map(move || {
@@ -177,8 +170,8 @@ pub(crate) mod tests {
 
     fn sigs_events_route(
         data: Vec<(Option<String>, String)>,
-        sender: BroadcastSender<Option<(Option<String>, String)>>,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        sender: BroadcastSender,
+    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         warp::path!("events" / "sigs")
             .and(warp::get())
             .map(move || {
@@ -223,7 +216,7 @@ pub(crate) mod tests {
         let (shutdown_tx, shutdown_rx) = oneshot_channel();
         tokio::spawn(async move {
             let (api, main_data_tx) = build_paths(data);
-            let server = warp::serve(*api)
+            let server = warp::serve(api)
                 .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
                     shutdown_rx.await.ok();
                     let _ = main_data_tx.clone().send(None);
@@ -231,7 +224,7 @@ pub(crate) mod tests {
                 .1;
             server.await;
         });
-        return shutdown_tx;
+        shutdown_tx
     }
 
     pub async fn simple_sse_server_with_sigs(
@@ -242,7 +235,7 @@ pub(crate) mod tests {
         let (shutdown_tx, shutdown_rx) = oneshot_channel();
         tokio::spawn(async move {
             let (api, main_data_tx, sigs_data_tx) = build_paths_with_sigs(main_data, sigs_data);
-            let server = warp::serve(*api)
+            let server = warp::serve(api)
                 .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
                     shutdown_rx.await.ok();
                     let _ = main_data_tx.clone().send(None);
@@ -251,7 +244,7 @@ pub(crate) mod tests {
                 .1;
             server.await;
         });
-        return shutdown_tx;
+        shutdown_tx
     }
 
     fn generate_random_blocks_added(
