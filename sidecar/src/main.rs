@@ -4,6 +4,8 @@ mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
+mod integration_tests_version_switch;
+#[cfg(test)]
 mod performance_tests;
 mod rest_server;
 mod sql;
@@ -17,6 +19,7 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
@@ -25,14 +28,18 @@ use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
+    sync::{
+        mpsc::{channel as mpsc_channel, Receiver, Sender},
+        Mutex,
+    },
     task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::SseData;
+use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
+use types::database::DatabaseReader;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -65,12 +72,31 @@ async fn main() -> Result<(), Error> {
     let path_to_config = args.path_to_config;
 
     let config: Config = read_config(&path_to_config).context("Error constructing config")?;
+
     info!("Configuration loaded");
 
     run(config).await
 }
 
 async fn run(config: Config) -> Result<(), Error> {
+    // This is a temporary constraint whilst we iron out the details of handling connection to multiple nodes
+    // Beofre we remove it we need to figure out how we want to handle api versioning for multiple nodes
+    if config.connections.len() > 1 {
+        return Err(Error::msg(
+            "Unable to run with multiple connections specified in config",
+        ));
+    }
+
+    if config
+        .connections
+        .iter()
+        .any(|connection| connection.max_attempts < 1)
+    {
+        return Err(Error::msg(
+            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+        ));
+    }
+
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
@@ -91,7 +117,7 @@ async fn run(config: Config) -> Result<(), Error> {
 
         let event_listener = EventListener::new(
             node_interface,
-            connection.max_retries,
+            connection.max_attempts,
             Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
             connection.allow_partial_connection,
             inbound_sse_data_sender,
@@ -119,6 +145,7 @@ async fn run(config: Config) -> Result<(), Error> {
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
+    let is_empty_database = check_if_database_is_empty(sqlite_database.clone()).await?;
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = tokio::spawn(async move {
@@ -136,6 +163,7 @@ async fn run(config: Config) -> Result<(), Error> {
                 outbound_sse_data_sender.clone(),
                 sqlite_database.clone(),
                 connection_config.enable_logging,
+                is_empty_database,
             ));
 
             join_handles.push(join_handle);
@@ -150,27 +178,18 @@ async fn run(config: Config) -> Result<(), Error> {
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     });
 
+    //TODO currently api version handling DOES NOT account for possibility of multiple connections
     let event_broadcasting_handle = tokio::spawn(async move {
-        // Wait for the listeners to report the API version before spinning up the Event Stream Server.
-        let mut api_versions = Vec::new();
-        while let Some(api_fetch_res) = api_version_rx.recv().await {
+        if let Some(api_fetch_res) = api_version_rx.recv().await {
             match api_fetch_res {
-                Ok(version) => api_versions.push(version),
+                Ok(_) => {
+                    // We got a protocol version, event listener can start
+                }
                 Err(err) => {
                     error!("Error fetching API version from connected node(s): {err}");
                     return Err(err);
                 }
             }
-        }
-
-        let api_versions_match = api_versions.windows(2).all(|window| window[0] == window[1]);
-
-        if !api_versions_match {
-            return Err(Error::msg("Couldn't start Event Stream Server due to inbound streams with mismatched API Versions"));
-        } else if api_versions.is_empty() {
-            return Err(Error::msg(
-                "Couldn't start Event Stream Server - no inbound streams reported API version",
-            ));
         }
 
         // Create new instance for the Sidecar's Event Stream Server
@@ -181,12 +200,13 @@ async fn run(config: Config) -> Result<(), Error> {
                 Some(config.event_stream_server.max_concurrent_subscribers),
             ),
             PathBuf::from(&config.storage.storage_path),
-            api_versions[0],
         )
         .context("Error starting EventStreamServer")?;
 
-        while let Some(sse_data) = outbound_sse_data_receiver.recv().await {
-            event_stream_server.broadcast(sse_data);
+        while let Some((sse_data, inbound_filter, maybe_json_data)) =
+            outbound_sse_data_receiver.recv().await
+        {
+            event_stream_server.broadcast(sse_data, inbound_filter, maybe_json_data);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
     });
@@ -214,10 +234,29 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<SseData>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
         SseData::ApiVersion(version) => {
+            let mut guard = last_reported_protocol_version.lock().await;
+            match &mut *guard {
+                Some(old_version) if old_version.eq(&&version) => {
+                    //do nothing
+                }
+                None | Some(_) => {
+                    *guard = Some(version);
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((SseData::ApiVersion(version), sse_event.inbound_filter, None))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
+                }
+            }
             if enable_event_logging {
                 info!(%version, "API Version");
             }
@@ -239,8 +278,19 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ =
-                        outbound_sse_data_sender.send(SseData::BlockAdded { block, block_hash });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::BlockAdded { block, block_hash },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -254,7 +304,7 @@ async fn handle_single_event(
         }
         SseData::DeployAccepted { deploy } => {
             if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy.id().inner());
+                let hex_deploy_hash = HexFmt(deploy.hash().inner());
                 info!("Deploy Accepted: {:18}", hex_deploy_hash);
                 debug!("Deploy Accepted: {}", hex_deploy_hash);
             }
@@ -265,12 +315,24 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::DeployAccepted { deploy });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::DeployAccepted { deploy },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
                         "Already received DeployAccepted ({}), logged in event_log",
-                        HexFmt(deploy.id().inner())
+                        HexFmt(deploy.hash().inner())
                     );
                     trace!(?uc_err);
                 }
@@ -293,7 +355,19 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::DeployExpired { deploy_hash });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::DeployExpired { deploy_hash },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -338,15 +412,27 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::DeployProcessed {
-                        deploy_hash,
-                        account,
-                        timestamp,
-                        ttl,
-                        dependencies,
-                        block_hash,
-                        execution_result,
-                    });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::DeployProcessed {
+                                deploy_hash,
+                                account,
+                                timestamp,
+                                ttl,
+                                dependencies,
+                                block_hash,
+                                execution_result,
+                            },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -371,11 +457,23 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::Fault {
-                        era_id,
-                        timestamp,
-                        public_key,
-                    });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::Fault {
+                                era_id,
+                                timestamp,
+                                public_key,
+                            },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!("Already received Fault ({:#?}), logged in event_log", fault);
@@ -386,7 +484,11 @@ async fn handle_single_event(
         }
         SseData::FinalitySignature(fs) => {
             if enable_event_logging {
-                debug!("Finality Signature: {} for {}", fs.signature, fs.block_hash);
+                debug!(
+                    "Finality Signature: {} for {}",
+                    fs.signature(),
+                    fs.block_hash()
+                );
             }
             let finality_signature = FinalitySignature::new(fs.clone());
             let res = sqlite_database
@@ -399,12 +501,24 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::FinalitySignature(fs));
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::FinalitySignature(fs),
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
                         "Already received FinalitySignature ({}), logged in event_log",
-                        fs.signature
+                        fs.signature()
                     );
                     trace!(?uc_err);
                 }
@@ -427,10 +541,22 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
-                    let _ = outbound_sse_data_sender.send(SseData::Step {
-                        era_id,
-                        execution_effect,
-                    });
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::Step {
+                                era_id,
+                                execution_effect,
+                            },
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
                     debug!(
@@ -444,6 +570,30 @@ async fn handle_single_event(
         }
         SseData::Shutdown => {
             warn!("Node ({}) is unavailable", sse_event.source.to_string());
+            let res = sqlite_database
+                .save_shutdown(sse_event.id, sse_event.source.to_string())
+                .await;
+            match res {
+                Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {
+                    // We push to outbound on UniqueConstraint error because in sse_server we match shutdowns to outbounds based on the filter they came from to prevent duplicates.
+                    // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we
+                    // don't store in DB the information from which filter did shutdown came).
+                    if let Err(error) = outbound_sse_data_sender
+                        .send((
+                            SseData::Shutdown,
+                            sse_event.inbound_filter,
+                            sse_event.json_data,
+                        ))
+                        .await
+                    {
+                        debug!(
+                            "Error when sending to outbound_sse_data_sender. Error: {}",
+                            error
+                        );
+                    }
+                }
+                Err(other_err) => warn!(?other_err, "Unexpected error saving Shutdown"),
+            }
         }
     }
 }
@@ -452,23 +602,33 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<SseData>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
+    is_empty_database: bool,
 ) {
     // This task starts the listener pushing events to the sse_data_receiver
     tokio::spawn(async move {
         let _ = sse_event_listener
-            .stream_aggregated_events(api_version_reporter)
+            .stream_aggregated_events(api_version_reporter, is_empty_database)
             .await;
     });
+    let last_reported_api_version: Arc<Mutex<Option<ProtocolVersion>>> = Arc::new(Mutex::new(None));
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
             sqlite_database.clone(),
             enable_event_logging,
             outbound_sse_data_sender.clone(),
+            last_reported_api_version.clone(),
         )
         .await
     }
+}
+
+async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
+    db.get_number_of_events()
+        .await
+        .map(|i| i == 0)
+        .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))
 }

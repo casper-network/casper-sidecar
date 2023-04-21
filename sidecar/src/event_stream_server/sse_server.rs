@@ -11,9 +11,10 @@ use hyper::Body;
 #[cfg(test)]
 use rand::Rng;
 use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::{
     broadcast::{self, error::RecvError},
-    mpsc,
+    mpsc::{self, UnboundedSender},
 };
 use tokio_stream::wrappers::{
     errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
@@ -28,10 +29,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_event_types::{EventFilter, SseData};
-use casper_node::types::Deploy;
-#[cfg(test)]
-use casper_node::types::DeployHash;
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
 use casper_types::ProtocolVersion;
 
 /// The URL root path.
@@ -45,6 +43,14 @@ pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
+
+/// The filter associated with `/events` path.
+const EVENTS_FILTER: [EventFilter; 4] = [
+    EventFilter::BlockAdded,
+    EventFilter::DeployProcessed,
+    EventFilter::Fault,
+    EventFilter::FinalitySignature,
+];
 
 /// The filter associated with `/events/main` path.
 const MAIN_FILTER: [EventFilter; 5] = [
@@ -74,6 +80,8 @@ pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
     pub(super) data: SseData,
+    pub(super) json_data: Option<Value>,
+    pub(super) inbound_filter: Option<SseFilter>,
 }
 
 impl ServerSentEvent {
@@ -82,6 +90,8 @@ impl ServerSentEvent {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),
+            json_data: None,
+            inbound_filter: None,
         }
     }
 }
@@ -112,6 +122,7 @@ pub(super) struct NewSubscriberInfo {
 /// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
 async fn filter_map_server_sent_event(
     event: &ServerSentEvent,
+    stream_filter: &SseFilter,
     event_filter: &[EventFilter],
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     if !event.data.should_include(event_filter) {
@@ -136,42 +147,103 @@ async fn filter_map_server_sent_event(
     };
 
     match &event.data {
-        &SseData::ApiVersion { .. } => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&event.data)
+        &SseData::ApiVersion { .. } => {
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => WarpServerSentEvent::default().json_data(&event.data),
+            }
             .unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
-            }))),
+            });
+            Some(Ok(warp_event))
+        }
 
         &SseData::BlockAdded { .. }
         | &SseData::DeployProcessed { .. }
         | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
-        | &SseData::FinalitySignature(_)
-        | &SseData::Shutdown => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&event.data)
+        | &SseData::FinalitySignature(_) => {
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => WarpServerSentEvent::default().json_data(&event.data),
+            }
             .unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             })
-            .id(id))),
+            .id(id);
+            Some(Ok(warp_event))
+        }
 
-        SseData::DeployAccepted { deploy } => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&DeployAccepted {
-                deploy_accepted: deploy.clone(),
-            })
+        SseData::DeployAccepted { deploy } => {
+            let warp_event = match &event.json_data {
+                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+                None => {
+                    let deploy_accepted = &DeployAccepted {
+                        deploy_accepted: deploy.clone(),
+                    };
+                    WarpServerSentEvent::default().json_data(deploy_accepted)
+                }
+            }
             .unwrap_or_else(|error| {
-                warn!(%error, "failed to jsonify sse event");
+                warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             })
-            .id(event.id.unwrap().to_string()))),
+            .id(id);
+            Some(Ok(warp_event))
+        }
+        &SseData::Shutdown => {
+            let should_send_shutdown = match (&event.inbound_filter, stream_filter) {
+                (None, _) => true,
+                (Some(a), b) if a == b => true,
+                (Some(SseFilter::Main), SseFilter::Events) => true, //If this filter handles the `/events` endpoint
+                // then it should also propagate from inbounds `/events/main`
+                (Some(SseFilter::Events), SseFilter::Main) => true, //If we are connected to a legacy node
+                // and the client is listening to /events/main we want to get shutdown from that
+                _ => false,
+            };
+
+            if should_send_shutdown {
+                build_event_for_outbound(event, id)
+            } else {
+                None
+            }
+        }
     }
 }
 
+fn build_event_for_outbound(
+    event: &ServerSentEvent,
+    id: String,
+) -> Option<Result<WarpServerSentEvent, RecvError>> {
+    let value = event
+        .json_data
+        .clone()
+        .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
+    Some(Ok(WarpServerSentEvent::default()
+        .json_data(&value)
+        .unwrap_or_else(|error| {
+            warn!(%error, ?event, "failed to jsonify sse event");
+            WarpServerSentEvent::default()
+        })
+        .id(id)))
+}
+
+pub(super) fn path_to_filter(path_param: &str) -> Option<&'static SseFilter> {
+    match path_param {
+        SSE_API_ROOT_PATH => Some(&SseFilter::Events),
+        SSE_API_MAIN_PATH => Some(&SseFilter::Main),
+        SSE_API_DEPLOYS_PATH => Some(&SseFilter::Deploys),
+        SSE_API_SIGNATURES_PATH => Some(&SseFilter::Sigs),
+        _ => None,
+    }
+}
 /// Converts the final URL path element to a slice of `EventFilter`s.
 pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
     match path_param {
+        SSE_API_ROOT_PATH => Some(&EVENTS_FILTER[..]),
         SSE_API_MAIN_PATH => Some(&MAIN_FILTER[..]),
         SSE_API_DEPLOYS_PATH => Some(&DEPLOYS_FILTER[..]),
         SSE_API_SIGNATURES_PATH => Some(&SIGNATURES_FILTER[..]),
@@ -239,6 +311,76 @@ pub(super) struct ChannelsAndFilter {
     pub(super) sse_filter: BoxedFilter<(Response,)>,
 }
 
+fn serve_sse_response_handler(
+    path_param: Option<String>,
+    query: HashMap<String, String>,
+    cloned_broadcaster: tokio::sync::broadcast::Sender<BroadcastChannelMessage>,
+    max_concurrent_subscribers: u32,
+    new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
+) -> http::Response<Body> {
+    // If we already have the maximum number of subscribers, reject this new one.
+    if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+        info!(
+            %max_concurrent_subscribers,
+            "event stream server has max subscribers: rejecting new one"
+        );
+        return create_503();
+    }
+
+    // If `path_param` is not a valid string, return a 404.
+    let event_filter = match get_filter(
+        path_param
+            .clone()
+            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
+            .as_str(),
+    ) {
+        Some(filter) => filter,
+        None => return create_404(),
+    };
+
+    let stream_filter = match path_to_filter(
+        path_param
+            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
+            .as_str(),
+    ) {
+        Some(filter) => filter,
+        None => return create_404(),
+    };
+
+    let start_from = match parse_query(query) {
+        Ok(maybe_id) => maybe_id,
+        Err(error_response) => return error_response,
+    };
+
+    // Create a channel for the client's handler to receive the stream of initial
+    // events.
+    let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
+
+    // Supply the server with the sender part of the channel along with the client's
+    // requested starting point.
+    let new_subscriber_info = NewSubscriberInfo {
+        start_from,
+        initial_events_sender,
+    };
+    if new_subscriber_info_sender
+        .send(new_subscriber_info)
+        .is_err()
+    {
+        error!("failed to send new subscriber info");
+    }
+
+    // Create a channel for the client's handler to receive the stream of ongoing
+    // events.
+    let ongoing_events_receiver = cloned_broadcaster.subscribe();
+
+    sse::reply(sse::keep_alive().stream(stream_to_client(
+        initial_events_receiver,
+        ongoing_events_receiver,
+        stream_filter,
+        event_filter,
+    )))
+    .into_response()
+}
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
@@ -250,61 +392,26 @@ impl ChannelsAndFilter {
         // Create a channel for `NewSubscriberInfo`s to pass the information required to handle a
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
-
+        let opt = warp::path::param::<String>()
+            .map(Some)
+            .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
         let sse_filter = warp::get()
-            .and(path(SSE_API_ROOT_PATH))
-            .and(path::param::<String>())
+            .and(warp::path!("events" / ..))
+            .and(opt)
             .and(path::end())
             .and(warp::query())
-            .map(move |path_param: String, query: HashMap<String, String>| {
-                // If we already have the maximum number of subscribers, reject this new one.
-                if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
-                    info!(
-                        %max_concurrent_subscribers,
-                        "event stream server has max subscribers: rejecting new one"
-                    );
-                    return create_503();
-                }
-
-                // If `path_param` is not a valid string, return a 404.
-                let event_filter = match get_filter(path_param.as_str()) {
-                    Some(filter) => filter,
-                    None => return create_404(),
-                };
-
-                let start_from = match parse_query(query) {
-                    Ok(maybe_id) => maybe_id,
-                    Err(error_response) => return error_response,
-                };
-
-                // Create a channel for the client's handler to receive the stream of initial
-                // events.
-                let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
-
-                // Supply the server with the sender part of the channel along with the client's
-                // requested starting point.
-                let new_subscriber_info = NewSubscriberInfo {
-                    start_from,
-                    initial_events_sender,
-                };
-                if new_subscriber_info_sender
-                    .send(new_subscriber_info)
-                    .is_err()
-                {
-                    error!("failed to send new subscriber info");
-                }
-
-                // Create a channel for the client's handler to receive the stream of ongoing
-                // events.
-                let ongoing_events_receiver = cloned_broadcaster.subscribe();
-
-                sse::reply(sse::keep_alive().stream(stream_to_client(
-                    initial_events_receiver,
-                    ongoing_events_receiver,
-                    event_filter,
-                )))
-                .into_response()
-            })
+            .map(
+                move |maybe_path_param: Option<String>, query: HashMap<String, String>| {
+                    let new_subscriber_info_sender_clone = new_subscriber_info_sender.clone();
+                    serve_sse_response_handler(
+                        maybe_path_param,
+                        query,
+                        cloned_broadcaster.clone(),
+                        max_concurrent_subscribers,
+                        new_subscriber_info_sender_clone,
+                    )
+                },
+            )
             .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
             .boxed();
 
@@ -333,6 +440,7 @@ impl ChannelsAndFilter {
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
+    stream_filter: &'static SseFilter,
     event_filter: &'static [EventFilter],
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
@@ -380,7 +488,9 @@ fn stream_to_client(
         .chain(ongoing_stream)
         .filter_map(move |result| async move {
             match result {
-                Ok(event) => filter_map_server_sent_event(&event, event_filter).await,
+                Ok(event) => {
+                    filter_map_server_sent_event(&event, stream_filter, event_filter).await
+                }
                 Err(error) => Some(Err(error)),
             }
         })
@@ -388,15 +498,19 @@ fn stream_to_client(
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
+    use regex::Regex;
     use std::iter;
 
-    use casper_types::testing::TestRng;
+    use casper_event_types::{DeployHash, Filter as SseFilter};
 
     use super::*;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_none(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
@@ -405,7 +519,9 @@ mod tests {
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter).await.is_some(),
+            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+                .await
+                .is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter
@@ -421,41 +537,59 @@ mod tests {
         let api_version = ServerSentEvent {
             id: None,
             data: SseData::random_api_version(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let block_added = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_block_added(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
         let deploy_accepted = ServerSentEvent {
             id: Some(rng.gen()),
             data: sse_data,
+            json_data: None,
+            inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.id(), deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let deploy_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let deploy_expired = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_expired(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_fault(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let finality_signature = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_finality_signature(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let step = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_step(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let shutdown = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::Shutdown,
+            json_data: None,
+            inbound_filter: None,
         };
 
         // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
@@ -506,41 +640,59 @@ mod tests {
         let malformed_api_version = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_api_version(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_block_added = ServerSentEvent {
             id: None,
             data: SseData::random_block_added(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
         let malformed_deploy_accepted = ServerSentEvent {
             id: None,
             data: sse_data,
+            json_data: None,
+            inbound_filter: None,
         };
         let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.id(), deploy);
+        let _ = deploys.insert(*deploy.hash(), deploy);
         let malformed_deploy_processed = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_deploy_expired = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_expired(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_fault = ServerSentEvent {
             id: None,
             data: SseData::random_fault(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_finality_signature = ServerSentEvent {
             id: None,
             data: SseData::random_finality_signature(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_step = ServerSentEvent {
             id: None,
             data: SseData::random_step(&mut rng),
+            json_data: None,
+            inbound_filter: None,
         };
         let malformed_shutdown = ServerSentEvent {
             id: None,
             data: SseData::Shutdown,
+            json_data: None,
+            inbound_filter: None,
         };
 
         for filter in &[
@@ -578,13 +730,18 @@ mod tests {
                         SSE_API_MAIN_PATH => SseData::random_block_added(rng),
                         SSE_API_DEPLOYS_PATH => {
                             let (event, deploy) = SseData::random_deploy_accepted(rng);
-                            assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                             event
                         }
                         SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
                         _ => unreachable!(),
                     };
-                    ServerSentEvent { id: Some(id), data }
+                    ServerSentEvent {
+                        id: Some(id),
+                        data,
+                        json_data: None,
+                        inbound_filter: None,
+                    }
                 })
                 .collect()
         }
@@ -667,10 +824,12 @@ mod tests {
             drop(initial_events_sender);
             drop(ongoing_events_sender);
 
+            let stream_filter = path_to_filter(path_filter).unwrap();
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
+                stream_filter,
                 get_filter(path_filter).unwrap(),
             )
             .collect()
@@ -694,24 +853,26 @@ mod tests {
             {
                 let received_event = received_event.as_ref().unwrap();
 
-                let expected_data_string = match &deduplicated_event.data {
-                    SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                        deploy_accepted: deploy.clone(),
-                    })
-                    .unwrap(),
-                    data => serde_json::to_string(&data).unwrap(),
-                };
+                let expected_data = deduplicated_event.data.clone();
+                let mut received_event_str = received_event.to_string().trim().to_string();
 
-                let expected_id_string = if let Some(id) = deduplicated_event.id {
-                    format!("\nid:{}", id)
+                let ends_with_id = Regex::new(r"\nid:\d*$").unwrap();
+                let starts_with_data = Regex::new(r"^data:").unwrap();
+                if let Some(id) = deduplicated_event.id {
+                    assert!(received_event_str.ends_with(format!("\nid:{}", id).as_str()));
                 } else {
-                    String::new()
+                    assert!(!ends_with_id.is_match(received_event_str.as_str()));
                 };
+                received_event_str = ends_with_id
+                    .replace_all(received_event_str.as_str(), "")
+                    .into_owned();
+                received_event_str = starts_with_data
+                    .replace_all(received_event_str.as_str(), "")
+                    .into_owned();
+                let received_data =
+                    serde_json::from_str::<SseData>(received_event_str.as_str()).unwrap();
 
-                let expected_string =
-                    format!("data:{}{}", expected_data_string, expected_id_string);
-
-                assert_eq!(received_event.to_string().trim(), expected_string)
+                assert_eq!(expected_data, received_data);
             }
         }
     }

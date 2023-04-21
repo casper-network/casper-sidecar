@@ -1,8 +1,7 @@
+use casper_event_types::FinalitySignature as FinSig;
+use casper_types::AsymmetricType;
 use http::StatusCode;
 use warp::test::request;
-
-use casper_node::types::FinalitySignature as FinSig;
-use casper_types::AsymmetricType;
 
 use super::filters;
 use crate::{
@@ -226,10 +225,13 @@ async fn deploy_expired_by_hash_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    let deploy_expired =
-        serde_json::from_slice::<bool>(&body).expect("Error parsing DeployExpired from response");
+    let deploy_expired = serde_json::from_slice::<DeployExpired>(&body)
+        .expect("Error parsing DeployExpired from response");
 
-    assert!(deploy_expired);
+    assert_eq!(
+        deploy_expired.hex_encoded_hash(),
+        identifiers.deploy_expired_hash
+    );
 }
 
 #[tokio::test]
@@ -328,7 +330,7 @@ async fn finality_signatures_by_block_should_return_valid_data() {
         .expect("Error parsing FinalitySignatures from response");
 
     assert_eq!(
-        hex::encode(finality_signatures[0].block_hash.inner()),
+        hex::encode(finality_signatures[0].block_hash().inner()),
         identifiers.finality_signatures_block_hash
     );
 }
