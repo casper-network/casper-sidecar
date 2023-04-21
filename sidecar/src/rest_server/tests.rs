@@ -1,8 +1,7 @@
+use casper_event_types::FinalitySignature as FinSig;
+use casper_types::AsymmetricType;
 use http::StatusCode;
 use warp::test::request;
-
-use casper_node::types::FinalitySignature as FinSig;
-use casper_types::AsymmetricType;
 
 use super::filters;
 use crate::{
@@ -331,7 +330,7 @@ async fn finality_signatures_by_block_should_return_valid_data() {
         .expect("Error parsing FinalitySignatures from response");
 
     assert_eq!(
-        hex::encode(finality_signatures[0].block_hash.inner()),
+        hex::encode(finality_signatures[0].block_hash().inner()),
         identifiers.finality_signatures_block_hash
     );
 }

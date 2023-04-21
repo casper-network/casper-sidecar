@@ -1,5 +1,3 @@
-use casper_event_types::{filter::Filter as SseFilter, sse_data::SseData};
-use casper_types::{testing::TestRng, ProtocolVersion};
 use core::time;
 use derive_new::new;
 use itertools::Itertools;
@@ -18,6 +16,8 @@ use tokio::{
     time::Instant,
 };
 
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+use casper_types::{testing::TestRng, ProtocolVersion};
 use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
     utils::display_duration,
@@ -504,8 +504,9 @@ async fn load_testing_deploy(
     }
 }
 
-pub async fn setup_mock_build_version_server(port: u16) -> (Sender<()>, Receiver<()>) {
-    setup_mock_build_version_server_with_version(port, "1.4.10".to_string()).await
+
+pub fn setup_mock_build_version_server(port: u16) {
+    let _ = setup_mock_build_version_server_with_version(port, "1.4.10".to_string());
 }
 
 pub async fn setup_mock_build_version_server_with_version(

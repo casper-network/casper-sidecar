@@ -85,8 +85,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    setup_mock_build_version_server(node_port_for_rest_connection);
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
@@ -117,8 +116,7 @@ async fn should_allow_client_connection_to_sse() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -164,8 +162,7 @@ async fn should_respond_to_rest_query() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -449,8 +446,7 @@ async fn partial_connection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(node_port_for_sse_connection, 1, 2);
     testing_config.set_allow_partial_connection_for_node(
         node_port_for_sse_connection,
@@ -499,7 +495,7 @@ async fn partial_connection_test(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {
@@ -536,8 +532,7 @@ async fn reconnection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
         max_attempts,
@@ -578,8 +573,7 @@ async fn reconnection_test_with_port_dropping(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    let _ = setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
         max_attempts,
@@ -604,7 +598,7 @@ async fn reconnection_test_with_port_dropping(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {

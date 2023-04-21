@@ -2,8 +2,7 @@ use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
-use casper_types::testing::TestRng;
-use casper_types::{AsymmetricType, EraId};
+use casper_types::{testing::TestRng, AsymmetricType, EraId};
 
 use super::SqliteDatabase;
 use crate::{
@@ -773,4 +772,28 @@ async fn should_save_and_retrieve_a_shutdown() {
         row.get::<String, &str>("event_source_address"),
         "xyz".to_string()
     );
+}
+
+#[tokio::test]
+async fn get_number_of_events_should_return_0() {
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+
+    assert_eq!(sqlite_db.get_number_of_events().await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn get_number_of_events_should_return_1_when_event_stored() {
+    let mut test_rng = TestRng::new();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let fault = Fault::random(&mut test_rng);
+
+    assert!(sqlite_db
+        .save_fault(fault, 1, "127.0.0.1".to_string())
+        .await
+        .is_ok());
+    assert_eq!(sqlite_db.get_number_of_events().await.unwrap(), 1);
 }

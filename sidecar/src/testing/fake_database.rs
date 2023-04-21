@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use casper_types::testing::TestRng;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
-use casper_node::types::FinalitySignature as FinSig;
-use casper_types::testing::TestRng;
+use casper_event_types::FinalitySignature as FinSig;
 
 use crate::types::{
     database::{
@@ -412,6 +412,10 @@ impl DatabaseReader for FakeDatabase {
         } else {
             Err(DatabaseReadError::NotFound)
         };
+    }
+
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        return Ok(0);
     }
 }
 

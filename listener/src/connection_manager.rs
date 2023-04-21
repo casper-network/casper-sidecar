@@ -19,8 +19,8 @@ use tokio::sync::mpsc::Sender;
 
 use super::ConnectionTasks;
 use casper_event_types::{
-    filter::Filter,
     sse_data::{deserialize, SseData, SseDataDeserializeError},
+    Filter,
 };
 
 pub struct SseEvent {

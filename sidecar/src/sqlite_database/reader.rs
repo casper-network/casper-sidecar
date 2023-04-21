@@ -4,7 +4,7 @@ use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
 use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
 
-use casper_node::types::FinalitySignature as FinSig;
+use casper_event_types::FinalitySignature as FinSig;
 
 use super::{
     errors::{wrap_query_error, SqliteDbError},
@@ -236,6 +236,22 @@ impl DatabaseReader for SqliteDatabase {
                         .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
                     deserialize_data::<Step>(&raw).map_err(wrap_query_error)
                 }
+            })
+    }
+
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let stmt = tables::event_log::count().to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_one(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(|row| {
+                row.try_get::<i64, _>(0)
+                    .map(|i| i as u64) //this should never be negative
+                    .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))
             })
     }
 }

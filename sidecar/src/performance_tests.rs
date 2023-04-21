@@ -159,7 +159,7 @@ impl TimestampedEvent {
             SseData::Fault {
                 era_id, public_key, ..
             } => format!("{}-{}", era_id.value(), public_key.to_hex()),
-            SseData::FinalitySignature(signature) => signature.signature.to_string(),
+            SseData::FinalitySignature(signature) => signature.signature().to_string(),
             SseData::Step { era_id, .. } => era_id.to_string(),
             SseData::Shutdown => "Shutdown".to_string(),
         }
@@ -213,8 +213,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -243,7 +242,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::spawn(async move {
         let res = node_event_listener
-            .stream_aggregated_events(node_api_version_tx)
+            .stream_aggregated_events(node_api_version_tx, false)
             .await;
         if let Err(error) = res {
             println!("Node listener Error: {}", error)
@@ -269,7 +268,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     );
     tokio::spawn(async move {
         let res = sidecar_event_listener
-            .stream_aggregated_events(sidecar_api_version_tx)
+            .stream_aggregated_events(sidecar_api_version_tx, false)
             .await;
         if let Err(error) = res {
             println!("Sidecar listener Error: {}", error)

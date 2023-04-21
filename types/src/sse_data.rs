@@ -13,13 +13,12 @@ pub enum EventFilter {
     Step,
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
-use super::testing;
 #[cfg(feature = "sse-data-testing")]
-use casper_node::types::Block;
-use casper_node::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+use super::testing;
+use crate::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
 use casper_types::testing::TestRng;
+
 use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
@@ -110,7 +109,7 @@ impl SseData {
     }
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
+#[cfg(feature = "sse-data-testing")]
 impl SseData {
     /// Returns a random `SseData::ApiVersion`.
     pub fn random_api_version(rng: &mut TestRng) -> Self {
@@ -124,10 +123,10 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = JsonBlock::random(rng);
         SseData::BlockAdded {
-            block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block_hash: block.hash,
+            block: Box::new(block),
         }
     }
 
@@ -176,6 +175,7 @@ impl SseData {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
+            rng,
         )))
     }
 
@@ -193,7 +193,7 @@ impl SseData {
     }
 }
 
-#[cfg(any(feature = "sse-data-testing", test))]
+#[cfg(feature = "sse-data-testing")]
 pub mod test_support {
     pub const BLOCK_HASH_1: &str =
         "ca52062424e9d5631a34b7b401e123927ce29d4bd10bc97c7df0aa752f131bb7";
