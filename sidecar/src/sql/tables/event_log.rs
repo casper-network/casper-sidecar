@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, ForeignKey, ForeignKeyAction, Iden, Index,
-    InsertStatement, Query, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_type::EventType;
@@ -97,4 +97,11 @@ pub fn create_insert_stmt(
         .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
 
     Ok(insert_stmt)
+}
+
+pub fn count() -> SelectStatement {
+    Query::select()
+        .expr(Expr::asterisk().count())
+        .from(EventLog::Table)
+        .to_owned()
 }

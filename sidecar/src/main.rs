@@ -39,6 +39,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
 use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
+use types::database::DatabaseReader;
 
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
@@ -144,6 +145,7 @@ async fn run(config: Config) -> Result<(), Error> {
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
+    let is_empty_database = check_if_database_is_empty(sqlite_database.clone()).await?;
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = tokio::spawn(async move {
@@ -161,6 +163,7 @@ async fn run(config: Config) -> Result<(), Error> {
                 outbound_sse_data_sender.clone(),
                 sqlite_database.clone(),
                 connection_config.enable_logging,
+                is_empty_database,
             ));
 
             join_handles.push(join_handle);
@@ -602,11 +605,12 @@ async fn sse_processor(
     outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
+    is_empty_database: bool,
 ) {
     // This task starts the listener pushing events to the sse_data_receiver
     tokio::spawn(async move {
         let _ = sse_event_listener
-            .stream_aggregated_events(api_version_reporter)
+            .stream_aggregated_events(api_version_reporter, is_empty_database)
             .await;
     });
     let last_reported_api_version: Arc<Mutex<Option<ProtocolVersion>>> = Arc::new(Mutex::new(None));
@@ -620,4 +624,11 @@ async fn sse_processor(
         )
         .await
     }
+}
+
+async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
+    db.get_number_of_events()
+        .await
+        .map(|i| i == 0)
+        .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))
 }

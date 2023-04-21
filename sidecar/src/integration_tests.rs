@@ -432,7 +432,7 @@ async fn partial_connection_test(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {
@@ -539,7 +539,7 @@ async fn reconnection_test_with_port_dropping(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {
