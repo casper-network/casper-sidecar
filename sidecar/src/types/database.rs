@@ -1,7 +1,6 @@
 use async_trait::async_trait;
+use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-
-use casper_node::types::FinalitySignature as FinSig;
 
 use crate::types::sse_events::{
     BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
@@ -88,6 +87,13 @@ pub trait DatabaseWriter {
     async fn save_step(
         &self,
         step: Step,
+        event_id: u32,
+        event_source_address: String,
+    ) -> Result<usize, DatabaseWriteError>;
+
+    // Save data about shutdown to the database
+    async fn save_shutdown(
+        &self,
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError>;
@@ -191,14 +197,12 @@ pub trait DatabaseReader {
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseReadError>;
-    /// Returns a boolean representing the expired state of the deploy corresponding to the given hex-encoded `hash`.
-    ///
-    /// * If there is a record present it will return `true` meaning the [Deploy] has expired.
-    /// * If there is no record present it will return [NotFound](DatabaseRequestError::NotFound) rather than `false`.
-    /// This is because the lack of a record does not definitely mean it hasn't expired. The deploy could have expired
-    /// prior to sidecar's start point. Calling [get_deploy_aggregate_by_hash] can help in this case, if there is a [DeployAccepted]
-    /// without a corresponding [DeployExpired] then you can assert that it truly has not expired.
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError>;
+
+    /// Returns the [DeployExpired] corresponding to the given hex-encoded `hash`
+    async fn get_deploy_expired_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<DeployExpired, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
     async fn get_faults_by_public_key(
         &self,
@@ -213,6 +217,9 @@ pub trait DatabaseReader {
     ) -> Result<Vec<FinSig>, DatabaseReadError>;
     /// Returns the [Step] event for the given era.
     async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
+
+    /// Returns number of events stored in db
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.

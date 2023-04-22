@@ -8,25 +8,89 @@ This document outlines the functionality of the Sidecar's [event stream endpoint
 
 ## The Event Stream
 
-The Sidecar's event stream endpoint is a passthrough for all the events emitted by the node to which the Sidecar connects. For more information on various event types, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/monitoring-events/#event-types) documentation.
+The Sidecar's event stream endpoint is a passthrough for all the events emitted by the node to which the Sidecar connects. For more information on various event types, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
 
 It is possible to monitor the Sidecar's event stream using *cURL*, depending on how the HOST and PORT are configured.
 
 ```json
-curl -sN http://<HOST:PORT>/events/<TYPE>
+curl -s http://<HOST:PORT>/events/<TYPE>
 ```
 
 - `HOST` - The IP address where the Sidecar is running
 - `PORT` - The port number where the Sidecar emits events
 - `TYPE` - The type of emitted event
 
-Given this [example configuration](EXAMPLE_CONFIG.toml), the command would look like this:
+Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), the command would look like this:
 
 ```json
 curl -sN http://127.0.0.1:19999/events/deploys
 ```
 
+### The API Version of Events
+
+When a client connects to the Sidecar, the Sidecar displays the node’s API version, `ApiVersion`, which it receives from the node. Then, it starts streaming the events coming from the node. The `ApiVersion` may differ from the node’s build version.
+
+If the node goes offline, the `ApiVersion` may differ when it restarts (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
+
+Here is an example of what the API version would look like while listening on the Sidecar’s `DeployAccepted` event stream:
+
+```
+curl -sN http://127.0.0.1:19999/events/deploys
+
+data:{"ApiVersion”:”1.4.8”}
+
+data:{"DeployAccepted":{"hash":"00eea4fb9baa37af401cba8ffb96a1b96d594234908cb5f9de50effcb5b1c5aa","header":{"account":"0202ed20f3a93b5386bc41b6945722b2bd4250c48f5fa0632adf546e2f3ff6f4ddee","timestamp":"2023-02-28T12:21:14.604Z","ttl":"30m","gas_price":1,"body_hash":"f06261b964600caf712a3ea0dc54448c3fcc008638368580eb4de6832dce8698","dependencies":[],"chain_name":"casper"},"payment":{"ModuleBytes":{"module_bytes":"","args":[["amount",{"cl_type":"U512","bytes":"0400e1f505","parsed":"100000000"}]]}},"session":{"Transfer":{"args":[["amount",{"cl_type":"U512","bytes":"05205d59d832","parsed":"218378100000"}],["target",{"cl_type":{"ByteArray":32},"bytes":"6fbe4634d42aa1ae7820eed35bcbd5c687de5c464e5348650b49a21a17c8dcb5","parsed":"6fbe4634d42aa1ae7820eed35bcbd5c687de5c464e5348650b49a21a17c8dcb5"}],["id",{"cl_type":{"Option":"U64"},"bytes":"00","parsed":null}]]}},"approvals":[{"signer":"0202ed20f3a93b5386bc41b6945722b2bd4250c48f5fa0632adf546e2f3ff6f4ddee","signature":"02b519ecb34f954aeb7afede122c6f999b2124022f6b653304b2891c5428b074795ad9232a409aa0d3e601471331ea50143ca4c378306ffcd0f8ff7a60e13f19db"}]}}
+id:21821471
+
+:
+
+:
+
+:
+```
+
+### The Shutdown Event
+
+When the node sends a Shutdown event and disconnects from the Sidecar, the Sidecar will report it as part of the event stream. The Sidecar will continue to operate and attempt to reconnect to the node according to the `max_attempts` and `delay_between_retries_in_seconds` settings specified in its configuration.
+
+The Sidecar does not expose Shutdown events via its REST API. 
+
+Here is an example of how the stream might look like if the node went offline for an upgrade and came back online after a Shutdown event with a new `ApiVersion`:
+
+```
+curl -sN http://127.0.0.1:19999/events/deploys
+
+data:{"ApiVersion":"1.4.7"}
+
+data:{"BlockAdded":{"block_hash":"b487aae22b406e303d96fc44b092f993df6f3b43ceee7b7f5b1f361f676492d6","block":{"hash":"b487aae22b406e303d96fc44b092f993df6f3b43ceee7b7f5b1f361f676492d6","header":{"parent_hash":"4a28718301a83a43563ec42a184294725b8dd188aad7a9fceb8a2fa1400c680e","state_root_hash":"63274671f2a860e39bb029d289e688526e4828b70c79c678649748e5e376cb07","body_hash":"6da90c09f3fc4559d27b9fff59ab2453be5752260b07aec65e0e3a61734f656a","random_bit":true,"accumulated_seed":"c8b4f30a3e3e082f4f206f972e423ffb23d152ca34241ff94ba76189716b61da","era_end":{"era_report":{"equivocators":[],"rewards":{"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80":1559401400039,"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8":25895190891},"inactive_validators":[]},"next_era_validator_weights":{"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80":"50538244651768072","010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8":"839230678448335"}},"timestamp":"2021-04-08T05:14:14.912Z","era_id":90,"height":1679394427512,"protocol_version":"1.0.0"},"body":{"proposer":"012bac1d0ff9240ff0b7b06d555815640497861619ca12583ddef434885416e69b","deploy_hashes":[],"transfer_hashes":[]}}}}
+id:1
+
+:
+
+data:"Shutdown"
+id:2
+
+:
+
+:
+
+:
+
+data:{"ApiVersion":"1.4.8"}
+
+data:{"BlockAdded":{"block_hash":"1c76e7abf5780b49d3a66beef7b75bbf261834f494dededb8f2e349735659c03","block":{"hash":"1c76e7abf5780b49d3a66beef7b75bbf261834f494dededb8f2e349735659c03","header":{"parent_hash":"4a28718301a83a43563ec42a184294725b8dd188aad7a9fceb8a2fa1400c680e","state_root_hash":"63274671f2a860e39bb029d289e688526e4828b70c79c678649748e5e376cb07","body_hash":"6da90c09f3fc4559d27b9fff59ab2453be5752260b07aec65e0e3a61734f656a","random_bit":true,"accumulated_seed":"c8b4f30a3e3e082f4f206f972e423ffb23d152ca34241ff94ba76189716b61da","era_end":{"era_report":{"equivocators":[],"rewards":[{"validator":"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80","amount":1559401400039},{"validator":"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8","amount":25895190891}],"inactive_validators":[]},"next_era_validator_weights":[{"validator":"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80","weight":"50538244651768072"},{"validator":"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8","weight":"839230678448335"}]},"timestamp":"2021-04-08T05:14:14.912Z","era_id":90,"height":1679394457791,"protocol_version":"1.0.0"},"body":{"proposer":"012bac1d0ff9240ff0b7b06d555815640497861619ca12583ddef434885416e69b","deploy_hashes":[],"transfer_hashes":[]},"proofs":[]}}}
+id:3
+
+:
+
+:
+
+```
+
+
 ## The REST Server
+
+The Sidecar provides a RESTful endpoint for useful queries about the state of the network.
 
 ### Latest Block
 
@@ -37,7 +101,7 @@ The path URL is `<HOST:PORT>/block`.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block
+curl -s http://127.0.0.1:18888/block
 ```
 
 <details> 
@@ -59,7 +123,7 @@ The path URL is `<HOST:PORT>/block/<block-hash>`. Enter a valid block hash.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block/96a989a7f4514909b442faba3acbf643378fb7f57f9c9e32013fdfad64e3c8a5
+curl -s http://127.0.0.1:18888/block/96a989a7f4514909b442faba3acbf643378fb7f57f9c9e32013fdfad64e3c8a5
 ```
 
 <details> 
@@ -80,7 +144,7 @@ The path URL is `<HOST:PORT>/block/<block-height>`. Enter a valid number represe
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/block/1278485
+curl -s http://127.0.0.1:18888/block/1278485
 ```
 
 <details> 
@@ -98,12 +162,12 @@ Retrieve an aggregate of the various states a deploy goes through, given its dep
 
 The path URL is `<HOST:PORT>/deploy/<deploy-hash>`. Enter a valid deploy hash. 
 
-The output differs depending on the deploy's status, which changes over time as the deploy goes through its [lifecycle](https://docs.casperlabs.io/design/casper-design/#execution-semantics-phases).
+The output differs depending on the deploy's status, which changes over time as the deploy goes through its [lifecycle](https://docs.casperlabs.io/concepts/design/casper-design/#execution-semantics-phases).
 
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 The sample output below is for a deploy that was accepted but has yet to be processed.
@@ -137,7 +201,7 @@ The path URL is `<HOST:PORT>/deploy/accepted/<deploy-hash>`. Enter a valid deplo
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/accepted/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/accepted/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 <details> 
@@ -159,7 +223,7 @@ The path URL is `<HOST:PORT>/deploy/expired/<deploy-hash>`. Enter a valid deploy
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+curl -s http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 ```
 
 ### Processed Deploy by Hash
@@ -170,7 +234,7 @@ The path URL is `<HOST:PORT>/deploy/processed/<deploy-hash>`. Enter a valid depl
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/deploy/processed/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
+curl -s http://127.0.0.1:18888/deploy/processed/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
 <details> 
@@ -191,7 +255,7 @@ The path URL is `<HOST:PORT>/faults/<public-key>`. Enter a valid hexadecimal rep
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
+curl -s http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 ```
 
 ### Faults by Era
@@ -202,7 +266,7 @@ The path URL is: `<HOST:PORT>/faults/<era-ID>`. Enter an era identifier.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/faults/2304
+curl -s http://127.0.0.1:18888/faults/2304
 ```
 
 ### Finality Signatures by Block
@@ -214,7 +278,7 @@ The path URL is: `<HOST:PORT>/signatures/<block-hash>`. Enter a valid block hash
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
+curl -s http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
 ```
 
 ### Step by Era
@@ -226,7 +290,7 @@ The path URL is: `<HOST:PORT>/step/<era-ID>`. Enter a valid era identifier.
 Example:
 
 ```json
-curl -sN http://127.0.0.1:18888/step/7268
+curl -s http://127.0.0.1:18888/step/7268
 ```
 
 ### Missing Filter

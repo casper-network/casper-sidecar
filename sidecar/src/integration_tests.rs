@@ -1,33 +1,74 @@
-use std::{net::IpAddr, time::Duration};
-
+use super::run;
 use bytes::Bytes;
-use eventsource_stream::{EventStream, Eventsource};
+use casper_event_listener::{EventListener, NodeConnectionInterface};
+use casper_event_types::sse_data::SseData;
+use casper_types::testing::TestRng;
+use core::time;
+use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
+use std::{fmt::Debug, net::IpAddr, thread, time::Duration};
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::Instant};
 
-use casper_event_listener::{EventListener, NodeConnectionInterface};
-use casper_event_types::SseData;
-use casper_types::testing::TestRng;
-
-use super::run;
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{
-            setup_mock_api_version_server, spin_up_fake_event_stream, Bound,
-            GenericScenarioSettings, Restart, Scenario,
+            setup_mock_build_version_server, spin_up_fake_event_stream, status_1_0_0_server,
+            status_1_4_10_server, Bound, GenericScenarioSettings, Restart, Scenario,
         },
         shared::EventType,
+        simple_sse_server::tests::{
+            sse_server_example_data_1_4_10, sse_server_send_n_block_added,
+            sse_server_shutdown_1_0_0,
+        },
         testing_config::prepare_config,
     },
     types::sse_events::BlockAdded,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
+async fn should_not_allow_multiple_connections() {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    testing_config.add_connection(None, None, None);
+    testing_config.add_connection(None, None, None);
+
+    let shutdown_error = run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err on shutdown");
+
+    assert_eq!(
+        shutdown_error.to_string(),
+        "Unable to run with multiple connections specified in config"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_not_allow_zero_max_attempts() {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+
+    let mut testing_config = prepare_config(&temp_storage_dir);
+
+    let sse_port_for_node = testing_config.add_connection(None, None, None);
+
+    testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
+
+    let shutdown_error = run(testing_config.inner())
+        .await
+        .expect_err("Sidecar should return an Err on shutdown");
+
+    assert_eq!(
+        shutdown_error.to_string(),
+        "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -36,7 +77,7 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
     tokio::spawn(spin_up_fake_event_stream(
@@ -59,7 +100,6 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_client_connection_to_sse() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -68,7 +108,7 @@ async fn should_allow_client_connection_to_sse() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -106,52 +146,6 @@ async fn should_allow_client_connection_to_sse() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
-async fn should_send_shutdown_to_sse_client() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(Duration::from_secs(60)),
-            None,
-        )),
-    ));
-
-    tokio::spawn(run(testing_config.inner()));
-
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main",
-        testing_config.event_stream_server_port()
-    );
-
-    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
-
-    let mut last_event = None;
-    while let Some(Ok(event)) = main_event_stream.next().await {
-        last_event = Some(event);
-    }
-
-    let event_data = last_event.unwrap().data;
-
-    assert!(matches!(
-        serde_json::from_str::<SseData>(&event_data).unwrap(),
-        SseData::Shutdown
-    ));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_respond_to_rest_query() {
     let test_rng = Box::leak(Box::new(TestRng::new()));
 
@@ -160,7 +154,7 @@ async fn should_respond_to_rest_query() {
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
 
     let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
 
@@ -211,38 +205,33 @@ async fn should_respond_to_rest_query() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_partial_connection_on_one_filter() {
     let received_event_types = partial_connection_test(100, 1, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_allow_partial_connection_on_two_filters() {
     let received_event_types = partial_connection_test(100, 2, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_disallow_partial_connection_on_one_filter() {
     let received_event_types = partial_connection_test(100, 1, false).await;
     assert!(received_event_types.is_none())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore]
 async fn should_disallow_partial_connection_on_two_filters() {
     let received_event_types = partial_connection_test(100, 2, false).await;
     assert!(received_event_types.is_none())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
 async fn should_not_attempt_reconnection() {
     // Configure the sidecar to make 0 retries
-    let max_retries = 0;
+    let max_attempts = 0;
     let delay_between_retries = 0;
 
     // Configure the Fake Event Stream to shutdown after 30s
@@ -251,7 +240,7 @@ async fn should_not_attempt_reconnection() {
     let restart_after = Duration::from_secs(10);
 
     let time_for_sidecar_to_shutdown = reconnection_test(
-        max_retries,
+        max_attempts,
         delay_between_retries,
         Bound::Timed(shutdown_after),
         restart_after,
@@ -264,37 +253,118 @@ async fn should_not_attempt_reconnection() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
 async fn should_successfully_reconnect() {
     // Configure the sidecar to make 5 retries
-    let max_retries = 5;
+    let max_attempts = 5;
     let delay_between_retries = 1;
 
     // And then resume after 5s e.g. less than the total retry window
     let restart_after = Duration::from_secs(5);
 
     let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
+        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
             .await;
     let length = read_messages.len();
     //The result should only have messages from two rounds of messages
     assert!(length > 61);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-#[ignore]
+#[tokio::test(flavor = "multi_thread", worker_threads = 10)]
 async fn should_fail_to_reconnect() {
-    let max_retries = 2;
-    let delay_between_retries = 3;
+    let test_rng = TestRng::new();
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar_with_retry_config(2, 1).await;
+    let (shutdown_tx, test_rng) =
+        sse_server_send_n_block_added(node_port_for_sse_connection, 30, 0, test_rng).await;
+    let _ = status_1_4_10_server(node_port_for_rest_connection);
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    thread::sleep(time::Duration::from_secs(4)); // give some time for the first batch of events to propagate
+    shutdown_tx.send(()).unwrap();
+    let join_handle = tokio::spawn(async move { poll_events(main_event_stream).await });
+    thread::sleep(time::Duration::from_secs(20)); //give some time for the old sse server to go away and sidecar to run out of retries
+    let (shutdown_tx, _) =
+        sse_server_send_n_block_added(node_port_for_sse_connection, 30, 30, test_rng).await;
+    thread::sleep(time::Duration::from_secs(3)); //give some time for the data to propagate. Sidecar should be dead by now,
+                                                 // but if there's a bug and it isn't we need to give it some time to pick up the second instance of the server
+    shutdown_tx.send(()).unwrap();
 
-    let restart_after = Duration::from_secs(15);
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    let length = events_received.len();
+    //The result should only have messages from first round of messages
+    assert_eq!(length, 31);
+}
 
-    let read_messages =
-        reconnection_test_with_port_dropping(max_retries, delay_between_retries, restart_after)
-            .await;
-    let length = read_messages.len();
-    //The result should only have messages from one round of messages
-    assert!(length <= 60);
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn should_reconnect() {
+    let test_rng = TestRng::new();
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar_with_retry_config(5, 1).await;
+    let (shutdown_tx, test_rng) =
+        sse_server_send_n_block_added(node_port_for_sse_connection, 30, 0, test_rng).await;
+    let _ = status_1_4_10_server(node_port_for_rest_connection);
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
+    shutdown_tx.send(()).unwrap();
+    let join_handle = tokio::spawn(async move { poll_events(main_event_stream).await });
+
+    thread::sleep(time::Duration::from_secs(10)); //give some time for the old sse server to go away
+    let (shutdown_tx, _) =
+        sse_server_send_n_block_added(node_port_for_sse_connection, 30, 30, test_rng).await;
+    thread::sleep(time::Duration::from_secs(10)); //give some time for the data to propagate
+    shutdown_tx.send(()).unwrap();
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    let length = events_received.len();
+    //The result should only have messages from both rounds of messages
+    assert!(length > 32);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn shutdown_should_be_passed_through() {
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar().await;
+    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
+    let _ = status_1_0_0_server(node_port_for_rest_connection);
+    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    shutdown_tx.send(()).unwrap();
+    thread::sleep(time::Duration::from_secs(2)); //give some time everything to disconnect
+    let events_received = poll_events(main_event_stream).await;
+    assert_eq!(events_received.len(), 3);
+    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn shutdown_should_be_passed_through_when_versions_change() {
+    let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
+        start_sidecar().await;
+    let shutdown_tx = sse_server_shutdown_1_0_0(node_port_for_sse_connection).await;
+    let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
+    thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
+    let main_event_stream =
+        connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
+    shutdown_tx.send(()).unwrap();
+    change_api_version_tx
+        .send("1.4.10".to_string())
+        .await
+        .unwrap();
+    thread::sleep(time::Duration::from_secs(1)); //give some time everything to disconnect
+    let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
+    thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+    shutdown_tx.send(()).unwrap();
+
+    let events_received = poll_events(main_event_stream).await;
+    assert_eq!(events_received.len(), 5);
+    assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(3).unwrap().contains("\"1.4.10\""));
+    assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
 }
 
 async fn partial_connection_test(
@@ -313,7 +383,7 @@ async fn partial_connection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(node_port_for_sse_connection, 1, 2);
     testing_config.set_allow_partial_connection_for_node(
         node_port_for_sse_connection,
@@ -353,7 +423,7 @@ async fn partial_connection_test(
             sse_port: testing_config.event_stream_server_port(),
             rest_port: node_port_for_rest_connection,
         },
-        1,
+        3,
         Duration::from_secs(1),
         false,
         event_tx,
@@ -362,7 +432,7 @@ async fn partial_connection_test(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {
@@ -387,7 +457,7 @@ async fn partial_connection_test(
 }
 
 async fn reconnection_test(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     shutdown_after: Bound,
     restart_after: Duration,
@@ -399,10 +469,10 @@ async fn reconnection_test(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
 
@@ -435,7 +505,7 @@ async fn reconnection_test(
 }
 
 async fn reconnection_test_with_port_dropping(
-    max_retries: usize,
+    max_attempts: usize,
     delay_between_retries: usize,
     restart_after: Duration,
 ) -> Vec<EventType> {
@@ -444,10 +514,10 @@ async fn reconnection_test_with_port_dropping(
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
     let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    tokio::spawn(setup_mock_api_version_server(node_port_for_rest_connection));
+    setup_mock_build_version_server(node_port_for_rest_connection);
     testing_config.set_retries_for_node(
         node_port_for_sse_connection,
-        max_retries,
+        max_attempts,
         delay_between_retries,
     );
     let event_stream_server_port = testing_config.event_stream_server_port();
@@ -460,7 +530,7 @@ async fn reconnection_test_with_port_dropping(
             sse_port: event_stream_server_port,
             rest_port: node_port_for_rest_connection,
         },
-        1,
+        3,
         Duration::from_secs(1),
         false,
         event_tx,
@@ -469,7 +539,7 @@ async fn reconnection_test_with_port_dropping(
 
     tokio::spawn(async move {
         let res = test_event_listener
-            .stream_aggregated_events(api_version_tx)
+            .stream_aggregated_events(api_version_tx, false)
             .await;
 
         if let Err(error) = res {
@@ -512,7 +582,7 @@ async fn reconnection_test_with_port_dropping(
     data.expect("Expecting data")
 }
 
-async fn try_connect_to_single_stream(
+pub async fn try_connect_to_single_stream(
     url: &str,
 ) -> EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized> {
     let mut event_stream = None;
@@ -532,4 +602,51 @@ async fn try_connect_to_single_stream(
     }
 
     event_stream.expect("Unable to connect to stream")
+}
+
+pub async fn start_sidecar_with_retry_config(
+    max_attempts: usize,
+    delay_between_retries: usize,
+) -> (u16, u16, u16) {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    testing_config.set_retries_for_node(
+        node_port_for_sse_connection,
+        max_attempts,
+        delay_between_retries,
+    );
+    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
+    tokio::spawn(run(testing_config.inner())); // starting event sidecar
+    (
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        testing_config.event_stream_server_port(),
+    )
+}
+
+pub async fn start_sidecar() -> (u16, u16, u16) {
+    start_sidecar_with_retry_config(3, 1).await
+}
+
+pub async fn connect_to_sidecar(
+    path: &str,
+    port: u16,
+) -> EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>>> {
+    let main_event_stream_url = format!("http://127.0.0.1:{}{}", port, path,);
+    try_connect_to_single_stream(&main_event_stream_url).await
+}
+
+pub async fn poll_events<E, S>(mut stream: S) -> Vec<String>
+where
+    E: Debug,
+    S: Stream<Item = Result<Event, E>> + Sized + Unpin,
+{
+    let mut events_received = Vec::new();
+    while let Some(Ok(event)) = stream.next().await {
+        events_received.push(event.data);
+    }
+    events_received
 }

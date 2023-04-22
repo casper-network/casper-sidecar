@@ -106,6 +106,7 @@ impl SqliteDatabase {
             tables::fault::create_table_stmt(),
             tables::finality_signature::create_table_stmt(),
             tables::step::create_table_stmt(),
+            tables::shutdown::create_table_stmt(),
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))

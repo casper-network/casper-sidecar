@@ -1,21 +1,33 @@
-<<<<<<<< HEAD:EXAMPLE_CONFIG.toml
-node_connections = [
-    { ip_address = "127.0.0.1", sse_port = 18101, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = true },
-    { ip_address = "127.0.0.1", sse_port = 18102, max_retries = 5, delay_between_retries_secs = 5, enable_event_logging = false }
-]
-========
 [[connections]]
 ip_address = "127.0.0.1"
-sse_port = 9999
-rest_port = 8888
+sse_port = 18101
+rest_port = 14101
 max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
->>>>>>>> upstream/dev:resources/default_config.toml
+
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 18102
+rest_port = 14102
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
+
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 18103
+rest_port = 14103
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
+connection_timeout_in_seconds = 3
 
 [storage]
-storage_path = "/var/lib/casper-event-sidecar"
+storage_path = "./target/storage"
 
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"

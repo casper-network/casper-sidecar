@@ -17,6 +17,7 @@ pub enum EventTypeId {
     Fault = 5,
     FinalitySignature = 6,
     Step = 7,
+    Shutdown = 8,
 }
 
 pub fn create_table_stmt() -> TableCreateStatement {
@@ -64,5 +65,9 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
             "FinalitySignature".into(),
         ])?
         .values(vec![(EventTypeId::Step as u8).into(), "Step".into()])?
+        .values(vec![
+            (EventTypeId::Shutdown as u8).into(),
+            "Shutdown".into(),
+        ])?
         .to_owned())
 }

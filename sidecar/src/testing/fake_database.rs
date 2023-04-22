@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use casper_types::testing::TestRng;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
-use casper_node::types::FinalitySignature as FinSig;
-use casper_types::testing::TestRng;
+use casper_event_types::FinalitySignature as FinSig;
 
 use crate::types::{
     database::{
@@ -149,7 +150,8 @@ impl DatabaseWriter for FakeDatabase {
         let hash = deploy_expired.hex_encoded_hash();
         // This is suffixed to allow storage of each deploy state event without overwriting.
         let identifier = format!("{}-expired", hash);
-        let stringified_event = serde_json::to_string(&true).expect("Error serialising event data");
+        let stringified_event =
+            serde_json::to_string(&deploy_expired).expect("Error serialising event data");
 
         data.insert(identifier, stringified_event);
 
@@ -214,6 +216,24 @@ impl DatabaseWriter for FakeDatabase {
 
         Ok(0)
     }
+
+    #[allow(unused)]
+    async fn save_shutdown(
+        &self,
+        event_id: u32,
+        event_source_address: String,
+    ) -> Result<usize, DatabaseWriteError> {
+        let mut data = self.data.lock().expect("Error acquiring lock on data");
+        let unix_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        let event_key = format!("{}-{}", event_source_address, unix_timestamp);
+        let stringified_event = serde_json::to_string("{}").expect("Error serialising event data");
+
+        data.insert(event_key, stringified_event);
+        Ok(0)
+    }
 }
 
 #[async_trait]
@@ -271,11 +291,18 @@ impl DatabaseReader for FakeDatabase {
                     deploy_expired: false,
                 })
             } else if data.get(&expired_key).is_some() {
+                let deploy_expired = match data.get(&expired_key) {
+                    None => None,
+                    Some(raw) => Some(
+                        serde_json::from_str::<DeployExpired>(raw)
+                            .map_err(DatabaseReadError::Serialisation)?,
+                    ),
+                };
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
-                    deploy_expired: true,
+                    deploy_expired: deploy_expired.is_some(),
                 })
             } else {
                 Ok(DeployAggregate {
@@ -320,13 +347,16 @@ impl DatabaseReader for FakeDatabase {
         };
     }
 
-    async fn get_deploy_expired_by_hash(&self, hash: &str) -> Result<bool, DatabaseReadError> {
+    async fn get_deploy_expired_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<DeployExpired, DatabaseReadError> {
         let identifier = format!("{}-expired", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<bool>(event).map_err(DatabaseReadError::Serialisation)
+            serde_json::from_str::<DeployExpired>(event).map_err(DatabaseReadError::Serialisation)
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -382,6 +412,10 @@ impl DatabaseReader for FakeDatabase {
         } else {
             Err(DatabaseReadError::NotFound)
         };
+    }
+
+    async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        return Ok(0);
     }
 }
 
