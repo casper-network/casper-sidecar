@@ -519,7 +519,8 @@ pub async fn setup_mock_build_version_server_with_version(
         .and(warp::get())
         .map(move || {
             let result = json!({ "build_version": version.clone() });
-            Ok(warp::reply::json(&result))
+            let z = Ok(warp::reply::json(&result));
+            z
         })
         .and(end());
     let server_thread = tokio::spawn(async move {
