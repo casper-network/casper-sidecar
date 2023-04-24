@@ -48,14 +48,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .on_delete(ForeignKeyAction::Restrict)
                 .on_update(ForeignKeyAction::Restrict),
         )
-        .index(
-            Index::create()
-                .unique()
-                .primary()
-                .name("PDX_DeployProcessed")
-                .col(DeployProcessed::DeployHash)
-                .col(DeployProcessed::EventLogId),
-        )
         .to_owned()
 }
 
