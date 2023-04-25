@@ -127,7 +127,7 @@ pub mod tests {
         let (join_handle, receiver) =
             fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
         start_sidecar(testing_config).await;
-        thread::sleep(time::Duration::from_secs(6)); //give some time for sidecar to connect and read data
+        receiver.await.ok(); // Wait for the first event to go through to outbound
         node_mock.stop().await;
         let mut node_mock = MockNode::new_with_sigs(
             "1.3.9".to_string(),
@@ -136,7 +136,7 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
-        receiver.await.ok(); // Wait for the first event to go through to outbound
+        thread::sleep(time::Duration::from_secs(6)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
         let events_received = tokio::join!(join_handle).0.unwrap();
         assert_eq!(events_received.len(), 3);

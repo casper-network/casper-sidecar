@@ -110,9 +110,8 @@ pub(crate) mod tests {
         let maybe_start_from = query
             .get("start_from")
             .and_then(|id_str| id_str.parse::<u32>().ok());
-        let reply = warp::sse::reply(
-            warp::sse::keep_alive().stream(build_stream(sender.subscribe())),
-        );
+        let reply =
+            warp::sse::reply(warp::sse::keep_alive().stream(build_stream(sender.subscribe())));
         let mut effective_data = Vec::new();
         if let Some(start_from) = maybe_start_from {
             let mut filtered: EventsWithIds = cache_and_data

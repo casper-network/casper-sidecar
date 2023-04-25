@@ -32,11 +32,11 @@ use crate::{
             GenericScenarioSettings, Restart, Scenario,
         },
         mock_node::tests::MockNode,
-        shared::EventType,
         raw_sse_events_utils::tests::{
             random_n_block_added, sse_server_example_1_4_10_data,
             sse_server_example_1_4_10_data_other, sse_server_shutdown_1_0_0_data,
         },
+        shared::EventType,
         testing_config::{prepare_config, TestingConfig},
     },
     types::{

@@ -49,8 +49,7 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn example_data_1_3_9_with_sigs(
-    ) -> (EventsWithIds, EventsWithIds) {
+    pub fn example_data_1_3_9_with_sigs() -> (EventsWithIds, EventsWithIds) {
         let main = vec![
             (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
             (
@@ -76,8 +75,7 @@ pub(crate) mod tests {
         let (blocks_added, rng) =
             generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
         let data = vec![(None, "{\"ApiVersion\":\"1.4.10\"}".to_string())];
-        let mut data: EventsWithIds =
-            data.into_iter().chain(blocks_added.into_iter()).collect();
+        let mut data: EventsWithIds = data.into_iter().chain(blocks_added.into_iter()).collect();
         let shutdown_index: u32 = start_index + 31;
         data.push((Some(shutdown_index.to_string()), shutdown()));
         (data, rng)

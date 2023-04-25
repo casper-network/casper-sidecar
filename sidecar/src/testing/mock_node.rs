@@ -64,12 +64,8 @@ pub mod tests {
         pub async fn stop(&mut self) {
             let _ = self.sse_server_shutdown_tx.send(()).await;
             let _ = self.rest_server_shutdown_tx.send(()).await;
-            let _ = self.sse_server_after_shutdown_receiver_tx
-                .recv()
-                .await;
-            let _ = self.rest_server_after_shutdown_receiver_tx
-                .recv()
-                .await;
+            let _ = self.sse_server_after_shutdown_receiver_tx.recv().await;
+            let _ = self.rest_server_after_shutdown_receiver_tx.recv().await;
         }
 
         async fn build_mock(
