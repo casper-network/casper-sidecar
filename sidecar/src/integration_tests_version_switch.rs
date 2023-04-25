@@ -127,7 +127,6 @@ pub mod tests {
         let (join_handle, receiver) =
             fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
         start_sidecar(testing_config).await;
-        receiver.await.ok(); // Wait for the first event to go through to outbound
         node_mock.stop().await;
         let mut node_mock = MockNode::new_with_sigs(
             "1.3.9".to_string(),
@@ -136,15 +135,15 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
-        thread::sleep(time::Duration::from_secs(6)); //give some time for sidecar to connect and read data
+        receiver.await.ok(); // Wait for the first event to go through to outbound
+        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
         let events_received = tokio::join!(join_handle).0.unwrap();
-        assert_eq!(events_received.len(), 3);
-        assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+        assert_eq!(events_received.len(), 2);
         //there should be no messages for 1.0.0
-        assert!(events_received.get(1).unwrap().contains("\"1.3.9\""));
+        assert!(events_received.get(0).unwrap().contains("\"1.3.9\""));
         //finality sigmature for 1.3.9
-        let finality_signature = events_received.get(2).unwrap(); //Should read finality signature from /main/sigs of mock node
+        let finality_signature = events_received.get(1).unwrap(); //Should read finality signature from /main/sigs of mock node
         assert!(finality_signature.contains("\"FinalitySignature\""));
         assert!(finality_signature.contains(format!("\"{BLOCK_HASH_2}\"").as_str()));
     }
