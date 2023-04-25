@@ -328,9 +328,6 @@ async fn should_fail_to_reconnect() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     //The result should only have messages from one round of messages
-    if length != 32 {
-        println!("ZZZZ {:?}", events_received);
-    }
     assert_eq!(length, 32);
 }
 
