@@ -1,14 +1,17 @@
 use super::run;
 use bytes::Bytes;
 use casper_event_listener::{EventListener, NodeConnectionInterface};
-use casper_event_types::sse_data::SseData;
+use casper_event_types::sse_data::{
+    test_support::{example_block_added_1_4_10, BLOCK_HASH_3},
+    SseData,
+};
 use casper_types::testing::TestRng;
 use core::time;
 use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
-use std::{fmt::Debug, net::IpAddr, thread, time::Duration};
+use std::{fmt::Debug, net::IpAddr, path::Path, thread, time::Duration};
 use tempfile::{tempdir, TempDir};
 use tokio::{
     sync::{
@@ -22,6 +25,7 @@ use tokio::{
 
 use crate::{
     event_stream_server::Config as EssConfig,
+    sqlite_database::SqliteDatabase,
     testing::{
         fake_event_stream::{
             setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
@@ -29,12 +33,16 @@ use crate::{
         },
         mock_node::tests::MockNode,
         shared::EventType,
-        simple_sse_server::tests::{
-            random_n_block_added, sse_server_example_1_4_10_data, sse_server_shutdown_1_0_0_data,
+        raw_sse_events_utils::tests::{
+            random_n_block_added, sse_server_example_1_4_10_data,
+            sse_server_example_1_4_10_data_other, sse_server_shutdown_1_0_0_data,
         },
         testing_config::{prepare_config, TestingConfig},
     },
-    types::sse_events::BlockAdded,
+    types::{
+        database::DatabaseWriter,
+        sse_events::{BlockAdded, Fault},
+    },
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -320,6 +328,9 @@ async fn should_fail_to_reconnect() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     //The result should only have messages from one round of messages
+    if length != 32 {
+        println!("ZZZZ {:?}", events_received);
+    }
     assert_eq!(length, 32);
 }
 
@@ -431,6 +442,84 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(3).unwrap().contains("\"1.4.10\""));
     assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sidecar_should_use_start_from_if_database_is_empty() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let data = vec![(
+        Some("2".to_string()),
+        example_block_added_1_4_10(BLOCK_HASH_3, "3"),
+    )];
+    let mut node_mock = MockNode::new_with_cache(
+        "1.4.10".to_string(),
+        data,
+        sse_server_example_1_4_10_data(),
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    )
+    .await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    receiver.await.ok();
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
+    node_mock.stop().await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 3);
+    assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
+    assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
+    let mut rng = TestRng::new();
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    //Prepopulating database
+    let sqlite_database = SqliteDatabase::new(
+        Path::new(&testing_config.config.storage.storage_path),
+        testing_config.config.storage.sqlite_config.clone(),
+    )
+    .await
+    .expect("database should start");
+    sqlite_database
+        .save_fault(Fault::random(&mut rng), 0, "127.0.0.1".to_string())
+        .await
+        .unwrap();
+    let mut node_mock = MockNode::new_with_cache(
+        "1.4.10".to_string(),
+        sse_server_example_1_4_10_data_other(),
+        sse_server_example_1_4_10_data(),
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    )
+    .await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    receiver.await.ok();
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
+    node_mock.stop().await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    //Should not have data from node cache
+    assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
+    assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
 }
 
 async fn partial_connection_test(

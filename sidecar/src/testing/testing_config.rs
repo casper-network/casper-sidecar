@@ -30,7 +30,7 @@ fn get_port() -> u16 {
         }
     }
     guard.push(maybe_port);
-    return maybe_port;
+    maybe_port
 }
 /// Prepares an instance of [TestingConfig]. The instance has default values except:
 /// - `storage_path` is set to the path of the [TempDir] provided.

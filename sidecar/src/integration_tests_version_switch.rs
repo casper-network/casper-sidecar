@@ -4,7 +4,7 @@ pub mod tests {
         integration_tests::{build_test_config, fetch_data_from_endpoint, start_sidecar},
         testing::{
             mock_node::tests::MockNode,
-            simple_sse_server::tests::{
+            raw_sse_events_utils::tests::{
                 example_data_1_0_0, example_data_1_0_0_two_blocks,
                 example_data_1_1_0_with_legacy_message, example_data_1_3_9_with_sigs,
                 sse_server_example_1_4_10_data,
@@ -108,7 +108,7 @@ pub mod tests {
         assert!(second_block_entry.contains("\"rewards\":{")); // rewards should be in 1.0.0 format
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn should_handle_node_changing_filters() {
         let (
             testing_config,
@@ -124,11 +124,15 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        println!("A");
         let (join_handle, receiver) =
             fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
+        println!("B");
         start_sidecar(testing_config).await;
         thread::sleep(time::Duration::from_secs(6)); //give some time for sidecar to connect and read data
+        println!("C");
         node_mock.stop().await;
+        println!("D");
         let mut node_mock = MockNode::new_with_sigs(
             "1.3.9".to_string(),
             example_data_1_3_9_with_sigs(),
@@ -136,9 +140,11 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        println!("E");
         receiver.await.ok(); // Wait for the first event to go through to outbound
+        println!("F");
         node_mock.stop().await;
-
+        println!("G");
         let events_received = tokio::join!(join_handle).0.unwrap();
         assert_eq!(events_received.len(), 3);
         assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));

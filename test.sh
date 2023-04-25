@@ -1,9 +1,9 @@
 #!/bin/bash
 
-count=40
+count=20
 for i in $(seq $count); do
     cowsay "On run ${i}"
-    RUST_BACKTRACE=1 cargo test --
+    RUST_BACKTRACE=1 cargo test -- --nocapture
     retVal=$?
     if [ $retVal -ne 0 ]; then
         echo "TESTS FAILED ON RUN ${i}"

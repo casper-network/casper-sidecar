@@ -6,9 +6,11 @@ pub mod tests {
     use tokio::task::JoinHandle;
 
     use crate::testing::fake_event_stream::setup_mock_build_version_server_with_version;
-    use crate::testing::simple_sse_server::tests::{
-        simple_sse_server, simple_sse_server_with_sigs,
+    use crate::testing::raw_sse_events_utils::tests::{
+        simple_sse_server, simple_sse_server_with_sigs, EventsWithIds,
     };
+
+    type SpinUpSseServerLambda = Box<dyn FnOnce(u16) -> JoinHandle<(Sender<()>, Receiver<()>)>>;
 
     pub struct MockNode {
         sse_server_shutdown_tx: Sender<()>,
@@ -20,7 +22,7 @@ pub mod tests {
     impl MockNode {
         pub async fn new_with_sigs(
             version: String,
-            main_and_sigs: (Vec<(Option<String>, String)>, Vec<(Option<String>, String)>),
+            main_and_sigs: (EventsWithIds, EventsWithIds),
             sse_port: u16,
             rest_port: u16,
         ) -> Self {
@@ -28,7 +30,7 @@ pub mod tests {
             let sigs_clone = main_and_sigs.1.clone();
             let spin_up_sse_server = |port| {
                 tokio::spawn(async move {
-                    simple_sse_server_with_sigs(port, main_clone, sigs_clone).await
+                    simple_sse_server_with_sigs(port, main_clone, vec![], sigs_clone, vec![]).await
                 })
             };
             Self::build_mock(version, sse_port, rest_port, Box::new(spin_up_sse_server)).await
@@ -36,35 +38,50 @@ pub mod tests {
 
         pub async fn new(
             version: String,
-            data_of_node: Vec<(Option<String>, String)>,
+            data_of_node: EventsWithIds,
+            sse_port: u16,
+            rest_port: u16,
+        ) -> Self {
+            Self::new_with_cache(version, data_of_node, vec![], sse_port, rest_port).await
+        }
+
+        pub async fn new_with_cache(
+            version: String,
+            data_of_node: EventsWithIds,
+            cache_of_node: EventsWithIds,
             sse_port: u16,
             rest_port: u16,
         ) -> Self {
             let data_of_node_clone = data_of_node.clone();
             let spin_up_sse_server = |port| {
-                tokio::spawn(async move { simple_sse_server(port, data_of_node_clone).await })
+                tokio::spawn(async move {
+                    simple_sse_server(port, data_of_node_clone, cache_of_node).await
+                })
             };
             Self::build_mock(version, sse_port, rest_port, Box::new(spin_up_sse_server)).await
         }
 
         pub async fn stop(&mut self) {
-            self.sse_server_shutdown_tx.send(()).await.unwrap();
-            self.rest_server_shutdown_tx.send(()).await.unwrap();
-            self.sse_server_after_shutdown_receiver_tx
+            println!("S1");
+            let _ = self.sse_server_shutdown_tx.send(()).await;
+            println!("S2");
+            let _ = self.rest_server_shutdown_tx.send(()).await;
+            println!("S3");
+            let _ = self.sse_server_after_shutdown_receiver_tx
                 .recv()
-                .await
-                .unwrap();
-            self.rest_server_after_shutdown_receiver_tx
+                .await;
+            println!("S4");
+            let _ = self.rest_server_after_shutdown_receiver_tx
                 .recv()
-                .await
-                .unwrap();
+                .await;
+            println!("S5");
         }
 
         async fn build_mock(
             version: String,
             sse_port: u16,
             rest_port: u16,
-            spin_up_sse_server: Box<dyn FnOnce(u16) -> JoinHandle<(Sender<()>, Receiver<()>)>>,
+            spin_up_sse_server: SpinUpSseServerLambda,
         ) -> Self {
             let version_clone = version.clone();
             let sse_server_join: JoinHandle<(Sender<()>, Receiver<()>)> =

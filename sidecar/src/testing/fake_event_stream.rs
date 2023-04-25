@@ -16,12 +16,12 @@ use tokio::{
     time::Instant,
 };
 
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-use casper_types::{testing::TestRng, ProtocolVersion};
 use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
     utils::display_duration,
 };
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+use casper_types::{testing::TestRng, ProtocolVersion};
 use warp::{path::end, Filter};
 
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
@@ -504,7 +504,6 @@ async fn load_testing_deploy(
     }
 }
 
-
 pub async fn setup_mock_build_version_server(port: u16) -> (Sender<()>, Receiver<()>) {
     setup_mock_build_version_server_with_version(port, "1.4.10".to_string()).await
 }
@@ -519,8 +518,7 @@ pub async fn setup_mock_build_version_server_with_version(
         .and(warp::get())
         .map(move || {
             let result = json!({ "build_version": version.clone() });
-            let z = Ok(warp::reply::json(&result));
-            z
+            Ok(warp::reply::json(&result))
         })
         .and(end());
     let server_thread = tokio::spawn(async move {
@@ -540,7 +538,7 @@ pub async fn setup_mock_build_version_server_with_version(
         }
     });
     wait_for_build_version_server_to_be_up(port).await;
-    return (shutdown_tx, after_shutdown_rx);
+    (shutdown_tx, after_shutdown_rx)
 }
 
 pub async fn wait_for_sse_server_to_be_up(urls: Vec<String>) {
@@ -557,7 +555,7 @@ pub async fn wait_for_sse_server_to_be_up(urls: Vec<String>) {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
-                return false;
+                false
             })
         })
         .collect();
