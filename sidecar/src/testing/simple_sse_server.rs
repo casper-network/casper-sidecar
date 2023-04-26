@@ -1,23 +1,87 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use async_stream::stream;
-    use casper_event_types::sse_data::test_support::{
-        example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
-        BLOCK_HASH_3,
-    };
-    use casper_event_types::sse_data::SseData;
-    use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
-    use casper_types::testing::TestRng;
     use futures::Stream;
-    use hex_fmt::HexFmt;
+    use std::collections::HashMap;
     use std::convert::Infallible;
-    use tokio::sync::broadcast::{self, channel as broadcast_channel};
-    use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-    use warp::path::end;
-    use warp::{filters::BoxedFilter, sse::Event, Filter, Rejection, Reply};
+    use std::iter::FromIterator;
+    use tokio::sync::broadcast::{self};
+    use tokio::sync::mpsc::{channel, Receiver, Sender};
+    use warp::filters::BoxedFilter;
+    use warp::{path, sse::Event, Filter, Rejection, Reply};
+
+    use crate::testing::raw_sse_events_utils::tests::EventsWithIds;
 
     type BroadcastSender = broadcast::Sender<Option<(Option<String>, String)>>;
     type BroadcastReceiver = broadcast::Receiver<Option<(Option<String>, String)>>;
+
+    #[derive(Clone)]
+    pub struct CacheAndData {
+        //cache and data are vectors of tuples -> first position is event id, second is raw payload of message
+        pub cache: EventsWithIds,
+        pub data: EventsWithIds,
+    }
+
+    pub(crate) struct SimpleSseServer {
+        pub routes: HashMap<Vec<String>, CacheAndData>,
+    }
+
+    #[derive(Debug)]
+    struct Nope;
+    impl warp::reject::Reject for Nope {}
+
+    impl SimpleSseServer {
+        pub async fn serve(&self, port: u16) -> (Sender<()>, Receiver<()>) {
+            let (shutdown_tx, mut shutdown_rx) = channel(10);
+            let (after_shutdown_tx, after_shutdown_rx) = channel(10);
+            let v = Vec::from_iter(self.routes.iter());
+            let mut shutdown_broadcasts: Vec<BroadcastSender> = Vec::new();
+            let mut routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = v
+                .into_iter()
+                .map(|(key, value)| {
+                    let (sender, _) = tokio::sync::broadcast::channel(100);
+                    let base_filter = key
+                        .iter()
+                        .fold(warp::get().boxed(), |route, part| {
+                            route.and(warp::path(part.clone())).boxed()
+                        })
+                        .and(path::end())
+                        .boxed();
+                    let data = value.clone();
+                    shutdown_broadcasts.push(sender.clone());
+                    base_filter
+                        .and(with_data(data))
+                        .and(with_sender(sender))
+                        .and(warp::query())
+                        .and_then(do_handle)
+                        .boxed()
+                })
+                .collect();
+            let first = routes.pop().expect("get first route");
+            let api = routes
+                .into_iter()
+                .fold(first, |e, r| e.or(r).unify().boxed());
+            let server_thread = tokio::spawn(async move {
+                let server = warp::serve(api)
+                    .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
+                        let _ = shutdown_rx.recv().await;
+                        for sender in shutdown_broadcasts.iter() {
+                            let _ = sender.send(None);
+                        }
+                    })
+                    .1;
+                server.await;
+                let _ = after_shutdown_tx.send(()).await;
+            });
+            tokio::spawn(async move {
+                let result = server_thread.await;
+                if result.is_err() {
+                    println!("simple_sse_server: {:?}", result);
+                }
+            });
+            (shutdown_tx, after_shutdown_rx)
+        }
+    }
 
     fn build_stream(
         mut broadcast_receiver: BroadcastReceiver,
@@ -38,233 +102,48 @@ pub(crate) mod tests {
         }
     }
 
-    pub async fn sse_server_example_data_1_0_0(port: u16) -> OneshotSender<()> {
-        let data = vec![
-            (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
-            (
-                Some("0".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_1, "1"),
-            ),
-        ];
-        simple_sse_server(port, data).await
-    }
-
-    pub async fn sse_server_example_data_1_0_0_two_blocks(port: u16) -> OneshotSender<()> {
-        let data = vec![
-            (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
-            (
-                Some("0".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_1, "1"),
-            ),
-            (
-                Some("1".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_3, "2"),
-            ),
-        ];
-        simple_sse_server(port, data).await
-    }
-
-    pub async fn sse_server_shutdown_1_0_0(port: u16) -> OneshotSender<()> {
-        let data = vec![
-            (None, "{\"ApiVersion\":\"1.0.0\"}".to_string()),
-            (Some("0".to_string()), shutdown()),
-            (
-                Some("1".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_1, "1"),
-            ),
-        ];
-        simple_sse_server(port, data).await
-    }
-
-    pub async fn sse_server_example_data_1_3_9_with_sigs(port: u16) -> OneshotSender<()> {
-        let main_data = vec![
-            (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
-            (
-                Some("1".to_string()),
-                example_block_added_1_4_10(BLOCK_HASH_2, "2"), //1.3.9 should use 1.4.x compliant BlockAdded messages
-            ),
-        ];
-        let sigs_data = vec![
-            (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
-            (
-                Some("2".to_string()),
-                example_finality_signature_1_4_10(BLOCK_HASH_2), //1.3.9 should use 1.4.x compliant FinalitySingatures messages
-            ),
-        ];
-        simple_sse_server_with_sigs(port, main_data, sigs_data).await
-    }
-
-    pub async fn sse_server_send_n_block_added(
-        port: u16,
-        number_of_block_added_messages: u32,
-        start_index: u32,
-        rng: TestRng,
-    ) -> (OneshotSender<()>, TestRng) {
-        let (blocks_added, rng) =
-            generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
-
-        let data = vec![(None, "{\"ApiVersion\":\"1.4.10\"}".to_string())];
-        let data = data.into_iter().chain(blocks_added.into_iter()).collect();
-        let sender = simple_sse_server(port, data).await;
-        (sender, rng)
-    }
-
-    fn build_paths(
-        main_data: Vec<(Option<String>, String)>,
-    ) -> (BoxedFilter<(impl Reply,)>, BroadcastSender) {
-        let (data_tx, _) = tokio::sync::broadcast::channel(100);
-        let api = events_route(main_data.clone(), data_tx.clone())
-            .or(main_events_route(main_data, data_tx.clone()));
-        (api.boxed(), data_tx)
-    }
-
-    fn build_paths_with_sigs(
-        main_data: Vec<(Option<String>, String)>,
-        sigs_data: Vec<(Option<String>, String)>,
-    ) -> (BoxedFilter<(impl Reply,)>, BroadcastSender, BroadcastSender) {
-        let (data_tx, _) = broadcast_channel(100);
-        let (sigs_data_tx, _) = broadcast_channel(100);
-        let api = events_route(main_data.clone(), data_tx.clone())
-            .or(main_events_route(main_data, data_tx.clone()))
-            .or(sigs_events_route(sigs_data, sigs_data_tx.clone()));
-        (api.boxed(), data_tx, sigs_data_tx)
-    }
-
-    fn events_route(
-        data: Vec<(Option<String>, String)>,
+    async fn do_handle(
+        mut cache_and_data: CacheAndData,
         sender: BroadcastSender,
-    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-        warp::path!("events")
-            .and(warp::get())
-            .map(move || {
-                let local_data2 = data.clone();
-                let reply = warp::sse::reply(
-                    warp::sse::keep_alive().stream(build_stream(sender.clone().subscribe())),
-                );
-                local_data2.into_iter().for_each(|el| {
-                    sender.send(Some(el)).unwrap();
-                });
-                reply
-            })
-            .and(end())
-    }
-
-    fn main_events_route(
-        data: Vec<(Option<String>, String)>,
-        sender: BroadcastSender,
-    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-        warp::path!("events" / "main")
-            .and(warp::get())
-            .map(move || {
-                let local_data2 = data.clone();
-                let reply = warp::sse::reply(
-                    warp::sse::keep_alive().stream(build_stream(sender.clone().subscribe())),
-                );
-                local_data2.into_iter().for_each(|el| {
-                    sender.send(Some(el)).unwrap();
-                });
-                reply
-            })
-            .and(end())
-    }
-
-    fn sigs_events_route(
-        data: Vec<(Option<String>, String)>,
-        sender: BroadcastSender,
-    ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-        warp::path!("events" / "sigs")
-            .and(warp::get())
-            .map(move || {
-                let local_data2 = data.clone();
-                let reply = warp::sse::reply(
-                    warp::sse::keep_alive().stream(build_stream(sender.clone().subscribe())),
-                );
-                local_data2.into_iter().for_each(|el| {
-                    sender.send(Some(el)).unwrap();
-                });
-                reply
-            })
-            .and(end())
-    }
-
-    pub async fn sse_server_example_data_1_4_10(port: u16) -> OneshotSender<()> {
-        let data = vec![
-            (None, "{\"ApiVersion\":\"1.4.10\"}".to_string()),
-            (
-                Some("1".to_string()),
-                example_block_added_1_4_10(BLOCK_HASH_2, "2"),
-            ),
-        ];
-        simple_sse_server(port, data).await
-    }
-
-    pub async fn sse_server_example_data_1_1_0_with_legacy_message(port: u16) -> OneshotSender<()> {
-        let data = vec![
-            (None, "{\"ApiVersion\":\"1.1.0\"}".to_string()),
-            (
-                Some("1".to_string()),
-                example_block_added_1_0_0(BLOCK_HASH_2, "3"),
-            ),
-        ];
-        simple_sse_server(port, data).await
-    }
-
-    pub async fn simple_sse_server(
-        port: u16,
-        data: Vec<(Option<String>, String)>,
-    ) -> OneshotSender<()> {
-        let (shutdown_tx, shutdown_rx) = oneshot_channel();
-        tokio::spawn(async move {
-            let (api, main_data_tx) = build_paths(data);
-            let server = warp::serve(api)
-                .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                    shutdown_rx.await.ok();
-                    let _ = main_data_tx.clone().send(None);
+        query: HashMap<String, String>,
+    ) -> Result<Box<dyn Reply>, Rejection> {
+        let maybe_start_from = query
+            .get("start_from")
+            .and_then(|id_str| id_str.parse::<u32>().ok());
+        let reply =
+            warp::sse::reply(warp::sse::keep_alive().stream(build_stream(sender.subscribe())));
+        let mut effective_data = Vec::new();
+        if let Some(start_from) = maybe_start_from {
+            let mut filtered: EventsWithIds = cache_and_data
+                .cache
+                .into_iter()
+                .filter(|(raw_maybe_id, _)| {
+                    let maybe_id = raw_maybe_id.clone().and_then(|x| x.parse::<u32>().ok());
+                    match maybe_id {
+                        None => true,
+                        Some(id) if (id >= start_from) => true,
+                        _ => false,
+                    }
                 })
-                .1;
-            server.await;
-        });
-        shutdown_tx
-    }
-
-    pub async fn simple_sse_server_with_sigs(
-        port: u16,
-        main_data: Vec<(Option<String>, String)>,
-        sigs_data: Vec<(Option<String>, String)>,
-    ) -> OneshotSender<()> {
-        let (shutdown_tx, shutdown_rx) = oneshot_channel();
-        tokio::spawn(async move {
-            let (api, main_data_tx, sigs_data_tx) = build_paths_with_sigs(main_data, sigs_data);
-            let server = warp::serve(api)
-                .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                    shutdown_rx.await.ok();
-                    let _ = main_data_tx.clone().send(None);
-                    let _ = sigs_data_tx.clone().send(None);
-                })
-                .1;
-            server.await;
-        });
-        shutdown_tx
-    }
-
-    fn generate_random_blocks_added(
-        number_of_block_added_messages: u32,
-        start_index: u32,
-        mut rng: TestRng,
-    ) -> (Vec<(Option<String>, String)>, TestRng) {
-        let mut blocks_added = Vec::new();
-        for i in 0..number_of_block_added_messages {
-            let index = (i + start_index).to_string();
-            let block_added = SseData::random_block_added(&mut rng);
-            if let SseData::BlockAdded { block_hash, .. } = block_added {
-                let encoded_hash = HexFmt(block_hash.inner()).to_string();
-                let block_added_raw =
-                    example_block_added_1_4_10(encoded_hash.as_str(), index.as_str());
-                blocks_added.push((Some(index), block_added_raw));
-            } else {
-                panic!("random_block_added didn't return SseData::BlockAdded");
-            }
+                .collect();
+            effective_data.append(filtered.as_mut());
         }
-        (blocks_added, rng)
+        effective_data.append(cache_and_data.data.as_mut());
+        effective_data.into_iter().for_each(|el| {
+            sender.send(Some(el)).unwrap();
+        });
+        Ok(Box::new(reply) as Box<dyn Reply>)
+    }
+
+    fn with_data(
+        x: CacheAndData,
+    ) -> impl Filter<Extract = (CacheAndData,), Error = Infallible> + Clone {
+        warp::any().map(move || x.clone())
+    }
+
+    fn with_sender(
+        sender: BroadcastSender,
+    ) -> impl Filter<Extract = (BroadcastSender,), Error = Infallible> + Clone {
+        warp::any().map(move || sender.clone())
     }
 }

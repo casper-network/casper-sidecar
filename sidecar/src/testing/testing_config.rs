@@ -1,13 +1,37 @@
+use std::sync::{Arc, Mutex};
+
 use portpicker::Port;
 use tempfile::TempDir;
 
 use crate::types::config::{Config, Connection};
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
-pub(crate) struct TestingConfig {
+pub struct TestingConfig {
     pub(crate) config: Config,
 }
 
+#[cfg(test)]
+use once_cell::sync::Lazy;
+#[cfg(test)]
+static USED_PORTS: Lazy<Arc<Mutex<Vec<u16>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+#[cfg(test)]
+/// This function (used in tests only) is used to make sure that concurrently running
+/// IT tests don't accidentally pick the same port. If in the future our tests would run
+/// slowly or not run at all because of this we need to figure out a way of returning ports after an IT test finishes
+fn get_port() -> u16 {
+    let mut guard = USED_PORTS.lock().unwrap();
+    let mut maybe_port = portpicker::pick_unused_port().unwrap();
+    let mut attempt = 0;
+    while guard.contains(&maybe_port) {
+        maybe_port = portpicker::pick_unused_port().unwrap();
+        attempt += 1;
+        if attempt > 100 {
+            panic!("Couldn't find a unique port in {} tries!", attempt);
+        }
+    }
+    guard.push(maybe_port);
+    maybe_port
+}
 /// Prepares an instance of [TestingConfig]. The instance has default values except:
 /// - `storage_path` is set to the path of the [TempDir] provided.
 /// - `node_connection_port` is set dynamically to a free port.
@@ -43,8 +67,8 @@ impl TestingConfig {
         sse_port: Option<u16>,
         rest_port: Option<u16>,
     ) -> Port {
-        let random_port_for_sse = portpicker::pick_unused_port().unwrap();
-        let random_port_for_rest = portpicker::pick_unused_port().unwrap();
+        let random_port_for_sse = get_port();
+        let random_port_for_rest = get_port();
         let connection = Connection {
             ip_address: ip_address.unwrap_or_else(|| "127.0.0.1".to_string()),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
@@ -97,8 +121,8 @@ impl TestingConfig {
     ///
     /// Updates the ports in the config accordingly.
     pub(crate) fn allocate_available_ports(&mut self) {
-        let rest_server_port = portpicker::pick_unused_port().expect("Error getting free port");
-        let sse_server_port = portpicker::pick_unused_port().expect("Error getting free port");
+        let rest_server_port = get_port();
+        let sse_server_port = get_port();
         self.config.rest_server.port = rest_server_port;
         self.config.event_stream_server.port = sse_server_port;
     }

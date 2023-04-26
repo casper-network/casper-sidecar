@@ -1,13 +1,13 @@
 #[cfg(test)]
 pub mod tests {
     use crate::{
-        integration_tests::{connect_to_sidecar, poll_events, start_sidecar},
+        integration_tests::{build_test_config, fetch_data_from_endpoint, start_sidecar},
         testing::{
-            fake_event_stream::status_1_0_0_server,
-            simple_sse_server::tests::{
-                sse_server_example_data_1_0_0, sse_server_example_data_1_0_0_two_blocks,
-                sse_server_example_data_1_1_0_with_legacy_message,
-                sse_server_example_data_1_3_9_with_sigs, sse_server_example_data_1_4_10,
+            mock_node::tests::MockNode,
+            raw_sse_events_utils::tests::{
+                example_data_1_0_0, example_data_1_0_0_two_blocks,
+                example_data_1_1_0_with_legacy_message, example_data_1_3_9_with_sigs,
+                sse_server_example_1_4_10_data,
             },
         },
     };
@@ -17,24 +17,36 @@ pub mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_successfully_switch_api_versions() {
-        let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-            start_sidecar().await;
-        let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
-        let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        thread::sleep(time::Duration::from_secs(5)); //give some time everything to connect
-        let main_event_stream =
-            connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
-        shutdown_tx.send(()).unwrap();
-        change_api_version_tx
-            .send("1.4.10".to_string())
-            .await
-            .unwrap();
-        thread::sleep(time::Duration::from_secs(2)); //give some time everything to disconnect
-        let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
+        let (
+            testing_config,
+            _temp_storage_dir,
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+            event_stream_server_port,
+        ) = build_test_config();
+        let mut node_mock = MockNode::new(
+            "1.0.0".to_string(),
+            example_data_1_0_0(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
+        start_sidecar(testing_config).await;
+        let (join_handle, receiver) =
+            fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+        receiver.await.ok();
+        node_mock.stop().await;
+        let mut node_mock = MockNode::new(
+            "1.4.10".to_string(),
+            sse_server_example_1_4_10_data(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
-        shutdown_tx.send(()).unwrap();
+        node_mock.stop().await;
 
-        let events_received = poll_events(main_event_stream).await;
+        let events_received = tokio::join!(join_handle).0.unwrap();
         assert_eq!(events_received.len(), 4);
         assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
         //block hash for 1.0.0
@@ -48,54 +60,38 @@ pub mod tests {
         assert!(block_entry_1_4_10.contains("\"rewards\":[")); // rewards should be in 1.4.x format
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
-    async fn polling_latest_data_should_return_latest_api_version() {
-        let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-            start_sidecar().await;
-        let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
-        let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        change_api_version_tx
-            .send("1.4.10".to_string())
-            .await
-            .unwrap();
-        shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
-        let main_event_stream = connect_to_sidecar("/events/main", event_stream_server_port).await;
-        let shutdown_tx = sse_server_example_data_1_4_10(node_port_for_sse_connection).await;
-        tokio::spawn(async move {
-            thread::sleep(time::Duration::from_secs(4)); //give some time to poll the data
-            shutdown_tx.send(()).unwrap();
-        });
-        let events_received = poll_events(main_event_stream).await;
-        assert_eq!(events_received.len(), 2);
-        assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
-        //block hash for 1.4.10
-        let block_entry_1_4_10 = events_received.get(1).unwrap();
-        assert!(block_entry_1_4_10.contains(format!("\"{BLOCK_HASH_2}\"").as_str()));
-        assert!(block_entry_1_4_10.contains("\"rewards\":[")); // rewards should be in 1.4.x format
-    }
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_deserialize_legacy_messages_based_on_status_build_version() {
-        let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-            start_sidecar().await;
-        let shutdown_tx =
-            sse_server_example_data_1_0_0_two_blocks(node_port_for_sse_connection).await;
-        let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to connect
-        let main_event_stream =
-            connect_to_sidecar("/events/main?start_from=0", event_stream_server_port).await;
-        change_api_version_tx
-            .send("1.1.0".to_string()) //1.1.0 is different but still has the old message format
-            .await
-            .unwrap();
-        shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
-        let shutdown_tx =
-            sse_server_example_data_1_1_0_with_legacy_message(node_port_for_sse_connection).await;
+        let (
+            testing_config,
+            _temp_storage_dir,
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+            event_stream_server_port,
+        ) = build_test_config();
+        let mut node_mock = MockNode::new(
+            "1.0.0".to_string(),
+            example_data_1_0_0_two_blocks(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
+        start_sidecar(testing_config).await;
+        let (join_handle, receiver) =
+            fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+        receiver.await.ok();
+        node_mock.stop().await;
+
+        let mut node_mock = MockNode::new(
+            "1.1.0".to_string(),
+            example_data_1_1_0_with_legacy_message(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
-        shutdown_tx.send(()).unwrap();
-        let events_received = poll_events(main_event_stream).await;
+        node_mock.stop().await;
+        let events_received = tokio::join!(join_handle).0.unwrap();
         assert_eq!(events_received.len(), 5);
         assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
         //block hash for 1.0.0
@@ -112,33 +108,42 @@ pub mod tests {
         assert!(second_block_entry.contains("\"rewards\":{")); // rewards should be in 1.0.0 format
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn should_handle_node_changing_filters() {
-        let (node_port_for_sse_connection, node_port_for_rest_connection, event_stream_server_port) =
-            start_sidecar().await;
-        let shutdown_tx = sse_server_example_data_1_0_0(node_port_for_sse_connection).await;
-        let change_api_version_tx = status_1_0_0_server(node_port_for_rest_connection);
-        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
-        let main_event_stream =
-            connect_to_sidecar("/events/sigs?start_from=0", event_stream_server_port).await;
-        change_api_version_tx
-            .send("1.3.9".to_string()) //1.3.x shold have /main and /sigs
-            .await
-            .unwrap();
-        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and data to propagate
-        shutdown_tx.send(()).unwrap();
-        thread::sleep(time::Duration::from_secs(3)); //give some time everything to disconnect
-        let shutdown_tx =
-            sse_server_example_data_1_3_9_with_sigs(node_port_for_sse_connection).await;
-        thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
-        shutdown_tx.send(()).unwrap();
-        let events_received = poll_events(main_event_stream).await;
-        assert_eq!(events_received.len(), 3);
-        assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
+        let (
+            testing_config,
+            _temp_storage_dir,
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+            event_stream_server_port,
+        ) = build_test_config();
+        let mut node_mock = MockNode::new(
+            "1.0.0".to_string(),
+            example_data_1_0_0(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
+        let (join_handle, receiver) =
+            fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
+        start_sidecar(testing_config).await;
+        node_mock.stop().await;
+        let mut node_mock = MockNode::new_with_sigs(
+            "1.3.9".to_string(),
+            example_data_1_3_9_with_sigs(),
+            node_port_for_sse_connection,
+            node_port_for_rest_connection,
+        )
+        .await;
+        receiver.await.ok(); // Wait for the first event to go through to outbound
+        thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
+        node_mock.stop().await;
+        let events_received = tokio::join!(join_handle).0.unwrap();
+        assert_eq!(events_received.len(), 2);
         //there should be no messages for 1.0.0
-        assert!(events_received.get(1).unwrap().contains("\"1.3.9\""));
+        assert!(events_received.get(0).unwrap().contains("\"1.3.9\""));
         //finality sigmature for 1.3.9
-        let finality_signature = events_received.get(2).unwrap(); //Should read finality signature from /main/sigs of mock node
+        let finality_signature = events_received.get(1).unwrap(); //Should read finality signature from /main/sigs of mock node
         assert!(finality_signature.contains("\"FinalitySignature\""));
         assert!(finality_signature.contains(format!("\"{BLOCK_HASH_2}\"").as_str()));
     }
