@@ -1,27 +1,28 @@
+use core::time;
 use derive_new::new;
 use itertools::Itertools;
 use serde_json::json;
 use std::{
     fmt::{Display, Formatter},
     iter,
-    ops::{Deref, Div},
-    sync::{Arc, Mutex},
+    ops::Div,
+    thread,
     time::Duration,
 };
 use tempfile::TempDir;
+use tokio::task::JoinHandle;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, Sender},
+    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     time::Instant,
 };
-
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-use casper_types::{testing::TestRng, ProtocolVersion};
 
 use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
     utils::display_duration,
 };
-use warp::Filter;
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+use casper_types::{testing::TestRng, ProtocolVersion};
+use warp::{path::end, Filter};
 
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
@@ -503,48 +504,91 @@ async fn load_testing_deploy(
     }
 }
 
-pub fn setup_mock_build_version_server(port: u16) {
-    let _ = setup_mock_build_version_server_with_version(port, "1.4.10".to_string());
+pub async fn setup_mock_build_version_server(port: u16) -> (Sender<()>, Receiver<()>) {
+    setup_mock_build_version_server_with_version(port, "1.4.10".to_string()).await
 }
 
-pub fn setup_mock_build_version_server_with_version(
+pub async fn setup_mock_build_version_server_with_version(
     port: u16,
-    initial_version: String,
-) -> Sender<String> {
-    let m = Arc::new(Mutex::new(initial_version));
-    let m1 = m.clone();
-    let (tx, mut rx) = mpsc_channel(20);
-    let version_store = warp::any().map(move || m1.clone());
-
+    version: String,
+) -> (Sender<()>, Receiver<()>) {
+    let (shutdown_tx, mut shutdown_rx) = mpsc_channel(10);
+    let (after_shutdown_tx, after_shutdown_rx) = mpsc_channel(10);
     let api = warp::path!("status")
-        .and(version_store)
-        .and_then(get_version);
-    let server = warp::serve(api).run(([127, 0, 0, 1], port));
-    tokio::spawn(async move {
+        .and(warp::get())
+        .map(move || {
+            let result = json!({ "build_version": version.clone() });
+            Ok(warp::reply::json(&result))
+        })
+        .and(end());
+    let server_thread = tokio::spawn(async move {
+        let server = warp::serve(api)
+            .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
+                let _ = shutdown_rx.recv().await;
+            })
+            .1;
         server.await;
-        println!("terminating api version server");
+        let _ = after_shutdown_tx.send(()).await;
     });
+
     tokio::spawn(async move {
-        while let Some(ver) = rx.recv().await {
-            let mut v = m.lock().unwrap();
-            *v = ver;
-            drop(v);
+        let result = server_thread.await;
+        if result.is_err() {
+            println!("setup_mock_build_version_server_with_version: {:?}", result);
         }
     });
-    tx
+    wait_for_build_version_server_to_be_up(port).await;
+    (shutdown_tx, after_shutdown_rx)
 }
 
-pub fn status_1_0_0_server(port: u16) -> Sender<String> {
-    setup_mock_build_version_server_with_version(port, "1.0.0".to_string())
+pub async fn wait_for_sse_server_to_be_up(urls: Vec<String>) {
+    let join_handles: Vec<JoinHandle<bool>> = urls
+        .clone()
+        .into_iter()
+        .map(|url| {
+            tokio::spawn(async move {
+                for _ in 0..10 {
+                    let event_source = reqwest::Client::new().get(url.as_str()).send().await;
+                    if event_source.is_ok() {
+                        return true;
+                    } else {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+                false
+            })
+        })
+        .collect();
+    let result = futures::future::join_all(join_handles).await;
+    let potential_error_message = format!(
+        "Sse server didn't start for urls: {:?}, return values: {:?}",
+        urls, result
+    );
+    if !result.into_iter().all(|elem| elem.is_ok() && elem.unwrap()) {
+        panic!("{}", potential_error_message);
+    }
 }
 
-pub fn status_1_4_10_server(port: u16) -> Sender<String> {
-    setup_mock_build_version_server_with_version(port, "1.4.10".to_string())
-}
-
-async fn get_version(version: Arc<Mutex<String>>) -> Result<impl warp::Reply, warp::Rejection> {
-    let v = version.lock().unwrap();
-
-    let result = json!({ "build_version": v.deref() });
-    Ok(warp::reply::json(&result))
+pub async fn wait_for_build_version_server_to_be_up(port: u16) {
+    let max_attempts = 10;
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        if attempts >= max_attempts {
+            panic!(
+                "Couldn't connect to status server in {} attempts",
+                max_attempts
+            );
+        }
+        let res = reqwest::get(format!("http://127.0.0.1:{}/status", port)).await;
+        match res {
+            Err(_) => {}
+            Ok(response) => {
+                if response.text().await.unwrap().contains("build_version") {
+                    break;
+                }
+            }
+        }
+        thread::sleep(time::Duration::from_secs(1));
+    }
 }
