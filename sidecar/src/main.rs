@@ -37,7 +37,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{sse_data::SseData, Filter};
+use casper_event_types::{metrics::register_metrics, sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
 use types::database::DatabaseReader;
 
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Error> {
     let config: Config = read_config(&path_to_config).context("Error constructing config")?;
 
     info!("Configuration loaded");
-
+    register_metrics();
     run(config).await
 }
 
@@ -96,7 +96,6 @@ async fn run(config: Config) -> Result<(), Error> {
             "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
         ));
     }
-
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();

@@ -1,8 +1,11 @@
+#[macro_use]
+extern crate lazy_static;
 mod block;
 mod deploy;
 mod digest;
 mod executable_deploy_item;
 mod filter;
+pub mod metrics;
 pub mod sse_data;
 pub mod sse_data_1_0_0;
 #[cfg(feature = "sse-data-testing")]

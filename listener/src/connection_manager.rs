@@ -244,6 +244,7 @@ impl ConnectionManager {
                             // ApiVersion events have no ID so parsing "" to u32 will fail.
                             // This gate saves displaying a warning for a trivial error.
                             if !event.data.contains("ApiVersion") {
+                                count_error("event_without_id");
                                 warn!("Parse Error: {}", parse_error);
                             }
                         }
@@ -253,6 +254,7 @@ impl ConnectionManager {
                         .map_err(non_recoverable_error)?;
                 }
                 Err(stream_error) => {
+                    count_error("fetching_from_stream_failed");
                     let error_message = format!("EventStream Error: {:?}", stream_error);
                     error!(error_message);
                     return Err(non_recoverable_error(Error::msg(error_message)));
@@ -265,11 +267,16 @@ impl ConnectionManager {
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match (self.deserialization_fn)(&event.data) {
             Err(serde_error) => {
+                count_error("deserialization_error");
                 let error_message = format!("Serde Error: {}", serde_error);
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
             Ok(sse_data) => {
+                let payload_size = event.data.len();
+                casper_event_types::metrics::RECEIVED_BYTES
+                    .with_label_values(&[self.filter.to_string().as_str()])
+                    .observe(payload_size as f64);
                 let json_data: Value = serde_json::from_str(&event.data)?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
@@ -279,6 +286,7 @@ impl ConnectionManager {
                     self.filter.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                    count_error("sending_upstream_failed");
                     Error::msg(
                         "Error when trying to send message in ConnectionManager#handle_event",
                     )
@@ -313,21 +321,24 @@ impl ConnectionManager {
                                 self.filter.clone(),
                             );
                             self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                                count_error("api_version_sending_upstream_failed");
                                 non_recoverable_error(Error::msg(
                                 "Error when trying to send message in ConnectionManager#handle_event",
                             ))
                         })?
                         }
                         Ok(_sse_data) => {
+                            count_error("api_version_expected");
                             return Err(non_recoverable_error(Error::msg(
                                 "When trying to deserialize ApiVersion got other type of message",
-                            )))
+                            )));
                         }
                         Err(x) => {
+                            count_error("api_version_deserialization_failed");
                             return Err(non_recoverable_error(Error::msg(format!(
                             "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
                             x, event.data
-                        ))))
+                        ))));
                         }
                     }
                     Ok(stream)
@@ -396,6 +407,12 @@ fn determine_deserializer(node_build_version: ProtocolVersion) -> Deserializatio
     } else {
         deserialize
     }
+}
+
+fn count_error(reason: &str) {
+    casper_event_types::metrics::ERROR_COUNTS
+        .with_label_values(&["connection_manager", reason])
+        .inc();
 }
 
 #[cfg(test)]
