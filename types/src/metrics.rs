@@ -1,7 +1,7 @@
 use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
-const BUCKETS: &[f64; 11] = &[
-    5000.0, 10000.0, 50000.0, 100000.0, 150000.0, 200000.0, 500000.0, 1000000.0, 2000000.0,
-    3000000.0, 5000000.0,
+const BUCKETS: &[f64; 16] = &[
+    5e+3_f64, 1e+4_f64, 5e+4_f64, 1e+5_f64, 1.5e+5_f64, 2e+5_f64, 5e+5_f64, 1e+6_f64, 2e+6_f64,
+    5e+6_f64, 1e+7_f64, 1.5e+7_f64, 2e+7_f64, 2.5e+7_f64, 3e+7_f64, 3.5e+7_f64,
 ];
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
