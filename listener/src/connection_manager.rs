@@ -274,9 +274,7 @@ impl ConnectionManager {
             }
             Ok(sse_data) => {
                 let payload_size = event.data.len();
-                casper_event_types::metrics::RECEIVED_BYTES
-                    .with_label_values(&[self.filter.to_string().as_str()])
-                    .observe(payload_size as f64);
+                self.observe_bytes(payload_size);
                 let json_data: Value = serde_json::from_str(&event.data)?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
@@ -308,6 +306,8 @@ impl ConnectionManager {
             None => Err(recoverable_error(Error::msg("First event was empty"))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
+                let payload_size = event.data.len();
+                self.observe_bytes(payload_size);
                 if event.data.contains("ApiVersion") {
                     match deserialize(&event.data) {
                         //at this point we
@@ -347,6 +347,12 @@ impl ConnectionManager {
                 }
             }
         }
+    }
+
+    fn observe_bytes(&self, payload_size: usize) {
+        casper_event_types::metrics::RECEIVED_BYTES
+            .with_label_values(&[self.filter.to_string().as_str()])
+            .observe(payload_size as f64);
     }
 }
 
