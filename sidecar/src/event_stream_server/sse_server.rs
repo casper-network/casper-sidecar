@@ -80,7 +80,7 @@ pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
     pub(super) data: SseData,
-    pub(super) json_data: Option<Value>,
+    pub(super) json_data: Option<String>,
     pub(super) inbound_filter: Option<SseFilter>,
 }
 
@@ -108,6 +108,17 @@ pub(super) enum BroadcastChannelMessage {
     /// Note: ideally, we'd just drop all the tokio broadcast channel senders to make the streams
     /// terminate naturally, but we can't drop the sender cloned into warp filter.
     Shutdown,
+}
+
+fn event_to_warp_event(event: &ServerSentEvent) -> Result<warp::sse::Event, serde_json::Error> {
+    let maybe_value = event
+        .json_data
+        .as_ref()
+        .map(|el| serde_json::from_str::<Value>(el).unwrap());
+    match &maybe_value {
+        Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+        None => WarpServerSentEvent::default().json_data(&event.data),
+    }
 }
 
 /// Passed to the server whenever a new client subscribes.
@@ -148,11 +159,7 @@ async fn filter_map_server_sent_event(
 
     match &event.data {
         &SseData::ApiVersion { .. } => {
-            let warp_event = match &event.json_data {
-                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
-                None => WarpServerSentEvent::default().json_data(&event.data),
-            }
-            .unwrap_or_else(|error| {
+            let warp_event = event_to_warp_event(event).unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             });
@@ -165,20 +172,21 @@ async fn filter_map_server_sent_event(
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_) => {
-            let warp_event = match &event.json_data {
-                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
-                None => WarpServerSentEvent::default().json_data(&event.data),
-            }
-            .unwrap_or_else(|error| {
-                warn!(%error, ?event, "failed to jsonify sse event");
-                WarpServerSentEvent::default()
-            })
-            .id(id);
+            let warp_event = event_to_warp_event(event)
+                .unwrap_or_else(|error| {
+                    warn!(%error, ?event, "failed to jsonify sse event");
+                    WarpServerSentEvent::default()
+                })
+                .id(id);
             Some(Ok(warp_event))
         }
 
         SseData::DeployAccepted { deploy } => {
-            let warp_event = match &event.json_data {
+            let maybe_value = event
+                .json_data
+                .as_ref()
+                .map(|el| serde_json::from_str::<Value>(el).unwrap());
+            let warp_event = match maybe_value {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => {
                     let deploy_accepted = &DeployAccepted {
@@ -218,12 +226,13 @@ fn build_event_for_outbound(
     event: &ServerSentEvent,
     id: String,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
-    let value = event
+    let maybe_value = event
         .json_data
-        .clone()
+        .as_ref()
+        .map(|el| serde_json::from_str::<Value>(el).unwrap())
         .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
     Some(Ok(WarpServerSentEvent::default()
-        .json_data(&value)
+        .json_data(&maybe_value)
         .unwrap_or_else(|error| {
             warn!(%error, ?event, "failed to jsonify sse event");
             WarpServerSentEvent::default()

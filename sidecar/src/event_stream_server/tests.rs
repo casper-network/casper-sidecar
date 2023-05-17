@@ -188,7 +188,7 @@ impl Drop for ServerStopper {
 struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
-    events: Vec<(SseData, Option<Value>)>,
+    events: Vec<(SseData, Option<String>)>,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -204,7 +204,7 @@ impl TestFixture {
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
         let mut deploys = HashMap::new();
-        let events: Vec<(SseData, Option<Value>)> = (0..EVENT_COUNT)
+        let events: Vec<(SseData, Option<String>)> = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
@@ -290,7 +290,13 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                server.broadcast(event.clone(), SseFilter::Main, maybe_json_data.clone());
+                server.broadcast(
+                    event.clone(),
+                    SseFilter::Main,
+                    maybe_json_data
+                        .as_ref()
+                        .map(|el| serde_json::from_str(el.as_str()).unwrap()),
+                );
                 server_behavior.sleep_if_required().await;
             }
 

@@ -15,7 +15,7 @@ use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
-    ConnectOptions, Executor,
+    ConnectOptions, Executor, Sqlite, Transaction,
 };
 
 use crate::{sql::tables, types::config::SqliteConfig};
@@ -126,5 +126,9 @@ impl SqliteDatabase {
             .await;
 
         Ok(())
+    }
+
+    async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
+        self.connection_pool.begin().await
     }
 }

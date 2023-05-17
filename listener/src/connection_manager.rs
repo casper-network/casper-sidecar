@@ -10,7 +10,6 @@ use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
 
-use serde_json::Value;
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
@@ -27,7 +26,7 @@ pub struct SseEvent {
     pub id: u32,
     pub data: SseData,
     pub source: Url,
-    pub json_data: Option<serde_json::Value>,
+    pub json_data: Option<String>,
     pub inbound_filter: Filter,
 }
 
@@ -36,7 +35,7 @@ impl SseEvent {
         id: u32,
         data: SseData,
         mut source: Url,
-        json_data: Option<serde_json::Value>,
+        json_data: Option<String>,
         inbound_filter: Filter,
     ) -> Self {
         // This is to remove the path e.g. /events/main
@@ -62,7 +61,7 @@ impl Display for SseEvent {
     }
 }
 
-type DeserializationFn = fn(&str) -> Result<SseData, SseDataDeserializeError>;
+type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
 
 pub(super) struct ConnectionManager {
     bind_address: Url,
@@ -272,15 +271,18 @@ impl ConnectionManager {
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
-            Ok(sse_data) => {
+            Ok((sse_data, needs_raw_json)) => {
                 let payload_size = event.data.len();
+                let mut raw_json_data = None;
+                if needs_raw_json {
+                    raw_json_data = Some(event.data);
+                }
                 self.observe_bytes(payload_size);
-                let json_data: Value = serde_json::from_str(&event.data)?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
                     sse_data,
                     self.bind_address.clone(),
-                    Some(json_data),
+                    raw_json_data,
                     self.filter.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
@@ -312,7 +314,7 @@ impl ConnectionManager {
                     match deserialize(&event.data) {
                         //at this point we
                         // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
-                        Ok(SseData::ApiVersion(semver)) => {
+                        Ok((SseData::ApiVersion(semver), _)) => {
                             let sse_event = SseEvent::new(
                                 0,
                                 SseData::ApiVersion(semver),
@@ -436,7 +438,9 @@ mod tests {
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -469,7 +473,9 @@ mod tests {
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -500,7 +506,9 @@ mod tests {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&block_added_raw).unwrap();
+        let tuple = (deserializer)(&block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(!tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -530,7 +538,9 @@ mod tests {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 4, 10);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&block_added_raw).unwrap();
+        let tuple = (deserializer)(&block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(!tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {

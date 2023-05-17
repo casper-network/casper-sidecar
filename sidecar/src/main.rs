@@ -52,6 +52,13 @@ use crate::{
     },
 };
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct CmdLineArgs {
@@ -233,7 +240,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
@@ -601,7 +608,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     is_empty_database: bool,

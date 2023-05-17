@@ -39,7 +39,7 @@ pub(super) async fn run(
         Option<EventIndex>,
         SseData,
         Filter,
-        Option<serde_json::Value>,
+        Option<String>,
     )>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,

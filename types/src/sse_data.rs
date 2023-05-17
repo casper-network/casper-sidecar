@@ -41,11 +41,13 @@ pub(crate) fn to_error(msg: String) -> SseDataDeserializeError {
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.4.x compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
-pub fn deserialize(json_raw: &str) -> Result<SseData, SseDataDeserializeError> {
-    serde_json::from_str::<SseData>(json_raw).map_err(|err| {
-        let error_message = format!("Serde Error: {}", err);
-        to_error(error_message)
-    })
+pub fn deserialize(json_raw: &str) -> Result<(SseData, bool), SseDataDeserializeError> {
+    serde_json::from_str::<SseData>(json_raw)
+        .map(|el| (el, false))
+        .map_err(|err| {
+            let error_message = format!("Serde Error: {}", err);
+            to_error(error_message)
+        })
 }
 
 /// The "data" field of the events sent on the event stream to clients.
