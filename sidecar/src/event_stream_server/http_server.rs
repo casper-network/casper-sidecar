@@ -1,3 +1,10 @@
+use super::{
+    config::Config,
+    event_indexer::EventIndex,
+    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
+};
+use casper_event_types::{sse_data::SseData, Filter};
+use casper_types::ProtocolVersion;
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
@@ -10,15 +17,6 @@ use tokio::{
 };
 use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
-
-use casper_event_types::{sse_data::SseData, Filter};
-use casper_types::ProtocolVersion;
-
-use super::{
-    config::Config,
-    event_indexer::EventIndex,
-    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
-};
 
 /// Run the HTTP server.
 ///
@@ -39,7 +37,7 @@ pub(super) async fn run(
         Option<EventIndex>,
         SseData,
         Filter,
-        Option<serde_json::Value>,
+        Option<String>,
     )>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,

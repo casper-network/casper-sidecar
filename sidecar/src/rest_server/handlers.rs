@@ -1,12 +1,12 @@
-use anyhow::Error;
-use serde::Serialize;
-use warp::{http::StatusCode, Rejection, Reply};
-
 use super::errors::StorageError;
 use crate::{
     rest_server::errors::{InvalidParam, Unexpected},
     types::database::{DatabaseReadError, DatabaseReader},
 };
+use anyhow::Error;
+use casper_event_types::metrics::metrics_summary;
+use serde::Serialize;
+use warp::{http::StatusCode, Rejection, Reply};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,
@@ -115,6 +115,13 @@ where
         }
         Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
     }
+}
+
+pub async fn metrics_handler() -> Result<impl Reply, Rejection> {
+    let res_custom = metrics_summary()
+        .map_err(|err| warp::reject::custom(Unexpected(Error::msg(err.to_string()))))?;
+
+    Ok(res_custom)
 }
 
 fn check_hash_is_correct_format(hash: &str) -> Result<(), Rejection> {

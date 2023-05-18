@@ -23,24 +23,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Error};
-use clap::Parser;
-use futures::future::join_all;
-use hex_fmt::HexFmt;
-use tokio::{
-    sync::{
-        mpsc::{channel as mpsc_channel, Receiver, Sender},
-        Mutex,
-    },
-    task::JoinHandle,
-};
-use tracing::{debug, error, info, trace, warn};
-
-use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{sse_data::SseData, Filter};
-use casper_types::ProtocolVersion;
-use types::database::DatabaseReader;
-
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
@@ -51,6 +33,28 @@ use crate::{
         sse_events::*,
     },
 };
+use anyhow::{Context, Error};
+use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
+use casper_event_types::{metrics::register_metrics, sse_data::SseData, Filter};
+use casper_types::ProtocolVersion;
+use clap::Parser;
+use futures::future::join_all;
+use hex_fmt::HexFmt;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+use tokio::{
+    sync::{
+        mpsc::{channel as mpsc_channel, Receiver, Sender},
+        Mutex,
+    },
+    task::JoinHandle,
+};
+use tracing::{debug, error, info, trace, warn};
+use types::database::DatabaseReader;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -74,7 +78,7 @@ async fn main() -> Result<(), Error> {
     let config: Config = read_config(&path_to_config).context("Error constructing config")?;
 
     info!("Configuration loaded");
-
+    register_metrics();
     run(config).await
 }
 
@@ -96,7 +100,6 @@ async fn run(config: Config) -> Result<(), Error> {
             "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
         ));
     }
-
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
@@ -234,7 +237,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
@@ -602,7 +605,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     is_empty_database: bool,

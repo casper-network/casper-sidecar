@@ -1,12 +1,10 @@
-use std::convert::Infallible;
-
-use warp::Filter;
-
 use super::{
     errors::{handle_rejection, InvalidPath},
     handlers,
 };
 use crate::types::database::DatabaseReader;
+use std::convert::Infallible;
+use warp::Filter;
 
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.
@@ -22,6 +20,7 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(faults_by_public_key(db.clone()))
         .or(faults_by_era(db.clone()))
         .or(finality_signatures_by_block(db))
+        .or(metrics_filter())
         .recover(handle_rejection)
 }
 
@@ -221,6 +220,12 @@ fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_step_by_era)
+}
+
+fn metrics_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("metrics")
+        .and(warp::get())
+        .and_then(handlers::metrics_handler)
 }
 
 /// Helper function to extract data from a database

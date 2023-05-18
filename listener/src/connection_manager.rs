@@ -1,33 +1,28 @@
-use std::{
-    fmt::{self, Debug, Display, Formatter},
-    time::Duration,
-};
-
+use super::ConnectionTasks;
 use anyhow::Error;
 use bytes::Bytes;
-use casper_types::ProtocolVersion;
-use eventsource_stream::{Event, EventStream, Eventsource};
-use futures::StreamExt;
-use reqwest::Client;
-
-use serde_json::Value;
-use tokio_stream::Stream;
-use tracing::{debug, error, trace, warn};
-
-use reqwest::Url;
-use tokio::sync::mpsc::Sender;
-
-use super::ConnectionTasks;
 use casper_event_types::{
     sse_data::{deserialize, SseData, SseDataDeserializeError},
     Filter,
 };
+use casper_types::ProtocolVersion;
+use eventsource_stream::{Event, EventStream, Eventsource};
+use futures::StreamExt;
+use reqwest::Client;
+use reqwest::Url;
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    time::Duration,
+};
+use tokio::sync::mpsc::Sender;
+use tokio_stream::Stream;
+use tracing::{debug, error, trace, warn};
 
 pub struct SseEvent {
     pub id: u32,
     pub data: SseData,
     pub source: Url,
-    pub json_data: Option<serde_json::Value>,
+    pub json_data: Option<String>,
     pub inbound_filter: Filter,
 }
 
@@ -36,7 +31,7 @@ impl SseEvent {
         id: u32,
         data: SseData,
         mut source: Url,
-        json_data: Option<serde_json::Value>,
+        json_data: Option<String>,
         inbound_filter: Filter,
     ) -> Self {
         // This is to remove the path e.g. /events/main
@@ -62,7 +57,7 @@ impl Display for SseEvent {
     }
 }
 
-type DeserializationFn = fn(&str) -> Result<SseData, SseDataDeserializeError>;
+type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
 
 pub(super) struct ConnectionManager {
     bind_address: Url,
@@ -244,6 +239,7 @@ impl ConnectionManager {
                             // ApiVersion events have no ID so parsing "" to u32 will fail.
                             // This gate saves displaying a warning for a trivial error.
                             if !event.data.contains("ApiVersion") {
+                                count_error("event_without_id");
                                 warn!("Parse Error: {}", parse_error);
                             }
                         }
@@ -253,6 +249,7 @@ impl ConnectionManager {
                         .map_err(non_recoverable_error)?;
                 }
                 Err(stream_error) => {
+                    count_error("fetching_from_stream_failed");
                     let error_message = format!("EventStream Error: {:?}", stream_error);
                     error!(error_message);
                     return Err(non_recoverable_error(Error::msg(error_message)));
@@ -265,20 +262,27 @@ impl ConnectionManager {
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match (self.deserialization_fn)(&event.data) {
             Err(serde_error) => {
+                count_error("deserialization_error");
                 let error_message = format!("Serde Error: {}", serde_error);
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
-            Ok(sse_data) => {
-                let json_data: Value = serde_json::from_str(&event.data)?;
+            Ok((sse_data, needs_raw_json)) => {
+                let payload_size = event.data.len();
+                let mut raw_json_data = None;
+                if needs_raw_json {
+                    raw_json_data = Some(event.data);
+                }
+                self.observe_bytes(payload_size);
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
                     sse_data,
                     self.bind_address.clone(),
-                    Some(json_data),
+                    raw_json_data,
                     self.filter.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                    count_error("sending_upstream_failed");
                     Error::msg(
                         "Error when trying to send message in ConnectionManager#handle_event",
                     )
@@ -300,11 +304,13 @@ impl ConnectionManager {
             None => Err(recoverable_error(Error::msg("First event was empty"))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
+                let payload_size = event.data.len();
+                self.observe_bytes(payload_size);
                 if event.data.contains("ApiVersion") {
                     match deserialize(&event.data) {
                         //at this point we
                         // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
-                        Ok(SseData::ApiVersion(semver)) => {
+                        Ok((SseData::ApiVersion(semver), _)) => {
                             let sse_event = SseEvent::new(
                                 0,
                                 SseData::ApiVersion(semver),
@@ -313,21 +319,24 @@ impl ConnectionManager {
                                 self.filter.clone(),
                             );
                             self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                                count_error("api_version_sending_upstream_failed");
                                 non_recoverable_error(Error::msg(
                                 "Error when trying to send message in ConnectionManager#handle_event",
                             ))
                         })?
                         }
                         Ok(_sse_data) => {
+                            count_error("api_version_expected");
                             return Err(non_recoverable_error(Error::msg(
                                 "When trying to deserialize ApiVersion got other type of message",
-                            )))
+                            )));
                         }
                         Err(x) => {
+                            count_error("api_version_deserialization_failed");
                             return Err(non_recoverable_error(Error::msg(format!(
                             "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
                             x, event.data
-                        ))))
+                        ))));
                         }
                     }
                     Ok(stream)
@@ -336,6 +345,12 @@ impl ConnectionManager {
                 }
             }
         }
+    }
+
+    fn observe_bytes(&self, payload_size: usize) {
+        casper_event_types::metrics::RECEIVED_BYTES
+            .with_label_values(&[self.filter.to_string().as_str()])
+            .observe(payload_size as f64);
     }
 }
 
@@ -398,6 +413,12 @@ fn determine_deserializer(node_build_version: ProtocolVersion) -> Deserializatio
     }
 }
 
+fn count_error(reason: &str) {
+    casper_event_types::metrics::ERROR_COUNTS
+        .with_label_values(&["connection_manager", reason])
+        .inc();
+}
+
 #[cfg(test)]
 mod tests {
     use casper_event_types::{
@@ -413,7 +434,9 @@ mod tests {
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -446,7 +469,9 @@ mod tests {
         let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&legacy_block_added_raw).unwrap();
+        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -477,7 +502,9 @@ mod tests {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&block_added_raw).unwrap();
+        let tuple = (deserializer)(&block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(!tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {
@@ -507,7 +534,9 @@ mod tests {
         let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
         let protocol_version = ProtocolVersion::from_parts(1, 4, 10);
         let deserializer = determine_deserializer(protocol_version);
-        let sse_data = (deserializer)(&block_added_raw).unwrap();
+        let tuple = (deserializer)(&block_added_raw).unwrap();
+        let sse_data = tuple.0;
+        assert!(!tuple.1);
 
         assert!(matches!(sse_data, SseData::BlockAdded { .. }));
         if let SseData::BlockAdded {

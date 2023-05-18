@@ -1,3 +1,14 @@
+use super::*;
+use casper_types::{testing::TestRng, ProtocolVersion};
+use futures::{join, StreamExt};
+use http::StatusCode;
+use pretty_assertions::assert_eq;
+use reqwest::Response;
+use sse_server::{
+    DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
+    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
+    SSE_API_SIGNATURES_PATH as SIGS_PATH,
+};
 use std::{
     collections::HashMap,
     error::Error,
@@ -8,11 +19,6 @@ use std::{
     },
     time::Duration,
 };
-
-use futures::{join, StreamExt};
-use http::StatusCode;
-use pretty_assertions::assert_eq;
-use reqwest::Response;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -20,15 +26,6 @@ use tokio::{
     time,
 };
 use tracing::debug;
-
-use casper_types::{testing::TestRng, ProtocolVersion};
-
-use super::*;
-use sse_server::{
-    DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
-    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
-    SSE_API_SIGNATURES_PATH as SIGS_PATH,
-};
 
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
@@ -188,7 +185,7 @@ impl Drop for ServerStopper {
 struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
-    events: Vec<(SseData, Option<Value>)>,
+    events: Vec<(SseData, Option<String>)>,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -204,7 +201,7 @@ impl TestFixture {
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
         let mut deploys = HashMap::new();
-        let events: Vec<(SseData, Option<Value>)> = (0..EVENT_COUNT)
+        let events: Vec<(SseData, Option<String>)> = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
@@ -290,7 +287,13 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                server.broadcast(event.clone(), SseFilter::Main, maybe_json_data.clone());
+                server.broadcast(
+                    event.clone(),
+                    SseFilter::Main,
+                    maybe_json_data
+                        .as_ref()
+                        .map(|el| serde_json::from_str(el.as_str()).unwrap()),
+                );
                 server_behavior.sleep_if_required().await;
             }
 

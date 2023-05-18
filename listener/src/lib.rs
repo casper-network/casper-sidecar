@@ -1,8 +1,6 @@
 mod connection_manager;
 mod connection_tasks;
-
-use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
-
+use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
@@ -10,11 +8,10 @@ use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
+use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use url::Url;
-
-use crate::connection_manager::ConnectionManagerBuilder;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 
@@ -235,18 +232,31 @@ fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
         Some(build_version_value) if build_version_value.is_string() => {
             let raw = build_version_value
                 .as_str()
-                .context("build_version_value should be a string")?
+                .context("build_version_value should be a string")
+                .map_err(|e| {
+                    count_error("version_value_not_a_string");
+                    e
+                })?
                 .split('-')
                 .next()
-                .context("splitting build_version_value should always return at least one slice")?;
-            ProtocolVersion::from_str(raw)
-                .map_err(|error| anyhow!("failed parsing build version from '{}': {}", raw, error))
+                .context("splitting build_version_value should always return at least one slice")
+                .map_err(|e| {
+                    count_error("incomprehensible_build_version_form");
+                    e
+                })?;
+            ProtocolVersion::from_str(raw).map_err(|error| {
+                count_error("failed_parsing_protocol_version");
+                anyhow!("failed parsing build version from '{}': {}", raw, error)
+            })
         }
-        _ => Err(anyhow!(
-            "failed to get {} from status response {}",
-            BUILD_VERSION_KEY,
-            raw_response
-        )),
+        _ => {
+            count_error("failed_getting_status_from_payload");
+            Err(anyhow!(
+                "failed to get {} from status response {}",
+                BUILD_VERSION_KEY,
+                raw_response
+            ))
+        }
     }
 }
 
@@ -273,6 +283,12 @@ fn filters_from_version(build_version: ProtocolVersion) -> Vec<Filter> {
     }
 
     filters
+}
+
+fn count_error(reason: &str) {
+    casper_event_types::metrics::ERROR_COUNTS
+        .with_label_values(&["event_listener", reason])
+        .inc();
 }
 
 #[cfg(test)]

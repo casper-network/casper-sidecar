@@ -13,13 +13,15 @@ use std::sync::Arc;
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.0.0 compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
-pub fn deserialize(raw_data: &str) -> Result<super::sse_data::SseData, SseDataDeserializeError> {
+pub fn deserialize(
+    raw_data: &str,
+) -> Result<(super::sse_data::SseData, bool), SseDataDeserializeError> {
     serde_json::from_str::<SseData>(raw_data)
         .map_err(|err| {
             let error_message = format!("Serde Error: {}", err);
             to_error(error_message)
         })
-        .map(super::sse_data::SseData::from)
+        .map(|el| (super::sse_data::SseData::from(el), true))
 }
 
 /// The "data" field of the events sent on the event stream to clients.
