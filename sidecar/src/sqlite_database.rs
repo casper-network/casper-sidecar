@@ -3,13 +3,7 @@ mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
-
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-
+use crate::{sql::tables, types::config::SqliteConfig};
 use anyhow::{Context, Error};
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
@@ -17,8 +11,11 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
     ConnectOptions, Executor, Sqlite, Transaction,
 };
-
-use crate::{sql::tables, types::config::SqliteConfig};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";

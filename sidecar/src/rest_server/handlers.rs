@@ -1,13 +1,12 @@
-use anyhow::Error;
-use casper_event_types::metrics::metrics_summary;
-use serde::Serialize;
-use warp::{http::StatusCode, Rejection, Reply};
-
 use super::errors::StorageError;
 use crate::{
     rest_server::errors::{InvalidParam, Unexpected},
     types::database::{DatabaseReadError, DatabaseReader},
 };
+use anyhow::Error;
+use casper_event_types::metrics::metrics_summary;
+use serde::Serialize;
+use warp::{http::StatusCode, Rejection, Reply};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,

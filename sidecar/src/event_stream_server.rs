@@ -26,22 +26,18 @@ mod http_server;
 mod sse_server;
 #[cfg(test)]
 mod tests;
-
+use crate::utils::{resolve_address, ListeningError};
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+pub use config::Config;
+use event_indexer::{EventIndex, EventIndexer};
+use sse_server::ChannelsAndFilter;
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
-
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tracing::{info, warn};
 use warp::Filter;
-
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-
-use crate::utils::{resolve_address, ListeningError};
-pub use config::Config;
-use event_indexer::{EventIndex, EventIndexer};
-use sse_server::ChannelsAndFilter;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See

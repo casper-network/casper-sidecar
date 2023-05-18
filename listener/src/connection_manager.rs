@@ -1,26 +1,22 @@
-use std::{
-    fmt::{self, Debug, Display, Formatter},
-    time::Duration,
-};
-
+use super::ConnectionTasks;
 use anyhow::Error;
 use bytes::Bytes;
-use casper_types::ProtocolVersion;
-use eventsource_stream::{Event, EventStream, Eventsource};
-use futures::StreamExt;
-use reqwest::Client;
-
-use tokio_stream::Stream;
-use tracing::{debug, error, trace, warn};
-
-use reqwest::Url;
-use tokio::sync::mpsc::Sender;
-
-use super::ConnectionTasks;
 use casper_event_types::{
     sse_data::{deserialize, SseData, SseDataDeserializeError},
     Filter,
 };
+use casper_types::ProtocolVersion;
+use eventsource_stream::{Event, EventStream, Eventsource};
+use futures::StreamExt;
+use reqwest::Client;
+use reqwest::Url;
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    time::Duration,
+};
+use tokio::sync::mpsc::Sender;
+use tokio_stream::Stream;
+use tracing::{debug, error, trace, warn};
 
 pub struct SseEvent {
     pub id: u32,

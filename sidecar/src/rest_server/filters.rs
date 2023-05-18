@@ -1,12 +1,10 @@
-use std::convert::Infallible;
-
-use warp::Filter;
-
 use super::{
     errors::{handle_rejection, InvalidPath},
     handlers,
 };
 use crate::types::database::DatabaseReader;
+use std::convert::Infallible;
+use warp::Filter;
 
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.

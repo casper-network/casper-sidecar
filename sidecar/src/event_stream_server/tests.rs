@@ -1,3 +1,14 @@
+use super::*;
+use casper_types::{testing::TestRng, ProtocolVersion};
+use futures::{join, StreamExt};
+use http::StatusCode;
+use pretty_assertions::assert_eq;
+use reqwest::Response;
+use sse_server::{
+    DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
+    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
+    SSE_API_SIGNATURES_PATH as SIGS_PATH,
+};
 use std::{
     collections::HashMap,
     error::Error,
@@ -8,11 +19,6 @@ use std::{
     },
     time::Duration,
 };
-
-use futures::{join, StreamExt};
-use http::StatusCode;
-use pretty_assertions::assert_eq;
-use reqwest::Response;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -20,15 +26,6 @@ use tokio::{
     time,
 };
 use tracing::debug;
-
-use casper_types::{testing::TestRng, ProtocolVersion};
-
-use super::*;
-use sse_server::{
-    DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
-    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
-    SSE_API_SIGNATURES_PATH as SIGS_PATH,
-};
 
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.

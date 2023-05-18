@@ -1,3 +1,11 @@
+use super::SqliteDatabase;
+use crate::{
+    sql::{tables, tables::event_type::EventTypeId},
+    types::{
+        database::{DatabaseWriteError, DatabaseWriter},
+        sse_events::*,
+    },
+};
 use anyhow::Context;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
@@ -7,15 +15,6 @@ use sea_query::SqliteQueryBuilder;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use super::SqliteDatabase;
-use crate::{
-    sql::{tables, tables::event_type::EventTypeId},
-    types::{
-        database::{DatabaseWriteError, DatabaseWriter},
-        sse_events::*,
-    },
-};
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {

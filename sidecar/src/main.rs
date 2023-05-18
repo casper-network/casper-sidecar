@@ -23,24 +23,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Error};
-use clap::Parser;
-use futures::future::join_all;
-use hex_fmt::HexFmt;
-use tokio::{
-    sync::{
-        mpsc::{channel as mpsc_channel, Receiver, Sender},
-        Mutex,
-    },
-    task::JoinHandle,
-};
-use tracing::{debug, error, info, trace, warn};
-
-use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{metrics::register_metrics, sse_data::SseData, Filter};
-use casper_types::ProtocolVersion;
-use types::database::DatabaseReader;
-
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
@@ -51,9 +33,24 @@ use crate::{
         sse_events::*,
     },
 };
-
+use anyhow::{Context, Error};
+use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
+use casper_event_types::{metrics::register_metrics, sse_data::SseData, Filter};
+use casper_types::ProtocolVersion;
+use clap::Parser;
+use futures::future::join_all;
+use hex_fmt::HexFmt;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
+use tokio::{
+    sync::{
+        mpsc::{channel as mpsc_channel, Receiver, Sender},
+        Mutex,
+    },
+    task::JoinHandle,
+};
+use tracing::{debug, error, info, trace, warn};
+use types::database::DatabaseReader;
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]

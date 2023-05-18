@@ -1,10 +1,7 @@
 //! Types and functions used by the http server to manage the event-stream.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
-};
-
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
+use casper_types::ProtocolVersion;
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -12,6 +9,10 @@ use hyper::Body;
 use rand::Rng;
 use serde::Serialize;
 use serde_json::Value;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
     mpsc::{self, UnboundedSender},
@@ -28,9 +29,6 @@ use warp::{
     sse::{self, Event as WarpServerSentEvent},
     Filter, Reply,
 };
-
-use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
-use casper_types::ProtocolVersion;
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";

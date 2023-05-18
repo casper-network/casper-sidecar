@@ -1,8 +1,6 @@
 mod connection_manager;
 mod connection_tasks;
-
-use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
-
+use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
@@ -10,11 +8,10 @@ use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
+use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use url::Url;
-
-use crate::connection_manager::ConnectionManagerBuilder;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 
