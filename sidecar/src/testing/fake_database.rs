@@ -12,6 +12,7 @@ use casper_event_types::FinalitySignature as FinSig;
 use crate::types::{
     database::{
         DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
+        Migration,
     },
     sse_events::*,
 };
@@ -234,6 +235,11 @@ impl DatabaseWriter for FakeDatabase {
         data.insert(event_key, stringified_event);
         Ok(0)
     }
+
+    async fn execute_migration(&self, _migration: Migration) -> Result<(), DatabaseWriteError> {
+        //Nothing to do here
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -415,7 +421,11 @@ impl DatabaseReader for FakeDatabase {
     }
 
     async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
-        return Ok(0);
+        Ok(0)
+    }
+
+    async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError> {
+        Ok(None)
     }
 }
 

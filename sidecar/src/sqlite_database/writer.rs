@@ -2,7 +2,9 @@ use super::SqliteDatabase;
 use crate::{
     sql::{tables, tables::event_type::EventTypeId},
     types::{
-        database::{DatabaseWriteError, DatabaseWriter},
+        database::{
+            DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
+        },
         sse_events::*,
     },
 };
@@ -13,8 +15,12 @@ use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
-use std::time::{SystemTime, UNIX_EPOCH};
+use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::Mutex;
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -323,6 +329,70 @@ impl DatabaseWriter for SqliteDatabase {
 
         res
     }
+
+    async fn execute_migration(&self, migration: Migration) -> Result<(), DatabaseWriteError> {
+        let transaction = self.connection_pool.begin().await?;
+        let transaction_shared = Arc::new(Mutex::new(transaction));
+        let maybe_version = migration.get_version();
+        let res = {
+            let wrapper = SqliteTransactionWrapper {
+                transaction_mutex: transaction_shared.clone(),
+            };
+            let wrapper_arc = Arc::new(wrapper);
+            let sql = {
+                let sqls = materialize_statements(migration.get_migrations()?);
+                sqls.iter().join(";")
+            };
+            match wrapper_arc.clone().execute(sql.as_str()).await {
+                Ok(_) => {
+                    if let Some(script_executor) = migration.script_executor {
+                        script_executor.execute(wrapper_arc.clone()).await
+                    } else {
+                        Ok(())
+                    }
+                }
+                Err(err) => Err(err).map_err(std::convert::From::from),
+            }
+        };
+        let tx = Arc::try_unwrap(transaction_shared)
+        .expect("Failed unwrapping transaction before commit. It seems some code is storing Arcs to the transaction?")
+        .into_inner();
+        if res.is_ok() {
+            tx.commit().await?;
+        } else {
+            tx.rollback().await?
+        }
+        self.store_version_based_on_result(maybe_version, res).await
+    }
+}
+
+#[derive(Debug)]
+struct SqliteTransactionWrapper<'a> {
+    transaction_mutex: Arc<Mutex<Transaction<'a, Sqlite>>>,
+}
+
+#[async_trait]
+impl TransactionWrapper for SqliteTransactionWrapper<'_> {
+    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+        let mut lock = self.transaction_mutex.lock().await;
+        lock.execute(sql)
+            .await
+            .map(|_| ())
+            .map_err(DatabaseWriteError::from)
+    }
+}
+
+fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
+    wrappers
+        .iter()
+        .map(|wrapper| match wrapper {
+            StatementWrapper::TableCreateStatement(statement) => {
+                statement.to_string(SqliteQueryBuilder)
+            }
+            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+            StatementWrapper::Raw(sql) => sql.to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

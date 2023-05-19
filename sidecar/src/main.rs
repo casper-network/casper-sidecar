@@ -5,6 +5,7 @@ mod event_stream_server;
 mod integration_tests;
 #[cfg(test)]
 mod integration_tests_version_switch;
+mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
 mod rest_server;
