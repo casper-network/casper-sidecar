@@ -5,7 +5,7 @@ use warp::test::request;
 
 use super::filters;
 use crate::{
-    rest_server::requests::{Page, ListDeploysRequest},
+    rest_server::requests::{ListDeploysRequest, Page},
     testing::fake_database::FakeDatabase,
     types::{database::DeployAggregate, sse_events::*},
 };
@@ -483,7 +483,7 @@ async fn given_list_deploy_returns_error_should_return_error_response() {
     let request_path = format!("/{}?limit=5&offset=4", DEPLOYS);
     let response = request()
         .method("POST")
-        .json(&buildListDeploysRequest())
+        .json(&build_list_deploys_request())
         .path(&request_path)
         .reply(&api)
         .await;
@@ -510,7 +510,7 @@ async fn list_deploy_should_return_paged_data() {
     let request_path = format!("/{}", DEPLOYS);
     let response = request()
         .method("POST")
-        .json(&buildListDeploysRequest())
+        .json(&build_list_deploys_request())
         .path(&request_path)
         .reply(&api)
         .await;
@@ -546,7 +546,7 @@ pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> Depl
     }
 }
 
-pub fn buildListDeploysRequest() -> ListDeploysRequest {
+fn build_list_deploys_request() -> ListDeploysRequest {
     ListDeploysRequest {
         limit: Some(5),
         offset: Some(4),

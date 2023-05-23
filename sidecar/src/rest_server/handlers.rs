@@ -1,4 +1,7 @@
-use super::{errors::StorageError, requests::{ListDeploysRequest, Page}};
+use super::{
+    errors::StorageError,
+    requests::{ListDeploysRequest, Page},
+};
 use crate::{
     rest_server::errors::{InvalidParam, Unexpected},
     types::database::{DatabaseReadError, DatabaseReader, DeployAggregateFilter},
