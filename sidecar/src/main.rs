@@ -131,7 +131,6 @@ async fn run(config: Config) -> Result<(), Error> {
     }
 
     let path_to_database_dir = Path::new(&config.storage.storage_path);
-
     // Creates and initialises Sqlite database
     let sqlite_database =
         SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())

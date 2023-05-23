@@ -240,7 +240,7 @@ impl Deploy {
         let secret_key = SecretKey::random(rng);
         let account = PublicKey::from(&secret_key);
         let gas_price = rng.gen_range(1..100);
-        let body_hash = Digest::hash(&serialize_body(&payment, &session));
+        let body_hash = Digest::hash(serialize_body(&payment, &session));
         let dependencies_count = rng.gen_range(0..4);
         let dependencies = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(dependencies_count)
@@ -257,7 +257,7 @@ impl Deploy {
         };
 
         // Create the deploy hash and approval.
-        let hash = DeployHash::new(Digest::hash(&serialize_header(&header)));
+        let hash = DeployHash::new(Digest::hash(serialize_header(&header)));
         let approvals = iter::once(Approval::create(&hash, &secret_key)).collect();
 
         Deploy {

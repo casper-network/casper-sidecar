@@ -11,7 +11,7 @@ use warp::Filter;
 /// Return: the filtered data.
 pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = Infallible> + Clone {
     root_filter()
         .or(root_and_invalid_path())
         .or(block_filters(db.clone()))
@@ -28,7 +28,7 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: a message that an invalid path was provided.
 /// Example: curl http://127.0.0.1:18888
 /// {"code":400,"message":"Invalid request path provided"}
-fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn root_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path::end()
         .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
 }
@@ -38,7 +38,7 @@ fn root_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reject
 /// Example: curl http://127.0.0.1:18888/other
 /// {"code":400,"message":"Invalid request path provided"}
 fn root_and_invalid_path(
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path::param().and_then(|_param: String| async {
         Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath))
     })
@@ -49,7 +49,7 @@ fn root_and_invalid_path(
 /// Return: the filtered data.
 fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     latest_block(db.clone())
         .or(block_by_hash(db.clone()))
         .or(block_by_height(db))
@@ -60,7 +60,7 @@ fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: the filtered data.
 fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     deploy_by_hash(db.clone())
         .or(deploy_accepted_by_hash(db.clone()))
         .or(deploy_processed_by_hash(db.clone()))
@@ -74,7 +74,7 @@ fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/block
 fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("block")
         .and(warp::get())
         .and(with_db(db))
@@ -88,7 +88,7 @@ fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/block/c0292d8408e9d83d1aaceadfbeb25dc38cda36bcb91c3d403a0deb594dc3d63f
 fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("block" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -102,7 +102,7 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/block/630151
 fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("block" / u64)
         .and(warp::get())
         .and(with_db(db))
@@ -117,7 +117,7 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/deploy/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("deploy" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -131,7 +131,7 @@ fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/deploy/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("deploy" / "accepted" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -145,7 +145,7 @@ fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("deploy" / "expired" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -159,7 +159,7 @@ fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/deploy/processed/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
 fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("deploy" / "processed" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -173,7 +173,7 @@ fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("faults" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -187,7 +187,7 @@ fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/faults/2304
 fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("faults" / u64)
         .and(warp::get())
         .and(with_db(db))
@@ -201,7 +201,7 @@ fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/signatures/c0292d8408e9d83d1aaceadfbeb25dc38cda36bcb91c3d403a0deb594dc3d63f
 fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("signatures" / String)
         .and(warp::get())
         .and(with_db(db))
@@ -215,14 +215,14 @@ fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/step/2304
 fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("step" / u64)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_step_by_era)
 }
 
-fn metrics_filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn metrics_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("metrics")
         .and(warp::get())
         .and_then(handlers::metrics_handler)
