@@ -10,7 +10,7 @@ use warp::Filter;
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.
 /// Return: the filtered data.
-pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
+pub(crate) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = Infallible> + Clone {
     root_filter()

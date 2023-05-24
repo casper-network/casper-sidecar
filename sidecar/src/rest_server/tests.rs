@@ -1,20 +1,27 @@
 use casper_event_types::FinalitySignature as FinSig;
-use casper_types::{testing::TestRng, AsymmetricType, Timestamp};
+use casper_types::{testing::TestRng, AsymmetricType};
 use http::StatusCode;
 use warp::test::request;
 
 use super::filters;
 use crate::{
-    rest_server::requests::{ListDeploysRequest, Page},
+    rest_server::{
+        tests_helpers::{
+            build_list_deploys_request, random_deploy_aggregate, populate_with_blocks_and_deploys, DEPLOYS, list_deploys,
+        },
+    },
+    sqlite_database::SqliteDatabase,
     testing::fake_database::FakeDatabase,
-    types::{database::DeployAggregate, sse_events::*},
+    types::{
+        database::{DeployAggregate},
+        sse_events::*,
+    },
 };
 use std::str;
 
 // Path elements
 const BLOCK: &str = "block";
 const DEPLOY: &str = "deploy";
-const DEPLOYS: &str = "deploys";
 const FAULTS: &str = "faults";
 const SIGNATURES: &str = "signatures";
 const STEP: &str = "step";
@@ -28,6 +35,8 @@ const VALID_ERA: u64 = 2304;
 const VALID_PUBLIC_KEY: &str = "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
 const INVALID_HASH: &str = "not_a_hash";
 const INVALID_PUBLIC_KEY: &str = "not_a_public_key";
+
+const MAX_CONNECTIONS: u32 = 10;
 
 async fn should_respond_to_path_with(request_path: String, expected_status: StatusCode) {
     let database = FakeDatabase::new();
@@ -234,6 +243,39 @@ async fn deploy_expired_by_hash_should_return_valid_data() {
     assert_eq!(
         deploy_expired.hex_encoded_hash(),
         identifiers.deploy_expired_hash
+    );
+}
+
+#[tokio::test]
+async fn given_deploy_with_block_when_single_deploy_get_then_should_return_no_block_timestamp() {
+    /*
+       There was a requirement made by atchitects that the single `/deploy` endpoint doesn't return the block timestamp field
+     */
+    let mut test_rng = TestRng::new();
+    let database = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let (_, accepteds, _) = populate_with_blocks_and_deploys(&mut test_rng, &database, 1, 1).await;
+
+    let api = filters::combined_filters(database);
+
+    let request_path = format!(
+        "/{}/{}",
+        DEPLOY,
+        accepteds.get(0).unwrap().hex_encoded_hash()
+    );
+
+    let response = request().path(&request_path).reply(&api).await;
+
+    assert!(response.status().is_success());
+
+    let body = response.into_body();
+    let deploy = serde_json::from_slice::<DeployAggregate>(&body)
+        .expect("Error parsing DeployAggregate from response");
+
+    assert_eq!(
+        deploy.block_timestamp,
+        None
     );
 }
 
@@ -480,7 +522,8 @@ async fn should_have_correct_content_type() {
 async fn given_list_deploy_returns_error_should_return_error_response() {
     let database = FakeDatabase::new();
     let api = filters::combined_filters(database);
-    let request_path = format!("/{}?limit=5&offset=4", DEPLOYS);
+    
+    let request_path = format!("/{}", DEPLOYS);
     let response = request()
         .method("POST")
         .json(&build_list_deploys_request())
@@ -506,20 +549,7 @@ async fn list_deploy_should_return_paged_data() {
     let data_to_ret = (vec![aggregate1.clone(), aggregate2.clone()], 3);
     database.set_aggregates(data_to_ret);
     let api = filters::combined_filters(database);
-
-    let request_path = format!("/{}", DEPLOYS);
-    let response = request()
-        .method("POST")
-        .json(&build_list_deploys_request())
-        .path(&request_path)
-        .reply(&api)
-        .await;
-
-    assert!(response.status().is_success());
-
-    let body = response.into_body();
-    let page = serde_json::from_slice::<Page<DeployAggregate>>(&body)
-        .expect("Error parsing Page from response");
+    let page = list_deploys(&api, build_list_deploys_request()).await;
     assert_eq!(page.offset, 4);
     assert_eq!(page.limit, 5);
     assert_eq!(page.item_count, 3);
@@ -532,27 +562,4 @@ async fn list_deploy_should_return_paged_data() {
         page.data.get(1).unwrap().deploy_hash,
         aggregate2.deploy_hash
     );
-}
-
-pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> DeployAggregate {
-    let deploy_accepted = DeployAccepted::random(rng);
-    let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()));
-    DeployAggregate {
-        deploy_hash: deploy_accepted.deploy_hash().to_string(),
-        deploy_accepted: Some(deploy_accepted),
-        deploy_processed: Some(deploy_processed),
-        deploy_expired: false,
-        block_timestamp: Some(Timestamp::from(500)),
-    }
-}
-
-fn build_list_deploys_request() -> ListDeploysRequest {
-    ListDeploysRequest {
-        limit: Some(5),
-        offset: Some(4),
-        exclude_expired: None,
-        exclude_not_processed: None,
-        sort_column: None,
-        sort_order: None,
-    }
 }

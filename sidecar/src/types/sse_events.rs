@@ -32,6 +32,14 @@ pub struct BlockAdded {
 
 #[cfg(test)]
 impl BlockAdded {
+    pub fn random_with_data(rng: &mut TestRng, deploy_hashes: Vec<DeployHash>, height: u64) -> Self {
+        let block = JsonBlock::random_with_data(rng, Some(deploy_hashes), Some(height));
+        Self {
+            block_hash: block.hash,
+            block: Box::new(block),
+        }
+    }
+
     pub fn random(rng: &mut TestRng) -> Self {
         let block = JsonBlock::random(rng);
         Self {

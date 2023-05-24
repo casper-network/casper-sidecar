@@ -8,6 +8,8 @@ mod integration_tests_version_switch;
 mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
+#[cfg(test)]
+mod performance_test_rest_server;
 mod rest_server;
 mod sql;
 mod sqlite_database;

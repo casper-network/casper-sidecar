@@ -68,9 +68,6 @@ impl DatabaseReader for SqliteDatabase {
     ) -> Result<DeployAggregate, DatabaseReadError> {
         // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
         let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
-        let maybe_block = self.get_block_by_deploy_hash(hash).await?;
-        let maybe_block_timestamp = maybe_block.map(|block| block.block.header.timestamp);
-
         // However we handle the Err case for DeployProcessed explicitly as we don't want to return NotFound when we've got a DeployAccepted to return
         match self.get_deploy_processed_by_hash(hash).await {
             Ok(deploy_processed) => Ok(DeployAggregate {
@@ -78,7 +75,7 @@ impl DatabaseReader for SqliteDatabase {
                 deploy_accepted: Some(deploy_accepted),
                 deploy_processed: Some(deploy_processed),
                 deploy_expired: false,
-                block_timestamp: maybe_block_timestamp,
+                block_timestamp: None, // we don't want block_timestamp to be filled for single get
             }),
             Err(err) => {
                 // If the error is anything other than NotFound return the error.
@@ -91,7 +88,7 @@ impl DatabaseReader for SqliteDatabase {
                         deploy_accepted: Some(deploy_accepted),
                         deploy_processed: None,
                         deploy_expired: true,
-                        block_timestamp: maybe_block_timestamp,
+                        block_timestamp: None, // we don't want block_timestamp to be filled for single get
                     }),
                     Err(err) => {
                         // If the error is anything other than NotFound return the error.
@@ -103,7 +100,7 @@ impl DatabaseReader for SqliteDatabase {
                             deploy_accepted: Some(deploy_accepted),
                             deploy_processed: None,
                             deploy_expired: false,
-                            block_timestamp: maybe_block_timestamp,
+                            block_timestamp: None, // we don't want block_timestamp to be filled for single get
                         })
                     }
                 }
@@ -120,6 +117,7 @@ impl DatabaseReader for SqliteDatabase {
 
         let stmt = tables::deploy_aggregate::create_list_by_filter_query(filter)
             .to_string(SqliteQueryBuilder);
+        println!("UUUU {:?}", stmt);
         let data = sqlx::query_as::<_, DeployAggregateJoin>(&stmt)
             .fetch_all(db_connection)
             .await

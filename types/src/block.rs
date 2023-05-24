@@ -189,15 +189,22 @@ impl Block {
         &self.hash
     }
 
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random_with_data(
+        rng: &mut TestRng,
+        maybe_deploy_hashes: Option<Vec<DeployHash>>,
+        maybe_height: Option<u64>,
+    ) -> Self {
         const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
         // Create the block body.
         let proposer = PublicKey::random(rng);
-        let deploy_count = rng.gen_range(0..11);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
-            .take(deploy_count)
-            .collect();
+        let deploy_hashes = maybe_deploy_hashes.unwrap_or_else(|| {
+            let deploy_count = rng.gen_range(0..11);
+            iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
+                .take(deploy_count)
+                .collect()
+        });
+
         let transfer_count = rng.gen_range(0..11);
         let transfer_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(transfer_count)
@@ -251,7 +258,7 @@ impl Block {
         };
         let timestamp = Timestamp::now();
         let era = rng.gen_range(1..6);
-        let height = era * 10 + rng.gen_range(0..10);
+        let height = maybe_height.unwrap_or_else(|| era * 10 + rng.gen_range(0..10));
         let header = BlockHeader {
             parent_hash,
             state_root_hash,
@@ -272,6 +279,10 @@ impl Block {
         let hash = BlockHash(Digest::hash(serialized_header));
 
         Block { hash, header, body }
+    }
+
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self::random_with_data(rng, None, None)
     }
 }
 
@@ -545,6 +556,34 @@ pub mod json_compatibility {
         /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
         pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
             &self.body.transfer_hashes
+        }
+
+        pub fn random_with_data(
+            rng: &mut TestRng,
+            deploy_hashes: Option<Vec<DeployHash>>,
+            height: Option<u64>,
+        ) -> Self {
+            let block = Block::random_with_data(rng, deploy_hashes, height);
+            let proofs_count = rng.gen_range(0..11);
+            let proofs = iter::repeat_with(|| {
+                let finality_signature = FinalitySignature::random_for_block(
+                    block.hash,
+                    block.header.era_id.value(),
+                    rng,
+                );
+                JsonProof {
+                    public_key: finality_signature.public_key,
+                    signature: finality_signature.signature,
+                }
+            })
+            .take(proofs_count)
+            .collect();
+            JsonBlock {
+                hash: block.hash,
+                header: JsonBlockHeader::from(block.header.clone()),
+                body: JsonBlockBody::from(block.body),
+                proofs,
+            }
         }
 
         #[cfg(feature = "sse-data-testing")]

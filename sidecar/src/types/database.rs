@@ -267,6 +267,7 @@ pub struct DeployAggregate {
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
     pub(crate) deploy_expired: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) block_timestamp: Option<Timestamp>,
 }
 
