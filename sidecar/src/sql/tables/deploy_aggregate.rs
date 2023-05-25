@@ -98,11 +98,7 @@ fn decorate_with_joins(
     let accepted_table = Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash)
         .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
     let mut conditions = Cond::all();
-    let one_deploy_present = Cond::any()
-        .add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null())
-        .add(Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash).is_not_null())
-        .add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_not_null());
-    conditions = conditions.add(one_deploy_present);
+    conditions = conditions.add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null());
     if exclude_expired {
         conditions =
             conditions.add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_null())

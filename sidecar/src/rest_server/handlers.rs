@@ -63,7 +63,10 @@ pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
             limit,
             offset,
         });
-    format_or_reject_storage_result(list_result)
+    let final_result = format_or_reject_storage_result(list_result);
+    let millis = start.elapsed().as_millis();
+    metrics::LIST_DEPLOYS.with_label_values(&["aaa_full_response"]).observe(millis as f64);
+    final_result
 }
 
 pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -135,27 +138,11 @@ where
 {
     match storage_result {
         Ok(data) => {
+            let start = Instant::now();
             let json = warp::reply::json(&data);
-            Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
-        }
-        Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
-    }
-}
-
-fn format_or_reject_storage_result_x<T>(
-    storage_result: Result<T, DatabaseReadError>,
-    start: Instant,
-) -> Result<impl Reply, Rejection>
-where
-    T: Serialize,
-{
-    match storage_result {
-        Ok(data) => {
-            let json = warp::reply::json(&data);
-            let res = Ok(warp::reply::with_status(json, StatusCode::OK).into_response());
             let millis = start.elapsed().as_millis();
-            metrics::LIST_DEPLOYS.with_label_values(&["after_preparing_data"]).observe(millis as f64);
-            res
+            metrics::LIST_DEPLOYS.with_label_values(&["final_deserialization"]).observe(millis as f64);
+            Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
         }
         Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
     }

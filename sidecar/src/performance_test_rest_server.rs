@@ -13,7 +13,7 @@ use casper_types::testing::TestRng;
 const MAX_CONNECTIONS: u32 = 10;
 
 //Given 1000 deploys when listing deploys (sorted) in batches per 100 then 
-//average of requests should be below 200ms
+//average of requests should be below 50ms
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 #[ignore]
 async fn given_1000_deploys_when_listing_deploys_sorted_per_100_then_should_be() {
@@ -35,7 +35,7 @@ async fn given_1000_deploys_when_listing_deploys_sorted_per_100_then_should_be()
         assert_eq!(page.data.len(), 100);
     }
     let time_of_one_request = test_duration / n;
-    assert!(time_of_one_request < Duration::from_millis(200));
+    assert!(time_of_one_request < Duration::from_millis(50));
 }
 
 //Given 10000 deploys when listing deploys (sorted) in batches per 100 then 

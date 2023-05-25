@@ -127,10 +127,14 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         filter: DeployAggregateFilter,
     ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError> {
+        let start = Instant::now();
         let db_connection = &self.connection_pool;
         let item_count = count_aggregates(filter.clone(), db_connection).await?;
+        let millis = start.elapsed().as_millis();
+                metrics::LIST_DEPLOYS
+                    .with_label_values(&["counting_data"])
+                    .observe(millis as f64);
         let start = Instant::now();
-
         let stmt = tables::deploy_aggregate::create_list_by_filter_query(filter)
             .to_string(SqliteQueryBuilder);
         let data = sqlx::query_as::<_, DeployAggregateJoin>(&stmt)
@@ -140,13 +144,13 @@ impl DatabaseReader for SqliteDatabase {
             .and_then(|joins| {
                 let millis = start.elapsed().as_millis();
                 metrics::LIST_DEPLOYS
-                    .with_label_values(&["fetching_data"])
+                    .with_label_values(&["fetching_list_from_db"])
                     .observe(millis as f64);
-                let start = Instant::now();
                 let vector_of_deploy_aggregates = joins
                     .into_iter()
                     .map(to_deploy_aggregate)
                     .collect::<Result<Vec<_>, _>>()?;
+                let start = Instant::now();
                 let millis = start.elapsed().as_millis();
                 metrics::LIST_DEPLOYS
                     .with_label_values(&["deserializing_results"])

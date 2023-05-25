@@ -8,6 +8,7 @@ use casper_types::AsymmetricType;
 use rand::Rng;
 
 use casper_event_types::FinalitySignature as FinSig;
+use serde_json::value::to_raw_value;
 
 use crate::types::{
     database::{
@@ -291,15 +292,17 @@ impl DatabaseReader for FakeDatabase {
         return if let Some(accepted) = data.get(&accepted_key) {
             let deploy_accepted = serde_json::from_str::<DeployAccepted>(accepted)
                 .map_err(DatabaseReadError::Serialisation)?;
+            let deploy_accepted_raw = to_raw_value(&deploy_accepted).unwrap();
 
             if let Some(processed) = data.get(&processed_key) {
                 let deploy_processed = serde_json::from_str::<DeployProcessed>(processed)
                     .map_err(DatabaseReadError::Serialisation)?;
+                let deploy_processed_raw = to_raw_value(&deploy_processed).unwrap();
 
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: Some(deploy_processed),
+                    deploy_accepted: Some(deploy_accepted_raw),
+                    deploy_processed: Some(deploy_processed_raw),
                     deploy_expired: false,
                     block_timestamp: None,
                 })
@@ -313,7 +316,7 @@ impl DatabaseReader for FakeDatabase {
                 };
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
+                    deploy_accepted: Some(deploy_accepted_raw),
                     deploy_processed: None,
 
                     deploy_expired: deploy_expired.is_some(),
@@ -322,7 +325,7 @@ impl DatabaseReader for FakeDatabase {
             } else {
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
+                    deploy_accepted: Some(deploy_accepted_raw),
                     deploy_processed: None,
                     deploy_expired: false,
                     block_timestamp: None,
