@@ -19,12 +19,11 @@ use crate::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
 use casper_types::testing::TestRng;
 
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::value::{to_raw_value, RawValue};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -51,7 +50,7 @@ pub fn deserialize(json_raw: &str) -> Result<(SseData, bool), SseDataDeserialize
 }
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -90,7 +89,7 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effect: Box<RawValue>,
     },
     /// The node is about to shut down.
     Shutdown,
@@ -190,7 +189,7 @@ impl SseData {
         };
         SseData::Step {
             era_id: EraId::new(rng.gen()),
-            execution_effect,
+            execution_effect: to_raw_value(&execution_effect).unwrap(),
         }
     }
 }
