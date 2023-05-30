@@ -7,16 +7,19 @@ use crate::{types::{
     sse_events::{DeployAccepted, DeployProcessed, BlockAdded},
 }, rest_server::requests::Page};
 use casper_types::{Timestamp, testing::TestRng};
+use serde_json::value::to_raw_value;
 
 pub const DEPLOYS: &str = "deploys";
 
 pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> DeployAggregate {
-    let deploy_accepted = DeployAccepted::random(rng);
+    let deploy_accepted =DeployAccepted::random(rng);
+    let deploy_accepted_raw =  to_raw_value(&deploy_accepted).unwrap();
     let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()));
+    let deploy_processed_raw = to_raw_value(&deploy_processed).unwrap();
     DeployAggregate {
         deploy_hash: deploy_accepted.deploy_hash().to_string(),
-        deploy_accepted: Some(deploy_accepted),
-        deploy_processed: Some(deploy_processed),
+        deploy_accepted: Some(deploy_accepted_raw),
+        deploy_processed: Some(deploy_processed_raw),
         deploy_expired: false,
         block_timestamp: Some(Timestamp::from(500)),
     }

@@ -92,12 +92,17 @@ fn decorate_with_joins(
     select: &mut SelectStatement,
 ) -> &mut SelectStatement {
     let processed_table = Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash)
-        .equals(DeployAccepted::Table, DeployAccepted::DeployHash);
+        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
     let expired_table = Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash)
-        .equals(DeployAccepted::Table, DeployAccepted::DeployHash);
-    let block_deploys_table = Expr::tbl(BlockDeploys::Table, BlockDeploys::DeployHash)
-        .equals(DeployAccepted::Table, DeployAccepted::DeployHash);
+        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
+    let accepted_table = Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash)
+        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
     let mut conditions = Cond::all();
+    let one_deploy_present = Cond::any()
+        .add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null())
+        .add(Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash).is_not_null())
+        .add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_not_null());
+    conditions = conditions.add(one_deploy_present);
     if exclude_expired {
         conditions =
             conditions.add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_null())
@@ -107,10 +112,10 @@ fn decorate_with_joins(
             .add(Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash).is_not_null())
     }
     select
-        .from(DeployAccepted::Table)
+        .from(BlockDeploys::Table)
+        .join(JoinType::LeftJoin, DeployAccepted::Table, accepted_table)
         .join(JoinType::LeftJoin, DeployProcessed::Table, processed_table)
         .join(JoinType::LeftJoin, DeployExpired::Table, expired_table)
-        .join(JoinType::LeftJoin, BlockDeploys::Table, block_deploys_table)
         .cond_where(conditions)
 }
 

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::{
     errors::StorageError,
     requests::{ListDeploysRequest, Page},
@@ -7,7 +9,7 @@ use crate::{
     types::database::{DatabaseReadError, DatabaseReader, DeployAggregateFilter},
 };
 use anyhow::Error;
-use casper_event_types::metrics::metrics_summary;
+use casper_event_types::metrics::{metrics_summary, self};
 use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 
@@ -48,6 +50,7 @@ pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
     list_deploys_request: ListDeploysRequest,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
+    let start = Instant::now();
     list_deploys_request.validate()?;
     let offset = list_deploys_request.offset.unwrap_or(0);
     let limit = list_deploys_request.get_limit();
@@ -134,6 +137,25 @@ where
         Ok(data) => {
             let json = warp::reply::json(&data);
             Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
+        }
+        Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
+    }
+}
+
+fn format_or_reject_storage_result_x<T>(
+    storage_result: Result<T, DatabaseReadError>,
+    start: Instant,
+) -> Result<impl Reply, Rejection>
+where
+    T: Serialize,
+{
+    match storage_result {
+        Ok(data) => {
+            let json = warp::reply::json(&data);
+            let res = Ok(warp::reply::with_status(json, StatusCode::OK).into_response());
+            let millis = start.elapsed().as_millis();
+            metrics::LIST_DEPLOYS.with_label_values(&["after_preparing_data"]).observe(millis as f64);
+            res
         }
         Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),
     }

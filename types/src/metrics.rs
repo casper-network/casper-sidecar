@@ -3,6 +3,11 @@ use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 const BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
 ];
+
+const BUCKETS_2: &[f64; 9] = &[
+    5 as f64, 10 as f64, 30 as f64, 50 as f64, 100 as f64, 150 as f64, 300 as f64, 600 as f64, 800 as f64
+];
+
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
     pub static ref ERROR_COUNTS: IntCounterVec = IntCounterVec::new(
@@ -18,6 +23,15 @@ lazy_static! {
         &["filter"]
     )
     .expect("metric can be created");
+
+    pub static ref LIST_DEPLOYS: HistogramVec = HistogramVec::new(
+        HistogramOpts {
+            common_opts: Opts::new("time_of_stuff", "xxx"),
+            buckets: Vec::from(BUCKETS_2 as &'static [f64]),
+        },
+        &["operation"]
+    )
+    .expect("metric can be created");
 }
 
 pub fn register_metrics() {
@@ -26,6 +40,9 @@ pub fn register_metrics() {
         .expect("cannot register metric");
     REGISTRY
         .register(Box::new(RECEIVED_BYTES.clone()))
+        .expect("cannot register metric");
+    REGISTRY
+        .register(Box::new(LIST_DEPLOYS.clone()))
         .expect("cannot register metric");
 }
 pub struct MetricCollectionError {

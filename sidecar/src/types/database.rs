@@ -10,9 +10,7 @@ use casper_event_types::FinalitySignature as FinSig;
 use casper_types::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::types::sse_events::{
-    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
-};
+use serde_json::value::RawValue;
 use sqlx::FromRow;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
@@ -264,8 +262,8 @@ pub enum DatabaseReadError {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
-    pub(crate) deploy_accepted: Option<DeployAccepted>,
-    pub(crate) deploy_processed: Option<DeployProcessed>,
+    pub(crate) deploy_accepted: Option<Box<RawValue>>,
+    pub(crate) deploy_processed: Option<Box<RawValue>>,
     pub(crate) deploy_expired: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) block_timestamp: Option<Timestamp>,
