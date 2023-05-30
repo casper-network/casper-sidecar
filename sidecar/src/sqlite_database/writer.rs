@@ -27,7 +27,6 @@ use std::{
     collections::HashMap,
 };
 use tokio::sync::Mutex;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -403,7 +402,7 @@ impl DatabaseWriter for SqliteDatabase {
         let mut transaction = self.get_transaction().await?;
 
         let fetch_assemble_deploy_aggregate_orders_sql =
-            tables::assemble_deploy_aggregate::select_oldest_stmt(500)
+            tables::assemble_deploy_aggregate::select_oldest_stmt(1000)
                 .to_string(SqliteQueryBuilder);
         let (batch_update_sql, batch_delete_sql, number_of_ids) =
             sqlx::query_as::<_, AssembleDeployAggregateEntity>(
@@ -417,32 +416,34 @@ impl DatabaseWriter for SqliteDatabase {
                 let mut deduplicated_entities = HashMap::<String, Option<(String, u64)>>::new();
                 let deduplicated_entities_ref = &mut deduplicated_entities;
                 let ids = entities.iter().map(|el| el.get_id()).collect();
-                entities
-                    .iter()
-                    .for_each(|el| {
-                        let deploy_hash = el.deploy_hash();
-                        let block_data = el.get_block_data();
-                        match deduplicated_entities_ref.get(&deploy_hash) {
-                            None | Some(None) => {deduplicated_entities_ref.insert(deploy_hash, block_data);},
-                            Some(_) => {},
+                entities.iter().for_each(|el| {
+                    let deploy_hash = el.deploy_hash();
+                    let block_data = el.get_block_data();
+                    match deduplicated_entities_ref.get(&deploy_hash) {
+                        None | Some(None) => {
+                            deduplicated_entities_ref.insert(deploy_hash, block_data);
                         }
-                    });
-                let batch_update_sql = deduplicated_entities.into_iter().map(|(key, value)| {
-                    tables::deploy_aggregate::create_update_stmt(
-                        key,
-                        value,
-                    )
-                    .unwrap()
-                    .to_string(SqliteQueryBuilder)
-                }).join(";");
+                        Some(_) => {}
+                    }
+                });
+                let batch_update_sql = deduplicated_entities
+                    .into_iter()
+                    .map(|(key, value)| {
+                        tables::deploy_aggregate::create_update_stmt(key, value)
+                            .unwrap()
+                            .to_string(SqliteQueryBuilder)
+                    })
+                    .join(";");
                 let batch_delete_sql = tables::assemble_deploy_aggregate::delete_stmt(ids)
                     .to_string(SqliteQueryBuilder);
                 (batch_update_sql, batch_delete_sql, number_of_ids)
             })?;
-        transaction.execute(batch_update_sql.as_str()).await?;
-        transaction.execute(batch_delete_sql.as_str()).await?;
+        if number_of_ids > 0 {
+            transaction.execute(batch_update_sql.as_str()).await?;
+            transaction.execute(batch_delete_sql.as_str()).await?;
 
-        transaction.commit().await?;
+            transaction.commit().await?;
+        }
         Ok(number_of_ids)
     }
 }

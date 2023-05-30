@@ -7,7 +7,7 @@ use crate::{rest_server::{
         build_list_deploys_request_limit_offset,
         populate_with_blocks_and_deploys, list_deploys_raw, deserialize_deploys,
     },
-}};
+}, types::config::SqliteConfig};
 use casper_types::testing::TestRng;
 
 const MAX_CONNECTIONS: u32 = 10;
@@ -35,7 +35,7 @@ async fn given_1000_deploys_when_listing_deploys_sorted_per_100_then_should_be()
         assert_eq!(page.data.len(), 100);
     }
     let time_of_one_request = test_duration / n;
-    assert!(time_of_one_request < Duration::from_millis(50));
+    assert!(time_of_one_request < Duration::from_millis(20));
 }
 
 //Given 10000 deploys when listing deploys (sorted) in batches per 100 then 
@@ -44,17 +44,10 @@ async fn given_1000_deploys_when_listing_deploys_sorted_per_100_then_should_be()
 #[ignore]
 async fn given_10000_deploys_when_listing_deploys_sorted_per_100_then_should_be() {
     let mut test_rng = TestRng::new();
-    let p = Path::new("/home/jz/DEV/sources/storage");
-    let config = SqliteConfig {
-        file_name: String::from("sqlite_database.db3"),
-        max_connections_in_pool: 10,
-        wal_autocheckpointing_interval: 1000,
-    };
-    let database =
-        SqliteDatabase::new(p, config)
-            .await
-            .context("Error instantiating database").unwrap();
-    let (_, _, _) = populate_with_blocks_and_deploys(&mut test_rng, &database, 1, 1).await;
+    let database = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let (_, _, _) = populate_with_blocks_and_deploys(&mut test_rng, &database, 100, 100).await;
     let api = filters::combined_filters(database);
     let mut test_duration = Duration::new(0, 0);
     let n = 100;
@@ -65,10 +58,11 @@ async fn given_10000_deploys_when_listing_deploys_sorted_per_100_then_should_be(
         let one_elapsed = start.elapsed();
         test_duration = test_duration + one_elapsed;
         let page = deserialize_deploys(response);
-        //assert_eq!(page.item_count, 10000);
+        assert_eq!(page.item_count, 10000);
         assert_eq!(page.data.len(), 100);
     }
     let time_of_one_request = test_duration / n;
-    assert!(time_of_one_request < Duration::from_millis(200));
+    println!("Single request avg time: {:?}", time_of_one_request);
+    assert!(time_of_one_request < Duration::from_millis(40));
 }
 
