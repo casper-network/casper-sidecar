@@ -7,8 +7,13 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
+use casper_types::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use crate::types::sse_events::{
+    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
+};
+use sqlx::FromRow;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -196,6 +201,12 @@ pub trait DatabaseReader {
         &self,
         hash: &str,
     ) -> Result<DeployAggregate, DatabaseReadError>;
+    /// Returns tuple of: 1. vector of paginated DeployAggregates that match the filter and a total number of DeployAggregates that match the filter outside the pagination.
+    async fn list_deploy_aggregate(
+        &self,
+        filter: DeployAggregateFilter,
+    ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError>;
+
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     async fn get_deploy_accepted_by_hash(
         &self,
@@ -232,6 +243,11 @@ pub trait DatabaseReader {
 
     /// Gets the newest migration version.
     async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError>;
+
+    async fn get_block_by_deploy_hash(
+        &self,
+        deploy_hash: &str,
+    ) -> Result<Option<BlockAdded>, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.
@@ -251,6 +267,57 @@ pub struct DeployAggregate {
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
     pub(crate) deploy_expired: bool,
+    pub(crate) block_timestamp: Option<Timestamp>,
+}
+
+#[derive(Debug, Deserialize, FromRow)]
+pub struct DeployAggregateJoin {
+    #[sqlx(rename = "deploy_hash")]
+    pub(crate) deploy_hash: String,
+    #[sqlx(rename = "deploy_accepted_raw")]
+    pub(crate) deploy_accepted_raw: String,
+    #[sqlx(rename = "deploy_processed_raw")]
+    pub(crate) deploy_processed_raw: Option<String>,
+    #[sqlx(rename = "is_expired")]
+    pub(crate) is_expired: bool,
+    #[sqlx(rename = "block_timestamp")]
+    pub(crate) block_timestamp: Option<i64>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployAggregateSortColumn {
+    BlockTimestamp,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct DeployAggregateFilter {
+    pub exclude_expired: bool,
+    pub exclude_not_processed: bool,
+    pub limit: u32,
+    pub offset: u32,
+    pub sort_column: Option<DeployAggregateSortColumn>,
+    pub sort_order: Option<SortOrder>,
+}
+impl DeployAggregateFilter {
+    #[cfg(test)]
+    pub(crate) fn paginate(offset: u32, limit: u32) -> DeployAggregateFilter {
+        DeployAggregateFilter {
+            exclude_expired: false,
+            exclude_not_processed: false,
+            limit,
+            offset,
+            sort_column: None,
+            sort_order: None,
+        }
+    }
 }
 
 #[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs

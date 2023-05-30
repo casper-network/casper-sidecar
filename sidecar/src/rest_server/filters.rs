@@ -1,10 +1,11 @@
 use super::{
     errors::{handle_rejection, InvalidPath},
     handlers,
+    requests::ListDeploysRequest,
 };
+use warp::Filter;
 use crate::types::database::DatabaseReader;
 use std::convert::Infallible;
-use warp::Filter;
 
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.
@@ -64,7 +65,8 @@ fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
     deploy_by_hash(db.clone())
         .or(deploy_accepted_by_hash(db.clone()))
         .or(deploy_processed_by_hash(db.clone()))
-        .or(deploy_expired_by_hash(db))
+        .or(deploy_expired_by_hash(db.clone()))
+        .or(list_deploys(db))
 }
 
 /// Return information about the last block added to the linear chain.
@@ -122,6 +124,21 @@ fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_deploy_by_hash)
+}
+
+/// Return a paginated list of deploy aggregates. See also #deploy_by_hash
+/// Input: the database with data to be filtered.
+/// Return: data about the deploy specified.
+/// Path URL: deploy
+/// Example: curl http://127.0.0.1:18888/deploy?exclude_expired=true&exclude_not_processed=true&limit=20&offset=150&sort_column=block_timestamp&sort_order=asc
+pub(crate) fn list_deploys<Db: DatabaseReader + Clone + Send + Sync>(
+    db: Db,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("deploys")
+        .and(warp::post())
+        .and(list_deploy_request_body())
+        .and(with_db(db))
+        .and_then(handlers::list_deploys)
 }
 
 /// Return information about an accepted deploy given its deploy hash.
@@ -233,4 +250,9 @@ fn with_db<Db: DatabaseReader + Clone + Send>(
     db: Db,
 ) -> impl Filter<Extract = (Db,), Error = Infallible> + Clone {
     warp::any().map(move || db.clone())
+}
+
+fn list_deploy_request_body(
+) -> impl Filter<Extract = (ListDeploysRequest,), Error = warp::Rejection> + Clone {
+    warp::body::content_length_limit(1024 * 32).and(warp::body::json())
 }

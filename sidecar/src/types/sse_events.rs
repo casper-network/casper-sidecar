@@ -27,7 +27,7 @@ pub struct ApiVersion(ProtocolVersion);
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
 pub struct BlockAdded {
     block_hash: BlockHash,
-    block: Box<JsonBlock>,
+    pub(crate) block: Box<JsonBlock>,
 }
 
 #[cfg(test)]

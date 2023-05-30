@@ -1,17 +1,20 @@
 use casper_event_types::FinalitySignature as FinSig;
-use casper_types::AsymmetricType;
+use casper_types::{testing::TestRng, AsymmetricType, Timestamp};
 use http::StatusCode;
 use warp::test::request;
 
 use super::filters;
 use crate::{
+    rest_server::requests::{Page, ListDeploysRequest},
     testing::fake_database::FakeDatabase,
     types::{database::DeployAggregate, sse_events::*},
 };
+use std::str;
 
 // Path elements
 const BLOCK: &str = "block";
 const DEPLOY: &str = "deploy";
+const DEPLOYS: &str = "deploys";
 const FAULTS: &str = "faults";
 const SIGNATURES: &str = "signatures";
 const STEP: &str = "step";
@@ -471,4 +474,85 @@ async fn should_have_correct_content_type() {
             .expect("Error extracting 'content-type' from headers"),
         "application/json"
     );
+}
+
+#[tokio::test]
+async fn given_list_deploy_returns_error_should_return_error_response() {
+    let database = FakeDatabase::new();
+    let api = filters::combined_filters(database);
+    let request_path = format!("/{}?limit=5&offset=4", DEPLOYS);
+    let response = request()
+        .method("POST")
+        .json(&buildListDeploysRequest())
+        .path(&request_path)
+        .reply(&api)
+        .await;
+
+    assert!(!response.status().is_success());
+    let body = response.into_body();
+    let json_raw = str::from_utf8(&body).unwrap();
+    assert_eq!(
+        json_raw,
+        "{\"code\":404,\"message\":\"Query returned no results\"}"
+    );
+}
+
+#[tokio::test]
+async fn list_deploy_should_return_paged_data() {
+    let mut database = FakeDatabase::new();
+    let mut rng = TestRng::new();
+    let aggregate1 = random_deploy_aggregate(&mut rng);
+    let aggregate2 = random_deploy_aggregate(&mut rng);
+    let data_to_ret = (vec![aggregate1.clone(), aggregate2.clone()], 3);
+    database.set_aggregates(data_to_ret);
+    let api = filters::combined_filters(database);
+
+    let request_path = format!("/{}", DEPLOYS);
+    let response = request()
+        .method("POST")
+        .json(&buildListDeploysRequest())
+        .path(&request_path)
+        .reply(&api)
+        .await;
+
+    assert!(response.status().is_success());
+
+    let body = response.into_body();
+    let page = serde_json::from_slice::<Page<DeployAggregate>>(&body)
+        .expect("Error parsing Page from response");
+    assert_eq!(page.offset, 4);
+    assert_eq!(page.limit, 5);
+    assert_eq!(page.item_count, 3);
+    assert_eq!(page.data.len(), 2);
+    assert_eq!(
+        page.data.get(0).unwrap().deploy_hash,
+        aggregate1.deploy_hash
+    );
+    assert_eq!(
+        page.data.get(1).unwrap().deploy_hash,
+        aggregate2.deploy_hash
+    );
+}
+
+pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> DeployAggregate {
+    let deploy_accepted = DeployAccepted::random(rng);
+    let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()));
+    DeployAggregate {
+        deploy_hash: deploy_accepted.deploy_hash().to_string(),
+        deploy_accepted: Some(deploy_accepted),
+        deploy_processed: Some(deploy_processed),
+        deploy_expired: false,
+        block_timestamp: Some(Timestamp::from(500)),
+    }
+}
+
+pub fn buildListDeploysRequest() -> ListDeploysRequest {
+    ListDeploysRequest {
+        limit: Some(5),
+        offset: Some(4),
+        exclude_expired: None,
+        exclude_not_processed: None,
+        sort_column: None,
+        sort_order: None,
+    }
 }

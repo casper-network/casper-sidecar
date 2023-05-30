@@ -12,7 +12,7 @@ use casper_event_types::FinalitySignature as FinSig;
 use crate::types::{
     database::{
         DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
-        Migration,
+        Migration, DeployAggregateFilter,
     },
     sse_events::*,
 };
@@ -20,13 +20,19 @@ use crate::types::{
 #[derive(Clone)]
 pub struct FakeDatabase {
     data: Arc<Mutex<HashMap<String, String>>>,
+    aggregates_page: Option<(Vec<DeployAggregate>, u32)>,
 }
 
 impl FakeDatabase {
     pub(crate) fn new() -> Self {
         Self {
             data: Arc::new(Mutex::new(HashMap::new())),
+            aggregates_page: None,
         }
+    }
+
+    pub(crate) fn set_aggregates(&mut self, input: (Vec<DeployAggregate>, u32)) {
+        self.aggregates_page = Some(input);
     }
 
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
@@ -295,6 +301,7 @@ impl DatabaseReader for FakeDatabase {
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: Some(deploy_processed),
                     deploy_expired: false,
+                    block_timestamp: None,
                 })
             } else if data.get(&expired_key).is_some() {
                 let deploy_expired = match data.get(&expired_key) {
@@ -308,7 +315,9 @@ impl DatabaseReader for FakeDatabase {
                     deploy_hash: hash.to_string(),
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
+
                     deploy_expired: deploy_expired.is_some(),
+                    block_timestamp: None,
                 })
             } else {
                 Ok(DeployAggregate {
@@ -316,6 +325,7 @@ impl DatabaseReader for FakeDatabase {
                     deploy_accepted: Some(deploy_accepted),
                     deploy_processed: None,
                     deploy_expired: false,
+                    block_timestamp: None,
                 })
             }
         } else {
@@ -425,6 +435,23 @@ impl DatabaseReader for FakeDatabase {
     }
 
     async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError> {
+        Ok(None)
+    }
+
+    async fn list_deploy_aggregate(
+        &self,
+        _filter: DeployAggregateFilter,
+    ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError> {
+        match self.aggregates_page.clone() {
+            None => Err(DatabaseReadError::NotFound),
+            Some(p) => Ok(p),
+        }
+    }
+
+    async fn get_block_by_deploy_hash(
+        &self,
+        _deploy_hash: &str,
+    ) -> Result<Option<BlockAdded>, DatabaseReadError> {
         Ok(None)
     }
 }

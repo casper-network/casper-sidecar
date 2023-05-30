@@ -55,8 +55,12 @@ impl DatabaseWriter for SqliteDatabase {
             event_log_id,
         )?
         .to_string(SqliteQueryBuilder);
-
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        let mut insert_sqls = vec![insert_stmt];
+        if let Some(insert_deploy_hashes_sql) = build_deploy_inserts_stmt(block_added)? {
+            insert_sqls.push(insert_deploy_hashes_sql)
+        }
+        let sql = insert_sqls.iter().join(";");
+        let res = handle_sqlite_result(transaction.execute(sql.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -411,4 +415,32 @@ fn handle_sqlite_result(
     result
         .map(|ok_query_result| ok_query_result.rows_affected() as usize)
         .map_err(std::convert::From::from)
+}
+
+fn build_deploy_inserts_stmt(
+    block_added: BlockAdded,
+) -> Result<Option<String>, DatabaseWriteError> {
+    let encoded_hash = block_added.hex_encoded_hash();
+    let deploy_hashes = block_added.block.deploy_hashes();
+    let transfer_hashes = block_added.block.transfer_hashes();
+    let timestamp = block_added.block.header.timestamp;
+    let block_timestamp_in_utc_millis = timestamp.millis();
+
+    let all_deploy_hashes: Vec<String> = deploy_hashes
+        .iter()
+        .chain(transfer_hashes.iter())
+        .map(|hash_struct| hex::encode(hash_struct.inner()))
+        .collect();
+    let handle_deploy_hashes_sql;
+    if !all_deploy_hashes.is_empty() {
+        handle_deploy_hashes_sql = tables::block_deploys::create_insert_stmt(
+            all_deploy_hashes,
+            encoded_hash,
+            block_timestamp_in_utc_millis,
+        )?
+        .to_string(SqliteQueryBuilder);
+        Ok(Some(handle_deploy_hashes_sql))
+    } else {
+        Ok(None)
+    }
 }

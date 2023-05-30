@@ -1,6 +1,7 @@
 mod errors;
 mod filters;
 mod handlers;
+mod requests;
 #[cfg(test)]
 mod tests;
 

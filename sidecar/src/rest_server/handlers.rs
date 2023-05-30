@@ -1,7 +1,7 @@
-use super::errors::StorageError;
+use super::{errors::StorageError, requests::{ListDeploysRequest, Page}};
 use crate::{
     rest_server::errors::{InvalidParam, Unexpected},
-    types::database::{DatabaseReadError, DatabaseReader},
+    types::database::{DatabaseReadError, DatabaseReader, DeployAggregateFilter},
 };
 use anyhow::Error;
 use casper_event_types::metrics::metrics_summary;
@@ -39,6 +39,25 @@ pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(
     check_hash_is_correct_format(&hash)?;
     let db_result = db.get_deploy_aggregate_by_hash(&hash).await;
     format_or_reject_storage_result(db_result)
+}
+
+pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
+    list_deploys_request: ListDeploysRequest,
+    db: Db,
+) -> Result<impl Reply, Rejection> {
+    list_deploys_request.validate()?;
+    let offset = list_deploys_request.offset.unwrap_or(0);
+    let limit = list_deploys_request.get_limit();
+    let list_result = db
+        .list_deploy_aggregate(build_deploy_aggregate_filter(list_deploys_request))
+        .await
+        .map(|tuple| Page {
+            data: tuple.0,
+            item_count: tuple.1,
+            limit,
+            offset,
+        });
+    format_or_reject_storage_result(list_result)
 }
 
 pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
@@ -148,4 +167,20 @@ fn check_public_key_is_correct_format(public_key_hex: &str) -> Result<(), Reject
         )))));
     }
     Ok(())
+}
+
+fn build_deploy_aggregate_filter(request: ListDeploysRequest) -> DeployAggregateFilter {
+    let offset = request.offset.unwrap_or(0);
+    let limit = request.get_limit();
+    let exclude_not_processed = request.exclude_not_processed.unwrap_or(false);
+    let exclude_expired = request.exclude_expired.unwrap_or(false);
+
+    DeployAggregateFilter {
+        exclude_expired,
+        exclude_not_processed,
+        limit,
+        offset,
+        sort_column: request.sort_column,
+        sort_order: request.sort_order,
+    }
 }
