@@ -1,6 +1,11 @@
 use super::SqliteDatabase;
 use crate::{
-    sql::{tables, tables::event_type::EventTypeId},
+    sql::{
+        tables,
+        tables::{
+            assemble_deploy_aggregate::AssembleDeployAggregateEntity, event_type::EventTypeId,
+        },
+    },
     types::{
         database::{
             DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
@@ -8,7 +13,7 @@ use crate::{
         sse_events::*,
     },
 };
-use anyhow::Context;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
 use itertools::Itertools;
@@ -19,8 +24,10 @@ use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
+    collections::HashMap,
 };
 use tokio::sync::Mutex;
+use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -55,7 +62,7 @@ impl DatabaseWriter for SqliteDatabase {
             event_log_id,
         )?
         .to_string(SqliteQueryBuilder);
-        
+
         let deploy_hashes = block_added.block.deploy_hashes();
         let transfer_hashes = block_added.block.transfer_hashes();
         let all_deploy_hashes = deploy_hashes
@@ -68,7 +75,12 @@ impl DatabaseWriter for SqliteDatabase {
         let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             for hash in all_deploy_hashes {
-                self.update_deploy_aggregate(&mut transaction, hash, block_hash.clone(), timestamp).await?;
+                self.save_assemble_deploy_aggregate_command(
+                    &mut transaction,
+                    hash,
+                    Some((block_hash.clone(), timestamp)),
+                )
+                .await?;
             }
             transaction.commit().await?;
         }
@@ -113,10 +125,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_deploy_aggregate(&mut transaction, encoded_hash.clone(), json)
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
                 .await?;
-           // self.update_deploy_aggregate(&mut transaction, encoded_hash)
-           //     .await?;
             transaction.commit().await?;
         }
         res
@@ -156,8 +166,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-           // self.update_deploy_aggregate(&mut transaction, encoded_hash)
-           //     .await?;
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -197,8 +207,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            //self.update_deploy_aggregate(&mut transaction, encoded_hash)
-            //    .await?;
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -388,6 +398,53 @@ impl DatabaseWriter for SqliteDatabase {
         }
         self.store_version_based_on_result(maybe_version, res).await
     }
+
+    async fn update_pending_deploy_aggregates(&self) -> Result<usize, DatabaseWriteError> {
+        let mut transaction = self.get_transaction().await?;
+
+        let fetch_assemble_deploy_aggregate_orders_sql =
+            tables::assemble_deploy_aggregate::select_oldest_stmt(500)
+                .to_string(SqliteQueryBuilder);
+        let (batch_update_sql, batch_delete_sql, number_of_ids) =
+            sqlx::query_as::<_, AssembleDeployAggregateEntity>(
+                &fetch_assemble_deploy_aggregate_orders_sql,
+            )
+            .fetch_all(&mut transaction)
+            .await
+            .map_err(|sql_err| DatabaseWriteError::Unhandled(Error::from(sql_err)))
+            .map(|entities| {
+                let number_of_ids = entities.len();
+                let mut deduplicated_entities = HashMap::<String, Option<(String, u64)>>::new();
+                let deduplicated_entities_ref = &mut deduplicated_entities;
+                let ids = entities.iter().map(|el| el.get_id()).collect();
+                entities
+                    .iter()
+                    .for_each(|el| {
+                        let deploy_hash = el.deploy_hash();
+                        let block_data = el.get_block_data();
+                        match deduplicated_entities_ref.get(&deploy_hash) {
+                            None | Some(None) => {deduplicated_entities_ref.insert(deploy_hash, block_data);},
+                            Some(_) => {},
+                        }
+                    });
+                let batch_update_sql = deduplicated_entities.into_iter().map(|(key, value)| {
+                    tables::deploy_aggregate::create_update_stmt(
+                        key,
+                        value,
+                    )
+                    .unwrap()
+                    .to_string(SqliteQueryBuilder)
+                }).join(";");
+                let batch_delete_sql = tables::assemble_deploy_aggregate::delete_stmt(ids)
+                    .to_string(SqliteQueryBuilder);
+                (batch_update_sql, batch_delete_sql, number_of_ids)
+            })?;
+        transaction.execute(batch_update_sql.as_str()).await?;
+        transaction.execute(batch_delete_sql.as_str()).await?;
+
+        transaction.commit().await?;
+        Ok(number_of_ids)
+    }
 }
 
 #[derive(Debug)]
@@ -404,19 +461,6 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
             .map(|_| ())
             .map_err(DatabaseWriteError::from)
     }
-}
-
-fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
-    wrappers
-        .iter()
-        .map(|wrapper| match wrapper {
-            StatementWrapper::TableCreateStatement(statement) => {
-                statement.to_string(SqliteQueryBuilder)
-            }
-            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
-            StatementWrapper::Raw(sql) => sql.to_string(),
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -436,3 +480,16 @@ fn handle_sqlite_result(
         .map(|ok_query_result| ok_query_result.rows_affected() as usize)
         .map_err(std::convert::From::from)
 }
+
+fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
+    wrappers
+        .iter()
+        .map(|wrapper| match wrapper {
+            StatementWrapper::TableCreateStatement(statement) => {
+                statement.to_string(SqliteQueryBuilder)
+            }
+            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+            StatementWrapper::Raw(sql) => sql.to_string(),
+        })
+        .collect()
+    }

@@ -1,3 +1,4 @@
+pub mod assemble_deploy_aggregate;
 pub mod block_added;
 pub mod deploy_accepted;
 pub mod deploy_aggregate;

@@ -115,10 +115,6 @@ impl DeployProcessed {
     pub fn hex_encoded_hash(&self) -> String {
         hex::encode(self.deploy_hash.inner())
     }
-
-    pub fn hex_encoded_block_hash(&self) -> String {
-        hex::encode(self.block_hash.inner())
-    }
 }
 
 /// The given deploy has expired.

@@ -10,8 +10,8 @@ use crate::{
     sql::tables::{self},
     types::{
         config::SqliteConfig,
-        database::{DatabaseReadError, DatabaseReader, DatabaseWriteError},
-        sse_events::{DeployAccepted, DeployExpired, DeployProcessed, BlockAdded},
+        database::{DatabaseReadError, DatabaseWriteError},
+        sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed},
     },
 };
 use anyhow::{Context, Error};
@@ -22,7 +22,7 @@ use sqlx::Row;
 use serde::Deserialize;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow},
-    ConnectOptions, Executor, Row, Sqlite, SqliteExecutor, Transaction,
+    ConnectOptions, Executor, Row, Sqlite, Transaction,
 };
 use std::{
     fs,
@@ -144,6 +144,8 @@ impl SqliteDatabase {
             tables::event_type::create_table_stmt(),
             tables::event_log::create_table_stmt(),
             tables::deploy_event::create_table_stmt(),
+            tables::deploy_aggregate::create_table_stmt(),
+            tables::assemble_deploy_aggregate::create_table_stmt(),
             // Raw Event tables
             tables::block_added::create_table_stmt(),
             tables::deploy_accepted::create_table_stmt(),
@@ -153,7 +155,6 @@ impl SqliteDatabase {
             tables::finality_signature::create_table_stmt(),
             tables::step::create_table_stmt(),
             tables::shutdown::create_table_stmt(),
-            tables::deploy_aggregate::create_table_stmt(),
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -165,6 +166,8 @@ impl SqliteDatabase {
         let create_indexes_stmts = vec![
             tables::deploy_aggregate::create_deploy_aggregate_block_hash_timestamp_index(),
             tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
+            tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_block_hash_index(),
+            tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_deploy_hash_index(),
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -204,80 +207,24 @@ impl SqliteDatabase {
             .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
     }
 
-    async fn update_deploy_aggregate<'c>(
+    async fn save_assemble_deploy_aggregate_command<'c>(
         &self,
         transaction: &mut Transaction<'c, Sqlite>,
         deploy_hash: String,
-        block_hash: String,
-        timestamp: u64,
+        block_data: Option<(String, u64)>,
     ) -> Result<(), DatabaseWriteError> {
-        let stmt = format!("UPDATE \"DeployAggregate\" SET \"deploy_expired_raw\"=(SELECT \"raw\" FROM \"DeployExpired\" WHERE \"deploy_hash\"='{}'), \"deploy_processed_raw\"=(SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\"='{}'), \"block_hash\"='{}', \"block_timestamp_utc_epoch_millis\"={} WHERE \"deploy_hash\"='{}'",
-    deploy_hash, deploy_hash, block_hash, timestamp, deploy_hash);
-        transaction
-            .execute(stmt.as_str())
-            .await
-            .map(|_| ())
-            .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
-    }
-
-    async fn update_deploy_aggregate_2<'c>(
-        &self,
-        transaction: &mut Transaction<'c, Sqlite>,
-        deploy_hash: String,
-    ) -> Result<(), DatabaseWriteError> {
-        let deploy_accepted = self
-            .get_deploy_accepted_inner_by_hash(transaction, deploy_hash.as_str())
-            .await;
-        if deploy_accepted.is_err() {
-            //This means no DeployAccepted was observed, no point in proceeding since we build aggregates only for deploys with DeployAccepted present
-            return Ok(());
-        }
-        let maybe_deploy_processed = match self
-            .get_deploy_processed_inner_by_hash(transaction, deploy_hash.as_str())
-            .await
-        {
-            Ok(deploy_processed) => Some(deploy_processed),
-            Err(_) => None,
-        };
-        let maybe_deploy_expired_raw = match self
-            .get_deploy_expired_inner_by_hash(transaction, deploy_hash.as_str())
-            .await
-        {
-            Ok(deploy_expired) => Some(serde_json::to_string(&deploy_expired).unwrap()),
-            Err(_) => None,
-        };
-
-        let (maybe_deploy_processed_raw, maybe_block) = match maybe_deploy_processed {
+        let (maybe_block_hash, maybe_timestamp) = match block_data {
             None => (None, None),
-            Some(deploy_processed) => {
-                let block_hash = deploy_processed.hex_encoded_block_hash();
-                let maybe_block = match self.get_block_inner_by_hash(transaction, block_hash.as_str()).await {
-                    Ok(block) => Some(block),
-                    Err(_) => None,
-                };
-                let deploy_processed_raw = Some(serde_json::to_string(&deploy_processed).unwrap());
-                (deploy_processed_raw, maybe_block)
-            }
+            Some((block_hash, block_timestamp)) => (Some(block_hash), Some(block_timestamp)),
         };
-        let maybe_block_data =
-            maybe_block.map(|b| (b.hex_encoded_hash(), b.block.header.timestamp.millis()));
-        if maybe_deploy_processed_raw.is_none()
-            && maybe_deploy_expired_raw.is_none()
-            && maybe_block_data.is_none()
-        {
-            //This means that there already is a DeployAccepted but no other Deploy related events were observed, in this case we do nothing
-            // since creating the aggregate happens in a different function
-            return Ok(());
-        }
-        let stmt = tables::deploy_aggregate::create_update_stmt(
+        let insert_stmt = tables::assemble_deploy_aggregate::create_insert_stmt(
             deploy_hash,
-            maybe_deploy_processed_raw,
-            maybe_deploy_expired_raw,
-            maybe_block_data,
-        )
+            maybe_block_hash,
+            maybe_timestamp,
+        )?
         .to_string(SqliteQueryBuilder);
         transaction
-            .execute(stmt.as_str())
+            .execute(insert_stmt.as_str())
             .await
             .map(|_| ())
             .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
@@ -337,7 +284,7 @@ impl SqliteDatabase {
         let stmt = tables::block_added::create_get_by_hash_stmt(hash.to_string())
             .to_string(SqliteQueryBuilder);
 
-            executor
+        executor
             .fetch_optional(stmt.as_str())
             .await
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))

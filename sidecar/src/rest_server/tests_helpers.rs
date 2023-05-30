@@ -1,19 +1,24 @@
+use std::time::Instant;
+
 use super::requests::ListDeploysRequest;
+use crate::{
+    rest_server::requests::Page,
+    types::{
+        database::{DatabaseWriter, DeployAggregate, DeployAggregateSortColumn},
+        sse_events::{BlockAdded, DeployAccepted, DeployProcessed},
+    },
+};
 use bytes::Bytes;
+use casper_types::{testing::TestRng, Timestamp};
 use http::Response;
-use warp::{Filter, test::request, Reply};
-use crate::{types::{
-    database::{DeployAggregate, DatabaseWriter, DeployAggregateSortColumn},
-    sse_events::{DeployAccepted, DeployProcessed, BlockAdded},
-}, rest_server::requests::Page};
-use casper_types::{Timestamp, testing::TestRng};
 use serde_json::value::to_raw_value;
+use warp::{test::request, Filter, Reply};
 
 pub const DEPLOYS: &str = "deploys";
 
 pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> DeployAggregate {
-    let deploy_accepted =DeployAccepted::random(rng);
-    let deploy_accepted_raw =  to_raw_value(&deploy_accepted).unwrap();
+    let deploy_accepted = DeployAccepted::random(rng);
+    let deploy_accepted_raw = to_raw_value(&deploy_accepted).unwrap();
     let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()), None);
     let deploy_processed_raw = to_raw_value(&deploy_processed).unwrap();
     DeployAggregate {
@@ -24,7 +29,10 @@ pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> Depl
         block_timestamp: Some(Timestamp::from(500)),
     }
 }
-pub fn build_list_deploys_request_limit_offset(limit: Option<u32>, offset: Option<u32>) -> ListDeploysRequest {
+pub fn build_list_deploys_request_limit_offset(
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> ListDeploysRequest {
     ListDeploysRequest {
         limit,
         offset,
@@ -45,22 +53,39 @@ pub async fn populate_with_blocks_and_deploys(
     number_of_blocks: usize,
     deploys_in_block: usize,
 ) -> (Vec<BlockAdded>, Vec<DeployAccepted>, Vec<DeployProcessed>) {
-    let (blocks, accepteds, processeds) = generate_blocks_and_deploys(test_rng, number_of_blocks, deploys_in_block);
+    let (blocks, accepteds, processeds) =
+        generate_blocks_and_deploys(test_rng, number_of_blocks, deploys_in_block);
     let event_source_address = String::from("localhost");
     let mut event_id = 0;
     for accepted in accepteds.iter() {
-        database.save_deploy_accepted(accepted.clone(), event_id, event_source_address.clone()).await.unwrap();
+        database
+            .save_deploy_accepted(accepted.clone(), event_id, event_source_address.clone())
+            .await
+            .unwrap();
         event_id += 1;
     }
     for processed in processeds.iter() {
-        database.save_deploy_processed(processed.clone(), event_id, event_source_address.clone()).await.unwrap();
+        database
+            .save_deploy_processed(processed.clone(), event_id, event_source_address.clone())
+            .await
+            .unwrap();
         event_id += 1;
     }
     for block in blocks.iter() {
-        database.save_block_added(block.clone(), event_id, event_source_address.clone()).await.unwrap();
+        database
+            .save_block_added(block.clone(), event_id, event_source_address.clone())
+            .await
+            .unwrap();
         event_id += 1;
     }
-    return (blocks, accepteds, processeds)
+    let mut count = 1;
+    let start = Instant::now();
+    while count > 0 {
+        count = database.update_pending_deploy_aggregates().await.unwrap()
+    }
+    let duration = start.elapsed();
+    println!("done to update pending deploys duration: {}", duration.as_secs_f32());
+    return (blocks, accepteds, processeds);
 }
 
 pub fn generate_blocks_and_deploys(
@@ -78,10 +103,12 @@ pub fn generate_blocks_and_deploys(
             let accepted = DeployAccepted::random(test_rng);
             deploy_hashes_for_block.push(accepted.deploy_hash());
             accepted_deploys.push(accepted);
-            
-            
         }
-        let block = BlockAdded::random_with_data(test_rng, deploy_hashes_for_block.clone(), block_number as u64);
+        let block = BlockAdded::random_with_data(
+            test_rng,
+            deploy_hashes_for_block.clone(),
+            block_number as u64,
+        );
         let block_hash = block.block.hash.clone();
         blocks.push(block);
         for i in 0..deploys_in_block {
@@ -89,13 +116,12 @@ pub fn generate_blocks_and_deploys(
             let processed = DeployProcessed::random(test_rng, Some(deploy_hash), Some(block_hash));
             processed_deploys.push(processed);
         }
-        
-        
     }
     (blocks, accepted_deploys, processed_deploys)
 }
 
-pub async fn list_deploys_raw<F>(api: &F, list_request_data: ListDeploysRequest) -> Response<Bytes> where 
+pub async fn list_deploys_raw<F>(api: &F, list_request_data: ListDeploysRequest) -> Response<Bytes>
+where
     F: Filter + 'static,
     F::Extract: Reply + Send,
 {
@@ -110,13 +136,16 @@ pub async fn list_deploys_raw<F>(api: &F, list_request_data: ListDeploysRequest)
     response
 }
 
-pub fn deserialize_deploys(response :Response<Bytes>) -> Page<DeployAggregate> {
+pub fn deserialize_deploys(response: Response<Bytes>) -> Page<DeployAggregate> {
     let body = response.into_body();
     serde_json::from_slice::<Page<DeployAggregate>>(&body)
         .expect("Error parsing Page from response")
-
 }
-pub async fn list_deploys<F>(api: &F, list_request_data: ListDeploysRequest) -> Page<DeployAggregate> where 
+pub async fn list_deploys<F>(
+    api: &F,
+    list_request_data: ListDeploysRequest,
+) -> Page<DeployAggregate>
+where
     F: Filter + 'static,
     F::Extract: Reply + Send,
 {

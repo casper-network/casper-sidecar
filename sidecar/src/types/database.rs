@@ -109,6 +109,12 @@ pub trait DatabaseWriter {
     ///
     /// * `migration`: migration to execute
     async fn execute_migration(&self, migration: Migration) -> Result<(), DatabaseWriteError>;
+
+    /// Syncs deploy aggregates
+    async fn update_pending_deploy_aggregates(
+        &self,
+    ) -> Result<usize, DatabaseWriteError>;
+
 }
 
 #[derive(Debug)]
