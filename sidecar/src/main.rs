@@ -5,6 +5,7 @@ mod event_stream_server;
 mod integration_tests;
 #[cfg(test)]
 mod integration_tests_version_switch;
+mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
 mod rest_server;
@@ -130,7 +131,6 @@ async fn run(config: Config) -> Result<(), Error> {
     }
 
     let path_to_database_dir = Path::new(&config.storage.storage_path);
-
     // Creates and initialises Sqlite database
     let sqlite_database =
         SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())

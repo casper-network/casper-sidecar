@@ -214,7 +214,7 @@ impl Block {
         let serialized_body = body
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        let body_hash = Digest::hash(&serialized_body);
+        let body_hash = Digest::hash(serialized_body);
         let random_bit = rng.gen();
         let accumulated_seed = Digest::random(rng);
         let is_switch = rng.gen_bool(0.1);
@@ -269,7 +269,7 @@ impl Block {
         let serialized_header = header
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        let hash = BlockHash(Digest::hash(&serialized_header));
+        let hash = BlockHash(Digest::hash(serialized_header));
 
         Block { hash, header, body }
     }

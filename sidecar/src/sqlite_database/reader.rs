@@ -254,6 +254,19 @@ impl DatabaseReader for SqliteDatabase {
                     .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))
             })
     }
+
+    async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let stmt =
+            tables::migration::create_get_newest_migration_stmt().to_string(SqliteQueryBuilder);
+
+        db_connection
+            .fetch_optional(stmt.as_str())
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(parse_migration_row)
+    }
 }
 
 fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
@@ -316,4 +329,21 @@ fn parse_finality_signatures_from_rows(
         return Err(DatabaseReadError::NotFound);
     }
     Ok(finality_signatures)
+}
+
+fn parse_migration_row(
+    maybe_row: Option<SqliteRow>,
+) -> Result<Option<(u32, bool)>, DatabaseReadError> {
+    match maybe_row {
+        None => Ok(None),
+        Some(row) => {
+            let version = row
+                .try_get::<u32, &str>("version")
+                .map_err(|err| wrap_query_error(err.into()))?;
+            let is_success = row
+                .try_get::<bool, &str>("is_success")
+                .map_err(|err| wrap_query_error(err.into()))?;
+            Ok(Some((version, is_success)))
+        }
+    }
 }

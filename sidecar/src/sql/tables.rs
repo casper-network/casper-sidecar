@@ -7,5 +7,6 @@ pub mod event_log;
 pub mod event_type;
 pub mod fault;
 pub mod finality_signature;
+pub mod migration;
 pub mod shutdown;
 pub mod step;
