@@ -7,7 +7,7 @@ use super::filters;
 use crate::{
     rest_server::{
         tests_helpers::{
-            build_list_deploys_request, random_deploy_aggregate, populate_with_blocks_and_deploys, DEPLOYS, list_deploys,
+            build_list_deploys_request, random_deploy_aggregate, populate_with_blocks_and_deploys, DEPLOYS, list_deploys, build_list_deploys_request_limit_offset,
         },
     },
     sqlite_database::SqliteDatabase,
@@ -547,9 +547,10 @@ async fn list_deploy_should_return_paged_data() {
     let aggregate1 = random_deploy_aggregate(&mut rng);
     let aggregate2 = random_deploy_aggregate(&mut rng);
     let data_to_ret = (vec![aggregate1.clone(), aggregate2.clone()], 3);
+    let request_payload = build_list_deploys_request_limit_offset(Some(5), Some(4));
     database.set_aggregates(data_to_ret);
     let api = filters::combined_filters(database);
-    let page = list_deploys(&api, build_list_deploys_request()).await;
+    let page = list_deploys(&api,request_payload).await;
     assert_eq!(page.offset, 4);
     assert_eq!(page.limit, 5);
     assert_eq!(page.item_count, 3);

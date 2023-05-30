@@ -46,23 +46,28 @@ impl AssembleDeployAggregateEntity {
         }
     }
 }
+
+/// Creates insert statement for a command to assemble aggregate DeployAggregate.
+/// The maybe_block_data is a option tuple of blocks deploy hash and its creation timestamp.
 pub fn create_insert_stmt(
     deploy_hash: String,
-    block_hash: Option<String>,
-    block_timestamp: Option<u64>,
+    maybe_block_data: Option<(String, u64)>,
 ) -> SqResult<InsertStatement> {
+    let mut cols = vec![AssembleDeployAggregate::DeployHash,];
+    let mut vals = vec![deploy_hash.into()];
+    match maybe_block_data {
+        Some((block_hash, timestamp)) => {
+            cols.push(AssembleDeployAggregate::BlockHash);
+            cols.push( AssembleDeployAggregate::BlockTimestamp);
+            vals.push(block_hash.into());
+            vals.push(timestamp.into());
+        },
+        _ => {}
+    }
     Ok(Query::insert()
         .into_table(AssembleDeployAggregate::Table)
-        .columns([
-            AssembleDeployAggregate::DeployHash,
-            AssembleDeployAggregate::BlockHash,
-            AssembleDeployAggregate::BlockTimestamp,
-        ])
-        .values(vec![
-            deploy_hash.into(),
-            block_hash.into(),
-            block_timestamp.into(),
-        ])?
+        .columns(cols)
+        .values(vals)?
         .to_owned())
 }
 
@@ -174,8 +179,7 @@ pub fn delete_stmt_test() {
 pub fn create_insert_stmt_test() {
     let sql = create_insert_stmt(
         "abc".to_string(),
-        Some("block_hash_1".to_string()),
-        Some(555),
+        Some(("block_hash_1".to_string(), 555)),
     )
     .unwrap()
     .to_string(SqliteQueryBuilder);
@@ -189,7 +193,6 @@ pub fn create_insert_stmt_test() {
 pub fn create_insert_stmt_without_block_data_test() {
     let sql = create_insert_stmt(
         "abc".to_string(),
-        None,
         None,
     )
     .unwrap()

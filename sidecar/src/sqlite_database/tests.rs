@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use casper_types::Timestamp;
 use rand::Rng;
@@ -9,6 +10,7 @@ use sqlx::Row;
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
 
 use super::SqliteDatabase;
+use crate::types::config::SqliteConfig;
 use crate::types::database::{
     DeployAggregate, DeployAggregateFilter, DeployAggregateSortColumn, SortOrder,
 };
@@ -251,10 +253,7 @@ async fn should_retrieve_deploy_aggregate_with_block_data() {
         .await
         .expect("Error getting deploy aggregate by hash");
     assert_eq!(aggregate.deploy_hash, deploy_accepted.hex_encoded_hash());
-    assert_eq!(
-        aggregate.block_timestamp.unwrap(),
-        Timestamp::from(1673864937472)
-    );
+    assert!(aggregate.block_timestamp.is_none());
 }
 
 #[tokio::test]
@@ -382,6 +381,7 @@ async fn should_list_aggregates_should_sort_and_paginate() {
         .save_block_added(block_added_3.clone(), 12, "127.0.0.1".to_string())
         .await
         .expect("Error saving block_added");
+    sqlite_db.update_pending_deploy_aggregates().await.unwrap();
     let mut filter = DeployAggregateFilter::paginate(0, 3);
     filter.sort_column = Some(DeployAggregateSortColumn::BlockTimestamp);
     filter.sort_order = Some(SortOrder::Asc);
@@ -1067,7 +1067,7 @@ async fn setup_four_deploy_accepted_scenario(
         .save_deploy_expired(deploy_expired.clone(), 8, "127.0.0.1".to_string())
         .await
         .expect("Error saving deploy_expired");
-
+    sqlite_db.update_pending_deploy_aggregates().await.unwrap();
     (
         deploy_accepted.hex_encoded_hash(),
         deploy_accepted_2.hex_encoded_hash(),

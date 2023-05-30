@@ -7,7 +7,7 @@ use crate::{rest_server::{
         build_list_deploys_request_limit_offset,
         populate_with_blocks_and_deploys, list_deploys_raw, deserialize_deploys,
     },
-}, types::config::SqliteConfig};
+}};
 use casper_types::testing::TestRng;
 
 const MAX_CONNECTIONS: u32 = 10;

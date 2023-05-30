@@ -16,11 +16,9 @@ use anyhow::Error;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
-#[cfg(test)]
-use sqlx::Row;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow},
-    ConnectOptions, Executor, Sqlite, Transaction,
+    ConnectOptions, Executor, Row, Sqlite, Transaction,
 };
 use std::{
     fs,
@@ -140,36 +138,15 @@ impl SqliteDatabase {
         self.connection_pool.begin().await
     }
 
-    async fn save_deploy_aggregate<'c>(
-        &self,
-        transaction: &mut Transaction<'c, Sqlite>,
-        deploy_hash: String,
-        raw_deploy_accepted: String,
-    ) -> Result<(), DatabaseWriteError> {
-        let insert_stmt =
-            tables::deploy_aggregate::create_insert_stmt(deploy_hash, raw_deploy_accepted)?
-                .to_string(SqliteQueryBuilder);
-        transaction
-            .execute(insert_stmt.as_str())
-            .await
-            .map(|_| ())
-            .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
-    }
-
     async fn save_assemble_deploy_aggregate_command<'c>(
         &self,
         transaction: &mut Transaction<'c, Sqlite>,
         deploy_hash: String,
-        block_data: Option<(String, u64)>,
+        maybe_block_data: Option<(String, u64)>,
     ) -> Result<(), DatabaseWriteError> {
-        let (maybe_block_hash, maybe_timestamp) = match block_data {
-            None => (None, None),
-            Some((block_hash, block_timestamp)) => (Some(block_hash), Some(block_timestamp)),
-        };
         let insert_stmt = tables::assemble_deploy_aggregate::create_insert_stmt(
             deploy_hash,
-            maybe_block_hash,
-            maybe_timestamp,
+            maybe_block_data,
         )?
         .to_string(SqliteQueryBuilder);
         transaction
