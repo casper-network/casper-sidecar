@@ -5,8 +5,6 @@ mod tests;
 mod writer;
 use crate::{
     migration_manager::MigrationManager,
-    sql::tables,
-    types::{config::SqliteConfig, database::DatabaseWriteError},
     sql::tables::{self},
     types::{
         config::SqliteConfig,
@@ -14,15 +12,15 @@ use crate::{
         sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed},
     },
 };
-use anyhow::{Context, Error};
+use anyhow::Error;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
+use serde::Deserialize;
 #[cfg(test)]
 use sqlx::Row;
-use serde::Deserialize;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow},
-    ConnectOptions, Executor, Row, Sqlite, Transaction,
+    ConnectOptions, Executor, Sqlite, Transaction,
 };
 use std::{
     fs,

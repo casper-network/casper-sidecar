@@ -248,10 +248,6 @@ pub trait DatabaseReader {
     /// Gets the newest migration version.
     async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError>;
 
-    async fn get_block_by_deploy_hash(
-        &self,
-        deploy_hash: &str,
-    ) -> Result<Option<BlockAdded>, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.
