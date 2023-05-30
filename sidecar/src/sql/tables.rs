@@ -1,5 +1,4 @@
 pub mod block_added;
-pub mod block_deploys;
 pub mod deploy_accepted;
 pub mod deploy_aggregate;
 pub mod deploy_event;

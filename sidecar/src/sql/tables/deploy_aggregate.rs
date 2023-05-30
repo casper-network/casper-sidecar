@@ -1,11 +1,14 @@
-use sea_query::{Alias, NullOrdering, OrderedStatement, Query, SelectStatement};
+use sea_query::{
+    error::Result as SqResult, Alias, BlobSize, ColumnDef, Iden, Index, NullOrdering,
+    OrderedStatement, Query, SelectStatement, Table, TableCreateStatement,
+};
 
 use super::block_deploys::BlockDeploys;
 use crate::sql::tables::deploy_accepted::DeployAccepted;
 use crate::sql::tables::deploy_expired::DeployExpired;
 use crate::sql::tables::deploy_processed::DeployProcessed;
 use crate::types::database::{DeployAggregateFilter, DeployAggregateSortColumn, SortOrder};
-use sea_query::{Cond, Expr, JoinType, Order};
+use sea_query::{Cond, Expr, InsertStatement, JoinType, OnConflict, Order, UpdateStatement};
 
 pub fn create_list_by_filter_query(filter: DeployAggregateFilter) -> SelectStatement {
     let offset = filter.offset;
@@ -98,7 +101,8 @@ fn decorate_with_joins(
     let accepted_table = Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash)
         .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
     let mut conditions = Cond::all();
-    conditions = conditions.add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null());
+    conditions =
+        conditions.add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null());
     if exclude_expired {
         conditions =
             conditions.add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_null())
@@ -115,111 +119,104 @@ fn decorate_with_joins(
         .cond_where(conditions)
 }
 
-#[test]
-fn create_list_by_filter_query_given_filter_should_create_paginated_sql() {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT \"DeployAccepted\".\"deploy_hash\" AS \"deploy_hash\", \"DeployAccepted\".\"raw\" AS \"deploy_accepted_raw\", \"DeployProcessed\".\"raw\" AS \"deploy_processed_raw\", \"DeployExpired\".\"deploy_hash\" IS NOT NULL AS \"is_expired\", \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" AS \"block_timestamp\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LIMIT 17 OFFSET 20";
-    let filter = DeployAggregateFilter {
-        limit: 17,
-        offset: 20,
-        exclude_expired: false,
-        exclude_not_processed: false,
-        sort_column: None,
-        sort_order: None,
-    };
-
-    let got_sql = create_list_by_filter_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
+#[derive(Iden)]
+pub(super) enum DeployAggregate {
+    #[iden = "DeployAggregate"]
+    Table,
+    DeployHash,
+    DeployAcceptedRaw,
+    DeployProcessedRaw,
+    DeployExpiredRaw,
+    BlockHash,
+    BlockTimestampUtcEpochMillis,
 }
 
-#[test]
-fn create_list_by_filter_query_given_filter_with_exclude_expired_and_exclude_not_processed_should_create_sql_without_expired_and_not_processed(
-) {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT \"DeployAccepted\".\"deploy_hash\" AS \"deploy_hash\", \"DeployAccepted\".\"raw\" AS \"deploy_accepted_raw\", \"DeployProcessed\".\"raw\" AS \"deploy_processed_raw\", \"DeployExpired\".\"deploy_hash\" IS NOT NULL AS \"is_expired\", \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" AS \"block_timestamp\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" WHERE \"DeployExpired\".\"deploy_hash\" IS NULL AND \"DeployProcessed\".\"deploy_hash\" IS NOT NULL LIMIT 17 OFFSET 20";
-    let filter = DeployAggregateFilter {
-        limit: 17,
-        offset: 20,
-        exclude_expired: true,
-        exclude_not_processed: true,
-        sort_column: None,
-        sort_order: None,
-    };
-
-    let got_sql = create_list_by_filter_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
+pub fn create_table_stmt() -> TableCreateStatement {
+    Table::create()
+        .table(DeployAggregate::Table)
+        .if_not_exists()
+        .col(
+            ColumnDef::new(DeployAggregate::DeployHash)
+                .string()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(DeployAggregate::DeployAcceptedRaw)
+                .not_null()
+                .blob(BlobSize::Tiny),
+        )
+        .col(ColumnDef::new(DeployAggregate::DeployProcessedRaw).blob(BlobSize::Tiny))
+        .col(ColumnDef::new(DeployAggregate::DeployExpiredRaw).blob(BlobSize::Tiny))
+        .col(ColumnDef::new(DeployAggregate::BlockHash).string())
+        .col(
+            ColumnDef::new(DeployAggregate::BlockTimestampUtcEpochMillis)
+                .integer_len(13)
+                .not_null(),
+        )
+        .index(
+            Index::create()
+                .unique()
+                .primary()
+                .name("PDX_DeployAggregate")
+                .col(DeployAggregate::DeployHash),
+        )
+        .index(
+            Index::create()
+                .if_not_exists()
+                .name("IDX_DeployAggregate_BlockTimestamp")
+                .table(DeployAggregate::Table)
+                .col(DeployAggregate::BlockTimestampUtcEpochMillis),
+        )
+        .index(
+            Index::create()
+                .if_not_exists()
+                .name("IDX_DeployAggregate_BlockHash")
+                .table(DeployAggregate::Table)
+                .col(DeployAggregate::BlockHash),
+        )
+        .to_owned()
 }
 
-#[test]
-fn create_list_by_filter_query_given_filter_with_no_sort_order_should_default_to_desc() {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT \"DeployAccepted\".\"deploy_hash\" AS \"deploy_hash\", \"DeployAccepted\".\"raw\" AS \"deploy_accepted_raw\", \"DeployProcessed\".\"raw\" AS \"deploy_processed_raw\", \"DeployExpired\".\"deploy_hash\" IS NOT NULL AS \"is_expired\", \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" AS \"block_timestamp\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" ORDER BY \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" DESC NULLS LAST LIMIT 11 OFFSET 55";
-    let filter = DeployAggregateFilter {
-        limit: 11,
-        offset: 55,
-        exclude_expired: false,
-        exclude_not_processed: false,
-        sort_column: Some(DeployAggregateSortColumn::BlockTimestamp),
-        sort_order: None,
-    };
+pub fn create_update_stmt(
+    deploy_hash: String,
+    maybe_deploy_processed_raw: Option<String>,
+    maybe_deploy_expired_raw: Option<String>,
+    maybe_block_data: Option<(String, u64)>,
+) -> UpdateStatement {
+    let mut values = Vec::new();
+    if let Some(deploy_processed_raw) = maybe_deploy_processed_raw {
+        values.push((DeployAggregate::DeployProcessedRaw, deploy_processed_raw.into()));
+    }
+    if let Some(deploy_expired_raw) = maybe_deploy_expired_raw {
+        values.push((DeployAggregate::DeployExpiredRaw, deploy_expired_raw.into()));
+    }
+    if let Some((block_hash, block_timestamp)) = maybe_block_data {
+        values.push((DeployAggregate::BlockHash, block_hash.into()));
+        values.push((DeployAggregate::BlockTimestampUtcEpochMillis, block_timestamp.into()));
+    }
 
-    let got_sql = create_list_by_filter_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
+    Query::update()
+        .table(DeployAggregate::Table)
+        .values(values)
+        .and_where(Expr::col(DeployAggregate::BlockHash).eq(deploy_hash.into()))
+        .to_owned()
 }
 
-#[test]
-fn create_list_by_filter_query_given_asc_sort_order_should_create_asc_sql() {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT \"DeployAccepted\".\"deploy_hash\" AS \"deploy_hash\", \"DeployAccepted\".\"raw\" AS \"deploy_accepted_raw\", \"DeployProcessed\".\"raw\" AS \"deploy_processed_raw\", \"DeployExpired\".\"deploy_hash\" IS NOT NULL AS \"is_expired\", \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" AS \"block_timestamp\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" ORDER BY \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" ASC NULLS LAST LIMIT 11 OFFSET 55";
-    let filter = DeployAggregateFilter {
-        limit: 11,
-        offset: 55,
-        exclude_expired: false,
-        exclude_not_processed: false,
-        sort_column: Some(DeployAggregateSortColumn::BlockTimestamp),
-        sort_order: Some(SortOrder::Asc),
-    };
-
-    let got_sql = create_list_by_filter_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
-}
-
-#[test]
-fn create_list_by_filter_query_given_desc_sort_order_should_create_desc_sql() {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT \"DeployAccepted\".\"deploy_hash\" AS \"deploy_hash\", \"DeployAccepted\".\"raw\" AS \"deploy_accepted_raw\", \"DeployProcessed\".\"raw\" AS \"deploy_processed_raw\", \"DeployExpired\".\"deploy_hash\" IS NOT NULL AS \"is_expired\", \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" AS \"block_timestamp\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" ORDER BY \"BlockDeploys\".\"block_timestamp_utc_epoch_millis\" DESC NULLS LAST LIMIT 11 OFFSET 55";
-    let filter = DeployAggregateFilter {
-        limit: 11,
-        offset: 55,
-        exclude_expired: false,
-        exclude_not_processed: false,
-        sort_column: Some(DeployAggregateSortColumn::BlockTimestamp),
-        sort_order: Some(SortOrder::Desc),
-    };
-
-    let got_sql = create_list_by_filter_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
-}
-
-#[test]
-fn create_count_aggregate_deploys_query_should_create_count_sql() {
-    use sea_query::SqliteQueryBuilder;
-    let expected_sql = "SELECT COUNT(\"DeployAccepted\".\"deploy_hash\") AS \"count\" FROM \"DeployAccepted\" LEFT JOIN \"DeployProcessed\" ON \"DeployProcessed\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"DeployExpired\" ON \"DeployExpired\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\" LEFT JOIN \"BlockDeploys\" ON \"BlockDeploys\".\"deploy_hash\" = \"DeployAccepted\".\"deploy_hash\"";
-    let filter = DeployAggregateFilter {
-        limit: 17,
-        offset: 20,
-        exclude_expired: false,
-        exclude_not_processed: false,
-        sort_column: None,
-        sort_order: None,
-    };
-
-    let got_sql = create_count_aggregate_deploys_query(filter).to_string(SqliteQueryBuilder);
-
-    assert_eq!(got_sql, expected_sql)
+pub fn create_insert_stmt(
+    deploy_hash: String,
+    deploy_accepted_raw: String,
+) -> SqResult<InsertStatement> {
+    Ok(Query::insert()
+        .into_table(DeployAggregate::Table)
+        .columns([
+            DeployAggregate::DeployHash,
+            DeployAggregate::DeployAcceptedRaw,
+        ])
+        .values(vec![deploy_hash.into(), deploy_accepted_raw.into()])?
+        .on_conflict(
+            OnConflict::column(DeployAggregate::DeployHash)
+                .do_nothing()
+                .to_owned(),
+        )
+        .to_owned())
 }

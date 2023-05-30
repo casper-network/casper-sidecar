@@ -8,7 +8,8 @@ use crate::{
     sql::tables,
     types::{config::SqliteConfig, database::DatabaseWriteError},
 };
-use anyhow::Error;
+use anyhow::{Context, Error};
+use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::Row;
@@ -144,6 +145,7 @@ impl SqliteDatabase {
             tables::finality_signature::create_table_stmt(),
             tables::step::create_table_stmt(),
             tables::shutdown::create_table_stmt(),
+            tables::deploy_aggregate::create_table_stmt(),
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -178,5 +180,63 @@ impl SqliteDatabase {
 
     async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
         self.connection_pool.begin().await
+    }
+
+    async fn save_deploy_aggregate<'c>(
+        &self,
+        transaction: &mut Transaction<'c, Sqlite>,
+        deploy_hash: String,
+        raw_deploy_accepted: String,
+    ) -> Result<(), sqlx::Error> {
+        let insert_stmt =
+            tables::deploy_aggregate::create_insert_stmt(deploy_hash, raw_deploy_accepted)?
+                .to_string(SqliteQueryBuilder);
+        transaction.execute(insert_stmt.as_str()).await.map(|_| ())
+    }
+
+    async fn update_deploy_aggregate<'c>(
+        &self,
+        transaction: &mut Transaction<'c, Sqlite>,
+        deploy_hash: String,
+    ) -> Result<(), sqlx::Error> {
+        let deploy_accepted = self.get_deploy_accepted_by_hash(deploy_hash.as_str()).await;
+        if deploy_accepted.is_err() {
+            //This means no DeployAccepted was observed, no point in proceeding since we build aggregates only for deploys with DeployAccepted present
+            return Ok(());
+        }
+        let maybe_deploy_processed = match self
+            .get_deploy_processed_by_hash(deploy_hash.as_str())
+            .await
+        {
+            Ok(deploy_processed) => Some(deploy_processed),
+            Err(_) => None,
+        };
+        let maybe_deploy_expired_raw =
+            match self.get_deploy_expired_by_hash(deploy_hash.as_str()).await {
+                Ok(deploy_expired) => Some(serde_json::to_string(&deploy_expired).unwrap()),
+                Err(_) => None,
+            };
+
+        let (maybe_deploy_processed_raw, maybe_block) = match maybe_deploy_processed {
+            None => (None, None),
+            Some(deploy_processed) => {
+                let deploy_hash = deploy_processed.hex_encoded_block_hash();
+                let maybe_block = match self.get_block_by_hash(deploy_hash.as_str()).await {
+                    Ok(block) => Some(block),
+                    Err(_) => None,
+                };
+                let deploy_processed_raw = Some(serde_json::to_string(&deploy_processed).unwrap());
+                (deploy_processed_raw, maybe_block)
+            }
+        };
+        let maybe_block_data =
+            maybe_block.map(|b| (b.hex_encoded_hash(), b.block.header.timestamp.millis()));
+        let stmt = tables::deploy_aggregate::create_update_stmt(
+            deploy_hash,
+            maybe_deploy_processed_raw,
+            maybe_deploy_expired_raw,
+            maybe_block_data,
+        ).to_string(SqliteQueryBuilder);
+        transaction.execute(stmt.as_str()).await.map(|_| ())
     }
 }

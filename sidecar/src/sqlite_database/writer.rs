@@ -55,12 +55,19 @@ impl DatabaseWriter for SqliteDatabase {
             event_log_id,
         )?
         .to_string(SqliteQueryBuilder);
-        let mut insert_sqls = vec![insert_stmt];
-        if let Some(insert_deploy_hashes_sql) = build_deploy_inserts_stmt(block_added)? {
-            insert_sqls.push(insert_deploy_hashes_sql)
+        
+        let deploy_hashes = block_added.block.deploy_hashes();
+        let transfer_hashes = block_added.block.transfer_hashes();
+        let all_deploy_hashes = deploy_hashes
+            .iter()
+            .chain(transfer_hashes.iter())
+            .map(|hash_struct| hex::encode(hash_struct.inner()));
+
+        for hash in all_deploy_hashes {
+            self.update_deploy_aggregate(&mut transaction, hash).await?;
         }
-        let sql = insert_sqls.iter().join(";");
-        let res = handle_sqlite_result(transaction.execute(sql.as_str()).await);
+
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -101,6 +108,10 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.save_deploy_aggregate(&mut transaction, encoded_hash, json)
+                .await?;
+            self.update_deploy_aggregate(&mut transaction, encoded_hash)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -140,6 +151,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.update_deploy_aggregate(&mut transaction, encoded_hash).await?;
             transaction.commit().await?;
         }
         res
@@ -179,6 +191,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.update_deploy_aggregate(&mut transaction, encoded_hash).await?;
             transaction.commit().await?;
         }
         res
