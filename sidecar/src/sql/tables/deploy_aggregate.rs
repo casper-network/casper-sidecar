@@ -1,14 +1,23 @@
 use sea_query::{
     error::Result as SqResult, Alias, BlobSize, ColumnDef, Iden, Index, NullOrdering,
-    OrderedStatement, Query, SelectStatement, Table, TableCreateStatement,
+    OrderedStatement, Query, SelectStatement, Table, TableCreateStatement, IndexCreateStatement,
 };
 
-use super::block_deploys::BlockDeploys;
-use crate::sql::tables::deploy_accepted::DeployAccepted;
-use crate::sql::tables::deploy_expired::DeployExpired;
-use crate::sql::tables::deploy_processed::DeployProcessed;
 use crate::types::database::{DeployAggregateFilter, DeployAggregateSortColumn, SortOrder};
-use sea_query::{Cond, Expr, InsertStatement, JoinType, OnConflict, Order, UpdateStatement};
+use sea_query::{Cond, Expr, InsertStatement, OnConflict, Order, UpdateStatement};
+
+#[derive(Iden)]
+pub(super) enum DeployAggregate {
+    #[iden = "DeployAggregate"]
+    Table,
+    DeployHash,
+    DeployAcceptedRaw,
+    DeployProcessedRaw,
+    DeployExpiredRaw,
+    BlockHash,
+    BlockTimestampUtcEpochMillis,
+}
+
 
 pub fn create_list_by_filter_query(filter: DeployAggregateFilter) -> SelectStatement {
     let offset = filter.offset;
@@ -23,25 +32,25 @@ pub fn create_list_by_filter_query(filter: DeployAggregateFilter) -> SelectState
             filter.exclude_not_processed,
             Query::select()
                 .expr_as(
-                    Expr::col((DeployAccepted::Table, DeployAccepted::DeployHash)),
+                    Expr::col((DeployAggregate::Table, DeployAggregate::DeployHash)),
                     Alias::new("deploy_hash"),
                 )
                 .expr_as(
-                    Expr::col((DeployAccepted::Table, DeployAccepted::Raw)),
+                    Expr::col((DeployAggregate::Table, DeployAggregate::DeployAcceptedRaw)),
                     Alias::new("deploy_accepted_raw"),
                 )
                 .expr_as(
-                    Expr::col((DeployProcessed::Table, DeployProcessed::Raw)),
+                    Expr::col((DeployAggregate::Table, DeployAggregate::DeployProcessedRaw)),
                     Alias::new("deploy_processed_raw"),
                 )
                 .expr_as(
-                    Expr::col((DeployExpired::Table, DeployExpired::DeployHash)).is_not_null(),
+                    Expr::col((DeployAggregate::Table, DeployAggregate::DeployExpiredRaw)).is_not_null(),
                     Alias::new("is_expired"),
                 )
                 .expr_as(
                     Expr::col((
-                        BlockDeploys::Table,
-                        BlockDeploys::BlockTimestampUtcEpochMillis,
+                        DeployAggregate::Table,
+                        DeployAggregate::BlockTimestampUtcEpochMillis,
                     )),
                     Alias::new("block_timestamp"),
                 ),
@@ -57,11 +66,29 @@ pub fn create_count_aggregate_deploys_query(filter: DeployAggregateFilter) -> Se
         filter.exclude_expired,
         filter.exclude_not_processed,
         Query::select().expr_as(
-            Expr::col((DeployAccepted::Table, DeployAccepted::DeployHash)).count(),
+            Expr::col((DeployAggregate::Table, DeployAggregate::DeployHash)).count(),
             Alias::new("count"),
         ),
     )
     .to_owned()
+}
+
+pub fn create_deploy_aggregate_block_hash_timestamp_index() -> IndexCreateStatement {
+    Index::create()
+        .if_not_exists()
+        .name("IDX_DeployAggregate_BlockTimestamp")
+        .table(DeployAggregate::Table)
+        .col(DeployAggregate::BlockTimestampUtcEpochMillis)
+        .to_owned()
+}
+
+pub fn create_deploy_aggregate_block_hash_index() -> IndexCreateStatement {
+    Index::create()
+        .if_not_exists()
+        .name("IDX_DeployAggregate_BlockHash")
+        .table(DeployAggregate::Table)
+        .col(DeployAggregate::BlockHash)
+        .to_owned()
 }
 
 fn decorate_with_order_by(
@@ -79,8 +106,8 @@ fn decorate_with_order_by(
                 .unwrap_or_else(|| Order::Desc);
             let sort_column = match column {
                 DeployAggregateSortColumn::BlockTimestamp => (
-                    BlockDeploys::Table,
-                    BlockDeploys::BlockTimestampUtcEpochMillis,
+                    DeployAggregate::Table,
+                    DeployAggregate::BlockTimestampUtcEpochMillis,
                 ),
             };
             select.order_by_with_nulls(sort_column, sort_order, NullOrdering::Last)
@@ -94,41 +121,18 @@ fn decorate_with_joins(
     exclude_not_processed: bool,
     select: &mut SelectStatement,
 ) -> &mut SelectStatement {
-    let processed_table = Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash)
-        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
-    let expired_table = Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash)
-        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
-    let accepted_table = Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash)
-        .equals(BlockDeploys::Table, BlockDeploys::DeployHash);
     let mut conditions = Cond::all();
-    conditions =
-        conditions.add(Expr::tbl(DeployAccepted::Table, DeployAccepted::DeployHash).is_not_null());
     if exclude_expired {
         conditions =
-            conditions.add(Expr::tbl(DeployExpired::Table, DeployExpired::DeployHash).is_null())
+            conditions.add(Expr::tbl(DeployAggregate::Table, DeployAggregate::DeployExpiredRaw).is_not_null())
     }
     if exclude_not_processed {
         conditions = conditions
-            .add(Expr::tbl(DeployProcessed::Table, DeployProcessed::DeployHash).is_not_null())
+            .add(Expr::tbl(DeployAggregate::Table, DeployAggregate::DeployProcessedRaw).is_not_null())
     }
     select
-        .from(BlockDeploys::Table)
-        .join(JoinType::LeftJoin, DeployAccepted::Table, accepted_table)
-        .join(JoinType::LeftJoin, DeployProcessed::Table, processed_table)
-        .join(JoinType::LeftJoin, DeployExpired::Table, expired_table)
+        .from(DeployAggregate::Table)
         .cond_where(conditions)
-}
-
-#[derive(Iden)]
-pub(super) enum DeployAggregate {
-    #[iden = "DeployAggregate"]
-    Table,
-    DeployHash,
-    DeployAcceptedRaw,
-    DeployProcessedRaw,
-    DeployExpiredRaw,
-    BlockHash,
-    BlockTimestampUtcEpochMillis,
 }
 
 pub fn create_table_stmt() -> TableCreateStatement {
@@ -150,8 +154,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(DeployAggregate::BlockHash).string())
         .col(
             ColumnDef::new(DeployAggregate::BlockTimestampUtcEpochMillis)
-                .integer_len(13)
-                .not_null(),
+                .integer_len(13),
         )
         .index(
             Index::create()
@@ -159,20 +162,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .primary()
                 .name("PDX_DeployAggregate")
                 .col(DeployAggregate::DeployHash),
-        )
-        .index(
-            Index::create()
-                .if_not_exists()
-                .name("IDX_DeployAggregate_BlockTimestamp")
-                .table(DeployAggregate::Table)
-                .col(DeployAggregate::BlockTimestampUtcEpochMillis),
-        )
-        .index(
-            Index::create()
-                .if_not_exists()
-                .name("IDX_DeployAggregate_BlockHash")
-                .table(DeployAggregate::Table)
-                .col(DeployAggregate::BlockHash),
         )
         .to_owned()
 }
@@ -198,7 +187,7 @@ pub fn create_update_stmt(
     Query::update()
         .table(DeployAggregate::Table)
         .values(values)
-        .and_where(Expr::col(DeployAggregate::BlockHash).eq(deploy_hash.into()))
+        .and_where(Expr::col(DeployAggregate::DeployHash).eq(deploy_hash))
         .to_owned()
 }
 

@@ -99,7 +99,7 @@ pub struct DeployProcessed {
 
 impl DeployProcessed {
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
+    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>, with_block_hash: Option<BlockHash>) -> Self {
         let deploy = Deploy::random(rng);
         Self {
             deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
@@ -107,7 +107,7 @@ impl DeployProcessed {
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
-            block_hash: Box::new(BlockHash::random(rng)),
+            block_hash: Box::new(with_block_hash.unwrap_or(BlockHash::random(rng))),
             execution_result: Box::new(rng.gen()),
         }
     }

@@ -48,19 +48,8 @@ impl DatabaseReader for SqliteDatabase {
     }
 
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::block_added::create_get_by_hash_stmt(hash.to_string())
-            .to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => parse_block_from_row(row),
-            })
+        let transaction = &mut self.get_transaction().await?;
+        self.get_block_inner_by_hash(transaction, hash).await
     }
 
     async fn get_deploy_aggregate_by_hash(
@@ -165,96 +154,24 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         hash: &str,
     ) -> Result<DeployAccepted, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::deploy_accepted::create_get_by_hash_stmt(hash.to_string())
-            .to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => {
-                    let raw = row
-                        .try_get::<String, &str>("raw")
-                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                    deserialize_data::<DeployAccepted>(&raw).map_err(wrap_query_error)
-                }
-            })
-    }
-
-    async fn get_block_by_deploy_hash(
-        &self,
-        deploy_hash: &str,
-    ) -> Result<Option<BlockAdded>, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-        let get_block_deploy_stmt =
-            tables::block_deploys::create_get_by_deploy_hash_stmt(deploy_hash.to_string())
-                .to_string(SqliteQueryBuilder);
-        let block_hash_row = db_connection
-            .fetch_optional(get_block_deploy_stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))?;
-        match block_hash_row.map(|row| {
-            row.try_get::<String, &str>("block_hash")
-                .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))
-        }) {
-            None => Ok(None),
-            Some(res) => {
-                let block_hash = res?;
-                self.get_block_by_hash(block_hash.as_str()).await.map(Some)
-            }
-        }
+        let transaction = &mut self.get_transaction().await?;        
+        self.get_deploy_accepted_inner_by_hash(transaction, hash).await
     }
 
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
-            .to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => {
-                    let raw = row
-                        .try_get::<String, &str>("raw")
-                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                    deserialize_data::<DeployProcessed>(&raw).map_err(wrap_query_error)
-                }
-            })
+        let transaction = &mut self.get_transaction().await?;        
+        self.get_deploy_processed_inner_by_hash(transaction, hash).await
     }
 
     async fn get_deploy_expired_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployExpired, DatabaseReadError> {
-        let db_connection = &self.connection_pool;
-
-        let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
-            .to_string(SqliteQueryBuilder);
-
-        db_connection
-            .fetch_optional(stmt.as_str())
-            .await
-            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
-            .and_then(|maybe_row| match maybe_row {
-                None => Err(DatabaseReadError::NotFound),
-                Some(row) => {
-                    let raw = row
-                        .try_get::<String, &str>("raw")
-                        .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                    deserialize_data::<DeployExpired>(&raw).map_err(wrap_query_error)
-                }
-            })
+        let transaction = &mut self.get_transaction().await?;        
+        self.get_deploy_expired_inner_by_hash(transaction, hash).await
     }
 
     async fn get_faults_by_public_key(

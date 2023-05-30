@@ -257,6 +257,14 @@ pub enum DatabaseReadError {
     Serialisation(serde_json::Error),
     /// An error occurred somewhere unexpected.
     Unhandled(anyhow::Error),
+    /// The insert was rejected by the database.
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for DatabaseReadError {
+    fn from(sqlx_err: sqlx::Error) -> Self {
+        Self::Database(sqlx_err)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -106,7 +106,7 @@ async fn should_save_and_retrieve_deploy_processed() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     sqlite_db
         .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
@@ -168,7 +168,7 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
         .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_processed =
-        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()), None);
 
     sqlite_db
         .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
@@ -239,7 +239,7 @@ async fn should_retrieve_deploy_aggregate_with_block_data() {
         .expect("Error saving block_added");
 
     let deploy_processed =
-        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()), None);
 
     sqlite_db
         .save_deploy_processed(deploy_processed, 3, "127.0.0.1".to_string())
@@ -357,7 +357,7 @@ async fn should_list_aggregates_should_sort_and_paginate() {
         .await
         .expect("Error saving deploy_accepted");
     let deploy_processed_5 =
-        DeployProcessed::random(&mut test_rng, Some(deploy_accepted_5.deploy_hash()));
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted_5.deploy_hash()), None);
     sqlite_db
         .save_deploy_processed(deploy_processed_5, 10, "127.0.0.1".to_string())
         .await
@@ -637,7 +637,7 @@ async fn should_disallow_insert_of_existing_deploy_processed() {
         .await
         .expect("Error opening database in memory");
 
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     assert!(sqlite_db
         .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
@@ -809,7 +809,7 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
         .await
         .expect("Error opening database in memory");
 
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     assert!(sqlite_db
         .save_deploy_processed(deploy_processed, 1, "127.0.0.1".to_string())
@@ -1046,7 +1046,7 @@ async fn setup_four_deploy_accepted_scenario(
         .await
         .expect("Error saving block_added");
 
-    let deploy_processed = DeployProcessed::random(test_rng, Some(deploy_accepted.deploy_hash()));
+    let deploy_processed = DeployProcessed::random(test_rng, Some(deploy_accepted.deploy_hash()), None);
 
     sqlite_db
         .save_deploy_processed(deploy_processed, 6, "127.0.0.1".to_string())
@@ -1054,7 +1054,7 @@ async fn setup_four_deploy_accepted_scenario(
         .expect("Error saving deploy_processed");
 
     let deploy_processed_2 =
-        DeployProcessed::random(test_rng, Some(deploy_accepted_2.deploy_hash()));
+        DeployProcessed::random(test_rng, Some(deploy_accepted_2.deploy_hash()), None);
 
     sqlite_db
         .save_deploy_processed(deploy_processed_2, 7, "127.0.0.1".to_string())

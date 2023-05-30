@@ -44,7 +44,7 @@ impl FakeDatabase {
 
         let block_added = BlockAdded::random(&mut rng);
         let deploy_accepted = DeployAccepted::random(&mut rng);
-        let deploy_processed = DeployProcessed::random(&mut rng, None);
+        let deploy_processed = DeployProcessed::random(&mut rng, None, None);
         let deploy_expired = DeployExpired::random(&mut rng, None);
         let fault = Fault::random(&mut rng);
         let finality_signature = FinalitySignature::random(&mut rng);
@@ -449,13 +449,6 @@ impl DatabaseReader for FakeDatabase {
             None => Err(DatabaseReadError::NotFound),
             Some(p) => Ok(p),
         }
-    }
-
-    async fn get_block_by_deploy_hash(
-        &self,
-        _deploy_hash: &str,
-    ) -> Result<Option<BlockAdded>, DatabaseReadError> {
-        Ok(None)
     }
 }
 

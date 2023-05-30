@@ -14,7 +14,7 @@ pub const DEPLOYS: &str = "deploys";
 pub fn random_deploy_aggregate(rng: &mut casper_types::testing::TestRng) -> DeployAggregate {
     let deploy_accepted =DeployAccepted::random(rng);
     let deploy_accepted_raw =  to_raw_value(&deploy_accepted).unwrap();
-    let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()));
+    let deploy_processed = DeployProcessed::random(rng, Some(deploy_accepted.deploy_hash()), None);
     let deploy_processed_raw = to_raw_value(&deploy_processed).unwrap();
     DeployAggregate {
         deploy_hash: deploy_accepted.deploy_hash().to_string(),
@@ -48,16 +48,16 @@ pub async fn populate_with_blocks_and_deploys(
     let (blocks, accepteds, processeds) = generate_blocks_and_deploys(test_rng, number_of_blocks, deploys_in_block);
     let event_source_address = String::from("localhost");
     let mut event_id = 0;
-    for block in blocks.iter() {
-        database.save_block_added(block.clone(), event_id, event_source_address.clone()).await.unwrap();
-        event_id += 1;
-    }
     for accepted in accepteds.iter() {
         database.save_deploy_accepted(accepted.clone(), event_id, event_source_address.clone()).await.unwrap();
         event_id += 1;
     }
     for processed in processeds.iter() {
         database.save_deploy_processed(processed.clone(), event_id, event_source_address.clone()).await.unwrap();
+        event_id += 1;
+    }
+    for block in blocks.iter() {
+        database.save_block_added(block.clone(), event_id, event_source_address.clone()).await.unwrap();
         event_id += 1;
     }
     return (blocks, accepteds, processeds)
@@ -76,14 +76,21 @@ pub fn generate_blocks_and_deploys(
         let mut deploy_hashes_for_block = Vec::new();
         for _ in 0..deploys_in_block {
             let accepted = DeployAccepted::random(test_rng);
-            let processed = DeployProcessed::random(test_rng, Some(accepted.deploy_hash()));
             deploy_hashes_for_block.push(accepted.deploy_hash());
             accepted_deploys.push(accepted);
-            processed_deploys.push(processed);
+            
             
         }
-        let block = BlockAdded::random_with_data(test_rng, deploy_hashes_for_block, block_number as u64);
+        let block = BlockAdded::random_with_data(test_rng, deploy_hashes_for_block.clone(), block_number as u64);
+        let block_hash = block.block.hash.clone();
         blocks.push(block);
+        for i in 0..deploys_in_block {
+            let deploy_hash = deploy_hashes_for_block.get(i).unwrap().clone();
+            let processed = DeployProcessed::random(test_rng, Some(deploy_hash), Some(block_hash));
+            processed_deploys.push(processed);
+        }
+        
+        
     }
     (blocks, accepted_deploys, processed_deploys)
 }
