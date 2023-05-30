@@ -145,7 +145,6 @@ impl EventListener {
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
                     let (filter, maybe_last_event_id, err) = connection.start_handling().await;
-                    println!("Error on start_handling: {}", err);
                     error!("Error on start_handling: {}", err);
                     (filter, maybe_last_event_id, err)
                 });

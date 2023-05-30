@@ -136,55 +136,6 @@ impl SqliteDatabase {
         .get::<u32, usize>(0)
     }
 
-    pub async fn initialise_with_tables(&self) -> Result<(), Error> {
-        let create_table_stmts = vec![
-            // Synthetic tables
-            tables::event_type::create_table_stmt(),
-            tables::event_log::create_table_stmt(),
-            tables::deploy_event::create_table_stmt(),
-            tables::deploy_aggregate::create_table_stmt(),
-            tables::assemble_deploy_aggregate::create_table_stmt(),
-            // Raw Event tables
-            tables::block_added::create_table_stmt(),
-            tables::deploy_accepted::create_table_stmt(),
-            tables::deploy_processed::create_table_stmt(),
-            tables::deploy_expired::create_table_stmt(),
-            tables::fault::create_table_stmt(),
-            tables::finality_signature::create_table_stmt(),
-            tables::step::create_table_stmt(),
-            tables::shutdown::create_table_stmt(),
-        ]
-        .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-        .join(";");
-
-        self.connection_pool
-            .execute(create_table_stmts.as_str())
-            .await?;
-        let create_indexes_stmts = vec![
-            tables::deploy_aggregate::create_deploy_aggregate_block_hash_timestamp_index(),
-            tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
-            tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_block_hash_index(),
-            tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_deploy_hash_index(),
-        ]
-        .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-        .join(";");
-        self.connection_pool
-            .execute(create_indexes_stmts.as_str())
-            .await?;
-        let initialise_event_type =
-            tables::event_type::create_initialise_stmt()?.to_string(SqliteQueryBuilder);
-
-        // The result is swallowed because this call may fail if the tables were already created and populated.
-        let _ = self
-            .connection_pool
-            .execute(initialise_event_type.as_str())
-            .await;
-
-        Ok(())
-    }
-
     async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
         self.connection_pool.begin().await
     }

@@ -9,9 +9,9 @@ use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
 use casper_types::Timestamp;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use serde_json::value::RawValue;
 use sqlx::FromRow;
+use std::sync::Arc;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -111,10 +111,7 @@ pub trait DatabaseWriter {
     async fn execute_migration(&self, migration: Migration) -> Result<(), DatabaseWriteError>;
 
     /// Syncs deploy aggregates
-    async fn update_pending_deploy_aggregates(
-        &self,
-    ) -> Result<usize, DatabaseWriteError>;
-
+    async fn update_pending_deploy_aggregates(&self) -> Result<usize, DatabaseWriteError>;
 }
 
 #[derive(Debug)]
@@ -247,7 +244,6 @@ pub trait DatabaseReader {
 
     /// Gets the newest migration version.
     async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError>;
-
 }
 
 /// The database was unable to fulfil the request.
@@ -332,6 +328,7 @@ impl DeployAggregateFilter {
 #[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs
 pub enum StatementWrapper {
     TableCreateStatement(Box<sea_query::TableCreateStatement>),
+    IndexCreateStatement(Box<sea_query::IndexCreateStatement>),
     InsertStatement(sea_query::InsertStatement),
     Raw(String),
 }
@@ -359,7 +356,7 @@ pub struct Migration {
 
 impl Migration {
     pub fn get_all_migrations() -> Vec<Migration> {
-        vec![Migration::migration_1()]
+        vec![Migration::migration_1(), Migration::migration_2()]
     }
 
     pub fn initial() -> Migration {
@@ -369,6 +366,35 @@ impl Migration {
                 Ok(vec![StatementWrapper::TableCreateStatement(Box::new(
                     tables::migration::create_table_stmt(),
                 ))])
+            },
+            script_executor: None,
+        }
+    }
+
+    pub fn migration_2() -> Migration {
+        Migration {
+            version: Some(2),
+            statement_producers: || {
+                Ok(vec![
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::assemble_deploy_aggregate::create_table_stmt(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_timestamp_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_block_hash_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_deploy_hash_index(),
+                    )),
+                ])
             },
             script_executor: None,
         }

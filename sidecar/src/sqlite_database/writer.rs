@@ -491,6 +491,7 @@ fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
             }
             StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
             StatementWrapper::Raw(sql) => sql.to_string(),
+            StatementWrapper::IndexCreateStatement(statement) => statement.to_string(SqliteQueryBuilder),
         })
         .collect()
     }
