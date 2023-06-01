@@ -30,9 +30,29 @@ pub struct BlockAdded {
     pub(crate) block: Box<JsonBlock>,
 }
 
+impl BlockAdded {
+    pub fn get_tmestamp(&self) -> Timestamp {
+        self.block.header.timestamp
+    }
+
+    pub fn get_all_deploy_hashes(&self) -> Vec<String> {
+        let deploy_hashes = self.block.deploy_hashes();
+        let transfer_hashes = self.block.transfer_hashes();
+        deploy_hashes
+            .iter()
+            .chain(transfer_hashes.iter())
+            .map(|hash_struct| hex::encode(hash_struct.inner()))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 impl BlockAdded {
-    pub fn random_with_data(rng: &mut TestRng, deploy_hashes: Vec<DeployHash>, height: u64) -> Self {
+    pub fn random_with_data(
+        rng: &mut TestRng,
+        deploy_hashes: Vec<DeployHash>,
+        height: u64,
+    ) -> Self {
         let block = JsonBlock::random_with_data(rng, Some(deploy_hashes), Some(height));
         Self {
             block_hash: block.hash,
@@ -99,7 +119,11 @@ pub struct DeployProcessed {
 
 impl DeployProcessed {
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>, with_block_hash: Option<BlockHash>) -> Self {
+    pub fn random(
+        rng: &mut TestRng,
+        with_deploy_hash: Option<DeployHash>,
+        with_block_hash: Option<BlockHash>,
+    ) -> Self {
         let deploy = Deploy::random(rng);
         Self {
             deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),

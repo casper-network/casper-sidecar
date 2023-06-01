@@ -1,5 +1,5 @@
 use crate::{
-    sql::tables,
+    sql::{tables, setup_aggregate_deploy_migration::BackfillAggregateDeployData},
     types::sse_events::{
         BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
     },
@@ -11,7 +11,10 @@ use casper_types::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sqlx::FromRow;
+use tokio::sync::Mutex;
 use std::sync::Arc;
+
+use super::transaction::TransactionWrapper;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -329,13 +332,9 @@ impl DeployAggregateFilter {
 pub enum StatementWrapper {
     TableCreateStatement(Box<sea_query::TableCreateStatement>),
     IndexCreateStatement(Box<sea_query::IndexCreateStatement>),
+    SelectStatement(sea_query::SelectStatement),
     InsertStatement(sea_query::InsertStatement),
     Raw(String),
-}
-
-#[async_trait]
-pub trait TransactionWrapper: Send + Sync {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
 }
 
 #[async_trait]
@@ -345,6 +344,7 @@ pub trait MigrationScriptExecutor: Send + Sync {
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError>;
 }
+
 #[derive(Clone)]
 pub struct Migration {
     // version is optional to denote the special case of the first migration
@@ -396,7 +396,7 @@ impl Migration {
                     )),
                 ])
             },
-            script_executor: None,
+            script_executor: Some(BackfillAggregateDeployData::new()),
         }
     }
 

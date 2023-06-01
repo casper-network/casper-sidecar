@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use super::{
     errors::StorageError,
     requests::{ListDeploysRequest, Page},
@@ -50,7 +48,6 @@ pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
     list_deploys_request: ListDeploysRequest,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
-    let start = Instant::now();
     list_deploys_request.validate()?;
     let offset = list_deploys_request.offset.unwrap_or(0);
     let limit = list_deploys_request.get_limit();
@@ -64,8 +61,6 @@ pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
             offset,
         });
     let final_result = format_or_reject_storage_result(list_result);
-    let millis = start.elapsed().as_millis();
-    metrics::LIST_DEPLOYS.with_label_values(&["aaa_full_response"]).observe(millis as f64);
     final_result
 }
 
@@ -138,10 +133,7 @@ where
 {
     match storage_result {
         Ok(data) => {
-            let start = Instant::now();
             let json = warp::reply::json(&data);
-            let millis = start.elapsed().as_millis();
-            metrics::LIST_DEPLOYS.with_label_values(&["final_deserialization"]).observe(millis as f64);
             Ok(warp::reply::with_status(json, StatusCode::OK).into_response())
         }
         Err(req_err) => Err(warp::reject::custom(StorageError(req_err))),

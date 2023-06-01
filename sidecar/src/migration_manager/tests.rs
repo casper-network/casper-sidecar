@@ -1,7 +1,7 @@
 use crate::types::database::{
     DatabaseReader, DatabaseWriteError, Migration, MigrationScriptExecutor, StatementWrapper,
-    TransactionWrapper,
 };
+use crate::types::transaction::{TransactionWrapper, TransactionStatement, MaterializedTransactionStatementWrapper};
 use crate::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use async_trait::async_trait;
 use itertools::Itertools;
@@ -336,10 +336,15 @@ impl MigrationScriptExecutor for InsertValuesInTableScript {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
-        let values_sql_part = self.values.iter().map(|el| format!("({})", el)).join(",");
+        let sql = {
+            let values_sql_part = self.values.iter().map(|el| format!("({})", el)).join(",");
+            let statement_wrapper = TransactionStatement::Raw(format!("INSERT INTO {} VALUES {}", self.table_name, values_sql_part));
+            transaction.materialize(statement_wrapper)
+        };
         transaction
-            .execute(format!("INSERT INTO {} VALUES {}", self.table_name, values_sql_part).as_str())
-            .await
+            .execute(sql)
+            .await?;
+        Ok(())
     }
 }
 
@@ -351,6 +356,7 @@ impl MigrationScriptExecutor for FailingScript {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
-        transaction.execute("CREATE TAB").await
+        let materialized_raw: MaterializedTransactionStatementWrapper = MaterializedTransactionStatementWrapper::Raw(String::from("CREATE TAB"));
+        transaction.execute(materialized_raw).await.map(|_| ())
     }
 }

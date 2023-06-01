@@ -1,6 +1,6 @@
 use sea_query::{
     error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement, Order,
 };
 
 use super::event_log::EventLog;
@@ -99,5 +99,15 @@ pub fn create_get_latest_stmt() -> SelectStatement {
         .column(BlockAdded::Raw)
         .from(BlockAdded::Table)
         .expr(Expr::col(BlockAdded::Height).max())
+        .to_owned()
+}
+
+pub fn create_list_stmt(offset: u64, limit: u64) -> SelectStatement {
+    Query::select()
+        .column(BlockAdded::Raw)
+        .from(BlockAdded::Table)
+        .limit(limit)
+        .offset(offset)
+        .order_by(BlockAdded::Height, Order::Asc)
         .to_owned()
 }

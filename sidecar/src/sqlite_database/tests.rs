@@ -1,16 +1,11 @@
 use std::collections::HashMap;
-use std::path::Path;
-
 use casper_types::Timestamp;
 use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use serde::Deserialize;
 use sqlx::Row;
-
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
-
 use super::SqliteDatabase;
-use crate::types::config::SqliteConfig;
 use crate::types::database::{
     DeployAggregate, DeployAggregateFilter, DeployAggregateSortColumn, SortOrder,
 };

@@ -4,6 +4,7 @@ use sea_query::{
 
 use sea_query::{
     Alias, DeleteStatement, Expr, IndexCreateStatement, InsertStatement, SelectStatement,
+    SimpleExpr, SubQueryStatement,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -11,7 +12,9 @@ use sqlx::FromRow;
 #[cfg(test)]
 use sea_query::SqliteQueryBuilder;
 
-#[derive(Iden)]
+use super::deploy_accepted::DeployAccepted;
+
+#[derive(Iden, Clone)]
 pub(super) enum AssembleDeployAggregate {
     #[iden = "AssembleDeployAggregate"]
     Table,
@@ -53,15 +56,15 @@ pub fn create_insert_stmt(
     deploy_hash: String,
     maybe_block_data: Option<(String, u64)>,
 ) -> SqResult<InsertStatement> {
-    let mut cols = vec![AssembleDeployAggregate::DeployHash,];
+    let mut cols = vec![AssembleDeployAggregate::DeployHash];
     let mut vals = vec![deploy_hash.into()];
     match maybe_block_data {
         Some((block_hash, timestamp)) => {
             cols.push(AssembleDeployAggregate::BlockHash);
-            cols.push( AssembleDeployAggregate::BlockTimestamp);
+            cols.push(AssembleDeployAggregate::BlockTimestamp);
             vals.push(block_hash.into());
             vals.push(timestamp.into());
-        },
+        }
         _ => {}
     }
     Ok(Query::insert()
@@ -69,6 +72,26 @@ pub fn create_insert_stmt(
         .columns(cols)
         .values(vals)?
         .to_owned())
+}
+
+pub fn create_insert_from_deploy_accepted() -> SqResult<InsertStatement> {
+    let sub_select_deploy_hashes_deploy_accepted = Query::select()
+        .expr(Expr::col(DeployAccepted::DeployHash))
+        .from(DeployAccepted::Table)
+        .to_owned();
+    let accepted_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_deploy_hashes_deploy_accepted,
+    )));
+    let cols = vec![AssembleDeployAggregate::DeployHash];
+    let exprs = vec![
+        accepted_expr,
+    ];
+    let builder = Query::insert()
+        .into_table(AssembleDeployAggregate::Table)
+        .columns(cols.clone())
+        .exprs(exprs)?
+        .to_owned();
+    Ok(builder)
 }
 
 pub fn create_table_stmt() -> TableCreateStatement {
@@ -177,12 +200,9 @@ pub fn delete_stmt_test() {
 
 #[test]
 pub fn create_insert_stmt_test() {
-    let sql = create_insert_stmt(
-        "abc".to_string(),
-        Some(("block_hash_1".to_string(), 555)),
-    )
-    .unwrap()
-    .to_string(SqliteQueryBuilder);
+    let sql = create_insert_stmt("abc".to_string(), Some(("block_hash_1".to_string(), 555)))
+        .unwrap()
+        .to_string(SqliteQueryBuilder);
     assert_eq!(
         sql,
         "INSERT INTO \"AssembleDeployAggregate\" (\"deploy_hash\", \"block_hash\", \"block_timestamp\") VALUES ('abc', 'block_hash_1', 555)"
@@ -191,12 +211,9 @@ pub fn create_insert_stmt_test() {
 
 #[test]
 pub fn create_insert_stmt_without_block_data_test() {
-    let sql = create_insert_stmt(
-        "abc".to_string(),
-        None,
-    )
-    .unwrap()
-    .to_string(SqliteQueryBuilder);
+    let sql = create_insert_stmt("abc".to_string(), None)
+        .unwrap()
+        .to_string(SqliteQueryBuilder);
     assert_eq!(
         sql,
         "INSERT INTO \"AssembleDeployAggregate\" (\"deploy_hash\") VALUES ('abc')"

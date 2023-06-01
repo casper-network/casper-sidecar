@@ -7,10 +7,12 @@ use crate::{
         },
     },
     types::{
-        database::{
-            DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
-        },
+        database::{DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper},
         sse_events::*,
+        transaction::{
+            MaterializedTransactionStatementWrapper, TransactionStatement,
+            TransactionStatementResult, TransactionWrapper,
+        },
     },
 };
 use anyhow::{Context, Error};
@@ -20,11 +22,11 @@ use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
+use sqlx::{sqlite::SqliteQueryResult, Database, Executor, Row, Sqlite, Transaction};
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
-    collections::HashMap,
 };
 use tokio::sync::Mutex;
 
@@ -62,18 +64,11 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let deploy_hashes = block_added.block.deploy_hashes();
-        let transfer_hashes = block_added.block.transfer_hashes();
-        let all_deploy_hashes = deploy_hashes
-            .iter()
-            .chain(transfer_hashes.iter())
-            .map(|hash_struct| hex::encode(hash_struct.inner()));
-
         let block_hash = block_added.hex_encoded_hash();
         let timestamp = block_added.block.header.timestamp.millis();
         let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
-            for hash in all_deploy_hashes {
+            for hash in block_added.get_all_deploy_hashes() {
                 self.save_assemble_deploy_aggregate_command(
                     &mut transaction,
                     hash,
@@ -376,10 +371,14 @@ impl DatabaseWriter for SqliteDatabase {
                 let sqls = materialize_statements(migration.get_migrations()?);
                 sqls.iter().join(";")
             };
-            match wrapper_arc.clone().execute(sql.as_str()).await {
+            let stmt = MaterializedTransactionStatementWrapper::Raw(sql);
+            match wrapper_arc.clone().execute(stmt).await {
                 Ok(_) => {
                     if let Some(script_executor) = migration.script_executor {
-                        script_executor.execute(wrapper_arc.clone()).await
+                        script_executor
+                            .execute(wrapper_arc.clone())
+                            .await
+                            .map(|_| ())
                     } else {
                         Ok(())
                     }
@@ -455,12 +454,52 @@ struct SqliteTransactionWrapper<'a> {
 
 #[async_trait]
 impl TransactionWrapper for SqliteTransactionWrapper<'_> {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+    fn materialize(&self, statement: TransactionStatement) -> MaterializedTransactionStatementWrapper {
+        match statement {
+            TransactionStatement::SelectStatement(x) => MaterializedTransactionStatementWrapper::SelectStatement(x.to_string(SqliteQueryBuilder)),
+            TransactionStatement::InsertStatement(x) => MaterializedTransactionStatementWrapper::InsertStatement(x.to_string(SqliteQueryBuilder)),
+            TransactionStatement::Raw(sql) => MaterializedTransactionStatementWrapper::Raw(sql),
+            TransactionStatement::MultiInsertStatement(inserts) => {
+                let sqls = inserts.into_iter().map(|el| el.to_string(SqliteQueryBuilder)).collect();
+                MaterializedTransactionStatementWrapper::InsertStatement(sqls)
+            }
+        }
+    }
+
+    async fn execute(
+        &self,
+        sql_wrapper: MaterializedTransactionStatementWrapper,
+    ) -> Result<TransactionStatementResult, DatabaseWriteError> {
         let mut lock = self.transaction_mutex.lock().await;
-        lock.execute(sql)
-            .await
-            .map(|_| ())
-            .map_err(DatabaseWriteError::from)
+        match sql_wrapper {
+            MaterializedTransactionStatementWrapper::SelectStatement(sql) => lock
+                .fetch_all(sql.as_str())
+                .await
+                .and_then(|rows| {
+                    let results: Result<Vec<String>, sqlx::Error> = rows
+                        .into_iter()
+                        .map(|row| row.try_get::<String, usize>(0))
+                        .collect();
+                    results.map(|r| TransactionStatementResult::SelectResult(r))
+                })
+                .map_err(DatabaseWriteError::from),
+            MaterializedTransactionStatementWrapper::InsertStatement(sql) => {
+                lock
+                .fetch_one(sql.as_str())
+                .await
+                .and_then(|el| {
+                    el.try_get::<u32, usize>(0).map(|number_of_returned| {
+                        TransactionStatementResult::InsertStatement(number_of_returned)
+                    })
+                })
+                .map_err(DatabaseWriteError::from)
+            },
+            MaterializedTransactionStatementWrapper::Raw(sql) => lock
+                .execute(sql.as_str())
+                .await
+                .map_err(DatabaseWriteError::from)
+                .map(|_| TransactionStatementResult::Raw()),
+        }
     }
 }
 
@@ -490,8 +529,11 @@ fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
                 statement.to_string(SqliteQueryBuilder)
             }
             StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+            StatementWrapper::IndexCreateStatement(statement) => {
+                statement.to_string(SqliteQueryBuilder)
+            }
+            StatementWrapper::SelectStatement(statement) => statement.to_string(SqliteQueryBuilder),
             StatementWrapper::Raw(sql) => sql.to_string(),
-            StatementWrapper::IndexCreateStatement(statement) => statement.to_string(SqliteQueryBuilder),
         })
         .collect()
-    }
+}

@@ -8,7 +8,7 @@ use crate::{
     sql::tables::{self},
     types::{
         config::SqliteConfig,
-        database::{DatabaseReadError, DatabaseWriteError},
+        database::{DatabaseReadError, DatabaseWriteError, DatabaseWriter},
         sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed},
     },
 };
@@ -65,7 +65,6 @@ impl SqliteDatabase {
                     file_path: Path::new(&path).into(),
                 };
                 MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
-
                 Ok(sqlite_db)
             }
         }

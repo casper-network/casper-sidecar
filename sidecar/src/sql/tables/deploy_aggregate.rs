@@ -168,7 +168,6 @@ pub fn create_update_stmt(
     deploy_hash: String,
     maybe_block_data: Option<(String, u64)>,
 ) -> SqResult<InsertStatement> {
-    //let mut values: Vec<(DeployAggregate, sea_query::Value)> = Vec::new();
     let sub_select_raw_accepted = Query::select()
         .expr(Expr::col(DeployAccepted::Raw))
         .from(DeployAccepted::Table)
