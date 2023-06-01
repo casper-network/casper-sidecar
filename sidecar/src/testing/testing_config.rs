@@ -78,6 +78,7 @@ impl TestingConfig {
             allow_partial_connection: false,
             enable_logging: false,
             connection_timeout_in_seconds: Some(100),
+            force_reconnect_in_hours: Some(1000),
         };
         self.config.connections.push(connection);
         random_port_for_sse

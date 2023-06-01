@@ -4,6 +4,7 @@ use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
+use serde_json::Value;
 use sse_server::{
     DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
     SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
@@ -435,8 +436,8 @@ struct ReceivedEvent {
 /// not the same string. Hence we need to deserialize `.data` and compare structures.
 impl PartialEq for ReceivedEvent {
     fn eq(&self, other: &Self) -> bool {
-        let this_data = serde_json::from_str::<SseData>(&self.data).unwrap();
-        let that_data = serde_json::from_str::<SseData>(&other.data).unwrap();
+        let this_data = serde_json::from_str::<Value>(&self.data).unwrap();
+        let that_data = serde_json::from_str::<Value>(&other.data).unwrap();
         self.id.eq(&other.id) && this_data.eq(&that_data)
     }
 }

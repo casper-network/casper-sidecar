@@ -2,6 +2,7 @@ use super::ConnectionTasks;
 use anyhow::Error;
 use bytes::Bytes;
 use casper_event_types::{
+    metrics,
     sse_data::{deserialize, SseData, SseDataDeserializeError},
     Filter,
 };
@@ -14,7 +15,10 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::{
+    select,
+    sync::{broadcast::Sender as BroadcastSender, mpsc::Sender},
+};
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
@@ -69,11 +73,14 @@ pub(super) struct ConnectionManager {
     connection_timeout: Duration,
     filter: Filter,
     deserialization_fn: DeserializationFn,
+    current_event_id_sender: Sender<(Filter, u32)>,
+    poison_pill_channel: BroadcastSender<()>,
 }
 
 pub enum ConnectionManagerError {
     NonRecoverableError { error: Error },
     InitialConnectionError { error: Error },
+    ForceReconnect(),
 }
 
 impl Display for ConnectionManagerError {
@@ -84,6 +91,9 @@ impl Display for ConnectionManagerError {
             }
             Self::InitialConnectionError { error } => {
                 write!(f, "InitialConnectionError: {}", error)
+            }
+            Self::ForceReconnect() => {
+                write!(f, "ForceReconnect")
             }
         }
     }
@@ -104,6 +114,8 @@ pub struct ConnectionManagerBuilder {
     pub(super) start_from_event_id: Option<u32>,
     pub(super) filter: Filter,
     pub(super) node_build_version: ProtocolVersion,
+    pub(super) current_event_id_sender: Sender<(Filter, u32)>,
+    pub(super) poison_pill_channel: BroadcastSender<()>,
 }
 
 impl ConnectionManagerBuilder {
@@ -119,18 +131,19 @@ impl ConnectionManagerBuilder {
             connection_timeout: self.connection_timeout,
             filter: self.filter,
             deserialization_fn: determine_deserializer(self.node_build_version),
+            current_event_id_sender: self.current_event_id_sender,
+            poison_pill_channel: self.poison_pill_channel,
         }
     }
 }
 
 impl ConnectionManager {
     ///This function is blocking, it will return an ConnectionManagerError result if something went wrong while processing.
-    pub(super) async fn start_handling(&mut self) -> (Filter, Option<u32>, ConnectionManagerError) {
-        let err = match self.do_start_handling().await {
+    pub(super) async fn start_handling(&mut self) -> ConnectionManagerError {
+        match self.do_start_handling().await {
             Ok(_) => non_recoverable_error(Error::msg("Unexpected Ok() from do_start_handling")),
             Err(e) => e,
-        };
-        (self.filter.clone(), self.current_event_id, err)
+        }
     }
 
     async fn connect_with_retries(
@@ -212,7 +225,6 @@ impl ConnectionManager {
                 return Err(non_recoverable_error(error));
             }
         }
-
         let outcome = self.handle_stream(event_stream).await;
         //If we loose connection for some reason we need to go back to the event listener and do
         // the whole handshake process again
@@ -220,6 +232,8 @@ impl ConnectionManager {
             Ok(_) => decorate_with_event_stream_closed(self.bind_address.clone()),
             Err(err) => err,
         })
+        //If we loose connection for some reason we need to go back to the event listener and do
+        // the whole handshake process again
     }
 
     async fn handle_stream<E, S>(
@@ -230,33 +244,49 @@ impl ConnectionManager {
         E: Debug,
         S: Stream<Item = Result<Event, E>> + Sized + Unpin,
     {
-        while let Some(event) = event_stream.next().await {
-            match event {
-                Ok(event) => {
-                    match event.id.parse::<u32>() {
-                        Ok(id) => self.current_event_id = Some(id),
-                        Err(parse_error) => {
-                            // ApiVersion events have no ID so parsing "" to u32 will fail.
-                            // This gate saves displaying a warning for a trivial error.
-                            if !event.data.contains("ApiVersion") {
-                                count_error("event_without_id");
-                                warn!("Parse Error: {}", parse_error);
+        let mut poison_pill_channel = self.poison_pill_channel.subscribe();
+        loop {
+            select! {
+                maybe_event = event_stream.next() => {
+                    if let Some(event) = maybe_event {
+                        match event {
+                            Ok(event) => {
+                                match event.id.parse::<u32>() {
+                                    Ok(id) => {
+                                        self.current_event_id = Some(id);
+                                        self.current_event_id_sender.send((self.filter.clone(), id)).await.map_err(|err| non_recoverable_error(Error::msg(format!("Error when trying to report observed event id {}", err))))?;
+                                    },
+                                    Err(parse_error) => {
+                                        // ApiVersion events have no ID so parsing "" to u32 will fail.
+                                        // This gate saves displaying a warning for a trivial error.
+                                        if !event.data.contains("ApiVersion") {
+                                            count_error("event_without_id");
+                                            warn!("Parse Error: {}", parse_error);
+                                        }
+                                    }
+                                }
+                                self.handle_event(event)
+                                    .await
+                                    .map_err(non_recoverable_error)?;
+                            }
+                            Err(stream_error) => {
+                                count_error("fetching_from_stream_failed");
+                                let error_message = format!("EventStream Error: {:?}", stream_error);
+                                return Err(non_recoverable_error(Error::msg(error_message)));
                             }
                         }
+                    } else {
+                        return Ok(())
                     }
-                    self.handle_event(event)
-                        .await
-                        .map_err(non_recoverable_error)?;
                 }
-                Err(stream_error) => {
-                    count_error("fetching_from_stream_failed");
-                    let error_message = format!("EventStream Error: {:?}", stream_error);
-                    error!(error_message);
-                    return Err(non_recoverable_error(Error::msg(error_message)));
+                poison_pill_result = poison_pill_channel.recv() => {
+                    return Err(match poison_pill_result {
+                        Ok(_) => ConnectionManagerError::ForceReconnect(),
+                        Err(err) => non_recoverable_error(Error::msg(format!("Error when waiting for force reconnection signal, error: {}", err))),
+                    })
                 }
             }
         }
-        Ok(())
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
@@ -286,7 +316,7 @@ impl ConnectionManager {
                     Error::msg(
                         "Error when trying to send message in ConnectionManager#handle_event",
                     )
-                })?
+                })?;
             }
         }
         Ok(())
@@ -348,7 +378,7 @@ impl ConnectionManager {
     }
 
     fn observe_bytes(&self, payload_size: usize) {
-        casper_event_types::metrics::RECEIVED_BYTES
+        metrics::RECEIVED_BYTES
             .with_label_values(&[self.filter.to_string().as_str()])
             .observe(payload_size as f64);
     }
@@ -376,6 +406,7 @@ fn couldnt_connect(
                 error: error.context(message),
             }
         }
+        Some(ConnectionManagerError::ForceReconnect()) => ConnectionManagerError::ForceReconnect(),
     }
 }
 
@@ -414,7 +445,7 @@ fn determine_deserializer(node_build_version: ProtocolVersion) -> Deserializatio
 }
 
 fn count_error(reason: &str) {
-    casper_event_types::metrics::ERROR_COUNTS
+    metrics::ERROR_COUNTS
         .with_label_values(&["connection_manager", reason])
         .inc();
 }
@@ -425,6 +456,7 @@ mod tests {
         sse_data::test_support::{example_block_added_1_4_10, BLOCK_HASH_1},
         sse_data_1_0_0::test_support::example_block_added_1_0_0,
     };
+    use serde_json::Value;
 
     use super::*;
 
@@ -446,8 +478,8 @@ mod tests {
         {
             assert!(block.proofs.is_empty());
             assert_eq!(
-                sse_data,
-                serde_json::from_str::<SseData>(&new_format_block_added_raw).unwrap()
+                serde_json::to_value(sse_data).unwrap(),
+                serde_json::from_str::<Value>(&new_format_block_added_raw).unwrap()
             );
         }
     }
@@ -481,8 +513,8 @@ mod tests {
         {
             assert!(block.proofs.is_empty());
             let sse_data_1_4_10 =
-                serde_json::from_str::<SseData>(&new_format_block_added_raw).unwrap();
-            assert_eq!(sse_data, sse_data_1_4_10);
+                serde_json::from_str::<Value>(&new_format_block_added_raw).unwrap();
+            assert_eq!(serde_json::to_value(sse_data).unwrap(), sse_data_1_4_10);
         }
     }
 
