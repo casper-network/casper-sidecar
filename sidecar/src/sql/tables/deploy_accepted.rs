@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, Alias, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction,
+    Iden, Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -72,5 +72,15 @@ pub fn create_get_by_hash_stmt(deploy_hash: String) -> SelectStatement {
         .column(DeployAccepted::Raw)
         .from(DeployAccepted::Table)
         .and_where(Expr::col(DeployAccepted::DeployHash).eq(deploy_hash))
+        .to_owned()
+}
+
+pub fn create_count_deploy_accepted() -> SelectStatement {
+    Query::select()
+        .expr_as(
+            Expr::col((DeployAccepted::Table, DeployAccepted::DeployHash)).count(),
+            Alias::new("count"),
+        )
+        .from(DeployAccepted::Table)
         .to_owned()
 }

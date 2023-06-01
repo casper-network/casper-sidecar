@@ -27,23 +27,34 @@ impl BackfillAggregateDeployData {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<TransactionStatementResult, DatabaseWriteError> {
-        let materialized = {
-            let select_statement =
-                tables::assemble_deploy_aggregate::create_insert_from_deploy_accepted()?;
-            transaction.materialize(TransactionStatement::InsertStatement(select_statement))
+        let count_deploy_accepted_materialized = {
+            let select_statement = tables::deploy_accepted::create_count_deploy_accepted();
+            transaction.materialize(TransactionStatement::SelectStatement(select_statement))
         };
-        transaction.execute(materialized).await
+        let res = transaction
+            .execute(count_deploy_accepted_materialized)
+            .await?;
+        let are_there_any_deploy_accepted = self.determine_if_there_are_deploy_accepted(res).await?;
+        if are_there_any_deploy_accepted {
+            let materialized = {
+                let insert_statement =
+                    tables::assemble_deploy_aggregate::create_insert_from_deploy_accepted()?;
+                transaction.materialize(TransactionStatement::InsertStatement(insert_statement))
+            };
+            transaction.execute(materialized).await
+        } else {
+            return Ok(TransactionStatementResult::InsertStatement(0))
+        }
     }
 
     async fn backfill_assemble_commands_from_block_added(
         &self,
         transaction: Arc<dyn TransactionWrapper>,
-    ) -> Result<(), DatabaseWriteError> {
+    ) -> Result<i32, DatabaseWriteError> {
         let limit = 5000;
         let mut offset = 0;
-        let mut should_continue = true;
-        let mut processed = 0;
-        while should_continue {
+        let processed = 0;
+        loop {
             let materialized = {
                 let select_statement = tables::block_added::create_list_stmt(offset, limit);
                 let select_statement = TransactionStatement::SelectStatement(select_statement);
@@ -52,7 +63,9 @@ impl BackfillAggregateDeployData {
             let results = transaction.execute(materialized).await?;
             match results {
                 TransactionStatementResult::SelectResult(data) => {
-                    should_continue = !data.is_empty();
+                    if data.is_empty() {
+                        break;
+                    }
                     let materialized = {
                         let mut insert_stmts = vec![];
                         for raw_block_added in data {
@@ -73,6 +86,7 @@ impl BackfillAggregateDeployData {
                         transaction.materialize(multi_insert_stmt)
                     };
                     let _ = transaction.execute(materialized).await?;
+                    processed += data.len();
                 }
                 TransactionStatementResult::InsertStatement(_) => {
                     return Err(DatabaseWriteError::Unhandled(Error::msg(
@@ -87,7 +101,30 @@ impl BackfillAggregateDeployData {
             }
             offset += limit;
         }
-        Ok(())
+        Ok(processed)
+    }
+
+    async fn determine_if_there_are_deploy_accepted(&self, res: TransactionStatementResult) -> Result<bool, DatabaseWriteError> {
+        match res {
+            TransactionStatementResult::SelectResult(data) => {
+                if data.len() != 1 {
+                    return Err(DatabaseWriteError::Unhandled(Error::msg(
+                        "Expected exactly one result from counting DeployAggregate query",
+                    )));
+                }
+                return Ok(data.get(0).unwrap().to_owned() != "0".to_string())
+            }
+            TransactionStatementResult::InsertStatement(_) => {
+                return Err(DatabaseWriteError::Unhandled(Error::msg(
+                    "Unexpected InsertStatement while executing BackfillAggregateDeployData",
+                )))
+            }
+            TransactionStatementResult::Raw() => {
+                return Err(DatabaseWriteError::Unhandled(Error::msg(
+                    "Unexpected Raw while executing BackfillAggregateDeployData",
+                )))
+            }
+        }
     }
 }
 

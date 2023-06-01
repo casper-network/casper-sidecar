@@ -133,7 +133,7 @@ fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Example: curl http://127.0.0.1:18888/deploy?exclude_expired=true&exclude_not_processed=true&limit=20&offset=150&sort_column=block_timestamp&sort_order=asc
 pub(crate) fn list_deploys<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("deploys")
         .and(warp::post())
         .and(list_deploy_request_body())

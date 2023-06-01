@@ -22,7 +22,9 @@ use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Database, Executor, Row, Sqlite, Transaction};
+use sqlx::{
+    sqlite::SqliteQueryResult, Database, Executor, Row, Sqlite, Transaction, Value, ValueRef,
+};
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -454,13 +456,27 @@ struct SqliteTransactionWrapper<'a> {
 
 #[async_trait]
 impl TransactionWrapper for SqliteTransactionWrapper<'_> {
-    fn materialize(&self, statement: TransactionStatement) -> MaterializedTransactionStatementWrapper {
+    fn materialize(
+        &self,
+        statement: TransactionStatement,
+    ) -> MaterializedTransactionStatementWrapper {
         match statement {
-            TransactionStatement::SelectStatement(x) => MaterializedTransactionStatementWrapper::SelectStatement(x.to_string(SqliteQueryBuilder)),
-            TransactionStatement::InsertStatement(x) => MaterializedTransactionStatementWrapper::InsertStatement(x.to_string(SqliteQueryBuilder)),
+            TransactionStatement::SelectStatement(x) => {
+                MaterializedTransactionStatementWrapper::SelectStatement(
+                    x.to_string(SqliteQueryBuilder),
+                )
+            }
+            TransactionStatement::InsertStatement(x) => {
+                MaterializedTransactionStatementWrapper::InsertStatement(
+                    x.to_string(SqliteQueryBuilder),
+                )
+            }
             TransactionStatement::Raw(sql) => MaterializedTransactionStatementWrapper::Raw(sql),
             TransactionStatement::MultiInsertStatement(inserts) => {
-                let sqls = inserts.into_iter().map(|el| el.to_string(SqliteQueryBuilder)).collect();
+                let sqls = inserts
+                    .into_iter()
+                    .map(|el| el.to_string(SqliteQueryBuilder))
+                    .collect();
                 MaterializedTransactionStatementWrapper::InsertStatement(sqls)
             }
         }
@@ -475,16 +491,34 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
             MaterializedTransactionStatementWrapper::SelectStatement(sql) => lock
                 .fetch_all(sql.as_str())
                 .await
+                .map_err(|err| anyhow::Error::from(err))
                 .and_then(|rows| {
-                    let results: Result<Vec<String>, sqlx::Error> = rows
+                    let results: Result<Vec<String>, anyhow::Error> = rows
                         .into_iter()
-                        .map(|row| row.try_get::<String, usize>(0))
+                        .map(|row| {
+                            row.try_get_raw(0)
+                                .map_err(|err| anyhow::Error::from(err))
+                                .and_then(|value_ref| {
+                                    if value_ref.is_null() {
+                                        return Ok("".to_string());
+                                    } else {
+                                        let owned = value_ref.to_owned();
+                                        match value_ref.type_info().to_string().as_str() {
+                                            "INTEGER" => Ok(owned.decode::<i64>().to_string()),
+                                            "TEXT" => Ok(owned.decode::<String>()),
+                                            t => Err(anyhow::Error::msg(format!(
+                                                "Don't know how to turn type {} to string",
+                                                t
+                                            ))),
+                                        }
+                                    }
+                                })
+                        })
                         .collect();
                     results.map(|r| TransactionStatementResult::SelectResult(r))
                 })
                 .map_err(DatabaseWriteError::from),
-            MaterializedTransactionStatementWrapper::InsertStatement(sql) => {
-                lock
+            MaterializedTransactionStatementWrapper::InsertStatement(sql) => lock
                 .fetch_one(sql.as_str())
                 .await
                 .and_then(|el| {
@@ -492,8 +526,7 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
                         TransactionStatementResult::InsertStatement(number_of_returned)
                     })
                 })
-                .map_err(DatabaseWriteError::from)
-            },
+                .map_err(DatabaseWriteError::from),
             MaterializedTransactionStatementWrapper::Raw(sql) => lock
                 .execute(sql.as_str())
                 .await
