@@ -70,14 +70,14 @@ impl DatabaseWriter for SqliteDatabase {
         let timestamp = block_added.block.header.timestamp.millis();
         let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
-            for hash in block_added.get_all_deploy_hashes() {
+            /*for hash in block_added.get_all_deploy_hashes() {
                 self.save_assemble_deploy_aggregate_command(
                     &mut transaction,
                     hash,
                     Some((block_hash.clone(), timestamp)),
                 )
                 .await?;
-            }
+            }*/
             transaction.commit().await?;
         }
         res
@@ -121,8 +121,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-                .await?;
+            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+            //   .await?;
             transaction.commit().await?;
         }
         res
@@ -162,8 +162,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-                .await?;
+            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+            //    .await?;
             transaction.commit().await?;
         }
         res
@@ -203,8 +203,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-                .await?;
+            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+            //    .await?;
             transaction.commit().await?;
         }
         res
@@ -476,7 +476,7 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
                 let sqls = inserts
                     .into_iter()
                     .map(|el| el.to_string(SqliteQueryBuilder))
-                    .collect();
+                    .join(";");
                 MaterializedTransactionStatementWrapper::InsertStatement(sqls)
             }
         }
@@ -519,12 +519,14 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
                 })
                 .map_err(DatabaseWriteError::from),
             MaterializedTransactionStatementWrapper::InsertStatement(sql) => lock
-                .fetch_one(sql.as_str())
+                .execute(sql.as_str())
                 .await
+                .map_err(|err| {
+                    println!("sss {}", err);
+                    err
+                })
                 .and_then(|el| {
-                    el.try_get::<u32, usize>(0).map(|number_of_returned| {
-                        TransactionStatementResult::InsertStatement(number_of_returned)
-                    })
+                    Ok(TransactionStatementResult::InsertStatement(el.rows_affected()))
                 })
                 .map_err(DatabaseWriteError::from),
             MaterializedTransactionStatementWrapper::Raw(sql) => lock

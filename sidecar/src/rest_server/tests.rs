@@ -255,7 +255,7 @@ async fn given_deploy_with_block_when_single_deploy_get_then_should_return_no_bl
     let database = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
-    let (_, accepteds, _) = populate_with_blocks_and_deploys(&mut test_rng, &database, 1, 1).await;
+    let (_, accepteds, _) = populate_with_blocks_and_deploys(&mut test_rng, &database, 1, 1, None).await;
 
     let api = filters::combined_filters(database);
 

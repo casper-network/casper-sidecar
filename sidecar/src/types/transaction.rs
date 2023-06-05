@@ -24,7 +24,7 @@ pub enum TransactionStatementResult {
     //json representation of results
     SelectResult(Vec<String>),
     //json representation of results
-    InsertStatement(u32),
+    InsertStatement(u64),
     //json representation of results
     Raw(),
 }

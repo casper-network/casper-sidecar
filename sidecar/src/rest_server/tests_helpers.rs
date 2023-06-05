@@ -50,13 +50,15 @@ pub fn build_list_deploys_request() -> ListDeploysRequest {
 pub async fn populate_with_blocks_and_deploys(
     test_rng: &mut TestRng,
     database: &impl DatabaseWriter,
-    number_of_blocks: usize,
-    deploys_in_block: usize,
+    number_of_blocks: u32,
+    deploys_in_block: u32,
+    id_base: Option<u32>,
 ) -> (Vec<BlockAdded>, Vec<DeployAccepted>, Vec<DeployProcessed>) {
+    let base_offset = id_base.unwrap_or(0) as u64;
     let (blocks, accepteds, processeds) =
-        generate_blocks_and_deploys(test_rng, number_of_blocks, deploys_in_block);
+        generate_blocks_and_deploys(test_rng, number_of_blocks as usize, deploys_in_block as usize, base_offset);
     let event_source_address = String::from("localhost");
-    let mut event_id = 0;
+    let mut event_id = id_base.unwrap_or(0);
     for accepted in accepteds.iter() {
         database
             .save_deploy_accepted(accepted.clone(), event_id, event_source_address.clone())
@@ -92,6 +94,7 @@ pub fn generate_blocks_and_deploys(
     test_rng: &mut TestRng,
     number_of_blocks: usize,
     deploys_in_block: usize,
+    base_offset: u64,
 ) -> (Vec<BlockAdded>, Vec<DeployAccepted>, Vec<DeployProcessed>) {
     let mut blocks = Vec::new();
     let mut accepted_deploys = Vec::new();
@@ -107,7 +110,7 @@ pub fn generate_blocks_and_deploys(
         let block = BlockAdded::random_with_data(
             test_rng,
             deploy_hashes_for_block.clone(),
-            block_number as u64,
+            base_offset + block_number as u64,
         );
         let block_hash = block.block.hash.clone();
         blocks.push(block);

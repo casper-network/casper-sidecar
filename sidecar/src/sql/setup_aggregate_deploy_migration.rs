@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -34,7 +34,8 @@ impl BackfillAggregateDeployData {
         let res = transaction
             .execute(count_deploy_accepted_materialized)
             .await?;
-        let are_there_any_deploy_accepted = self.determine_if_there_are_deploy_accepted(res).await?;
+        let are_there_any_deploy_accepted =
+            self.determine_if_there_are_deploy_accepted(res).await?;
         if are_there_any_deploy_accepted {
             let materialized = {
                 let insert_statement =
@@ -43,7 +44,7 @@ impl BackfillAggregateDeployData {
             };
             transaction.execute(materialized).await
         } else {
-            return Ok(TransactionStatementResult::InsertStatement(0))
+            return Ok(TransactionStatementResult::InsertStatement(0));
         }
     }
 
@@ -51,10 +52,13 @@ impl BackfillAggregateDeployData {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<i32, DatabaseWriteError> {
-        let limit = 5000;
+        let limit = 10000;
         let mut offset = 0;
-        let processed = 0;
+        let mut processed = 0;
+        let mut deploy_hashes = HashSet::new();
         loop {
+            println!("Fetching blocks offset {}", offset);
+            let mut start = Instant::now();
             let materialized = {
                 let select_statement = tables::block_added::create_list_stmt(offset, limit);
                 let select_statement = TransactionStatement::SelectStatement(select_statement);
@@ -63,30 +67,47 @@ impl BackfillAggregateDeployData {
             let results = transaction.execute(materialized).await?;
             match results {
                 TransactionStatementResult::SelectResult(data) => {
-                    if data.is_empty() {
+                    let millis = start.elapsed().as_millis() as f64 / 1000.0;
+                    println!("Fetching blocks took {} [s]", millis);
+
+                    start = Instant::now();
+                    let data_size = data.len() as i32;
+                    if data_size == 0 {
                         break;
                     }
-                    let materialized = {
-                        let mut insert_stmts = vec![];
+                    let maybe_materialized = {
+                        let mut inserts_data = vec![];
                         for raw_block_added in data {
                             let block_added = serde_json::from_str::<BlockAdded>(&raw_block_added)?;
                             let block_hash = block_added.hex_encoded_hash();
                             let timestamp = block_added.get_tmestamp().millis();
-                            for deploy_hash in block_added.get_all_deploy_hashes() {
-                                let insert_stmt =
-                                    tables::assemble_deploy_aggregate::create_insert_stmt(
-                                        deploy_hash,
-                                        Some((block_hash.clone(), timestamp)),
-                                    )?;
-                                insert_stmts.push(insert_stmt)
+                            let all_deploy_hashes = block_added.get_all_deploy_hashes();
+                            if !all_deploy_hashes.is_empty() {
+                                for deploy_hash in all_deploy_hashes {
+                                    deploy_hashes.insert(deploy_hash.clone());
+                                    inserts_data.push((deploy_hash, Some((block_hash.clone(), timestamp))))
+                                }
                             }
                         }
-                        let multi_insert_stmt =
-                            TransactionStatement::MultiInsertStatement(insert_stmts);
-                        transaction.materialize(multi_insert_stmt)
+                        if inserts_data.is_empty() {
+                            None
+                        } else {
+                            println!("Number of inserts {}", inserts_data.len());
+                            let insert_stmt = tables::assemble_deploy_aggregate::create_multi_insert_stmt(inserts_data)?;                            
+                            let multi_insert_stmt =
+                                TransactionStatement::InsertStatement(insert_stmt);
+                            Some(transaction.materialize(multi_insert_stmt))
+                        }
                     };
-                    let _ = transaction.execute(materialized).await?;
-                    processed += data.len();
+                    if let Some(materialized) = maybe_materialized {
+                        let millis = start.elapsed().as_millis() as f64 / 1000.0;
+                        println!("Preparing inserts took {} [s]", millis);
+                        start = Instant::now();
+                        let _ = transaction.execute(materialized).await?;
+                        let millis = start.elapsed().as_millis() as f64 / 1000.0;
+                        println!("Executing inserts took {} [s]", millis);
+                    }
+                    processed += data_size;
                 }
                 TransactionStatementResult::InsertStatement(_) => {
                     return Err(DatabaseWriteError::Unhandled(Error::msg(
@@ -101,10 +122,17 @@ impl BackfillAggregateDeployData {
             }
             offset += limit;
         }
-        Ok(processed)
+        println!(
+            "Found {} unique deploy hashes in blocks",
+            deploy_hashes.len()
+        );
+        Ok(processed as i32)
     }
 
-    async fn determine_if_there_are_deploy_accepted(&self, res: TransactionStatementResult) -> Result<bool, DatabaseWriteError> {
+    async fn determine_if_there_are_deploy_accepted(
+        &self,
+        res: TransactionStatementResult,
+    ) -> Result<bool, DatabaseWriteError> {
         match res {
             TransactionStatementResult::SelectResult(data) => {
                 if data.len() != 1 {
@@ -112,7 +140,7 @@ impl BackfillAggregateDeployData {
                         "Expected exactly one result from counting DeployAggregate query",
                     )));
                 }
-                return Ok(data.get(0).unwrap().to_owned() != "0".to_string())
+                return Ok(data.get(0).unwrap().to_owned() != "0".to_string());
             }
             TransactionStatementResult::InsertStatement(_) => {
                 return Err(DatabaseWriteError::Unhandled(Error::msg(
@@ -134,11 +162,18 @@ impl MigrationScriptExecutor for BackfillAggregateDeployData {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
+        let start = Instant::now();
+        println!("Starting to backfill assemble commands from deploy accepted");
         self.backfill_assemble_commands_from_deploy_accepted(transaction.clone())
             .await?;
+        println!("Done backfilling assemble commands from deploy accepted");
         self.backfill_assemble_commands_from_block_added(transaction.clone())
             .await?;
+        println!("Done backfilling assemble commands from blocks");
         self.update_pending_deploy_aggregates().await?;
+        let took = start.elapsed();
+        let millis = took.as_millis() as f64 / 1000.0;
+        println!("AAAA IT took {} to do part 1", millis);
         Ok(())
     }
 }

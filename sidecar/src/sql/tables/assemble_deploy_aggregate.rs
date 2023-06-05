@@ -4,7 +4,7 @@ use sea_query::{
 
 use sea_query::{
     Alias, DeleteStatement, Expr, IndexCreateStatement, InsertStatement, SelectStatement,
-    SimpleExpr, SubQueryStatement,
+    SimpleExpr, SubQueryStatement, Value,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -74,22 +74,40 @@ pub fn create_insert_stmt(
         .to_owned())
 }
 
+/// Creates insert statement for a command to assemble aggregate DeployAggregate.
+/// The maybe_block_data is a option tuple of blocks deploy hash and its creation timestamp.
+pub fn create_multi_insert_stmt(
+    //vector of (deploy_hash, (Option(block_hash, block_timestamp)))
+    data: Vec<(String, Option<(String, u64)>)>,
+) -> SqResult<InsertStatement> {
+    let cols = vec![AssembleDeployAggregate::DeployHash, AssembleDeployAggregate::BlockHash, AssembleDeployAggregate::BlockTimestamp];
+    let mut builder = Query::insert()
+        .into_table(AssembleDeployAggregate::Table)
+        .columns(cols)
+        .to_owned();
+    for (deploy_hash, maybe_block_data) in data {
+        match maybe_block_data {
+            Some((block_hash, timestamp)) => {
+                builder.values(vec![deploy_hash.into(), block_hash.into(), timestamp.into()])?;
+            }
+            _ => {
+                builder.values(vec![deploy_hash.into(), None::<String>.into(), None::<u64>.into()])?;
+            }
+        }
+    }
+    
+    Ok(builder.to_owned())
+}
+
 pub fn create_insert_from_deploy_accepted() -> SqResult<InsertStatement> {
     let sub_select_deploy_hashes_deploy_accepted = Query::select()
         .expr(Expr::col(DeployAccepted::DeployHash))
         .from(DeployAccepted::Table)
         .to_owned();
-    let accepted_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
-        sub_select_deploy_hashes_deploy_accepted,
-    )));
-    let cols = vec![AssembleDeployAggregate::DeployHash];
-    let exprs = vec![
-        accepted_expr,
-    ];
     let builder = Query::insert()
         .into_table(AssembleDeployAggregate::Table)
-        .columns(cols.clone())
-        .exprs(exprs)?
+        .columns(vec![AssembleDeployAggregate::DeployHash])
+        .select_from(sub_select_deploy_hashes_deploy_accepted)?
         .to_owned();
     Ok(builder)
 }
@@ -178,6 +196,12 @@ pub fn delete_stmt(ids: Vec<u32>) -> DeleteStatement {
         .from_table(AssembleDeployAggregate::Table)
         .cond_where(Expr::col(AssembleDeployAggregate::Id).is_in(ids))
         .to_owned()
+}
+
+
+#[test]
+pub fn z_test() {
+println!("{}", create_table_stmt().to_string(SqliteQueryBuilder))
 }
 
 #[test]

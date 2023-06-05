@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use anyhow::Error;
+use casper_types::testing::TestRng;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
@@ -24,6 +25,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
+    time::Instant,
 };
 
 use self::errors::{wrap_query_error, SqliteDbError};
@@ -65,7 +67,19 @@ impl SqliteDatabase {
                     file_path: Path::new(&path).into(),
                 };
                 MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
-                Ok(sqlite_db)
+                let start = Instant::now();
+                loop {
+                    let res = sqlite_db.update_pending_deploy_aggregates().await;
+                    if res.is_err() {
+                        return Err(Error::msg("SSSSSS"));
+                    }
+                    if res.unwrap() == 0 {
+                        let took = start.elapsed();
+                        let millis = took.as_millis() as f64 / 1000.0;
+                        println!("AAAA IT took {} to do part 2", millis);
+                        return Ok(sqlite_db);
+                    }
+                }
             }
         }
     }
@@ -143,11 +157,9 @@ impl SqliteDatabase {
         deploy_hash: String,
         maybe_block_data: Option<(String, u64)>,
     ) -> Result<(), DatabaseWriteError> {
-        let insert_stmt = tables::assemble_deploy_aggregate::create_insert_stmt(
-            deploy_hash,
-            maybe_block_data,
-        )?
-        .to_string(SqliteQueryBuilder);
+        let insert_stmt =
+            tables::assemble_deploy_aggregate::create_insert_stmt(deploy_hash, maybe_block_data)?
+                .to_string(SqliteQueryBuilder);
         transaction
             .execute(insert_stmt.as_str())
             .await
