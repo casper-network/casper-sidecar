@@ -74,8 +74,7 @@ impl EventListener {
         initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
         is_empty_database: bool,
     ) -> Result<(), Error> {
-        let mut last_error_should_not_increase_attempts = false;
-        let mut attempts = 0;
+        let mut attempts = 1;
         let last_event_id_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
         let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
 
@@ -91,11 +90,7 @@ impl EventListener {
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
         let mut single_use_reporter = Some(initial_api_version_sender);
-        while attempts < self.max_connection_attempts {
-            if !last_error_should_not_increase_attempts {
-                attempts += 1;
-            }
-            last_error_should_not_increase_attempts = false;
+        while attempts <= self.max_connection_attempts {
             info!(
                 "Attempting to connect...\t{}/{}",
                 attempts, self.max_connection_attempts
@@ -114,7 +109,7 @@ impl EventListener {
                     // If the connection has been failing and we see the build version change we reset
                     // the attempts as it may have down for an upgrade.
                     if new_node_build_version != self.node_build_version {
-                        attempts = 0;
+                        attempts = 1;
                     }
 
                     self.node_build_version = new_node_build_version;
@@ -132,6 +127,7 @@ impl EventListener {
                     }
 
                     sleep(self.delay_between_attempts).await;
+                    attempts += 1;
                     continue;
                 }
             }
@@ -176,15 +172,23 @@ impl EventListener {
             for (filter, mut connection) in connections.drain() {
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
-                    let err = connection.start_handling().await;
-                    error!("Error on start_handling: {}", err);
-                    err
+                    let res = connection.start_handling().await;
+                    match res {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            error!("Error on start_handling: {}", e);
+                            Err(e)
+                        },
+                    }
                 });
                 connection_join_handles.push(handle);
             }
 
             if self.allow_partial_connection {
-                // Await completion (which would be caused by an error) of all connections OR one of the connection raising NonRecoverableError
+                // We wait until either 
+                //  * all of the connections return error OR 
+                //  * one of the connection returns Err(NonRecoverableError) OR 
+                //  * one of the connection returns Ok(()) -> this means that we need to do a force reconnect to the node
                 loop {
                     let select_result = futures::future::select_all(connection_join_handles).await;
                     let task_result = select_result.0;
@@ -192,39 +196,47 @@ impl EventListener {
                     if task_result.is_err() {
                         break;
                     }
-                    let err = task_result.unwrap();
-                    match err {
-                        ConnectionManagerError::NonRecoverableError { error } => {
-                            error!(
-                                "Restarting event listener {} because of NonRecoverableError: {}",
-                                self.node.ip_address.to_string(),
-                                error
-                            );
-                            break;
+                    let res = task_result.unwrap();
+                    match res {
+                        Ok(_) => { //Not increasing attempts on "clean exit" of connection manager
+                            break
                         }
-                        ConnectionManagerError::InitialConnectionError { error } => {
-                            //No futures_left means no more filters active, we need to restart the whole listener
-                            if futures_left.is_empty() {
-                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
-                                break;
+                        Err(err) => {
+                            match err {
+                                ConnectionManagerError::NonRecoverableError { error } => {
+                                    error!(
+                                        "Restarting event listener {} because of NonRecoverableError: {}",
+                                        self.node.ip_address.to_string(),
+                                        error
+                                    );
+                                    attempts += 1;
+                                    break;
+                                }
+                                ConnectionManagerError::InitialConnectionError { error } => {
+                                    //No futures_left means no more filters active, we need to restart the whole listener
+                                    if futures_left.is_empty() {
+                                        error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
+                                        attempts += 1;
+                                        break;
+                                    }
+                                }
                             }
-                        }
-                        ConnectionManagerError::ForceReconnect() => {
-                            last_error_should_not_increase_attempts = true;
-                            break;
                         }
                     }
                     connection_join_handles = futures_left
                 }
             } else {
-                // Return on the first completed (which would be caused by an error) connection
+                // Return on the first completed connection
                 let select_result = futures::future::select_all(connection_join_handles).await;
                 let task_result = select_result.0;
                 if task_result.is_ok() {
-                    let err = task_result.unwrap();
-                    if let ConnectionManagerError::ForceReconnect() = err {
-                        last_error_should_not_increase_attempts = true;
+                    let res = task_result.unwrap();
+                    if res.is_err() {
+                        attempts += 1;
                     }
+                    //Not increasing attempts on "clean exit" of connection manager
+                } else {
+                    attempts += 1;
                 }
             }
         }
