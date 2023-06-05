@@ -80,7 +80,6 @@ pub(super) struct ConnectionManager {
 pub enum ConnectionManagerError {
     NonRecoverableError { error: Error },
     InitialConnectionError { error: Error },
-    ForceReconnect(),
 }
 
 impl Display for ConnectionManagerError {
@@ -91,9 +90,6 @@ impl Display for ConnectionManagerError {
             }
             Self::InitialConnectionError { error } => {
                 write!(f, "InitialConnectionError: {}", error)
-            }
-            Self::ForceReconnect() => {
-                write!(f, "ForceReconnect")
             }
         }
     }
@@ -139,11 +135,8 @@ impl ConnectionManagerBuilder {
 
 impl ConnectionManager {
     ///This function is blocking, it will return an ConnectionManagerError result if something went wrong while processing.
-    pub(super) async fn start_handling(&mut self) -> ConnectionManagerError {
-        match self.do_start_handling().await {
-            Ok(_) => non_recoverable_error(Error::msg("Unexpected Ok() from do_start_handling")),
-            Err(e) => e,
-        }
+    pub(super) async fn start_handling(&mut self) -> Result<(), ConnectionManagerError> {
+        self.do_start_handling().await
     }
 
     async fn connect_with_retries(
@@ -225,15 +218,9 @@ impl ConnectionManager {
                 return Err(non_recoverable_error(error));
             }
         }
-        let outcome = self.handle_stream(event_stream).await;
         //If we loose connection for some reason we need to go back to the event listener and do
-        // the whole handshake process again
-        Err(match outcome {
-            Ok(_) => decorate_with_event_stream_closed(self.bind_address.clone()),
-            Err(err) => err,
-        })
-        //If we loose connection for some reason we need to go back to the event listener and do
-        // the whole handshake process again
+        // the whole handshake process again. The Ok branch here means that we need to do a force restart of connection manager
+        self.handle_stream(event_stream).await
     }
 
     async fn handle_stream<E, S>(
@@ -276,14 +263,14 @@ impl ConnectionManager {
                             }
                         }
                     } else {
-                        return Ok(())
+                        return Err(decorate_with_event_stream_closed(self.bind_address.clone()))
                     }
                 }
                 poison_pill_result = poison_pill_channel.recv() => {
-                    return Err(match poison_pill_result {
-                        Ok(_) => ConnectionManagerError::ForceReconnect(),
-                        Err(err) => non_recoverable_error(Error::msg(format!("Error when waiting for force reconnection signal, error: {}", err))),
-                    })
+                    return match poison_pill_result {
+                        Ok(_) => Ok(()),
+                        Err(err) => Err(non_recoverable_error(Error::msg(format!("Error when waiting for force reconnection signal, error: {}", err)))),
+                    }
                 }
             }
         }
@@ -406,7 +393,6 @@ fn couldnt_connect(
                 error: error.context(message),
             }
         }
-        Some(ConnectionManagerError::ForceReconnect()) => ConnectionManagerError::ForceReconnect(),
     }
 }
 
