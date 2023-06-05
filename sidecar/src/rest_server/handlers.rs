@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::{
     errors::StorageError,
     requests::{ListDeploysRequest, Page},
@@ -7,7 +9,7 @@ use crate::{
     types::database::{DatabaseReadError, DatabaseReader, DeployAggregateFilter},
 };
 use anyhow::Error;
-use casper_event_types::metrics::{metrics_summary, self};
+use casper_event_types::metrics::{self, metrics_summary};
 use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 
@@ -51,14 +53,20 @@ pub(super) async fn list_deploys<Db: DatabaseReader + Clone + Send>(
     list_deploys_request.validate()?;
     let offset = list_deploys_request.offset.unwrap_or(0);
     let limit = list_deploys_request.get_limit();
+    let start = Instant::now();
     let list_result = db
         .list_deploy_aggregate(build_deploy_aggregate_filter(list_deploys_request))
         .await
-        .map(|tuple| Page {
-            data: tuple.0,
-            item_count: tuple.1,
-            limit,
-            offset,
+        .map(|tuple| {
+            let took = start.elapsed();
+            let millis = took.as_millis() as f64 / 1000.0;
+            println!("Whole request-ish {}", millis);
+            Page {
+                data: tuple.0,
+                item_count: tuple.1,
+                limit,
+                offset,
+            }
         });
     let final_result = format_or_reject_storage_result(list_result);
     final_result

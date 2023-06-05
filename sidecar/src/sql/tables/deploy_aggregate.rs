@@ -17,8 +17,10 @@ pub(super) enum DeployAggregate {
     Table,
     DeployHash,
     DeployAcceptedRaw,
+    IsAccepted,
     DeployProcessedRaw,
-    DeployExpiredRaw,
+    IsProcessed,
+    IsExpired,
     BlockHash,
     BlockTimestampUtcEpochMillis,
 }
@@ -48,8 +50,7 @@ pub fn create_list_by_filter_query(filter: DeployAggregateFilter) -> SelectState
                     Alias::new("deploy_processed_raw"),
                 )
                 .expr_as(
-                    Expr::col((DeployAggregate::Table, DeployAggregate::DeployExpiredRaw))
-                        .is_not_null(),
+                    Expr::col((DeployAggregate::Table, DeployAggregate::IsExpired)),
                     Alias::new("is_expired"),
                 )
                 .expr_as(
@@ -71,20 +72,11 @@ pub fn create_count_aggregate_deploys_query(filter: DeployAggregateFilter) -> Se
         filter.exclude_expired,
         filter.exclude_not_processed,
         Query::select().expr_as(
-            Expr::col((DeployAggregate::Table, DeployAggregate::DeployHash)).count(),
+            Expr::asterisk().count(),
             Alias::new("count"),
         ),
     )
     .to_owned()
-}
-
-pub fn create_deploy_aggregate_block_hash_timestamp_index() -> IndexCreateStatement {
-    Index::create()
-        .if_not_exists()
-        .name("IDX_DeployAggregate_BlockTimestamp")
-        .table(DeployAggregate::Table)
-        .col(DeployAggregate::BlockTimestampUtcEpochMillis)
-        .to_owned()
 }
 
 pub fn create_deploy_aggregate_block_hash_index() -> IndexCreateStatement {
@@ -93,6 +85,25 @@ pub fn create_deploy_aggregate_block_hash_index() -> IndexCreateStatement {
         .name("IDX_DeployAggregate_BlockHash")
         .table(DeployAggregate::Table)
         .col(DeployAggregate::BlockHash)
+        .to_owned()
+}
+
+pub fn create_deploy_aggregate_is_accepted_and_timestamp_index() -> IndexCreateStatement {
+    Index::create()
+        .if_not_exists()
+        .name("IDX_DeployAggregate_IsAccepted_Timestamp")
+        .table(DeployAggregate::Table)
+        .col(DeployAggregate::IsAccepted)
+        .col(DeployAggregate::BlockTimestampUtcEpochMillis)
+        .to_owned()
+}
+
+pub fn create_deploy_aggregate_is_processed_index() -> IndexCreateStatement {
+    Index::create()
+        .if_not_exists()
+        .name("IDX_DeployAggregate_IsProcessed")
+        .table(DeployAggregate::Table)
+        .col(DeployAggregate::IsProcessed)
         .to_owned()
 }
 
@@ -127,15 +138,14 @@ fn decorate_with_joins(
     select: &mut SelectStatement,
 ) -> &mut SelectStatement {
     let mut conditions = Cond::all()
-        .add(Expr::tbl(DeployAggregate::Table, DeployAggregate::DeployAcceptedRaw).is_not_null());
+        .add(Expr::tbl(DeployAggregate::Table, DeployAggregate::IsAccepted).eq(true));
     if exclude_expired {
-        conditions = conditions
-            .add(Expr::tbl(DeployAggregate::Table, DeployAggregate::DeployExpiredRaw).is_null())
+        conditions =
+            conditions.add(Expr::tbl(DeployAggregate::Table, DeployAggregate::IsExpired).eq(false))
     }
     if exclude_not_processed {
-        conditions = conditions.add(
-            Expr::tbl(DeployAggregate::Table, DeployAggregate::DeployProcessedRaw).is_not_null(),
-        )
+        conditions =
+            conditions.add(Expr::tbl(DeployAggregate::Table, DeployAggregate::IsProcessed).eq(true))
     }
     select.from(DeployAggregate::Table).cond_where(conditions)
 }
@@ -150,8 +160,10 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .not_null(),
         )
         .col(ColumnDef::new(DeployAggregate::DeployAcceptedRaw).blob(BlobSize::Tiny))
+        .col(ColumnDef::new(DeployAggregate::IsAccepted).boolean())
         .col(ColumnDef::new(DeployAggregate::DeployProcessedRaw).blob(BlobSize::Tiny))
-        .col(ColumnDef::new(DeployAggregate::DeployExpiredRaw).blob(BlobSize::Tiny))
+        .col(ColumnDef::new(DeployAggregate::IsProcessed).boolean())
+        .col(ColumnDef::new(DeployAggregate::IsExpired).boolean())
         .col(ColumnDef::new(DeployAggregate::BlockHash).string())
         .col(ColumnDef::new(DeployAggregate::BlockTimestampUtcEpochMillis).integer_len(13))
         .index(
@@ -176,6 +188,14 @@ pub fn create_update_stmt(
     let accepted_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
         sub_select_raw_accepted,
     )));
+    let sub_select_is_accepted = Query::select()
+        .expr(Expr::col(DeployAccepted::Raw).is_not_null())
+        .from(DeployAccepted::Table)
+        .and_where(Expr::col(DeployAccepted::DeployHash).eq(deploy_hash.clone()))
+        .to_owned();
+    let is_accepted_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_is_accepted,
+    )));
     let sub_select_raw_processed = Query::select()
         .expr(Expr::col(DeployProcessed::Raw))
         .from(DeployProcessed::Table)
@@ -184,21 +204,38 @@ pub fn create_update_stmt(
     let processed_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
         sub_select_raw_processed,
     )));
+    let sub_select_is_processed = Query::select()
+        .expr(Expr::col(DeployProcessed::Raw).is_not_null())
+        .from(DeployProcessed::Table)
+        .and_where(Expr::col(DeployProcessed::DeployHash).eq(deploy_hash.clone()))
+        .to_owned();
+    let is_processed_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_is_processed,
+    )));
     let sub_select_raw_expired = Query::select()
-        .expr(Expr::col(DeployExpired::Raw))
+        .expr(Expr::col(DeployExpired::Raw).is_not_null())
         .from(DeployExpired::Table)
         .and_where(Expr::col(DeployExpired::DeployHash).eq(deploy_hash.clone()))
         .to_owned();
-    let expired_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+    let is_expired_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
         sub_select_raw_expired,
     )));
     let mut cols = vec![
         DeployAggregate::DeployHash,
         DeployAggregate::DeployAcceptedRaw,
-        DeployAggregate::DeployExpiredRaw,
+        DeployAggregate::IsAccepted,
+        DeployAggregate::IsExpired,
         DeployAggregate::DeployProcessedRaw,
+        DeployAggregate::IsProcessed,
     ];
-    let mut exprs = vec![Expr::value(deploy_hash), accepted_expr, expired_expr, processed_expr];
+    let mut exprs = vec![
+        Expr::value(deploy_hash),
+        accepted_expr,
+        is_accepted_expr,
+        is_expired_expr,
+        processed_expr,
+        is_processed_expr,
+    ];
     if let Some((block_hash, block_timestamp)) = maybe_block_data {
         cols.push(DeployAggregate::BlockHash);
         cols.push(DeployAggregate::BlockTimestampUtcEpochMillis);
@@ -216,27 +253,6 @@ pub fn create_update_stmt(
         )
         .to_owned();
     Ok(builder)
-}
-
-pub fn create_insert_from_deploy_accepted_stmt() -> SqResult<InsertStatement> {
-    let sub_select_accepted = Query::select()
-        .column(DeployAccepted::DeployHash)
-        .expr(Expr::col(DeployAccepted::Raw))
-        .from(DeployAccepted::Table)
-        .to_owned();
-    Ok(Query::insert()
-        .into_table(DeployAggregate::Table)
-        .columns([
-            DeployAggregate::DeployHash,
-            DeployAggregate::DeployAcceptedRaw,
-        ])
-        .select_from(sub_select_accepted)?
-        .on_conflict(
-            OnConflict::column(DeployAggregate::DeployHash)
-                .do_nothing()
-                .to_owned(),
-        )
-        .to_owned())
 }
 
 #[test]
@@ -261,16 +277,5 @@ pub fn create_update_stmt_test_without_block_data() {
     assert_eq!(
         sql,
         "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"deploy_expired_raw\", \"deploy_processed_raw\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1')) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"deploy_expired_raw\" = \"excluded\".\"deploy_expired_raw\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\""
-    )
-}
-
-#[test]
-pub fn create_insert_from_deploy_accepted_stmt_test() {
-    let sql = create_insert_from_deploy_accepted_stmt()
-        .unwrap()
-        .to_string(SqliteQueryBuilder);
-    assert_eq!(
-        sql,
-        "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\") SELECT \"deploy_hash\", \"raw\" FROM \"DeployAccepted\" ON CONFLICT (\"deploy_hash\") DO NOTHING"
     )
 }

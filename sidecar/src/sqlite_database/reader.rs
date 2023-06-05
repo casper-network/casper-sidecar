@@ -5,9 +5,9 @@ use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue};
 use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
-use std::{convert::TryFrom};
+use std::{convert::TryFrom, time::Instant};
 
-use casper_event_types::{FinalitySignature as FinSig};
+use casper_event_types::FinalitySignature as FinSig;
 
 use super::{
     errors::{wrap_query_error, SqliteDbError},
@@ -117,18 +117,30 @@ impl DatabaseReader for SqliteDatabase {
         filter: DeployAggregateFilter,
     ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError> {
         let db_connection = &self.connection_pool;
+        let start = Instant::now();
         let item_count = count_aggregates(filter.clone(), db_connection).await?;
+        let took = start.elapsed();
+        let millis = took.as_millis() as f64 / 1000.0;
+        println!("Count took {}", millis);
         let stmt = tables::deploy_aggregate::create_list_by_filter_query(filter)
             .to_string(SqliteQueryBuilder);
+        let start = Instant::now();
         let data = sqlx::query_as::<_, DeployAggregateJoin>(&stmt)
             .fetch_all(db_connection)
             .await
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|joins| {
+                let took = start.elapsed();
+                let millis = took.as_millis() as f64 / 1000.0;
+                println!("Fetching data took {}", millis);
+                let start = Instant::now();
                 let vector_of_deploy_aggregates = joins
                     .into_iter()
                     .map(to_deploy_aggregate)
                     .collect::<Result<Vec<_>, _>>()?;
+                let took = start.elapsed();
+                let millis = took.as_millis() as f64 / 1000.0;
+                println!("Deserializing took {}", millis);
                 Ok(vector_of_deploy_aggregates)
             })?;
 
@@ -139,24 +151,27 @@ impl DatabaseReader for SqliteDatabase {
         &self,
         hash: &str,
     ) -> Result<DeployAccepted, DatabaseReadError> {
-        let transaction = &mut self.get_transaction().await?;        
-        self.get_deploy_accepted_inner_by_hash(transaction, hash).await
+        let transaction = &mut self.get_transaction().await?;
+        self.get_deploy_accepted_inner_by_hash(transaction, hash)
+            .await
     }
 
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseReadError> {
-        let transaction = &mut self.get_transaction().await?;        
-        self.get_deploy_processed_inner_by_hash(transaction, hash).await
+        let transaction = &mut self.get_transaction().await?;
+        self.get_deploy_processed_inner_by_hash(transaction, hash)
+            .await
     }
 
     async fn get_deploy_expired_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployExpired, DatabaseReadError> {
-        let transaction = &mut self.get_transaction().await?;        
-        self.get_deploy_expired_inner_by_hash(transaction, hash).await
+        let transaction = &mut self.get_transaction().await?;
+        self.get_deploy_expired_inner_by_hash(transaction, hash)
+            .await
     }
 
     async fn get_faults_by_public_key(

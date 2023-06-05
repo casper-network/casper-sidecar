@@ -383,10 +383,13 @@ impl Migration {
                         tables::assemble_deploy_aggregate::create_table_stmt(),
                     )),
                     StatementWrapper::IndexCreateStatement(Box::new(
-                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_timestamp_index(),
+                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
                     )),
                     StatementWrapper::IndexCreateStatement(Box::new(
-                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
+                        tables::deploy_aggregate::create_deploy_aggregate_is_accepted_and_timestamp_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_is_processed_index(),
                     )),
                     StatementWrapper::IndexCreateStatement(Box::new(
                         tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_block_hash_index(),
