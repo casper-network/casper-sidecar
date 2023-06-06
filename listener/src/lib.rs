@@ -178,16 +178,16 @@ impl EventListener {
                         Err(e) => {
                             error!("Error on start_handling: {}", e);
                             Err(e)
-                        },
+                        }
                     }
                 });
                 connection_join_handles.push(handle);
             }
 
             if self.allow_partial_connection {
-                // We wait until either 
-                //  * all of the connections return error OR 
-                //  * one of the connection returns Err(NonRecoverableError) OR 
+                // We wait until either
+                //  * all of the connections return error OR
+                //  * one of the connection returns Err(NonRecoverableError) OR
                 //  * one of the connection returns Ok(()) -> this means that we need to do a force reconnect to the node
                 loop {
                     let select_result = futures::future::select_all(connection_join_handles).await;
@@ -198,8 +198,9 @@ impl EventListener {
                     }
                     let res = task_result.unwrap();
                     match res {
-                        Ok(_) => { //Not increasing attempts on "clean exit" of connection manager
-                            break
+                        Ok(_) => {
+                            //Not increasing attempts on "clean exit" of connection manager
+                            break;
                         }
                         Err(err) => {
                             match err {
