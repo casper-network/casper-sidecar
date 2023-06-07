@@ -65,12 +65,7 @@ async fn x(
 async fn given_10000_deploys_when_listing_deploys_sorted_per_100_then_should_be() {
     let mut test_rng = TestRng::new();
     let p = Path::new("/home/jz/DEV/sources/storage");
-    let config = SqliteConfig {
-        file_name: String::from("sqlite_database.db3"),
-        max_connections_in_pool: 10,
-        wal_autocheckpointing_interval: 1000,
-    };
-    let database = SqliteDatabase::new(p, config)
+    let database = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
     let api = filters::combined_filters(database);

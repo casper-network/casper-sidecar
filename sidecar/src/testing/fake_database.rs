@@ -247,7 +247,7 @@ impl DatabaseWriter for FakeDatabase {
         //Nothing to do here
         Ok(())
     }
-
+    
     async fn update_pending_deploy_aggregates(&self) -> Result<usize, DatabaseWriteError> {
         Ok(0)
     }

@@ -8,13 +8,11 @@ use crate::{
     sql::tables::{self},
     types::{
         config::SqliteConfig,
-        database::{DatabaseReadError, DatabaseWriteError, DatabaseWriter},
+        database::{DatabaseReadError, DatabaseWriteError},
         sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed},
     },
 };
 use anyhow::Error;
-use casper_types::testing::TestRng;
-use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
 use sqlx::{
@@ -25,14 +23,13 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
-    time::Instant,
 };
 
 use self::errors::{wrap_query_error, SqliteDbError};
 
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
-
+const BUSY_TIMEOUT_KEY: &str = "busy_timeout";
 /// [SqliteDatabase] can be cloned to allow multiple components access to the database.
 /// The [SqlitePool] is cloned using an [Arc](std::sync::Arc) so each cloned instance of [SqliteDatabase] shares the same connection pool.
 #[derive(Clone)]
@@ -58,6 +55,7 @@ impl SqliteDatabase {
                                 WAL_AUTOCHECKPOINT_KEY,
                                 config.wal_autocheckpointing_interval.to_string(),
                             )
+                            .pragma(BUSY_TIMEOUT_KEY, config.database_write_timeout_secs.unwrap_or(10000).to_string())
                             .disable_statement_logging()
                             .to_owned(),
                     );
@@ -67,19 +65,7 @@ impl SqliteDatabase {
                     file_path: Path::new(&path).into(),
                 };
                 MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
-                let start = Instant::now();
-                loop {
-                    let res = sqlite_db.update_pending_deploy_aggregates().await;
-                    if res.is_err() {
-                        return Err(Error::msg("SSSSSS"));
-                    }
-                    if res.unwrap() == 0 {
-                        let took = start.elapsed();
-                        let millis = took.as_millis() as f64 / 1000.0;
-                        println!("AAAA IT took {} to do part 2", millis);
-                        return Ok(sqlite_db);
-                    }
-                }
+                Ok(sqlite_db)
             }
         }
     }

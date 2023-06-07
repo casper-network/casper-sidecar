@@ -19,10 +19,6 @@ impl BackfillAggregateDeployData {
         Arc::new(BackfillAggregateDeployData {})
     }
 
-    async fn update_pending_deploy_aggregates(&self) -> Result<(), DatabaseWriteError> {
-        Ok(())
-    }
-
     async fn backfill_assemble_commands_from_deploy_accepted(
         &self,
         transaction: Arc<dyn TransactionWrapper>,
@@ -163,17 +159,10 @@ impl MigrationScriptExecutor for BackfillAggregateDeployData {
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
         let start = Instant::now();
-        println!("Starting to backfill assemble commands from deploy accepted");
         self.backfill_assemble_commands_from_deploy_accepted(transaction.clone())
             .await?;
-        println!("Done backfilling assemble commands from deploy accepted");
         self.backfill_assemble_commands_from_block_added(transaction.clone())
             .await?;
-        println!("Done backfilling assemble commands from blocks");
-        self.update_pending_deploy_aggregates().await?;
-        let took = start.elapsed();
-        let millis = took.as_millis() as f64 / 1000.0;
-        println!("AAAA IT took {} to do part 1", millis);
         Ok(())
     }
 }

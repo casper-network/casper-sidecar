@@ -7,9 +7,9 @@ mod integration_tests;
 mod integration_tests_version_switch;
 mod migration_manager;
 #[cfg(test)]
-mod performance_tests;
-#[cfg(test)]
 mod performance_test_rest_server;
+#[cfg(test)]
+mod performance_tests;
 mod rest_server;
 mod sql;
 mod sqlite_database;
@@ -53,7 +53,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
-use types::database::DatabaseReader;
+use types::{database::DatabaseReader, job::start_assembling_aggregates};
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
@@ -138,6 +138,7 @@ async fn run(config: Config) -> Result<(), Error> {
         SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())
             .await
             .context("Error instantiating database")?;
+    start_assembling_aggregates(sqlite_database.clone()).await;
 
     // Prepare the REST server task - this will be executed later
     let rest_server_handle = tokio::spawn(start_rest_server(

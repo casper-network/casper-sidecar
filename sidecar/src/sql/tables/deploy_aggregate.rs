@@ -160,10 +160,10 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .not_null(),
         )
         .col(ColumnDef::new(DeployAggregate::DeployAcceptedRaw).blob(BlobSize::Tiny))
-        .col(ColumnDef::new(DeployAggregate::IsAccepted).boolean())
+        .col(ColumnDef::new(DeployAggregate::IsAccepted).boolean().not_null())
         .col(ColumnDef::new(DeployAggregate::DeployProcessedRaw).blob(BlobSize::Tiny))
-        .col(ColumnDef::new(DeployAggregate::IsProcessed).boolean())
-        .col(ColumnDef::new(DeployAggregate::IsExpired).boolean())
+        .col(ColumnDef::new(DeployAggregate::IsProcessed).boolean().not_null())
+        .col(ColumnDef::new(DeployAggregate::IsExpired).boolean().not_null())
         .col(ColumnDef::new(DeployAggregate::BlockHash).string())
         .col(ColumnDef::new(DeployAggregate::BlockTimestampUtcEpochMillis).integer_len(13))
         .index(
@@ -193,7 +193,7 @@ pub fn create_update_stmt(
         .from(DeployAccepted::Table)
         .and_where(Expr::col(DeployAccepted::DeployHash).eq(deploy_hash.clone()))
         .to_owned();
-    let is_accepted_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+    let is_accepted_expr: SimpleExpr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
         sub_select_is_accepted,
     )));
     let sub_select_raw_processed = Query::select()
@@ -216,8 +216,9 @@ pub fn create_update_stmt(
         .expr(Expr::col(DeployExpired::Raw).is_not_null())
         .from(DeployExpired::Table)
         .and_where(Expr::col(DeployExpired::DeployHash).eq(deploy_hash.clone()))
+        
         .to_owned();
-    let is_expired_expr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+    let is_expired_expr: SimpleExpr = SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
         sub_select_raw_expired,
     )));
     let mut cols = vec![
@@ -231,10 +232,10 @@ pub fn create_update_stmt(
     let mut exprs = vec![
         Expr::value(deploy_hash),
         accepted_expr,
-        is_accepted_expr,
-        is_expired_expr,
+        Expr::expr(is_accepted_expr).if_null(false),
+        Expr::expr(is_expired_expr).if_null(false),
         processed_expr,
-        is_processed_expr,
+        Expr::expr(is_processed_expr).if_null(false),
     ];
     if let Some((block_hash, block_timestamp)) = maybe_block_data {
         cols.push(DeployAggregate::BlockHash);
@@ -265,7 +266,7 @@ pub fn create_update_stmt_test() {
     .to_string(SqliteQueryBuilder);
     assert_eq!(
         sql,
-        "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"deploy_expired_raw\", \"deploy_processed_raw\", \"block_hash\", \"block_timestamp_utc_epoch_millis\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), 'block_1', 123456) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"deploy_expired_raw\" = \"excluded\".\"deploy_expired_raw\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\", \"block_hash\" = \"excluded\".\"block_hash\", \"block_timestamp_utc_epoch_millis\" = \"excluded\".\"block_timestamp_utc_epoch_millis\""
+        "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"is_accepted\", \"is_expired\", \"deploy_processed_raw\", \"is_processed\", \"block_hash\", \"block_timestamp_utc_epoch_millis\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), 'block_1', 123456) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"is_accepted\" = \"excluded\".\"is_accepted\", \"is_expired\" = \"excluded\".\"is_expired\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\", \"is_processed\" = \"excluded\".\"is_processed\", \"block_hash\" = \"excluded\".\"block_hash\", \"block_timestamp_utc_epoch_millis\" = \"excluded\".\"block_timestamp_utc_epoch_millis\""
     )
 }
 
@@ -276,6 +277,6 @@ pub fn create_update_stmt_test_without_block_data() {
         .to_string(SqliteQueryBuilder);
     assert_eq!(
         sql,
-        "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"deploy_expired_raw\", \"deploy_processed_raw\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1')) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"deploy_expired_raw\" = \"excluded\".\"deploy_expired_raw\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\""
+        "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"is_accepted\", \"is_expired\", \"deploy_processed_raw\", \"is_processed\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), (SELECT \"raw\" IS NOT NULL FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1')) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"is_accepted\" = \"excluded\".\"is_accepted\", \"is_expired\" = \"excluded\".\"is_expired\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\", \"is_processed\" = \"excluded\".\"is_processed\""
     )
 }

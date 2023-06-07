@@ -4,7 +4,6 @@ use sea_query::{
 
 use sea_query::{
     Alias, DeleteStatement, Expr, IndexCreateStatement, InsertStatement, SelectStatement,
-    SimpleExpr, SubQueryStatement, Value,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -140,25 +139,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_assemble_deploy_aggregate_block_hash_index() -> IndexCreateStatement {
-    Index::create()
-        .if_not_exists()
-        .name("IDX_AssembleDeployAggregate_BlockHash")
-        .table(AssembleDeployAggregate::Table)
-        .col(AssembleDeployAggregate::BlockHash)
-        .to_owned()
-}
-
-pub fn create_assemble_deploy_aggregate_deploy_hash_index() -> IndexCreateStatement {
-    Index::create()
-        .if_not_exists()
-        .name("IDX_AssembleDeployAggregate_DeployHash")
-        .table(AssembleDeployAggregate::Table)
-        .col(AssembleDeployAggregate::DeployHash)
-        .to_owned()
-}
-
-pub fn select_oldest_stmt(number_to_fetch: u32) -> SelectStatement {
+pub fn select_stmt(number_to_fetch: u32) -> SelectStatement {
     Query::select()
         .expr_as(
             Expr::col((AssembleDeployAggregate::Table, AssembleDeployAggregate::Id)),
@@ -186,7 +167,8 @@ pub fn select_oldest_stmt(number_to_fetch: u32) -> SelectStatement {
             Alias::new("block_timestamp"),
         )
         .from(AssembleDeployAggregate::Table)
-        .order_by(AssembleDeployAggregate::Id, sea_query::Order::Asc)
+        //We're ordering by deploy hash so the probability of assemble command regarding one deploy hash end up in one select is higher
+        .order_by(AssembleDeployAggregate::DeployHash, sea_query::Order::Asc)
         .limit(number_to_fetch as u64)
         .to_owned()
 }
@@ -206,7 +188,7 @@ println!("{}", create_table_stmt().to_string(SqliteQueryBuilder))
 
 #[test]
 pub fn select_oldest_stmt_test() {
-    let sql = select_oldest_stmt(512).to_string(SqliteQueryBuilder);
+    let sql = select_stmt(512).to_string(SqliteQueryBuilder);
     assert_eq!(
         sql,
         "SELECT \"AssembleDeployAggregate\".\"id\" AS \"id\", \"AssembleDeployAggregate\".\"deploy_hash\" AS \"deploy_hash\", \"AssembleDeployAggregate\".\"block_hash\" AS \"block_hash\", \"AssembleDeployAggregate\".\"block_timestamp\" AS \"block_timestamp\" FROM \"AssembleDeployAggregate\" ORDER BY \"id\" ASC LIMIT 512"

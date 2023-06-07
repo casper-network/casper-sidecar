@@ -28,9 +28,9 @@ use sqlx::{
 use std::{
     collections::HashMap,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH, Duration, Instant},
 };
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::sleep};
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -70,14 +70,14 @@ impl DatabaseWriter for SqliteDatabase {
         let timestamp = block_added.block.header.timestamp.millis();
         let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
-            /*for hash in block_added.get_all_deploy_hashes() {
+            for hash in block_added.get_all_deploy_hashes() {
                 self.save_assemble_deploy_aggregate_command(
                     &mut transaction,
                     hash,
                     Some((block_hash.clone(), timestamp)),
                 )
                 .await?;
-            }*/
+            }
             transaction.commit().await?;
         }
         res
@@ -121,8 +121,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-            //   .await?;
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+               .await?;
             transaction.commit().await?;
         }
         res
@@ -162,8 +162,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-            //    .await?;
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -203,8 +203,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            //self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
-            //    .await?;
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -400,19 +400,21 @@ impl DatabaseWriter for SqliteDatabase {
     }
 
     async fn update_pending_deploy_aggregates(&self) -> Result<usize, DatabaseWriteError> {
-        let mut transaction = self.get_transaction().await?;
-
+        let main_start = Instant::now();
+        let db_connection = &self.connection_pool;
         let fetch_assemble_deploy_aggregate_orders_sql =
-            tables::assemble_deploy_aggregate::select_oldest_stmt(1000)
+            tables::assemble_deploy_aggregate::select_stmt(5000)
                 .to_string(SqliteQueryBuilder);
         let (batch_update_sql, batch_delete_sql, number_of_ids) =
             sqlx::query_as::<_, AssembleDeployAggregateEntity>(
                 &fetch_assemble_deploy_aggregate_orders_sql,
             )
-            .fetch_all(&mut transaction)
+            .fetch_all(db_connection)
             .await
             .map_err(|sql_err| DatabaseWriteError::Unhandled(Error::from(sql_err)))
             .map(|entities| {
+                let elapsed_secs = main_start.elapsed().as_millis() as f64 / 1000.0;
+                println!("Run of select took {}[s]", elapsed_secs);
                 let number_of_ids = entities.len();
                 let mut deduplicated_entities = HashMap::<String, Option<(String, u64)>>::new();
                 let deduplicated_entities_ref = &mut deduplicated_entities;
@@ -440,10 +442,16 @@ impl DatabaseWriter for SqliteDatabase {
                 (batch_update_sql, batch_delete_sql, number_of_ids)
             })?;
         if number_of_ids > 0 {
-            transaction.execute(batch_update_sql.as_str()).await?;
-            transaction.execute(batch_delete_sql.as_str()).await?;
-
-            transaction.commit().await?;
+            let start = Instant::now();
+            db_connection.execute(batch_update_sql.as_str()).await?;
+            let elapsed_secs = start.elapsed().as_millis() as f64 / 1000.0;
+            println!("Batch update took {}[s]", elapsed_secs);
+            let start = Instant::now();
+            db_connection.execute(batch_delete_sql.as_str()).await?;
+            let elapsed_secs = start.elapsed().as_millis() as f64 / 1000.0;
+            println!("Batch delete took {}[s]", elapsed_secs);
+            let elapsed_secs = main_start.elapsed().as_millis() as f64 / 1000.0;
+            println!("Run of update_pending_deploy_aggregates took {}[s]", elapsed_secs);
         }
         Ok(number_of_ids)
     }

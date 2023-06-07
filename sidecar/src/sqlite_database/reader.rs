@@ -121,7 +121,6 @@ impl DatabaseReader for SqliteDatabase {
         let item_count = count_aggregates(filter.clone(), db_connection).await?;
         let took = start.elapsed();
         let millis = took.as_millis() as f64 / 1000.0;
-        println!("Count took {}", millis);
         let stmt = tables::deploy_aggregate::create_list_by_filter_query(filter)
             .to_string(SqliteQueryBuilder);
         let start = Instant::now();
@@ -130,17 +129,11 @@ impl DatabaseReader for SqliteDatabase {
             .await
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(|joins| {
-                let took = start.elapsed();
-                let millis = took.as_millis() as f64 / 1000.0;
-                println!("Fetching data took {}", millis);
                 let start = Instant::now();
                 let vector_of_deploy_aggregates = joins
                     .into_iter()
                     .map(to_deploy_aggregate)
                     .collect::<Result<Vec<_>, _>>()?;
-                let took = start.elapsed();
-                let millis = took.as_millis() as f64 / 1000.0;
-                println!("Deserializing took {}", millis);
                 Ok(vector_of_deploy_aggregates)
             })?;
 

@@ -9,7 +9,7 @@ use crate::{
     types::database::{DatabaseReadError, DatabaseReader, DeployAggregateFilter},
 };
 use anyhow::Error;
-use casper_event_types::metrics::{self, metrics_summary};
+use casper_event_types::metrics::metrics_summary;
 use serde::Serialize;
 use warp::{http::StatusCode, Rejection, Reply};
 

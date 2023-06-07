@@ -391,12 +391,6 @@ impl Migration {
                     StatementWrapper::IndexCreateStatement(Box::new(
                         tables::deploy_aggregate::create_deploy_aggregate_is_processed_index(),
                     )),
-                    StatementWrapper::IndexCreateStatement(Box::new(
-                        tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_block_hash_index(),
-                    )),
-                    StatementWrapper::IndexCreateStatement(Box::new(
-                        tables::assemble_deploy_aggregate::create_assemble_deploy_aggregate_deploy_hash_index(),
-                    )),
                 ])
             },
             script_executor: Some(BackfillAggregateDeployData::new()),

@@ -4,7 +4,7 @@ use crate::types::database::{
 use anyhow::Error;
 use itertools::Itertools;
 use std::collections::HashMap;
-
+use tracing::info;
 #[cfg(test)]
 mod tests;
 
@@ -74,10 +74,15 @@ where
 
         for migration in migrations_to_execute {
             let version = migration.get_version().unwrap(); //at this point migrations should have versions
+            info!("MigrationManager: starting execution of migration no.: {}", version);
             self.db
                 .execute_migration(migration)
                 .await
-                .map_err(|err| error_execute_migration_failed(version, err))?;
+                .map(|_| info!("MigrationManager: finished execution of migration no.: {}", version))
+                .map_err(|err| {
+                    info!("MigrationManager: failed execution of migration no.: {}", version);
+                    error_execute_migration_failed(version, err)
+                })?;
         }
         Ok(())
     }
