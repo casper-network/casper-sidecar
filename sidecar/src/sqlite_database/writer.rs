@@ -382,17 +382,22 @@ impl TransactionWrapper for SqliteTransactionWrapper<'_> {
     }
 }
 
+fn materialize_statement(wrapper: StatementWrapper) -> String {
+    match wrapper {
+        StatementWrapper::TableCreateStatement(statement) => {
+            statement.to_string(SqliteQueryBuilder)
+        }
+        StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+        StatementWrapper::IndexCreateStatement(statement) => {
+            statement.to_string(SqliteQueryBuilder)
+        }
+        StatementWrapper::SelectStatement(statement) => statement.to_string(SqliteQueryBuilder),
+        StatementWrapper::Raw(sql) => sql,
+    }
+}
+
 fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
-    wrappers
-        .iter()
-        .map(|wrapper| match wrapper {
-            StatementWrapper::TableCreateStatement(statement) => {
-                statement.to_string(SqliteQueryBuilder)
-            }
-            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
-            StatementWrapper::Raw(sql) => sql.to_string(),
-        })
-        .collect()
+    wrappers.into_iter().map(materialize_statement).collect()
 }
 
 #[cfg(test)]

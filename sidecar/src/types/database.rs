@@ -7,7 +7,10 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
+use casper_types::Timestamp;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
+use sqlx::FromRow;
 use std::sync::Arc;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
@@ -196,6 +199,12 @@ pub trait DatabaseReader {
         &self,
         hash: &str,
     ) -> Result<DeployAggregate, DatabaseReadError>;
+    /// Returns tuple of: 1. vector of paginated DeployAggregates that match the filter and a total number of DeployAggregates that match the filter outside the pagination.
+    async fn list_deploy_aggregate(
+        &self,
+        filter: DeployAggregateFilter,
+    ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError>;
+
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     async fn get_deploy_accepted_by_hash(
         &self,
@@ -243,26 +252,83 @@ pub enum DatabaseReadError {
     Serialisation(serde_json::Error),
     /// An error occurred somewhere unexpected.
     Unhandled(anyhow::Error),
+    /// The insert was rejected by the database.
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for DatabaseReadError {
+    fn from(sqlx_err: sqlx::Error) -> Self {
+        Self::Database(sqlx_err)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
-    pub(crate) deploy_accepted: Option<DeployAccepted>,
-    pub(crate) deploy_processed: Option<DeployProcessed>,
+    pub(crate) deploy_accepted: Option<Box<RawValue>>,
+    pub(crate) deploy_processed: Option<Box<RawValue>>,
     pub(crate) deploy_expired: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) block_timestamp: Option<Timestamp>,
+}
+
+#[derive(Debug, Deserialize, FromRow)]
+pub struct DeployAggregateEntity {
+    #[sqlx(rename = "deploy_hash")]
+    pub(crate) deploy_hash: String,
+    #[sqlx(rename = "deploy_accepted_raw")]
+    pub(crate) deploy_accepted_raw: String,
+    #[sqlx(rename = "deploy_processed_raw")]
+    pub(crate) deploy_processed_raw: Option<String>,
+    #[sqlx(rename = "is_expired")]
+    pub(crate) is_expired: bool,
+    #[sqlx(rename = "block_timestamp")]
+    pub(crate) block_timestamp: Option<i64>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployAggregateSortColumn {
+    BlockTimestamp,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct DeployAggregateFilter {
+    pub exclude_expired: bool,
+    pub exclude_not_processed: bool,
+    pub limit: u32,
+    pub offset: u32,
+    pub sort_column: Option<DeployAggregateSortColumn>,
+    pub sort_order: Option<SortOrder>,
+}
+impl DeployAggregateFilter {
+    #[cfg(test)]
+    pub(crate) fn paginate(offset: u32, limit: u32) -> DeployAggregateFilter {
+        DeployAggregateFilter {
+            exclude_expired: false,
+            exclude_not_processed: false,
+            limit,
+            offset,
+            sort_column: None,
+            sort_order: None,
+        }
+    }
 }
 
 #[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs
 pub enum StatementWrapper {
     TableCreateStatement(Box<sea_query::TableCreateStatement>),
+    IndexCreateStatement(Box<sea_query::IndexCreateStatement>),
+    SelectStatement(sea_query::SelectStatement),
     InsertStatement(sea_query::InsertStatement),
     Raw(String),
-}
-
-#[async_trait]
-pub trait TransactionWrapper: Send + Sync {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
 }
 
 #[async_trait]
@@ -272,6 +338,12 @@ pub trait MigrationScriptExecutor: Send + Sync {
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError>;
 }
+
+#[async_trait]
+pub trait TransactionWrapper: Send + Sync {
+    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
+}
+
 #[derive(Clone)]
 pub struct Migration {
     // version is optional to denote the special case of the first migration
@@ -283,7 +355,7 @@ pub struct Migration {
 
 impl Migration {
     pub fn get_all_migrations() -> Vec<Migration> {
-        vec![Migration::migration_1()]
+        vec![Migration::migration_1(), Migration::migration_2()]
     }
 
     pub fn initial() -> Migration {
@@ -293,6 +365,29 @@ impl Migration {
                 Ok(vec![StatementWrapper::TableCreateStatement(Box::new(
                     tables::migration::create_table_stmt(),
                 ))])
+            },
+            script_executor: None,
+        }
+    }
+
+    pub fn migration_2() -> Migration {
+        Migration {
+            version: Some(2),
+            statement_producers: || {
+                Ok(vec![
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_table_stmt(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_block_hash_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_is_accepted_and_timestamp_index(),
+                    )),
+                    StatementWrapper::IndexCreateStatement(Box::new(
+                        tables::deploy_aggregate::create_deploy_aggregate_is_processed_index(),
+                    )),
+                ])
             },
             script_executor: None,
         }

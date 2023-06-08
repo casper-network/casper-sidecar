@@ -1,14 +1,20 @@
 use casper_event_types::FinalitySignature as FinSig;
-use casper_types::AsymmetricType;
+use casper_types::{testing::TestRng, AsymmetricType};
 use http::StatusCode;
 use warp::test::request;
 
 use super::filters;
 use crate::{
+    rest_server::test_helpers::{
+        build_list_deploys_request, build_list_deploys_request_limit_offset, list_deploys,
+        populate_with_blocks_and_deploys, random_deploy_aggregate, DEPLOYS,
+    },
+    sqlite_database::SqliteDatabase,
     testing::fake_database::FakeDatabase,
     types::{database::DeployAggregate, sse_events::*},
 };
-
+use std::str;
+const MAX_CONNECTIONS: u32 = 10;
 // Path elements
 const BLOCK: &str = "block";
 const DEPLOY: &str = "deploy";
@@ -470,5 +476,83 @@ async fn should_have_correct_content_type() {
             .get("content-type")
             .expect("Error extracting 'content-type' from headers"),
         "application/json"
+    );
+}
+
+#[tokio::test]
+async fn given_deploy_with_block_when_single_deploy_get_then_should_return_no_block_timestamp() {
+    /*
+      There was a requirement made by atchitects that the single `/deploy` endpoint doesn't return the block timestamp field
+    */
+    let mut test_rng = TestRng::new();
+    let database = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let (_, accepteds, _) =
+        populate_with_blocks_and_deploys(&mut test_rng, &database, 1, 1, None).await;
+
+    let api = filters::combined_filters(database);
+
+    let request_path = format!(
+        "/{}/{}",
+        DEPLOY,
+        accepteds.get(0).unwrap().hex_encoded_hash()
+    );
+
+    let response = request().path(&request_path).reply(&api).await;
+
+    assert!(response.status().is_success());
+
+    let body = response.into_body();
+    let deploy = serde_json::from_slice::<DeployAggregate>(&body)
+        .expect("Error parsing DeployAggregate from response");
+
+    assert_eq!(deploy.block_timestamp, None);
+}
+
+#[tokio::test]
+async fn given_list_deploy_returns_error_should_return_error_response() {
+    let database = FakeDatabase::new();
+    let api = filters::combined_filters(database);
+
+    let request_path = format!("/{}", DEPLOYS);
+    let response = request()
+        .method("POST")
+        .json(&build_list_deploys_request())
+        .path(&request_path)
+        .reply(&api)
+        .await;
+
+    assert!(!response.status().is_success());
+    let body = response.into_body();
+    let json_raw = str::from_utf8(&body).unwrap();
+    assert_eq!(
+        json_raw,
+        "{\"code\":404,\"message\":\"Query returned no results\"}"
+    );
+}
+
+#[tokio::test]
+async fn list_deploy_should_return_paged_data() {
+    let mut database = FakeDatabase::new();
+    let mut rng = TestRng::new();
+    let aggregate1 = random_deploy_aggregate(&mut rng);
+    let aggregate2 = random_deploy_aggregate(&mut rng);
+    let data_to_ret = (vec![aggregate1.clone(), aggregate2.clone()], 3);
+    let request_payload = build_list_deploys_request_limit_offset(Some(5), Some(4));
+    database.set_aggregates(data_to_ret);
+    let api = filters::combined_filters(database);
+    let page = list_deploys(&api, request_payload).await;
+    assert_eq!(page.offset, 4);
+    assert_eq!(page.limit, 5);
+    assert_eq!(page.item_count, 3);
+    assert_eq!(page.data.len(), 2);
+    assert_eq!(
+        page.data.get(0).unwrap().deploy_hash,
+        aggregate1.deploy_hash
+    );
+    assert_eq!(
+        page.data.get(1).unwrap().deploy_hash,
+        aggregate2.deploy_hash
     );
 }

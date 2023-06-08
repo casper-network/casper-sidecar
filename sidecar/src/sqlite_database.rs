@@ -3,6 +3,8 @@ mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
+#[cfg(test)]
+use crate::types::database::DeployAggregateEntity;
 use crate::{
     migration_manager::MigrationManager,
     sql::tables,
@@ -100,6 +102,56 @@ impl SqliteDatabase {
         let sqlite_db = Self::new_in_memory_no_migrations(max_connections).await?;
         MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
         Ok(sqlite_db)
+    }
+
+    ///This function is temporary. DeployAggregateEntitis should be assembled automatically when
+    /// DeployAccepted, DeployProcessed, DeployExpired and/or BlockAdded entities are being observed.
+    /// But this functionality will be introduced in the next PR since this one is big enough
+    #[cfg(test)]
+    pub async fn save_deploy_aggregate(
+        &self,
+        entity: DeployAggregateEntity,
+        block_hash: Option<String>,
+    ) -> Result<usize, DatabaseWriteError> {
+        let db_connection = &self.connection_pool;
+        let insert_version_stmt = tables::deploy_aggregate::create_insert_stmt(
+            entity.deploy_hash,
+            Some(entity.deploy_accepted_raw),
+            entity.deploy_processed_raw,
+            entity.is_expired,
+            block_hash,
+            entity.block_timestamp.map(|el| el as u64),
+        )?
+        .to_string(SqliteQueryBuilder);
+        db_connection.execute(insert_version_stmt.as_str()).await?;
+        Ok(0)
+    }
+
+    ///This function is temporary. DeployAggregateEntitis should be assembled automatically when
+    /// DeployAccepted, DeployProcessed, DeployExpired and/or BlockAdded entities are being observed.
+    /// But this functionality will be introduced in the next PR since this one is big enough
+    #[cfg(test)]
+    pub async fn update_deploy_aggregate(
+        &self,
+        deploy_hash: String,
+        deploy_accepted_raw: Option<String>,
+        deploy_processed_raw: Option<String>,
+        is_expired: bool,
+        block_hash: Option<String>,
+        block_timestamp: Option<u64>,
+    ) -> Result<usize, DatabaseWriteError> {
+        let db_connection = &self.connection_pool;
+        let update_stmt = tables::deploy_aggregate::create_update_stmt(
+            deploy_hash,
+            deploy_accepted_raw,
+            deploy_processed_raw,
+            is_expired,
+            block_hash,
+            block_timestamp,
+        )
+        .to_string(SqliteQueryBuilder);
+        db_connection.execute(update_stmt.as_str()).await?;
+        Ok(0)
     }
 
     #[cfg(test)]

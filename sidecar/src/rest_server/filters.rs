@@ -1,6 +1,7 @@
 use super::{
     errors::{handle_rejection, InvalidPath},
     handlers,
+    requests::ListDeploysRequest,
 };
 use crate::types::database::DatabaseReader;
 use std::convert::Infallible;
@@ -9,7 +10,7 @@ use warp::Filter;
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.
 /// Return: the filtered data.
-pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
+pub(crate) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = Infallible> + Clone {
     root_filter()
@@ -64,7 +65,8 @@ fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
     deploy_by_hash(db.clone())
         .or(deploy_accepted_by_hash(db.clone()))
         .or(deploy_processed_by_hash(db.clone()))
-        .or(deploy_expired_by_hash(db))
+        .or(deploy_expired_by_hash(db.clone()))
+        .or(list_deploys(db))
 }
 
 /// Return information about the last block added to the linear chain.
@@ -228,9 +230,37 @@ fn metrics_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::
         .and_then(handlers::metrics_handler)
 }
 
+/// Return a paginated list of deploy aggregates. See also #deploy_by_hash
+/// Input: the database with data to be filtered.
+/// Return: data about the deploy specified.
+/// Path URL: deploy
+/// Example:
+/// curl --location 'http://127.0.0.1:18888/deploys' \
+/// --header 'Content-Type: application/json' \
+/// --data '{
+///     "exclude_expired": true,
+///     "exclude_not_processed": false,
+///     "offset": 0,
+///     "limit": 100
+/// }'
+pub(crate) fn list_deploys<Db: DatabaseReader + Clone + Send + Sync>(
+    db: Db,
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::path!("deploys")
+        .and(warp::post())
+        .and(list_deploy_request_body())
+        .and(with_db(db))
+        .and_then(handlers::list_deploys)
+}
+
 /// Helper function to extract data from a database
 fn with_db<Db: DatabaseReader + Clone + Send>(
     db: Db,
 ) -> impl Filter<Extract = (Db,), Error = Infallible> + Clone {
     warp::any().map(move || db.clone())
+}
+
+fn list_deploy_request_body(
+) -> impl Filter<Extract = (ListDeploysRequest,), Error = warp::Rejection> + Clone {
+    warp::body::content_length_limit(1024 * 32).and(warp::body::json())
 }
