@@ -14,9 +14,9 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    AsymmetricType, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp,
+    AsymmetricType, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
+use serde_json::value::RawValue;
 
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.
@@ -184,12 +184,14 @@ impl FinalitySignature {
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
 pub struct Step {
     pub era_id: EraId,
-    execution_effect: ExecutionEffect,
+    execution_effect: Box<RawValue>,
 }
 
 impl Step {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        use serde_json::value::to_raw_value;
+
         let execution_effect = match rng.gen::<ExecutionResult>() {
             ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
                 effect
@@ -197,7 +199,7 @@ impl Step {
         };
         Self {
             era_id: EraId::new(rng.gen()),
-            execution_effect,
+            execution_effect: to_raw_value(&execution_effect).unwrap(),
         }
     }
 }

@@ -239,6 +239,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         false,
         node_event_tx,
         Duration::from_secs(100),
+        Duration::from_secs(1000),
     );
 
     tokio::spawn(async move {
@@ -266,6 +267,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         false,
         sidecar_event_tx,
         Duration::from_secs(100),
+        Duration::from_secs(1000),
     );
     tokio::spawn(async move {
         let res = sidecar_event_listener

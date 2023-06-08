@@ -2,7 +2,7 @@
 name = "casper-event-sidecar"
 authors = ["George Williamson <george@casperlabs.io>", "Jakub Zajkowski <jakub@casperlabs.io>"]
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 readme = "README.md"
 
 [dependencies]

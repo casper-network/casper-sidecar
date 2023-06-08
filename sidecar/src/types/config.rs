@@ -29,6 +29,7 @@ pub struct Connection {
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
     pub connection_timeout_in_seconds: Option<usize>,
+    pub force_reconnect_in_hours: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -77,6 +78,7 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: true,
                     connection_timeout_in_seconds: None,
+                    force_reconnect_in_hours: Some(123),
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -87,6 +89,7 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: false,
                     connection_timeout_in_seconds: None,
+                    force_reconnect_in_hours: Some(456),
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -97,6 +100,7 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: false,
                     connection_timeout_in_seconds: Some(3),
+                    force_reconnect_in_hours: None,
                 },
             ],
             storage: StorageConfig {
@@ -139,6 +143,7 @@ mod tests {
                 allow_partial_connection: false,
                 enable_logging: true,
                 connection_timeout_in_seconds: None,
+                force_reconnect_in_hours: Some(123),
             }],
             storage: StorageConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
@@ -177,6 +182,7 @@ mod tests {
                 delay_between_retries_in_seconds: 5,
                 enable_logging: false,
                 connection_timeout_in_seconds: None,
+                force_reconnect_in_hours: Some(456),
             }
         }
     }
