@@ -35,7 +35,11 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{metrics::register_metrics, sse_data::SseData, Filter};
+use casper_event_types::{
+    metrics::{self, register_metrics},
+    sse_data::SseData,
+    Filter,
+};
 use casper_types::ProtocolVersion;
 use clap::Parser;
 use futures::future::join_all;
@@ -125,6 +129,7 @@ async fn run(config: Config) -> Result<(), Error> {
             connection.allow_partial_connection,
             inbound_sse_data_sender,
             Duration::from_secs(connection.connection_timeout_in_seconds.unwrap_or(5) as u64),
+            Duration::from_secs(connection.force_reconnect_in_hours.unwrap_or(12) as u64),
         );
         event_listeners.push(event_listener);
     }
@@ -302,7 +307,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving BlockAdded"),
+                Err(other_err) => {
+                    count_error("db_save_error_block_added");
+                    warn!(?other_err, "Unexpected error saving BlockAdded");
+                }
             }
         }
         SseData::DeployAccepted { deploy } => {
@@ -339,7 +347,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployAccepted"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_accepted");
+                    warn!(?other_err, "Unexpected error saving DeployAccepted");
+                }
             }
         }
         SseData::DeployExpired { deploy_hash } => {
@@ -379,7 +390,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployExpired"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_expired");
+                    warn!(?other_err, "Unexpected error saving DeployExpired");
+                }
             }
         }
         SseData::DeployProcessed {
@@ -444,7 +458,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployProcessed"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_processed");
+                    warn!(?other_err, "Unexpected error saving DeployProcessed");
+                }
             }
         }
         SseData::Fault {
@@ -482,7 +499,10 @@ async fn handle_single_event(
                     debug!("Already received Fault ({:#?}), logged in event_log", fault);
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Fault"),
+                Err(other_err) => {
+                    count_error("db_save_error_fault");
+                    warn!(?other_err, "Unexpected error saving Fault");
+                }
             }
         }
         SseData::FinalitySignature(fs) => {
@@ -526,6 +546,7 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_error("db_save_error_finality_signature");
                     warn!(?other_err, "Unexpected error saving FinalitySignature")
                 }
             }
@@ -568,7 +589,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Step"),
+                Err(other_err) => {
+                    count_error("db_save_error_step");
+                    warn!(?other_err, "Unexpected error saving Step")
+                }
             }
         }
         SseData::Shutdown => {
@@ -595,7 +619,10 @@ async fn handle_single_event(
                         );
                     }
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Shutdown"),
+                Err(other_err) => {
+                    count_error("db_save_error_shutdown");
+                    warn!(?other_err, "Unexpected error saving Shutdown")
+                }
             }
         }
     }
@@ -634,4 +661,10 @@ async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
         .await
         .map(|i| i == 0)
         .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))
+}
+
+fn count_error(reason: &str) {
+    metrics::ERROR_COUNTS
+        .with_label_values(&["main", reason])
+        .inc();
 }

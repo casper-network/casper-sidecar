@@ -73,7 +73,7 @@ pub(super) struct DeployAccepted {
 }
 
 /// The components of a single SSE.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
@@ -95,7 +95,7 @@ impl ServerSentEvent {
 }
 
 /// The messages sent via the tokio broadcast channel to the handler of each client's SSE stream.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(super) enum BroadcastChannelMessage {
     /// The message should be sent to the client as an SSE with an optional ID.  The ID should only
@@ -877,8 +877,8 @@ mod tests {
                     .replace_all(received_event_str.as_str(), "")
                     .into_owned();
                 let received_data =
-                    serde_json::from_str::<SseData>(received_event_str.as_str()).unwrap();
-
+                    serde_json::from_str::<Value>(received_event_str.as_str()).unwrap();
+                let expected_data = serde_json::to_value(&expected_data).unwrap();
                 assert_eq!(expected_data, received_data);
             }
         }

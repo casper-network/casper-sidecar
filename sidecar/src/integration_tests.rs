@@ -581,6 +581,7 @@ async fn partial_connection_test(
         false,
         event_tx,
         Duration::from_secs(100),
+        Duration::from_secs(1000),
     );
 
     tokio::spawn(async move {
@@ -686,6 +687,7 @@ async fn reconnection_test_with_port_dropping(
         false,
         event_tx,
         Duration::from_secs(100),
+        Duration::from_secs(1000),
     );
 
     tokio::spawn(async move {
