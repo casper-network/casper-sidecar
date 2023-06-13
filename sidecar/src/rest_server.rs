@@ -1,9 +1,11 @@
 mod errors;
 mod filters;
 mod handlers;
+mod requests;
+#[cfg(test)]
+mod test_helpers;
 #[cfg(test)]
 mod tests;
-
 use std::net::TcpListener;
 use std::time::Duration;
 

@@ -1,14 +1,20 @@
+use std::collections::HashMap;
+
 use rand::Rng;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
+use serde::Deserialize;
 use sqlx::Row;
 
-use casper_types::{testing::TestRng, AsymmetricType, EraId};
+use casper_types::{testing::TestRng, AsymmetricType, EraId, Timestamp};
 
 use super::SqliteDatabase;
 use crate::{
     sql::tables::{self, event_type::EventTypeId},
     types::{
-        database::{DatabaseReader, DatabaseWriteError, DatabaseWriter},
+        database::{
+            DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
+            DeployAggregateEntity, DeployAggregateFilter, DeployAggregateSortColumn, SortOrder,
+        },
         sse_events::*,
     },
 };
@@ -99,7 +105,7 @@ async fn should_save_and_retrieve_deploy_processed() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .expect("Error opening database in memory");
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     sqlite_db
         .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
@@ -161,7 +167,7 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
         .expect("Error opening database in memory");
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_processed =
-        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()), None);
 
     sqlite_db
         .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
@@ -441,7 +447,7 @@ async fn should_disallow_insert_of_existing_deploy_processed() {
         .await
         .expect("Error opening database in memory");
 
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     assert!(sqlite_db
         .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
@@ -613,7 +619,7 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
         .await
         .expect("Error opening database in memory");
 
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let deploy_processed = DeployProcessed::random(&mut test_rng, None, None);
 
     assert!(sqlite_db
         .save_deploy_processed(deploy_processed, 1, "127.0.0.1".to_string())
@@ -796,4 +802,345 @@ async fn get_number_of_events_should_return_1_when_event_stored() {
         .await
         .is_ok());
     assert_eq!(sqlite_db.get_number_of_events().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn should_retrieve_deploy_aggregate_with_block_data() {
+    let mut test_rng = TestRng::new();
+
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let deploy_accepted = DeployAccepted::random(&mut test_rng);
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    let block_added = get_block_with_deploy_hash(
+        String::from("0fc35e50bc21f88761ac0c8468db06040b3d0d1ea82c5e545370908cdc75b2a4"),
+        deploy_accepted.hex_encoded_hash(),
+        None,
+        None,
+    );
+
+    sqlite_db
+        .save_block_added(block_added, 2, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving block_added");
+
+    let deploy_processed =
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()), None);
+
+    sqlite_db
+        .save_deploy_processed(deploy_processed, 3, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
+
+    let aggregate = sqlite_db
+        .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
+        .await
+        .expect("Error getting deploy aggregate by hash");
+    assert_eq!(aggregate.deploy_hash, deploy_accepted.hex_encoded_hash());
+    assert!(aggregate.block_timestamp.is_none());
+}
+
+#[tokio::test]
+/// Scenario:
+/// * 4 DeployAccepted
+/// ** first is processed and in a block
+/// ** second is processed ant not in block
+/// ** third is expired,
+/// ** fourth is not expired and not processed
+/// Expected: listing them should show data for all of them, only first one should have block_timestamp
+async fn should_list_aggregates() {
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let mut test_rng = TestRng::new();
+    let (deploy_hash_1, deploy_hash_2, deploy_hash_3, deploy_hash_4, _) =
+        setup_four_deploy_accepted_scenario(&sqlite_db, &mut test_rng).await;
+
+    let (data, count) = sqlite_db
+        .list_deploy_aggregate(DeployAggregateFilter::paginate(0, 10))
+        .await
+        .expect("Error doing list_deploy_aggregate");
+
+    assert_eq!(count, 4);
+    assert_eq!(data.len(), 4);
+    let deploys_map: HashMap<String, DeployAggregate> = data
+        .into_iter()
+        .map(|data| (data.deploy_hash.clone(), data))
+        .collect();
+    let retrieved_1 = deploys_map.get(&deploy_hash_1).unwrap();
+    assert_eq!(
+        retrieved_1.block_timestamp.unwrap(),
+        Timestamp::from(1673864937472)
+    );
+    let retrieved_2 = deploys_map.get(&deploy_hash_2).unwrap();
+    assert!(retrieved_2.block_timestamp.is_none());
+    let retrieved_3 = deploys_map.get(&deploy_hash_3).unwrap();
+    assert!(retrieved_3.block_timestamp.is_none());
+    let retrieved_4 = deploys_map.get(&deploy_hash_4).unwrap();
+    assert!(retrieved_4.block_timestamp.is_none());
+}
+
+#[tokio::test]
+/// Scenario:
+/// * 4 DeployAccepted
+/// ** first is processed and in block_1
+/// ** second is processed and not in blocd
+/// ** third is expired,
+/// ** fourth is not expired and not processed
+/// Expected: listing them with exclude_expired and exclude_not_processed should return only first two
+async fn should_list_aggregates_while_excluding() {
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let mut test_rng = TestRng::new();
+    let (deploy_hash_1, deploy_hash_2, _, _, _) =
+        setup_four_deploy_accepted_scenario(&sqlite_db, &mut test_rng).await;
+    let mut filter = DeployAggregateFilter::paginate(0, 10);
+    filter.exclude_expired = true;
+    filter.exclude_not_processed = true;
+    let (data, count) = sqlite_db
+        .list_deploy_aggregate(filter)
+        .await
+        .expect("Error doing list_deploy_aggregate");
+
+    assert_eq!(count, 2);
+    assert_eq!(data.len(), 2);
+    let deploys_map: HashMap<String, DeployAggregate> = data
+        .into_iter()
+        .map(|data| (data.deploy_hash.clone(), data))
+        .collect();
+    let retrieved_1 = deploys_map.get(&deploy_hash_1).unwrap();
+    assert_eq!(
+        retrieved_1.block_timestamp.unwrap(),
+        Timestamp::from(1673864937472)
+    );
+    let retrieved_2 = deploys_map.get(&deploy_hash_2).unwrap();
+    assert!(retrieved_2.block_timestamp.is_none());
+}
+
+#[tokio::test]
+/// Scenario:
+/// * 5 DeployAccepted
+/// ** first is processed and in block_1 (block from 2023)
+/// ** second is processed and in block_2 (block from 2022)
+/// ** third is expired,
+/// ** fourth is not expired and not processed
+/// ** fifth is processed and not in block_3 (block from 2021)
+/// Expected: listing them with sorting ASC and paging should return deploy accepted in order fifth, second, first
+async fn should_list_aggregates_should_sort_and_paginate() {
+    let mut test_rng = TestRng::new();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let (deploy_hash_1, deploy_hash_2, _, _, _) =
+        setup_four_deploy_accepted_scenario(&sqlite_db, &mut test_rng).await;
+    let deploy_accepted_5 = DeployAccepted::random(&mut test_rng);
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted_5.clone(), 9, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    let deploy_processed_5 =
+        DeployProcessed::random(&mut test_rng, Some(deploy_accepted_5.deploy_hash()), None);
+    sqlite_db
+        .save_deploy_processed(deploy_processed_5.clone(), 10, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
+    let block_added_2 = get_block_with_deploy_hash(
+        String::from("5ffa56dbb87f983a0fa917d29f75254fe8f6eec3c2066756046d2c563b95a591"),
+        deploy_hash_2.clone(),
+        Some(String::from("2022-01-16T10:28:57.472Z")),
+        Some(2),
+    );
+    sqlite_db
+        .save_block_added(block_added_2.clone(), 11, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving block_added");
+    let _ = sqlite_db
+        .update_deploy_aggregate(
+            deploy_hash_2.clone(),
+            None,
+            None,
+            false,
+            Some(block_added_2.hex_encoded_hash()),
+            Some(block_added_2.get_timestamp().millis()),
+        )
+        .await
+        .unwrap();
+    let block_added_3 = get_block_with_deploy_hash(
+        String::from("ae8533b66af5b39b82a639996cd9346fa1f7dab4e976d5fde8755f661f13fc47"),
+        deploy_accepted_5.hex_encoded_hash(),
+        Some(String::from("2021-01-16T10:28:57.472Z")),
+        Some(3),
+    );
+    sqlite_db
+        .save_block_added(block_added_3.clone(), 12, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving block_added");
+    let _ = sqlite_db
+        .save_deploy_aggregate(
+            DeployAggregateEntity {
+                deploy_hash: deploy_accepted_5.hex_encoded_hash(),
+                deploy_accepted_raw: serde_json::to_string(&deploy_accepted_5)
+                    .unwrap()
+                    .to_string(),
+                deploy_processed_raw: Some(
+                    serde_json::to_string(&deploy_processed_5)
+                        .unwrap()
+                        .to_string(),
+                ),
+                is_expired: false,
+                block_timestamp: Some(block_added_3.get_timestamp().millis() as i64),
+            },
+            Some(block_added_3.hex_encoded_hash()),
+        )
+        .await
+        .unwrap();
+    let mut filter = DeployAggregateFilter::paginate(0, 3);
+    filter.sort_column = Some(DeployAggregateSortColumn::BlockTimestamp);
+    filter.sort_order = Some(SortOrder::Asc);
+
+    let (data, count) = sqlite_db
+        .list_deploy_aggregate(filter)
+        .await
+        .expect("Error doing list_deploy_aggregate");
+
+    assert_eq!(count, 5);
+    assert_eq!(data.len(), 3);
+    assert_eq!(
+        data.get(0).unwrap().deploy_hash,
+        deploy_accepted_5.hex_encoded_hash()
+    );
+    assert_eq!(data.get(1).unwrap().deploy_hash, deploy_hash_2);
+    assert_eq!(data.get(2).unwrap().deploy_hash, deploy_hash_1);
+}
+
+fn get_block_with_deploy_hash(
+    block_hash: String,
+    deploy_hash: String,
+    maybe_timestamp_string: Option<String>,
+    maybe_height: Option<u32>,
+) -> BlockAdded {
+    let height = maybe_height.unwrap_or(1);
+    let timestamp_string =
+        maybe_timestamp_string.unwrap_or_else(|| String::from("2023-01-16T10:28:57.472Z"));
+    let raw_json = format!("{{\"block_hash\":\"{}\",\"block\":{{\"hash\":\"{}\",\"header\":{{\"parent_hash\":\"7c00fc463c173b08e17abf1445914e9716d3a84cf5eaf7b50c011eb578f599cb\",\"state_root_hash\":\"57cc370c119d81631909ada9613976cbfa70bd8793799df765cfda0d8515c5e8\",\"body_hash\":\"3c138e9f9ceab35fb4152d468525e27c62f16d8e1901341567b478ef4cfd8b02\",\"random_bit\":false,\"accumulated_seed\":\"01f7166c6bfbacf428217e547dab9b4ee1a889ac0040e79a1c0005e94ff7094c\",\"era_end\":null,\"timestamp\":\"{}\",\"era_id\":7745,\"height\":{},\"protocol_version\":\"1.4.12\"}},\"body\":{{\"proposer\":\"011b19ef983c039a2a335f2f35199bf8cad5ba2c583bd709748feb76f24ffb1bab\",\"deploy_hashes\":[\"{}\"],\"transfer_hashes\":[]}},\"proofs\":[]}}}}", block_hash, block_hash, timestamp_string, height, deploy_hash);
+    deserialize_data::<BlockAdded>(&raw_json)
+}
+
+fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> T {
+    serde_json::from_str::<T>(data).expect("Error while deserializing")
+}
+
+async fn setup_four_deploy_accepted_scenario(
+    sqlite_db: &SqliteDatabase,
+    test_rng: &mut TestRng,
+) -> (String, String, String, String, String) {
+    let deploy_accepted = DeployAccepted::random(test_rng);
+    let deploy_accepted_2 = DeployAccepted::random(test_rng);
+    let deploy_accepted_3 = DeployAccepted::random(test_rng);
+    let deploy_accepted_4 = DeployAccepted::random(test_rng);
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted_2.clone(), 2, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted_3.clone(), 3, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    sqlite_db
+        .save_deploy_accepted(deploy_accepted_4.clone(), 4, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
+    let block_added = get_block_with_deploy_hash(
+        String::from("0fc35e50bc21f88761ac0c8468db06040b3d0d1ea82c5e545370908cdc75b2a4"),
+        deploy_accepted.hex_encoded_hash(),
+        None,
+        None,
+    );
+    sqlite_db
+        .save_block_added(block_added.clone(), 5, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving block_added");
+
+    let deploy_processed =
+        DeployProcessed::random(test_rng, Some(deploy_accepted.deploy_hash()), None);
+
+    sqlite_db
+        .save_deploy_processed(deploy_processed.clone(), 6, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
+
+    let deploy_processed_2 =
+        DeployProcessed::random(test_rng, Some(deploy_accepted_2.deploy_hash()), None);
+
+    sqlite_db
+        .save_deploy_processed(deploy_processed_2.clone(), 7, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
+
+    let deploy_expired = DeployExpired::random(test_rng, None);
+
+    sqlite_db
+        .save_deploy_expired(deploy_expired.clone(), 8, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_expired");
+    let aggregate_1 = DeployAggregateEntity {
+        deploy_hash: deploy_accepted.hex_encoded_hash(),
+        deploy_accepted_raw: serde_json::to_string(&deploy_accepted).unwrap(),
+        deploy_processed_raw: Some(serde_json::to_string(&deploy_processed).unwrap()),
+        is_expired: false,
+        block_timestamp: Some(block_added.get_timestamp().millis() as i64),
+    };
+    let _ = sqlite_db
+        .save_deploy_aggregate(aggregate_1, Some(block_added.hex_encoded_hash()))
+        .await
+        .unwrap();
+    let aggregate_2 = DeployAggregateEntity {
+        deploy_hash: deploy_accepted_2.hex_encoded_hash(),
+        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_2).unwrap(),
+        deploy_processed_raw: Some(serde_json::to_string(&deploy_processed_2).unwrap()),
+        is_expired: false,
+        block_timestamp: None,
+    };
+    let _ = sqlite_db
+        .save_deploy_aggregate(aggregate_2, None)
+        .await
+        .unwrap();
+    let aggregate_3 = DeployAggregateEntity {
+        deploy_hash: deploy_accepted_3.hex_encoded_hash(),
+        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_3).unwrap(),
+        deploy_processed_raw: None,
+        is_expired: false,
+        block_timestamp: None,
+    };
+    let _ = sqlite_db
+        .save_deploy_aggregate(aggregate_3, None)
+        .await
+        .unwrap();
+    let aggregate_4 = DeployAggregateEntity {
+        deploy_hash: deploy_accepted_4.hex_encoded_hash(),
+        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_4).unwrap(),
+        deploy_processed_raw: None,
+        is_expired: false,
+        block_timestamp: None,
+    };
+    let _ = sqlite_db
+        .save_deploy_aggregate(aggregate_4, None)
+        .await
+        .unwrap();
+    (
+        deploy_accepted.hex_encoded_hash(),
+        deploy_accepted_2.hex_encoded_hash(),
+        deploy_accepted_3.hex_encoded_hash(),
+        deploy_accepted_4.hex_encoded_hash(),
+        block_added.hex_encoded_hash(),
+    )
 }

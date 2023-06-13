@@ -27,11 +27,23 @@ pub struct ApiVersion(ProtocolVersion);
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
 pub struct BlockAdded {
     block_hash: BlockHash,
-    block: Box<JsonBlock>,
+    pub block: Box<JsonBlock>,
 }
 
 #[cfg(test)]
 impl BlockAdded {
+    pub fn random_with_data(
+        rng: &mut TestRng,
+        deploy_hashes: Vec<DeployHash>,
+        height: u64,
+    ) -> Self {
+        let block = JsonBlock::random_with_data(rng, Some(deploy_hashes), Some(height));
+        Self {
+            block_hash: block.hash,
+            block: Box::new(block),
+        }
+    }
+
     pub fn random(rng: &mut TestRng) -> Self {
         let block = JsonBlock::random(rng);
         Self {
@@ -42,6 +54,11 @@ impl BlockAdded {
 }
 
 impl BlockAdded {
+    #[cfg(test)]
+    pub fn get_timestamp(&self) -> Timestamp {
+        self.block.header.timestamp
+    }
+
     pub fn hex_encoded_hash(&self) -> String {
         hex::encode(self.block_hash.inner())
     }
@@ -91,7 +108,11 @@ pub struct DeployProcessed {
 
 impl DeployProcessed {
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
+    pub fn random(
+        rng: &mut TestRng,
+        with_deploy_hash: Option<DeployHash>,
+        with_block_hash: Option<BlockHash>,
+    ) -> Self {
         let deploy = Deploy::random(rng);
         Self {
             deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
@@ -99,7 +120,7 @@ impl DeployProcessed {
             timestamp: deploy.header().timestamp(),
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
-            block_hash: Box::new(BlockHash::random(rng)),
+            block_hash: Box::new(with_block_hash.unwrap_or(BlockHash::random(rng))),
             execution_result: Box::new(rng.gen()),
         }
     }

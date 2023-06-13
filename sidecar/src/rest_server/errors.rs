@@ -64,6 +64,10 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
                 code = StatusCode::INTERNAL_SERVER_ERROR;
                 message = format!("Unhandled error occurred in storage: {}", err)
             }
+            DatabaseReadError::Database(err) => {
+                code = StatusCode::INTERNAL_SERVER_ERROR;
+                message = format!("Unhandled error occurred in storage: {}", err)
+            }
         }
     } else if let Some(InvalidPath) = err.find() {
         code = StatusCode::BAD_REQUEST;

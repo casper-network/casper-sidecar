@@ -8,7 +8,9 @@ use casper_types::AsymmetricType;
 use rand::Rng;
 
 use casper_event_types::FinalitySignature as FinSig;
+use serde_json::value::to_raw_value;
 
+use crate::types::database::DeployAggregateFilter;
 use crate::types::{
     database::{
         DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
@@ -20,13 +22,19 @@ use crate::types::{
 #[derive(Clone)]
 pub struct FakeDatabase {
     data: Arc<Mutex<HashMap<String, String>>>,
+    aggregates_page: Option<(Vec<DeployAggregate>, u32)>,
 }
 
 impl FakeDatabase {
     pub(crate) fn new() -> Self {
         Self {
             data: Arc::new(Mutex::new(HashMap::new())),
+            aggregates_page: None,
         }
+    }
+
+    pub(crate) fn set_aggregates(&mut self, input: (Vec<DeployAggregate>, u32)) {
+        self.aggregates_page = Some(input);
     }
 
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
@@ -37,7 +45,7 @@ impl FakeDatabase {
 
         let block_added = BlockAdded::random(&mut rng);
         let deploy_accepted = DeployAccepted::random(&mut rng);
-        let deploy_processed = DeployProcessed::random(&mut rng, None);
+        let deploy_processed = DeployProcessed::random(&mut rng, None, None);
         let deploy_expired = DeployExpired::random(&mut rng, None);
         let fault = Fault::random(&mut rng);
         let finality_signature = FinalitySignature::random(&mut rng);
@@ -285,16 +293,19 @@ impl DatabaseReader for FakeDatabase {
         return if let Some(accepted) = data.get(&accepted_key) {
             let deploy_accepted = serde_json::from_str::<DeployAccepted>(accepted)
                 .map_err(DatabaseReadError::Serialisation)?;
+            let deploy_accepted_raw = to_raw_value(&deploy_accepted).unwrap();
 
             if let Some(processed) = data.get(&processed_key) {
                 let deploy_processed = serde_json::from_str::<DeployProcessed>(processed)
                     .map_err(DatabaseReadError::Serialisation)?;
+                let deploy_processed_raw = to_raw_value(&deploy_processed).unwrap();
 
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: Some(deploy_processed),
+                    deploy_accepted: Some(deploy_accepted_raw),
+                    deploy_processed: Some(deploy_processed_raw),
                     deploy_expired: false,
+                    block_timestamp: None,
                 })
             } else if data.get(&expired_key).is_some() {
                 let deploy_expired = match data.get(&expired_key) {
@@ -306,16 +317,18 @@ impl DatabaseReader for FakeDatabase {
                 };
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
+                    deploy_accepted: Some(deploy_accepted_raw),
                     deploy_processed: None,
                     deploy_expired: deploy_expired.is_some(),
+                    block_timestamp: None,
                 })
             } else {
                 Ok(DeployAggregate {
                     deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
+                    deploy_accepted: Some(deploy_accepted_raw),
                     deploy_processed: None,
                     deploy_expired: false,
+                    block_timestamp: None,
                 })
             }
         } else {
@@ -426,6 +439,16 @@ impl DatabaseReader for FakeDatabase {
 
     async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError> {
         Ok(None)
+    }
+
+    async fn list_deploy_aggregate(
+        &self,
+        _filter: DeployAggregateFilter,
+    ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError> {
+        match self.aggregates_page.clone() {
+            None => Err(DatabaseReadError::NotFound),
+            Some(p) => Ok(p),
+        }
     }
 }
 

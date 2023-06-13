@@ -1,10 +1,12 @@
-use anyhow::Error;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
+use casper_event_types::FinalitySignature as FinSig;
+use casper_types::Timestamp;
 use sea_query::SqliteQueryBuilder;
 use serde::Deserialize;
+use serde_json::value::{to_raw_value, RawValue};
 use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
-
-use casper_event_types::FinalitySignature as FinSig;
+use std::convert::TryFrom;
 
 use super::{
     errors::{wrap_query_error, SqliteDbError},
@@ -13,7 +15,10 @@ use super::{
 use crate::{
     sql::tables,
     types::{
-        database::{DatabaseReadError, DatabaseReader, DeployAggregate},
+        database::{
+            DatabaseReadError, DatabaseReader, DeployAggregate, DeployAggregateEntity,
+            DeployAggregateFilter,
+        },
         sse_events::*,
     },
 };
@@ -63,15 +68,29 @@ impl DatabaseReader for SqliteDatabase {
     ) -> Result<DeployAggregate, DatabaseReadError> {
         // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
         let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
-
+        let deploy_accepted_raw = to_raw_value(&deploy_accepted).map_err(|err| {
+            DatabaseReadError::Unhandled(Error::msg(format!(
+                "Error serializing deploy_accepted: {}",
+                err
+            )))
+        })?;
         // However we handle the Err case for DeployProcessed explicitly as we don't want to return NotFound when we've got a DeployAccepted to return
         match self.get_deploy_processed_by_hash(hash).await {
-            Ok(deploy_processed) => Ok(DeployAggregate {
-                deploy_hash: hash.to_string(),
-                deploy_accepted: Some(deploy_accepted),
-                deploy_processed: Some(deploy_processed),
-                deploy_expired: false,
-            }),
+            Ok(deploy_processed) => {
+                let deploy_processed_raw = to_raw_value(&deploy_processed).map_err(|err| {
+                    DatabaseReadError::Unhandled(Error::msg(format!(
+                        "Error serializing deploy_processed: {}",
+                        err
+                    )))
+                })?;
+                Ok(DeployAggregate {
+                    deploy_hash: hash.to_string(),
+                    deploy_accepted: Some(deploy_accepted_raw),
+                    deploy_processed: Some(deploy_processed_raw),
+                    deploy_expired: false,
+                    block_timestamp: None, // we don't want block_timestamp to be filled for single get
+                })
+            }
             Err(err) => {
                 // If the error is anything other than NotFound return the error.
                 if !matches!(DatabaseReadError::NotFound, _err) {
@@ -80,9 +99,10 @@ impl DatabaseReader for SqliteDatabase {
                 match self.get_deploy_expired_by_hash(hash).await {
                     Ok(_) => Ok(DeployAggregate {
                         deploy_hash: hash.to_string(),
-                        deploy_accepted: Some(deploy_accepted),
+                        deploy_accepted: Some(deploy_accepted_raw),
                         deploy_processed: None,
                         deploy_expired: true,
+                        block_timestamp: None,
                     }),
                     Err(err) => {
                         // If the error is anything other than NotFound return the error.
@@ -91,9 +111,10 @@ impl DatabaseReader for SqliteDatabase {
                         }
                         Ok(DeployAggregate {
                             deploy_hash: hash.to_string(),
-                            deploy_accepted: Some(deploy_accepted),
+                            deploy_accepted: Some(deploy_accepted_raw),
                             deploy_processed: None,
                             deploy_expired: false,
+                            block_timestamp: None,
                         })
                     }
                 }
@@ -267,6 +288,30 @@ impl DatabaseReader for SqliteDatabase {
             .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
             .and_then(parse_migration_row)
     }
+
+    async fn list_deploy_aggregate(
+        &self,
+        filter: DeployAggregateFilter,
+    ) -> Result<(Vec<DeployAggregate>, u32), DatabaseReadError> {
+        let db_connection = &self.connection_pool;
+
+        let item_count = count_aggregates(filter.clone(), db_connection).await?;
+        let stmt = tables::deploy_aggregate::create_list_by_filter_query(filter)
+            .to_string(SqliteQueryBuilder);
+        let data = sqlx::query_as::<_, DeployAggregateEntity>(&stmt)
+            .fetch_all(db_connection)
+            .await
+            .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+            .and_then(|joins| {
+                let vector_of_deploy_aggregates = joins
+                    .into_iter()
+                    .map(to_deploy_aggregate)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(vector_of_deploy_aggregates)
+            })?;
+
+        Ok((data, item_count))
+    }
 }
 
 fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
@@ -346,4 +391,53 @@ fn parse_migration_row(
             Ok(Some((version, is_success)))
         }
     }
+}
+
+async fn count_aggregates(
+    filter: DeployAggregateFilter,
+    connection: &SqlitePool,
+) -> Result<u32, DatabaseReadError> {
+    let stmt = tables::deploy_aggregate::create_count_aggregate_deploys_query(filter)
+        .to_string(SqliteQueryBuilder);
+    connection
+        .fetch_one(stmt.as_str())
+        .await
+        .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
+        .and_then(|row| {
+            let count: u32 = row
+                .try_get("count")
+                .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
+            Ok(count)
+        })
+}
+
+fn to_deploy_aggregate(join: DeployAggregateEntity) -> Result<DeployAggregate, DatabaseReadError> {
+    let deploy_accepted_string = join.deploy_accepted_raw;
+    let deploy_processed_raw = join
+        .deploy_processed_raw
+        .map(RawValue::from_string)
+        .map_or(Ok(None), |v| v.map(Some))
+        .map_err(|err| DatabaseReadError::Unhandled(Error::from(err)))?;
+    let is_expired = join.is_expired;
+    let maybe_timestamp = match join.block_timestamp {
+        None => None,
+        Some(utc_millis) => {
+            let u64_timestamp = u64::try_from(utc_millis)
+                .context(format!(
+                    "Error while trying to map {} to Timestamp",
+                    utc_millis
+                ))
+                .map_err(DatabaseReadError::Unhandled)?;
+            Some(Timestamp::from(u64_timestamp))
+        }
+    };
+    let deploy_accepted_raw = RawValue::from_string(deploy_accepted_string)
+        .map_err(|err| DatabaseReadError::Unhandled(Error::from(err)))?;
+    Ok(DeployAggregate {
+        deploy_hash: join.deploy_hash,
+        deploy_accepted: Some(deploy_accepted_raw),
+        deploy_processed: deploy_processed_raw,
+        deploy_expired: is_expired,
+        block_timestamp: maybe_timestamp,
+    })
 }
