@@ -57,7 +57,17 @@ impl DatabaseWriter for SqliteDatabase {
         .to_string(SqliteQueryBuilder);
 
         let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        let block_hash = block_added.hex_encoded_hash();
+        let timestamp = block_added.get_timestamp().millis();
         if res.is_ok() {
+            for hash in block_added.get_all_deploy_hashes() {
+                self.save_assemble_deploy_aggregate_command(
+                    &mut transaction,
+                    hash,
+                    Some((block_hash.clone(), timestamp)),
+                )
+                .await?;
+            }
             transaction.commit().await?;
         }
         res
@@ -89,7 +99,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let batched_insert_stmts = vec![
             tables::deploy_accepted::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash.clone())?,
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -97,6 +107,12 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.save_assemble_deploy_aggregate_command(
+                &mut transaction,
+                encoded_hash.clone(),
+                None,
+            )
+            .await?;
             transaction.commit().await?;
         }
         res
@@ -128,7 +144,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let batched_insert_stmts = vec![
             tables::deploy_processed::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash.clone())?,
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -136,6 +152,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -167,7 +185,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let batched_insert_stmts = vec![
             tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id, json)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash.clone())?,
         ]
         .iter()
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
@@ -175,6 +193,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
+            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+                .await?;
             transaction.commit().await?;
         }
         res

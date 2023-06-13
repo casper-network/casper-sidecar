@@ -9,5 +9,6 @@ pub mod event_type;
 pub mod fault;
 pub mod finality_signature;
 pub mod migration;
+pub mod pending_deploy_aggregations;
 pub mod shutdown;
 pub mod step;

@@ -387,6 +387,9 @@ impl Migration {
                     StatementWrapper::IndexCreateStatement(Box::new(
                         tables::deploy_aggregate::create_deploy_aggregate_is_processed_index(),
                     )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::pending_deploy_aggregations::create_table_stmt(),
+                    )),
                 ])
             },
             script_executor: None,
