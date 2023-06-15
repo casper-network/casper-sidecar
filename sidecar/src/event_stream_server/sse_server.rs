@@ -77,8 +77,11 @@ pub(super) struct DeployAccepted {
 pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
+    /// Payload of the event
     pub(super) data: SseData,
+    /// Optional raw input for the edge-case scenario in which the output needs to receive exactly the same text as we got from inbound.
     pub(super) json_data: Option<String>,
+    /// Information which endpoint we got the event from
     pub(super) inbound_filter: Option<SseFilter>,
 }
 
