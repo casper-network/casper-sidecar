@@ -6,7 +6,7 @@ use sea_query::{
 use super::event_log::EventLog;
 
 #[derive(Iden)]
-enum BlockAdded {
+pub(super) enum BlockAdded {
     #[iden = "BlockAdded"]
     Table,
     Height,

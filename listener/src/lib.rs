@@ -136,7 +136,7 @@ impl EventListener {
             let poison_pill_sender_clone = poison_pill_sender.clone();
             let force_reconnect_timeout = self.force_reconnect_timeout;
             tokio::spawn(async move {
-                sleep(force_reconnect_timeout * 3600).await;
+                sleep(force_reconnect_timeout).await;
                 let _ = poison_pill_sender_clone.send(());
             });
 

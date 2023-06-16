@@ -1,9 +1,9 @@
 mod errors;
-mod filters;
+pub mod filters;
 mod handlers;
 mod requests;
 #[cfg(test)]
-mod test_helpers;
+pub mod test_helpers;
 #[cfg(test)]
 mod tests;
 use std::net::TcpListener;

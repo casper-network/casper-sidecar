@@ -3,8 +3,6 @@ mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
-#[cfg(test)]
-use crate::types::database::DeployAggregateEntity;
 use crate::{
     migration_manager::MigrationManager,
     sql::tables,
@@ -26,6 +24,7 @@ use std::{
 
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
+const BUSY_TIMEOUT_KEY: &str = "busy_timeout";
 
 /// [SqliteDatabase] can be cloned to allow multiple components access to the database.
 /// The [SqlitePool] is cloned using an [Arc](std::sync::Arc) so each cloned instance of [SqliteDatabase] shares the same connection pool.
@@ -51,6 +50,19 @@ impl SqliteDatabase {
                             .pragma(
                                 WAL_AUTOCHECKPOINT_KEY,
                                 config.wal_autocheckpointing_interval.to_string(),
+                            )
+                            // Adding this pragma key is necessary. Sqlite doesn't support multiple writers to the DB,
+                            // by default if more than one thread tries to write - there is an error. With this key we
+                            // can tell Sqlite that a thread will wait at most this amount of ms for "it's turn" before
+                            // it throws an error. Uptill now only one thread was writing to the DB (the code in main),
+                            // but now since we want the aggregate deploys job to run in the background we neef to accomodate
+                            // for more than one writer thread.
+                            .pragma(
+                                BUSY_TIMEOUT_KEY,
+                                config
+                                    .database_write_timeout_secs
+                                    .unwrap_or(10000)
+                                    .to_string(),
                             )
                             .disable_statement_logging()
                             .to_owned(),
@@ -104,7 +116,7 @@ impl SqliteDatabase {
         Ok(sqlite_db)
     }
 
-    async fn save_assemble_deploy_aggregate_command<'c>(
+    async fn save_pending_deploy_aggregation<'c>(
         &self,
         transaction: &mut Transaction<'c, Sqlite>,
         deploy_hash: String,
@@ -118,56 +130,6 @@ impl SqliteDatabase {
             .await
             .map(|_| ())
             .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
-    }
-
-    ///This function is temporary. DeployAggregateEntitis should be assembled automatically when
-    /// DeployAccepted, DeployProcessed, DeployExpired and/or BlockAdded entities are being observed.
-    /// But this functionality will be introduced in the next PR since this one is big enough
-    #[cfg(test)]
-    pub async fn save_deploy_aggregate(
-        &self,
-        entity: DeployAggregateEntity,
-        block_hash: Option<String>,
-    ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-        let insert_version_stmt = tables::deploy_aggregate::create_insert_stmt(
-            entity.deploy_hash,
-            Some(entity.deploy_accepted_raw),
-            entity.deploy_processed_raw,
-            entity.is_expired,
-            block_hash,
-            entity.block_timestamp.map(|el| el as u64),
-        )?
-        .to_string(SqliteQueryBuilder);
-        db_connection.execute(insert_version_stmt.as_str()).await?;
-        Ok(0)
-    }
-
-    ///This function is temporary. DeployAggregateEntitis should be assembled automatically when
-    /// DeployAccepted, DeployProcessed, DeployExpired and/or BlockAdded entities are being observed.
-    /// But this functionality will be introduced in the next PR since this one is big enough
-    #[cfg(test)]
-    pub async fn update_deploy_aggregate(
-        &self,
-        deploy_hash: String,
-        deploy_accepted_raw: Option<String>,
-        deploy_processed_raw: Option<String>,
-        is_expired: bool,
-        block_hash: Option<String>,
-        block_timestamp: Option<u64>,
-    ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-        let update_stmt = tables::deploy_aggregate::create_update_stmt(
-            deploy_hash,
-            deploy_accepted_raw,
-            deploy_processed_raw,
-            is_expired,
-            block_hash,
-            block_timestamp,
-        )
-        .to_string(SqliteQueryBuilder);
-        db_connection.execute(update_stmt.as_str()).await?;
-        Ok(0)
     }
 
     #[cfg(test)]

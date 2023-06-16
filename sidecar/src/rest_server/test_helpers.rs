@@ -6,7 +6,9 @@ use crate::{
         sse_events::{BlockAdded, DeployAccepted, DeployProcessed},
     },
 };
+use bytes::Bytes;
 use casper_types::{testing::TestRng, Timestamp};
+use http::Response;
 use serde_json::value::to_raw_value;
 use warp::{test::request, Filter, Reply};
 
@@ -81,6 +83,10 @@ pub async fn populate_with_blocks_and_deploys(
             .unwrap();
         event_id += 1;
     }
+    let mut count = 1;
+    while count > 0 {
+        count = database.update_pending_deploy_aggregates().await.unwrap()
+    }
     (blocks, accepteds, processeds)
 }
 
@@ -135,6 +141,28 @@ where
 
     assert!(response.status().is_success());
 
+    let body = response.into_body();
+    serde_json::from_slice::<Page<DeployAggregate>>(&body)
+        .expect("Error parsing Page from response")
+}
+
+pub async fn list_deploys_raw<F>(api: &F, list_request_data: ListDeploysRequest) -> Response<Bytes>
+where
+    F: Filter + 'static,
+    F::Extract: Reply + Send,
+{
+    let request_path = format!("/{}", DEPLOYS);
+    let response = request()
+        .method("POST")
+        .json(&list_request_data)
+        .path(&request_path)
+        .reply(api)
+        .await;
+    assert!(response.status().is_success());
+    response
+}
+
+pub fn deserialize_deploys(response: Response<Bytes>) -> Page<DeployAggregate> {
     let body = response.into_body();
     serde_json::from_slice::<Page<DeployAggregate>>(&body)
         .expect("Error parsing Page from response")

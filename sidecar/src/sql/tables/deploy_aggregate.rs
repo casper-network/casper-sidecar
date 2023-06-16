@@ -1,13 +1,16 @@
+use crate::sql::tables::deploy_expired::DeployExpired;
+use crate::sql::tables::deploy_processed::DeployProcessed;
 use crate::types::database::{DeployAggregateFilter, DeployAggregateSortColumn, SortOrder};
 #[cfg(test)]
+use sea_query::SqliteQueryBuilder;
 use sea_query::{
-    error::Result as SqResult, InsertStatement, SqliteQueryBuilder, UpdateStatement, Value,
+    error::Result as SqResult, Alias, BlobSize, ColumnDef, Iden, Index, IndexCreateStatement,
+    InsertStatement, NullOrdering, OrderedStatement, Query, SelectStatement, Table,
+    TableCreateStatement,
 };
-use sea_query::{
-    Alias, BlobSize, ColumnDef, Iden, Index, IndexCreateStatement, NullOrdering, OrderedStatement,
-    Query, SelectStatement, Table, TableCreateStatement,
-};
-use sea_query::{Cond, Expr, Order};
+use sea_query::{Cond, Expr, OnConflict, Order, SimpleExpr, SubQueryStatement};
+
+use super::deploy_accepted::DeployAccepted;
 
 #[derive(Iden, Clone)]
 pub(super) enum DeployAggregate {
@@ -185,72 +188,99 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-#[cfg(test)]
-pub fn create_insert_stmt(
-    deploy_hash: String,
-    deploy_accepted_raw: Option<String>,
-    deploy_processed_raw: Option<String>,
-    is_expired: bool,
-    block_hash: Option<String>,
-    block_timestamp: Option<u64>,
-) -> SqResult<InsertStatement> {
-    let is_accepted = deploy_accepted_raw.is_some();
-    let is_processed = deploy_processed_raw.is_some();
-    Query::insert()
-        .into_table(DeployAggregate::Table)
-        .columns([
-            DeployAggregate::DeployHash,
-            DeployAggregate::DeployAcceptedRaw,
-            DeployAggregate::IsAccepted,
-            DeployAggregate::DeployProcessedRaw,
-            DeployAggregate::IsProcessed,
-            DeployAggregate::IsExpired,
-            DeployAggregate::BlockHash,
-            DeployAggregate::BlockTimestampUtcEpochMillis,
-        ])
-        .values(vec![
-            deploy_hash.into(),
-            deploy_accepted_raw.into(),
-            is_accepted.into(),
-            deploy_processed_raw.into(),
-            is_processed.into(),
-            is_expired.into(),
-            block_hash.into(),
-            block_timestamp.into(),
-        ])
-        .map(|stmt| stmt.to_owned())
-}
-
-#[cfg(test)]
 pub fn create_update_stmt(
     deploy_hash: String,
-    deploy_accepted_raw: Option<String>,
-    deploy_processed_raw: Option<String>,
-    is_expired: bool,
-    block_hash: Option<String>,
-    block_timestamp: Option<u64>,
-) -> UpdateStatement {
-    let mut values: Vec<(DeployAggregate, Value)> =
-        vec![(DeployAggregate::IsExpired, is_expired.into())];
-    if let Some(da) = deploy_accepted_raw {
-        values.push((DeployAggregate::DeployAcceptedRaw, da.into()));
-        values.push((DeployAggregate::IsAccepted, true.into()));
+    maybe_block_data: Option<(String, u64)>,
+) -> SqResult<InsertStatement> {
+    let mut cols = vec![
+        DeployAggregate::DeployHash,
+        DeployAggregate::DeployAcceptedRaw,
+        DeployAggregate::IsAccepted,
+        DeployAggregate::IsExpired,
+        DeployAggregate::DeployProcessedRaw,
+        DeployAggregate::IsProcessed,
+    ];
+    let deploy_hash_ref = deploy_hash.as_str();
+    let mut exprs = vec![
+        Expr::value(deploy_hash_ref),
+        sub_select_raw_accepted(deploy_hash_ref),
+        Expr::expr(sub_select_is_accepted(deploy_hash_ref)).if_null(false),
+        Expr::expr(sub_select_is_expired(deploy_hash_ref)).if_null(false),
+        sub_select_raw_processed(deploy_hash_ref),
+        Expr::expr(sub_select_is_processed(deploy_hash_ref)).if_null(false),
+    ];
+    if let Some((block_hash, block_timestamp)) = maybe_block_data {
+        cols.push(DeployAggregate::BlockHash);
+        cols.push(DeployAggregate::BlockTimestampUtcEpochMillis);
+        exprs.push(Expr::value(block_hash));
+        exprs.push(Expr::value(block_timestamp));
     }
-    if let Some(da) = deploy_processed_raw {
-        values.push((DeployAggregate::DeployProcessedRaw, da.into()));
-        values.push((DeployAggregate::IsProcessed, true.into()));
-    }
-    if let Some(bh) = block_hash {
-        values.push((DeployAggregate::BlockHash, bh.into()));
-    }
-    if let Some(bt) = block_timestamp {
-        values.push((DeployAggregate::BlockTimestampUtcEpochMillis, bt.into()));
-    }
-    Query::update()
-        .table(DeployAggregate::Table)
-        .values(values)
-        .and_where(Expr::col(DeployAggregate::DeployHash).eq(deploy_hash))
-        .to_owned()
+    let builder = Query::insert()
+        .into_table(DeployAggregate::Table)
+        .columns(cols.clone())
+        .exprs(exprs)?
+        .on_conflict(
+            OnConflict::column(DeployAggregate::DeployHash)
+                .update_columns(cols)
+                .to_owned(),
+        )
+        .to_owned();
+    Ok(builder)
+}
+
+fn sub_select_raw_accepted(deploy_hash: &str) -> SimpleExpr {
+    let sub_select_raw_accepted = Query::select()
+        .expr(Expr::col(DeployAccepted::Raw))
+        .from(DeployAccepted::Table)
+        .and_where(Expr::col(DeployAccepted::DeployHash).eq(deploy_hash))
+        .to_owned();
+    SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_raw_accepted,
+    )))
+}
+
+fn sub_select_is_accepted(deploy_hash: &str) -> SimpleExpr {
+    let sub_select_is_accepted = Query::select()
+        .expr(Expr::col(DeployAccepted::Raw).is_not_null())
+        .from(DeployAccepted::Table)
+        .and_where(Expr::col(DeployAccepted::DeployHash).eq(deploy_hash))
+        .to_owned();
+    SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_is_accepted,
+    )))
+}
+
+fn sub_select_raw_processed(deploy_hash: &str) -> SimpleExpr {
+    let sub_select_raw_processed = Query::select()
+        .expr(Expr::col(DeployProcessed::Raw))
+        .from(DeployProcessed::Table)
+        .and_where(Expr::col(DeployProcessed::DeployHash).eq(deploy_hash))
+        .to_owned();
+    SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_raw_processed,
+    )))
+}
+
+fn sub_select_is_processed(deploy_hash: &str) -> SimpleExpr {
+    let sub_select_is_processed = Query::select()
+        .expr(Expr::col(DeployProcessed::Raw).is_not_null())
+        .from(DeployProcessed::Table)
+        .and_where(Expr::col(DeployProcessed::DeployHash).eq(deploy_hash))
+        .to_owned();
+    SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_is_processed,
+    )))
+}
+
+fn sub_select_is_expired(deploy_hash: &str) -> SimpleExpr {
+    let sub_select_raw_expired = Query::select()
+        .expr(Expr::col(DeployExpired::Raw).is_not_null())
+        .from(DeployExpired::Table)
+        .and_where(Expr::col(DeployExpired::DeployHash).eq(deploy_hash))
+        .to_owned();
+    SimpleExpr::SubQuery(Box::new(SubQueryStatement::SelectStatement(
+        sub_select_raw_expired,
+    )))
 }
 
 #[test]
@@ -333,4 +363,26 @@ pub fn create_table_stmt_produces_ddl_sql() {
     let got = create_table_stmt().to_string(SqliteQueryBuilder);
     let expected = "CREATE TABLE IF NOT EXISTS \"DeployAggregate\" ( \"deploy_hash\" text NOT NULL, \"deploy_accepted_raw\" blob, \"is_accepted\" integer NOT NULL, \"deploy_processed_raw\" blob, \"is_processed\" integer NOT NULL, \"is_expired\" integer NOT NULL, \"block_hash\" text, \"block_timestamp_utc_epoch_millis\" integer(13), CONSTRAINT \"PDX_DeployAggregate\"PRIMARY KEY (\"deploy_hash\") )";
     assert_eq!(got, expected);
+}
+
+#[test]
+pub fn create_update_stmt_test() {
+    let sql = create_update_stmt("dpl1".to_string(), Some(("block_1".to_string(), 123456)))
+        .unwrap()
+        .to_string(SqliteQueryBuilder);
+    assert_eq!(
+            sql,
+            "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"is_accepted\", \"is_expired\", \"deploy_processed_raw\", \"is_processed\", \"block_hash\", \"block_timestamp_utc_epoch_millis\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), FALSE), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), FALSE), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), FALSE), 'block_1', 123456) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"is_accepted\" = \"excluded\".\"is_accepted\", \"is_expired\" = \"excluded\".\"is_expired\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\", \"is_processed\" = \"excluded\".\"is_processed\", \"block_hash\" = \"excluded\".\"block_hash\", \"block_timestamp_utc_epoch_millis\" = \"excluded\".\"block_timestamp_utc_epoch_millis\""
+        )
+}
+
+#[test]
+pub fn create_update_stmt_test_without_block_data() {
+    let sql = create_update_stmt("dpl1".to_string(), None)
+        .unwrap()
+        .to_string(SqliteQueryBuilder);
+    assert_eq!(
+            sql,
+            "INSERT INTO \"DeployAggregate\" (\"deploy_hash\", \"deploy_accepted_raw\", \"is_accepted\", \"is_expired\", \"deploy_processed_raw\", \"is_processed\") VALUES ('dpl1', (SELECT \"raw\" FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployAccepted\" WHERE \"deploy_hash\" = 'dpl1'), FALSE), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployExpired\" WHERE \"deploy_hash\" = 'dpl1'), FALSE), (SELECT \"raw\" FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), IFNULL((SELECT \"raw\" IS NOT NULL FROM \"DeployProcessed\" WHERE \"deploy_hash\" = 'dpl1'), FALSE)) ON CONFLICT (\"deploy_hash\") DO UPDATE SET \"deploy_hash\" = \"excluded\".\"deploy_hash\", \"deploy_accepted_raw\" = \"excluded\".\"deploy_accepted_raw\", \"is_accepted\" = \"excluded\".\"is_accepted\", \"is_expired\" = \"excluded\".\"is_expired\", \"deploy_processed_raw\" = \"excluded\".\"deploy_processed_raw\", \"is_processed\" = \"excluded\".\"is_processed\""
+        )
 }
