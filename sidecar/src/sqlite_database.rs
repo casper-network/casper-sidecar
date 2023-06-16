@@ -104,6 +104,22 @@ impl SqliteDatabase {
         Ok(sqlite_db)
     }
 
+    async fn save_assemble_deploy_aggregate_command<'c>(
+        &self,
+        transaction: &mut Transaction<'c, Sqlite>,
+        deploy_hash: String,
+        maybe_block_data: Option<(String, u64)>,
+    ) -> Result<(), DatabaseWriteError> {
+        let insert_stmt =
+            tables::pending_deploy_aggregations::create_insert_stmt(deploy_hash, maybe_block_data)?
+                .to_string(SqliteQueryBuilder);
+        transaction
+            .execute(insert_stmt.as_str())
+            .await
+            .map(|_| ())
+            .map_err(|err| DatabaseWriteError::Unhandled(Error::from(err)))
+    }
+
     ///This function is temporary. DeployAggregateEntitis should be assembled automatically when
     /// DeployAccepted, DeployProcessed, DeployExpired and/or BlockAdded entities are being observed.
     /// But this functionality will be introduced in the next PR since this one is big enough

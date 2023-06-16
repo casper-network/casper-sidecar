@@ -205,10 +205,12 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
         .await
         .expect("Error saving deploy_expired");
 
-    sqlite_db
+    let aggregate = sqlite_db
         .get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
         .expect("Error getting deploy aggregate by hash");
+    assert_eq!(aggregate.deploy_hash, deploy_accepted.hex_encoded_hash());
+    assert!(aggregate.block_timestamp.is_none());
 }
 
 #[tokio::test]

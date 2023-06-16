@@ -30,8 +30,30 @@ pub struct BlockAdded {
     pub block: Box<JsonBlock>,
 }
 
-#[cfg(test)]
 impl BlockAdded {
+    pub fn get_timestamp(&self) -> Timestamp {
+        self.block.header.timestamp
+    }
+
+    pub fn get_all_deploy_hashes(&self) -> Vec<String> {
+        let deploy_hashes = self.block.deploy_hashes();
+        let transfer_hashes = self.block.transfer_hashes();
+        deploy_hashes
+            .iter()
+            .chain(transfer_hashes.iter())
+            .map(|hash_struct| hex::encode(hash_struct.inner()))
+            .collect()
+    }
+
+    pub fn hex_encoded_hash(&self) -> String {
+        hex::encode(self.block_hash.inner())
+    }
+
+    pub fn get_height(&self) -> u64 {
+        self.block.header.height
+    }
+
+    #[cfg(test)]
     pub fn random_with_data(
         rng: &mut TestRng,
         deploy_hashes: Vec<DeployHash>,
@@ -44,27 +66,13 @@ impl BlockAdded {
         }
     }
 
+    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let block = JsonBlock::random(rng);
         Self {
             block_hash: block.hash,
             block: Box::new(block),
         }
-    }
-}
-
-impl BlockAdded {
-    #[cfg(test)]
-    pub fn get_timestamp(&self) -> Timestamp {
-        self.block.header.timestamp
-    }
-
-    pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.block_hash.inner())
-    }
-
-    pub fn get_height(&self) -> u64 {
-        self.block.header.height
     }
 }
 
