@@ -1,10 +1,14 @@
+use crate::{
+    sql::tables,
+    types::sse_events::{
+        BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
+    },
+};
+use anyhow::Error;
 use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-
-use crate::types::sse_events::{
-    BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
-};
+use std::sync::Arc;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -97,6 +101,11 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError>;
+
+    /// Executes migration and stores current migration version
+    ///
+    /// * `migration`: migration to execute
+    async fn execute_migration(&self, migration: Migration) -> Result<(), DatabaseWriteError>;
 }
 
 #[derive(Debug)]
@@ -220,6 +229,9 @@ pub trait DatabaseReader {
 
     /// Returns number of events stored in db
     async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError>;
+
+    /// Gets the newest migration version.
+    async fn get_newest_migration_version(&self) -> Result<Option<(u32, bool)>, DatabaseReadError>;
 }
 
 /// The database was unable to fulfil the request.
@@ -233,10 +245,116 @@ pub enum DatabaseReadError {
     Unhandled(anyhow::Error),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
     pub(crate) deploy_accepted: Option<DeployAccepted>,
     pub(crate) deploy_processed: Option<DeployProcessed>,
     pub(crate) deploy_expired: bool,
+}
+
+#[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs
+pub enum StatementWrapper {
+    TableCreateStatement(Box<sea_query::TableCreateStatement>),
+    InsertStatement(sea_query::InsertStatement),
+    Raw(String),
+}
+
+#[async_trait]
+pub trait TransactionWrapper: Send + Sync {
+    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
+}
+
+#[async_trait]
+pub trait MigrationScriptExecutor: Send + Sync {
+    async fn execute(
+        &self,
+        transaction: Arc<dyn TransactionWrapper>,
+    ) -> Result<(), DatabaseWriteError>;
+}
+#[derive(Clone)]
+pub struct Migration {
+    // version is optional to denote the special case of the first migration
+    // that creates migrations table. No other migration should have version None.
+    pub version: Option<u32>,
+    pub statement_producers: fn() -> Result<Vec<StatementWrapper>, Error>,
+    pub script_executor: Option<Arc<dyn MigrationScriptExecutor>>,
+}
+
+impl Migration {
+    pub fn get_all_migrations() -> Vec<Migration> {
+        vec![Migration::migration_1()]
+    }
+
+    pub fn initial() -> Migration {
+        Migration {
+            version: None,
+            statement_producers: || {
+                Ok(vec![StatementWrapper::TableCreateStatement(Box::new(
+                    tables::migration::create_table_stmt(),
+                ))])
+            },
+            script_executor: None,
+        }
+    }
+
+    pub fn migration_1() -> Migration {
+        Migration {
+            version: Some(1),
+            statement_producers: || {
+                let insert_types_stmt =
+                    tables::event_type::create_initialise_stmt().map_err(|err| {
+                        Error::msg(format!("Error building create_initialise_stmt: {:?}", err))
+                    })?;
+                let init_stmt = StatementWrapper::InsertStatement(insert_types_stmt);
+                Ok(vec![
+                    // Synthetic tables
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::event_type::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::event_log::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_event::create_table_stmt(),
+                    )),
+                    // Raw Event tables
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::block_added::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_accepted::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_processed::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::deploy_expired::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::fault::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::finality_signature::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::step::create_table_stmt(),
+                    )),
+                    StatementWrapper::TableCreateStatement(Box::new(
+                        tables::shutdown::create_table_stmt(),
+                    )),
+                    init_stmt,
+                ])
+            },
+            script_executor: None,
+        }
+    }
+
+    pub fn get_version(&self) -> Option<u32> {
+        self.version
+    }
+
+    pub fn get_migrations(&self) -> Result<Vec<StatementWrapper>, Error> {
+        (self.statement_producers)()
+    }
 }

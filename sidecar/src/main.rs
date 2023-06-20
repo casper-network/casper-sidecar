@@ -5,6 +5,7 @@ mod event_stream_server;
 mod integration_tests;
 #[cfg(test)]
 mod integration_tests_version_switch;
+mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
 mod rest_server;
@@ -23,24 +24,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Error};
-use clap::Parser;
-use futures::future::join_all;
-use hex_fmt::HexFmt;
-use tokio::{
-    sync::{
-        mpsc::{channel as mpsc_channel, Receiver, Sender},
-        Mutex,
-    },
-    task::JoinHandle,
-};
-use tracing::{debug, error, info, trace, warn};
-
-use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
-use casper_event_types::{sse_data::SseData, Filter};
-use casper_types::ProtocolVersion;
-use types::database::DatabaseReader;
-
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
@@ -51,6 +34,32 @@ use crate::{
         sse_events::*,
     },
 };
+use anyhow::{Context, Error};
+use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
+use casper_event_types::{
+    metrics::{self, register_metrics},
+    sse_data::SseData,
+    Filter,
+};
+use casper_types::ProtocolVersion;
+use clap::Parser;
+use futures::future::join_all;
+use hex_fmt::HexFmt;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+use tokio::{
+    sync::{
+        mpsc::{channel as mpsc_channel, Receiver, Sender},
+        Mutex,
+    },
+    task::JoinHandle,
+};
+use tracing::{debug, error, info, trace, warn};
+use types::database::DatabaseReader;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -74,7 +83,7 @@ async fn main() -> Result<(), Error> {
     let config: Config = read_config(&path_to_config).context("Error constructing config")?;
 
     info!("Configuration loaded");
-
+    register_metrics();
     run(config).await
 }
 
@@ -96,7 +105,6 @@ async fn run(config: Config) -> Result<(), Error> {
             "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
         ));
     }
-
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
@@ -122,12 +130,12 @@ async fn run(config: Config) -> Result<(), Error> {
             connection.allow_partial_connection,
             inbound_sse_data_sender,
             Duration::from_secs(connection.connection_timeout_in_seconds.unwrap_or(5) as u64),
+            Duration::from_secs(connection.force_reconnect_in_hours.unwrap_or(12) as u64),
         );
         event_listeners.push(event_listener);
     }
 
     let path_to_database_dir = Path::new(&config.storage.storage_path);
-
     // Creates and initialises Sqlite database
     let sqlite_database =
         SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())
@@ -234,7 +242,7 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
@@ -299,7 +307,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving BlockAdded"),
+                Err(other_err) => {
+                    count_error("db_save_error_block_added");
+                    warn!(?other_err, "Unexpected error saving BlockAdded");
+                }
             }
         }
         SseData::DeployAccepted { deploy } => {
@@ -336,7 +347,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployAccepted"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_accepted");
+                    warn!(?other_err, "Unexpected error saving DeployAccepted");
+                }
             }
         }
         SseData::DeployExpired { deploy_hash } => {
@@ -376,7 +390,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployExpired"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_expired");
+                    warn!(?other_err, "Unexpected error saving DeployExpired");
+                }
             }
         }
         SseData::DeployProcessed {
@@ -441,7 +458,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving DeployProcessed"),
+                Err(other_err) => {
+                    count_error("db_save_error_deploy_processed");
+                    warn!(?other_err, "Unexpected error saving DeployProcessed");
+                }
             }
         }
         SseData::Fault {
@@ -479,7 +499,10 @@ async fn handle_single_event(
                     debug!("Already received Fault ({:#?}), logged in event_log", fault);
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Fault"),
+                Err(other_err) => {
+                    count_error("db_save_error_fault");
+                    warn!(?other_err, "Unexpected error saving Fault");
+                }
             }
         }
         SseData::FinalitySignature(fs) => {
@@ -523,6 +546,7 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_error("db_save_error_finality_signature");
                     warn!(?other_err, "Unexpected error saving FinalitySignature")
                 }
             }
@@ -565,7 +589,10 @@ async fn handle_single_event(
                     );
                     trace!(?uc_err);
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Step"),
+                Err(other_err) => {
+                    count_error("db_save_error_step");
+                    warn!(?other_err, "Unexpected error saving Step")
+                }
             }
         }
         SseData::Shutdown => {
@@ -592,7 +619,10 @@ async fn handle_single_event(
                         );
                     }
                 }
-                Err(other_err) => warn!(?other_err, "Unexpected error saving Shutdown"),
+                Err(other_err) => {
+                    count_error("db_save_error_shutdown");
+                    warn!(?other_err, "Unexpected error saving Shutdown")
+                }
             }
         }
     }
@@ -602,7 +632,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<serde_json::Value>)>,
+    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     is_empty_database: bool,
@@ -631,4 +661,10 @@ async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
         .await
         .map(|i| i == 0)
         .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))
+}
+
+fn count_error(reason: &str) {
+    metrics::ERROR_COUNTS
+        .with_label_values(&["main", reason])
+        .inc();
 }

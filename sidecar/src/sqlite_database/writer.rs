@@ -1,5 +1,13 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
+use super::SqliteDatabase;
+use crate::{
+    sql::{tables, tables::event_type::EventTypeId},
+    types::{
+        database::{
+            DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
+        },
+        sse_events::*,
+    },
+};
 use anyhow::Context;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
@@ -7,16 +15,12 @@ use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row};
-
-use super::SqliteDatabase;
-use crate::{
-    sql::{tables, tables::event_type::EventTypeId},
-    types::{
-        database::{DatabaseWriteError, DatabaseWriter},
-        sse_events::*,
-    },
+use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Mutex;
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -26,8 +30,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&block_added)?;
         let encoded_hash = block_added.hex_encoded_hash();
 
@@ -39,7 +42,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -53,7 +56,11 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_deploy_accepted(
@@ -62,8 +69,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_accepted)?;
         let encoded_hash = deploy_accepted.hex_encoded_hash();
 
@@ -75,7 +81,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -89,7 +95,11 @@ impl DatabaseWriter for SqliteDatabase {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_deploy_processed(
@@ -98,8 +108,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_processed)?;
         let encoded_hash = deploy_processed.hex_encoded_hash();
 
@@ -111,7 +120,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -125,7 +134,11 @@ impl DatabaseWriter for SqliteDatabase {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_deploy_expired(
@@ -134,7 +147,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_expired)?;
         let encoded_hash = deploy_expired.hex_encoded_hash();
 
@@ -146,7 +159,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -160,7 +173,11 @@ impl DatabaseWriter for SqliteDatabase {
         .map(|stmt| stmt.to_string(SqliteQueryBuilder))
         .join(";");
 
-        handle_sqlite_result(db_connection.execute(batched_insert_stmts.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_fault(
@@ -169,8 +186,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&fault)?;
         let era_id = fault.era_id.value();
         let public_key = fault.public_key.to_hex();
@@ -185,7 +201,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -195,7 +211,11 @@ impl DatabaseWriter for SqliteDatabase {
             tables::fault::create_insert_stmt(era_id, public_key, json, event_log_id)?
                 .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_finality_signature(
@@ -204,8 +224,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&finality_signature)?;
         let block_hash = finality_signature.hex_encoded_block_hash();
         let public_key = finality_signature.hex_encoded_public_key();
@@ -220,7 +239,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -234,7 +253,11 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_step(
@@ -243,8 +266,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
-
+        let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&step)?;
         let era_id = step.era_id.value();
 
@@ -256,7 +278,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -265,7 +287,11 @@ impl DatabaseWriter for SqliteDatabase {
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
             .to_string(SqliteQueryBuilder);
 
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+        res
     }
 
     async fn save_shutdown(
@@ -273,7 +299,7 @@ impl DatabaseWriter for SqliteDatabase {
         event_id: u32,
         event_source_address: String,
     ) -> Result<usize, DatabaseWriteError> {
-        let db_connection = &self.connection_pool;
+        let mut transaction = self.get_transaction().await?;
         let unix_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
@@ -288,7 +314,7 @@ impl DatabaseWriter for SqliteDatabase {
         )?
         .to_string(SqliteQueryBuilder);
 
-        let event_log_id = db_connection
+        let event_log_id = transaction
             .fetch_one(insert_to_event_log_stmt.as_str())
             .await?
             .try_get::<u32, usize>(0)
@@ -296,8 +322,77 @@ impl DatabaseWriter for SqliteDatabase {
 
         let insert_stmt = tables::shutdown::create_insert_stmt(event_source_address, event_log_id)?
             .to_string(SqliteQueryBuilder);
-        handle_sqlite_result(db_connection.execute(insert_stmt.as_str()).await)
+        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        if res.is_ok() {
+            transaction.commit().await?;
+        }
+
+        res
     }
+
+    async fn execute_migration(&self, migration: Migration) -> Result<(), DatabaseWriteError> {
+        let transaction = self.connection_pool.begin().await?;
+        let transaction_shared = Arc::new(Mutex::new(transaction));
+        let maybe_version = migration.get_version();
+        let res = {
+            let wrapper = SqliteTransactionWrapper {
+                transaction_mutex: transaction_shared.clone(),
+            };
+            let wrapper_arc = Arc::new(wrapper);
+            let sql = {
+                let sqls = materialize_statements(migration.get_migrations()?);
+                sqls.iter().join(";")
+            };
+            match wrapper_arc.clone().execute(sql.as_str()).await {
+                Ok(_) => {
+                    if let Some(script_executor) = migration.script_executor {
+                        script_executor.execute(wrapper_arc.clone()).await
+                    } else {
+                        Ok(())
+                    }
+                }
+                Err(err) => Err(err).map_err(std::convert::From::from),
+            }
+        };
+        let tx = Arc::try_unwrap(transaction_shared)
+        .expect("Failed unwrapping transaction before commit. It seems some code is storing Arcs to the transaction?")
+        .into_inner();
+        if res.is_ok() {
+            tx.commit().await?;
+        } else {
+            tx.rollback().await?
+        }
+        self.store_version_based_on_result(maybe_version, res).await
+    }
+}
+
+#[derive(Debug)]
+struct SqliteTransactionWrapper<'a> {
+    transaction_mutex: Arc<Mutex<Transaction<'a, Sqlite>>>,
+}
+
+#[async_trait]
+impl TransactionWrapper for SqliteTransactionWrapper<'_> {
+    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+        let mut lock = self.transaction_mutex.lock().await;
+        lock.execute(sql)
+            .await
+            .map(|_| ())
+            .map_err(DatabaseWriteError::from)
+    }
+}
+
+fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
+    wrappers
+        .iter()
+        .map(|wrapper| match wrapper {
+            StatementWrapper::TableCreateStatement(statement) => {
+                statement.to_string(SqliteQueryBuilder)
+            }
+            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+            StatementWrapper::Raw(sql) => sql.to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

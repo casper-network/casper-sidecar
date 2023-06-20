@@ -26,23 +26,18 @@ mod http_server;
 mod sse_server;
 #[cfg(test)]
 mod tests;
-
+use crate::utils::{resolve_address, ListeningError};
+use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+pub use config::Config;
+use event_indexer::{EventIndex, EventIndexer};
+use sse_server::ChannelsAndFilter;
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
-
-use serde_json::Value;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tracing::{info, warn};
 use warp::Filter;
-
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-
-use crate::utils::{resolve_address, ListeningError};
-pub use config::Config;
-use event_indexer::{EventIndex, EventIndexer};
-use sse_server::ChannelsAndFilter;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -57,12 +52,7 @@ const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(
-        Option<EventIndex>,
-        SseData,
-        SseFilter,
-        Option<serde_json::Value>,
-    )>,
+    sse_data_sender: UnboundedSender<(Option<EventIndex>, SseData, SseFilter, Option<String>)>,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -130,7 +120,7 @@ impl EventStreamServer {
         &mut self,
         sse_data: SseData,
         inbound_filter: SseFilter,
-        maybe_json_data: Option<Value>,
+        maybe_json_data: Option<String>,
     ) {
         let event_index = match sse_data {
             SseData::ApiVersion(..) => None,

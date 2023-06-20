@@ -1,5 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Iden, InsertStatement, Query, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Iden, InsertStatement, OnConflict, Query, Table,
+    TableCreateStatement,
 };
 
 #[derive(Iden)]
@@ -69,5 +70,22 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
             (EventTypeId::Shutdown as u8).into(),
             "Shutdown".into(),
         ])?
+        .on_conflict(
+            OnConflict::column(EventType::EventTypeId)
+                .do_nothing()
+                .to_owned(),
+        )
         .to_owned())
+}
+
+#[test]
+fn create_initialise_stmt_sql() {
+    use sea_query::SqliteQueryBuilder;
+    let expected_sql = "INSERT INTO \"event_type\" (\"event_type_id\", \"event_type_name\") VALUES (1, 'BlockAdded'), (2, 'DeployAccepted'), (3, 'DeployExpired'), (4, 'DeployProcessed'), (5, 'Fault'), (6, 'FinalitySignature'), (7, 'Step'), (8, 'Shutdown') ON CONFLICT (\"event_type_id\") DO NOTHING";
+
+    let got_sql = create_initialise_stmt()
+        .unwrap()
+        .to_string(SqliteQueryBuilder);
+
+    assert_eq!(got_sql, expected_sql);
 }

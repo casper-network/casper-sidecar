@@ -1,8 +1,6 @@
 mod connection_manager;
 mod connection_tasks;
-
-use std::{collections::HashMap, net::IpAddr, str::FromStr, time::Duration};
-
+use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
@@ -10,11 +8,17 @@ use connection_manager::ConnectionManagerError;
 pub use connection_manager::SseEvent;
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
-use tokio::sync::mpsc::Sender;
+use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use tokio::{
+    sync::{
+        broadcast::channel as broadcast_channel,
+        mpsc::{self, Sender},
+        Mutex,
+    },
+    time::sleep,
+};
 use tracing::{debug, error, info, trace};
 use url::Url;
-
-use crate::connection_manager::ConnectionManagerBuilder;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 
@@ -32,6 +36,7 @@ pub struct EventListener {
     allow_partial_connection: bool,
     sse_event_sender: Sender<SseEvent>,
     connection_timeout: Duration,
+    force_reconnect_timeout: Duration,
 }
 
 impl EventListener {
@@ -42,6 +47,7 @@ impl EventListener {
         allow_partial_connection: bool,
         sse_event_sender: Sender<SseEvent>,
         connection_timeout: Duration,
+        force_reconnect_timeout: Duration,
     ) -> Self {
         Self {
             node_build_version: ProtocolVersion::from_parts(1, 0, 0),
@@ -51,6 +57,7 @@ impl EventListener {
             allow_partial_connection,
             sse_event_sender,
             connection_timeout,
+            force_reconnect_timeout,
         }
     }
 
@@ -67,19 +74,27 @@ impl EventListener {
         initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
         is_empty_database: bool,
     ) -> Result<(), Error> {
-        let mut attempts = 0;
-        let mut last_event_id_for_filter = HashMap::<Filter, u32>::new();
+        let mut attempts = 1;
+        let last_event_id_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
+        let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
+
+        let local_last_event_id_for_filter = last_event_id_for_filter.clone();
+        tokio::spawn(async move {
+            while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
+                let last_event_id_for_filter_clone = local_last_event_id_for_filter.clone();
+                let mut guard = last_event_id_for_filter_clone.lock().await;
+                guard.insert(filter, id);
+                drop(guard);
+            }
+        });
 
         // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
         let mut single_use_reporter = Some(initial_api_version_sender);
-        while attempts < self.max_connection_attempts {
-            attempts += 1;
-
+        while attempts <= self.max_connection_attempts {
             info!(
                 "Attempting to connect...\t{}/{}",
                 attempts, self.max_connection_attempts
             );
-
             match self.fetch_build_version_from_status().await {
                 Ok(version) => {
                     let new_node_build_version = version;
@@ -94,7 +109,7 @@ impl EventListener {
                     // If the connection has been failing and we see the build version change we reset
                     // the attempts as it may have down for an upgrade.
                     if new_node_build_version != self.node_build_version {
-                        attempts = 0;
+                        attempts = 1;
                     }
 
                     self.node_build_version = new_node_build_version;
@@ -111,19 +126,26 @@ impl EventListener {
                         ));
                     }
 
-                    tokio::time::sleep(self.delay_between_attempts).await;
+                    sleep(self.delay_between_attempts).await;
+                    attempts += 1;
                     continue;
                 }
             }
-
             let filters = filters_from_version(self.node_build_version);
+            let (poison_pill_sender, _) = broadcast_channel(filters.len());
+            let poison_pill_sender_clone = poison_pill_sender.clone();
+            let force_reconnect_timeout = self.force_reconnect_timeout;
+            tokio::spawn(async move {
+                sleep(force_reconnect_timeout * 3600).await;
+                let _ = poison_pill_sender_clone.send(());
+            });
 
             let mut connections = HashMap::new();
             let maybe_tasks =
                 (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
-
+            let guard = last_event_id_for_filter.lock().await;
             for filter in filters {
-                let mut start_from_event_id = last_event_id_for_filter.get(&filter).copied();
+                let mut start_from_event_id = guard.get(&filter).copied();
                 if is_empty_database && start_from_event_id.is_none() {
                     start_from_event_id = Some(0);
                 }
@@ -137,25 +159,36 @@ impl EventListener {
                     start_from_event_id,
                     filter: filter.clone(),
                     node_build_version: self.node_build_version,
+                    current_event_id_sender: last_seen_event_id_sender.clone(),
+                    poison_pill_channel: poison_pill_sender.clone(),
                 };
 
                 connections.insert(filter, builder.build());
             }
+            drop(guard);
 
             let mut connection_join_handles = Vec::new();
 
             for (filter, mut connection) in connections.drain() {
                 debug!("Connecting filter... {}", filter);
                 let handle = tokio::spawn(async move {
-                    let (filter, maybe_last_event_id, err) = connection.start_handling().await;
-                    error!("Error on start_handling: {}", err);
-                    (filter, maybe_last_event_id, err)
+                    let res = connection.start_handling().await;
+                    match res {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            error!("Error on start_handling: {}", e);
+                            Err(e)
+                        }
+                    }
                 });
                 connection_join_handles.push(handle);
             }
 
             if self.allow_partial_connection {
-                // Await completion (which would be caused by an error) of all connections OR one of the connection raising NonRecoverableError
+                // We wait until either
+                //  * all of the connections return error OR
+                //  * one of the connection returns Err(NonRecoverableError) OR
+                //  * one of the connection returns Ok(()) -> this means that we need to do a force reconnect to the node
                 loop {
                     let select_result = futures::future::select_all(connection_join_handles).await;
                     let task_result = select_result.0;
@@ -163,34 +196,49 @@ impl EventListener {
                     if task_result.is_err() {
                         break;
                     }
-                    let (filter, maybe_last_event_id, err) = task_result.unwrap();
-                    if let Some(event_id) = maybe_last_event_id {
-                        last_event_id_for_filter.insert(filter, event_id);
-                    } else {
-                        last_event_id_for_filter.remove(&filter);
-                    }
-                    match err {
-                        ConnectionManagerError::NonRecoverableError { error } => {
-                            error!(
-                                "Restarting event listener {} because of NonRecoverableError: {}",
-                                self.node.ip_address.to_string(),
-                                error
-                            );
+                    let res = task_result.unwrap();
+                    match res {
+                        Ok(_) => {
+                            //Not increasing attempts on "clean exit" of connection manager
                             break;
                         }
-                        ConnectionManagerError::InitialConnectionError { error } => {
-                            //No futures_left means no more filters active, we need to restart the whole listener
-                            if futures_left.is_empty() {
-                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
-                                break;
+                        Err(err) => {
+                            match err {
+                                ConnectionManagerError::NonRecoverableError { error } => {
+                                    error!(
+                                        "Restarting event listener {} because of NonRecoverableError: {}",
+                                        self.node.ip_address.to_string(),
+                                        error
+                                    );
+                                    attempts += 1;
+                                    break;
+                                }
+                                ConnectionManagerError::InitialConnectionError { error } => {
+                                    //No futures_left means no more filters active, we need to restart the whole listener
+                                    if futures_left.is_empty() {
+                                        error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
+                                        attempts += 1;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
                     connection_join_handles = futures_left
                 }
             } else {
-                // Return on the first completed (which would be caused by an error) connection
-                let _ = futures::future::select_all(connection_join_handles).await;
+                // Return on the first completed connection
+                let select_result = futures::future::select_all(connection_join_handles).await;
+                let task_result = select_result.0;
+                if task_result.is_ok() {
+                    let res = task_result.unwrap();
+                    if res.is_err() {
+                        attempts += 1;
+                    }
+                    //Not increasing attempts on "clean exit" of connection manager
+                } else {
+                    attempts += 1;
+                }
             }
         }
         Ok(())
@@ -235,18 +283,31 @@ fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
         Some(build_version_value) if build_version_value.is_string() => {
             let raw = build_version_value
                 .as_str()
-                .context("build_version_value should be a string")?
+                .context("build_version_value should be a string")
+                .map_err(|e| {
+                    count_error("version_value_not_a_string");
+                    e
+                })?
                 .split('-')
                 .next()
-                .context("splitting build_version_value should always return at least one slice")?;
-            ProtocolVersion::from_str(raw)
-                .map_err(|error| anyhow!("failed parsing build version from '{}': {}", raw, error))
+                .context("splitting build_version_value should always return at least one slice")
+                .map_err(|e| {
+                    count_error("incomprehensible_build_version_form");
+                    e
+                })?;
+            ProtocolVersion::from_str(raw).map_err(|error| {
+                count_error("failed_parsing_protocol_version");
+                anyhow!("failed parsing build version from '{}': {}", raw, error)
+            })
         }
-        _ => Err(anyhow!(
-            "failed to get {} from status response {}",
-            BUILD_VERSION_KEY,
-            raw_response
-        )),
+        _ => {
+            count_error("failed_getting_status_from_payload");
+            Err(anyhow!(
+                "failed to get {} from status response {}",
+                BUILD_VERSION_KEY,
+                raw_response
+            ))
+        }
     }
 }
 
@@ -273,6 +334,12 @@ fn filters_from_version(build_version: ProtocolVersion) -> Vec<Filter> {
     }
 
     filters
+}
+
+fn count_error(reason: &str) {
+    casper_event_types::metrics::ERROR_COUNTS
+        .with_label_values(&["event_listener", reason])
+        .inc();
 }
 
 #[cfg(test)]

@@ -1,10 +1,7 @@
 //! Types and functions used by the http server to manage the event-stream.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
-};
-
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
+use casper_types::ProtocolVersion;
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -12,6 +9,10 @@ use hyper::Body;
 use rand::Rng;
 use serde::Serialize;
 use serde_json::Value;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
     mpsc::{self, UnboundedSender},
@@ -28,9 +29,6 @@ use warp::{
     sse::{self, Event as WarpServerSentEvent},
     Filter, Reply,
 };
-
-use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
-use casper_types::ProtocolVersion;
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -75,12 +73,12 @@ pub(super) struct DeployAccepted {
 }
 
 /// The components of a single SSE.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
     pub(super) data: SseData,
-    pub(super) json_data: Option<Value>,
+    pub(super) json_data: Option<String>,
     pub(super) inbound_filter: Option<SseFilter>,
 }
 
@@ -97,7 +95,7 @@ impl ServerSentEvent {
 }
 
 /// The messages sent via the tokio broadcast channel to the handler of each client's SSE stream.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(super) enum BroadcastChannelMessage {
     /// The message should be sent to the client as an SSE with an optional ID.  The ID should only
@@ -108,6 +106,17 @@ pub(super) enum BroadcastChannelMessage {
     /// Note: ideally, we'd just drop all the tokio broadcast channel senders to make the streams
     /// terminate naturally, but we can't drop the sender cloned into warp filter.
     Shutdown,
+}
+
+fn event_to_warp_event(event: &ServerSentEvent) -> Result<warp::sse::Event, serde_json::Error> {
+    let maybe_value = event
+        .json_data
+        .as_ref()
+        .map(|el| serde_json::from_str::<Value>(el).unwrap());
+    match &maybe_value {
+        Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+        None => WarpServerSentEvent::default().json_data(&event.data),
+    }
 }
 
 /// Passed to the server whenever a new client subscribes.
@@ -148,11 +157,7 @@ async fn filter_map_server_sent_event(
 
     match &event.data {
         &SseData::ApiVersion { .. } => {
-            let warp_event = match &event.json_data {
-                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
-                None => WarpServerSentEvent::default().json_data(&event.data),
-            }
-            .unwrap_or_else(|error| {
+            let warp_event = event_to_warp_event(event).unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             });
@@ -165,20 +170,21 @@ async fn filter_map_server_sent_event(
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_) => {
-            let warp_event = match &event.json_data {
-                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
-                None => WarpServerSentEvent::default().json_data(&event.data),
-            }
-            .unwrap_or_else(|error| {
-                warn!(%error, ?event, "failed to jsonify sse event");
-                WarpServerSentEvent::default()
-            })
-            .id(id);
+            let warp_event = event_to_warp_event(event)
+                .unwrap_or_else(|error| {
+                    warn!(%error, ?event, "failed to jsonify sse event");
+                    WarpServerSentEvent::default()
+                })
+                .id(id);
             Some(Ok(warp_event))
         }
 
         SseData::DeployAccepted { deploy } => {
-            let warp_event = match &event.json_data {
+            let maybe_value = event
+                .json_data
+                .as_ref()
+                .map(|el| serde_json::from_str::<Value>(el).unwrap());
+            let warp_event = match maybe_value {
                 Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
                 None => {
                     let deploy_accepted = &DeployAccepted {
@@ -218,12 +224,13 @@ fn build_event_for_outbound(
     event: &ServerSentEvent,
     id: String,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
-    let value = event
+    let maybe_value = event
         .json_data
-        .clone()
+        .as_ref()
+        .map(|el| serde_json::from_str::<Value>(el).unwrap())
         .unwrap_or_else(|| serde_json::to_value(&event.data).unwrap());
     Some(Ok(WarpServerSentEvent::default()
-        .json_data(&value)
+        .json_data(&maybe_value)
         .unwrap_or_else(|error| {
             warn!(%error, ?event, "failed to jsonify sse event");
             WarpServerSentEvent::default()
@@ -870,8 +877,8 @@ mod tests {
                     .replace_all(received_event_str.as_str(), "")
                     .into_owned();
                 let received_data =
-                    serde_json::from_str::<SseData>(received_event_str.as_str()).unwrap();
-
+                    serde_json::from_str::<Value>(received_event_str.as_str()).unwrap();
+                let expected_data = serde_json::to_value(&expected_data).unwrap();
                 assert_eq!(expected_data, received_data);
             }
         }

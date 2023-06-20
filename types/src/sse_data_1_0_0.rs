@@ -4,26 +4,27 @@ use crate::{
     deploy::{Deploy, DeployHash},
     sse_data::{self, to_error, SseDataDeserializeError},
 };
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use std::sync::Arc;
 
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.0.0 compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
-pub fn deserialize(raw_data: &str) -> Result<super::sse_data::SseData, SseDataDeserializeError> {
+pub fn deserialize(
+    raw_data: &str,
+) -> Result<(super::sse_data::SseData, bool), SseDataDeserializeError> {
     serde_json::from_str::<SseData>(raw_data)
         .map_err(|err| {
             let error_message = format!("Serde Error: {}", err);
             to_error(error_message)
         })
-        .map(super::sse_data::SseData::from)
+        .map(|el| (super::sse_data::SseData::from(el), true))
 }
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -62,7 +63,7 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effect: Box<RawValue>,
     },
     /// The node is about to shut down.
     Shutdown,

@@ -15,7 +15,7 @@ use crate::{
     sqlite_database::SqliteDatabase, types::config::RestServerConfig, utils::resolve_address,
 };
 
-const LOOPBACK: &str = "127.0.0.1";
+const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 
 pub async fn run_server(
     config: RestServerConfig,
@@ -23,7 +23,7 @@ pub async fn run_server(
 ) -> Result<(), Error> {
     let api = filters::combined_filters(sqlite_database);
 
-    let address = format!("{}:{}", LOOPBACK, config.port);
+    let address = format!("{}:{}", BIND_ALL_INTERFACES, config.port);
     let socket_address = resolve_address(&address)?;
 
     let listener = TcpListener::bind(socket_address)?;

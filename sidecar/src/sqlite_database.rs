@@ -3,22 +3,24 @@ mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
-
+use crate::{
+    migration_manager::MigrationManager,
+    sql::tables,
+    types::{config::SqliteConfig, database::DatabaseWriteError},
+};
+use anyhow::Error;
+use sea_query::SqliteQueryBuilder;
+#[cfg(test)]
+use sqlx::Row;
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
+    ConnectOptions, Executor, Sqlite, Transaction,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
 };
-
-use anyhow::{Context, Error};
-use itertools::Itertools;
-use sea_query::SqliteQueryBuilder;
-use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
-    ConnectOptions, Executor,
-};
-
-use crate::{sql::tables, types::config::SqliteConfig};
 
 /// This pragma queries or sets the [write-ahead log](https://www.sqlite.org/wal.html) [auto-checkpoint](https://www.sqlite.org/wal.html#ckpt) interval.
 const WAL_AUTOCHECKPOINT_KEY: &str = "wal_autocheckpoint";
@@ -56,19 +58,54 @@ impl SqliteDatabase {
                     connection_pool,
                     file_path: Path::new(&path).into(),
                 };
-
-                sqlite_db
-                    .initialise_with_tables()
-                    .await
-                    .context("Error initialising tables")?;
+                MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
 
                 Ok(sqlite_db)
             }
         }
     }
 
+    async fn store_version_based_on_result(
+        &self,
+        maybe_version: Option<u32>,
+        res: Result<(), DatabaseWriteError>,
+    ) -> Result<(), DatabaseWriteError> {
+        let db_connection = &self.connection_pool;
+        match maybe_version {
+            None => res,
+            Some(version) => match res {
+                Ok(_) => {
+                    let insert_version_stmt = tables::migration::create_insert_stmt(version, true)?
+                        .to_string(SqliteQueryBuilder);
+                    db_connection.execute(insert_version_stmt.as_str()).await?;
+                    Ok(())
+                }
+                Err(e) => {
+                    let insert_version_stmt =
+                        tables::migration::create_insert_stmt(version, false)?
+                            .to_string(SqliteQueryBuilder);
+                    db_connection.execute(insert_version_stmt.as_str()).await?;
+                    Err(e)
+                }
+            },
+        }
+    }
+
+    async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
+        self.connection_pool.begin().await
+    }
+
     #[cfg(test)]
     pub async fn new_in_memory(max_connections: u32) -> Result<SqliteDatabase, Error> {
+        let sqlite_db = Self::new_in_memory_no_migrations(max_connections).await?;
+        MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
+        Ok(sqlite_db)
+    }
+
+    #[cfg(test)]
+    pub async fn new_in_memory_no_migrations(
+        max_connections: u32,
+    ) -> Result<SqliteDatabase, Error> {
         let connection_pool = SqlitePoolOptions::new()
             .max_connections(max_connections)
             .connect_lazy_with(
@@ -83,48 +120,15 @@ impl SqliteDatabase {
             connection_pool,
             file_path: Path::new("in_memory").into(),
         };
-
-        sqlite_db
-            .initialise_with_tables()
-            .await
-            .context("Error initialising tables")?;
-
         Ok(sqlite_db)
     }
 
-    pub async fn initialise_with_tables(&self) -> Result<(), Error> {
-        let create_table_stmts = vec![
-            // Synthetic tables
-            tables::event_type::create_table_stmt(),
-            tables::event_log::create_table_stmt(),
-            tables::deploy_event::create_table_stmt(),
-            // Raw Event tables
-            tables::block_added::create_table_stmt(),
-            tables::deploy_accepted::create_table_stmt(),
-            tables::deploy_processed::create_table_stmt(),
-            tables::deploy_expired::create_table_stmt(),
-            tables::fault::create_table_stmt(),
-            tables::finality_signature::create_table_stmt(),
-            tables::step::create_table_stmt(),
-            tables::shutdown::create_table_stmt(),
-        ]
-        .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
-        .join(";");
-
+    #[cfg(test)]
+    pub async fn get_number_of_tables(&self) -> u32 {
         self.connection_pool
-            .execute(create_table_stmts.as_str())
-            .await?;
-
-        let initialise_event_type =
-            tables::event_type::create_initialise_stmt()?.to_string(SqliteQueryBuilder);
-
-        // The result is swallowed because this call may fail if the tables were already created and populated.
-        let _ = self
-            .connection_pool
-            .execute(initialise_event_type.as_str())
-            .await;
-
-        Ok(())
+        .fetch_one("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name != 'android_metadata' AND name != 'sqlite_sequence';")
+        .await
+        .unwrap()
+        .get::<u32, usize>(0)
     }
 }
