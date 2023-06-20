@@ -1,6 +1,11 @@
 use super::SqliteDatabase;
 use crate::{
-    sql::{tables, tables::event_type::EventTypeId},
+    sql::{
+        tables,
+        tables::{
+            event_type::EventTypeId, pending_deploy_aggregations::PendingDeployAggregationEntity,
+        },
+    },
     types::{
         database::{
             DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
@@ -8,7 +13,7 @@ use crate::{
         sse_events::*,
     },
 };
-use anyhow::Context;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
 use itertools::Itertools;
@@ -17,10 +22,13 @@ use sea_query::SqliteQueryBuilder;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex;
+
+const SELECT_PENDING_DEPLOY_AGGREGATIONS_BATCH_SIZE: u32 = 5000;
 
 #[async_trait]
 impl DatabaseWriter for SqliteDatabase {
@@ -61,7 +69,7 @@ impl DatabaseWriter for SqliteDatabase {
         let timestamp = block_added.get_timestamp().millis();
         if res.is_ok() {
             for hash in block_added.get_all_deploy_hashes() {
-                self.save_assemble_deploy_aggregate_command(
+                self.save_pending_deploy_aggregation(
                     &mut transaction,
                     hash,
                     Some((block_hash.clone(), timestamp)),
@@ -107,12 +115,8 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(
-                &mut transaction,
-                encoded_hash.clone(),
-                None,
-            )
-            .await?;
+            self.save_pending_deploy_aggregation(&mut transaction, encoded_hash.clone(), None)
+                .await?;
             transaction.commit().await?;
         }
         res
@@ -152,7 +156,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+            self.save_pending_deploy_aggregation(&mut transaction, encoded_hash, None)
                 .await?;
             transaction.commit().await?;
         }
@@ -193,7 +197,7 @@ impl DatabaseWriter for SqliteDatabase {
 
         let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
-            self.save_assemble_deploy_aggregate_command(&mut transaction, encoded_hash, None)
+            self.save_pending_deploy_aggregation(&mut transaction, encoded_hash, None)
                 .await?;
             transaction.commit().await?;
         }
@@ -384,6 +388,59 @@ impl DatabaseWriter for SqliteDatabase {
         }
         self.store_version_based_on_result(maybe_version, res).await
     }
+
+    async fn update_pending_deploy_aggregates(&self) -> Result<usize, DatabaseWriteError> {
+        let db_connection = &self.connection_pool;
+        let fetch_assemble_deploy_aggregate_orders_sql =
+            tables::pending_deploy_aggregations::select_stmt(
+                SELECT_PENDING_DEPLOY_AGGREGATIONS_BATCH_SIZE,
+            )
+            .to_string(SqliteQueryBuilder);
+        let (batch_update_sql, batch_delete_sql, number_of_ids) =
+            sqlx::query_as::<_, PendingDeployAggregationEntity>(
+                &fetch_assemble_deploy_aggregate_orders_sql,
+            )
+            .fetch_all(db_connection)
+            .await
+            .map_err(|sql_err| DatabaseWriteError::Unhandled(Error::from(sql_err)))
+            .map(build_sqls_from_entities)?;
+        if number_of_ids > 0 {
+            // Execute the sqls only if there were some deploy aggregates to assemble
+            db_connection.execute(batch_update_sql.as_str()).await?;
+            db_connection.execute(batch_delete_sql.as_str()).await?;
+        }
+        Ok(number_of_ids)
+    }
+}
+
+fn build_sqls_from_entities(
+    entities: Vec<PendingDeployAggregationEntity>,
+) -> (String, String, usize) {
+    let number_of_ids = entities.len();
+    let mut deduplicated_entities = HashMap::<String, Option<(String, u64)>>::new();
+    let deduplicated_entities_ref = &mut deduplicated_entities;
+    let ids = entities.iter().map(|el| el.get_id()).collect();
+    entities.iter().for_each(|el| {
+        let deploy_hash = el.deploy_hash();
+        let block_data = el.get_block_data();
+        match deduplicated_entities_ref.get(&deploy_hash) {
+            None | Some(None) => {
+                deduplicated_entities_ref.insert(deploy_hash, block_data);
+            }
+            Some(_) => {}
+        }
+    });
+    let batch_update_sql = deduplicated_entities
+        .into_iter()
+        .map(|(key, value)| {
+            tables::deploy_aggregate::create_update_stmt(key, value)
+                .unwrap()
+                .to_string(SqliteQueryBuilder)
+        })
+        .join(";");
+    let batch_delete_sql =
+        tables::pending_deploy_aggregations::delete_stmt(ids).to_string(SqliteQueryBuilder);
+    (batch_update_sql, batch_delete_sql, number_of_ids)
 }
 
 #[derive(Debug)]

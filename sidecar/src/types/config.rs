@@ -43,6 +43,7 @@ pub struct SqliteConfig {
     pub file_name: String,
     pub max_connections_in_pool: u32,
     pub wal_autocheckpointing_interval: u16,
+    pub database_write_timeout_secs: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -109,6 +110,7 @@ mod tests {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
+                    database_write_timeout_secs: None,
                 },
             },
             rest_server: RestServerConfig {
@@ -151,6 +153,7 @@ mod tests {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
+                    database_write_timeout_secs: None,
                 },
             },
             rest_server: RestServerConfig {
@@ -202,6 +205,7 @@ mod tests {
                 file_name: "test_sqlite_database".to_string(),
                 max_connections_in_pool: 100,
                 wal_autocheckpointing_interval: 1000,
+                database_write_timeout_secs: None,
             }
         }
     }

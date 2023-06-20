@@ -13,7 +13,7 @@ use crate::{
     types::{
         database::{
             DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
-            DeployAggregateEntity, DeployAggregateFilter, DeployAggregateSortColumn, SortOrder,
+            DeployAggregateFilter, DeployAggregateSortColumn, SortOrder,
         },
         sse_events::*,
     },
@@ -961,17 +961,6 @@ async fn should_list_aggregates_should_sort_and_paginate() {
         .save_block_added(block_added_2.clone(), 11, "127.0.0.1".to_string())
         .await
         .expect("Error saving block_added");
-    let _ = sqlite_db
-        .update_deploy_aggregate(
-            deploy_hash_2.clone(),
-            None,
-            None,
-            false,
-            Some(block_added_2.hex_encoded_hash()),
-            Some(block_added_2.get_timestamp().millis()),
-        )
-        .await
-        .unwrap();
     let block_added_3 = get_block_with_deploy_hash(
         String::from("ae8533b66af5b39b82a639996cd9346fa1f7dab4e976d5fde8755f661f13fc47"),
         deploy_accepted_5.hex_encoded_hash(),
@@ -982,25 +971,7 @@ async fn should_list_aggregates_should_sort_and_paginate() {
         .save_block_added(block_added_3.clone(), 12, "127.0.0.1".to_string())
         .await
         .expect("Error saving block_added");
-    let _ = sqlite_db
-        .save_deploy_aggregate(
-            DeployAggregateEntity {
-                deploy_hash: deploy_accepted_5.hex_encoded_hash(),
-                deploy_accepted_raw: serde_json::to_string(&deploy_accepted_5)
-                    .unwrap()
-                    .to_string(),
-                deploy_processed_raw: Some(
-                    serde_json::to_string(&deploy_processed_5)
-                        .unwrap()
-                        .to_string(),
-                ),
-                is_expired: false,
-                block_timestamp: Some(block_added_3.get_timestamp().millis() as i64),
-            },
-            Some(block_added_3.hex_encoded_hash()),
-        )
-        .await
-        .unwrap();
+    sqlite_db.update_pending_deploy_aggregates().await.unwrap();
     let mut filter = DeployAggregateFilter::paginate(0, 3);
     filter.sort_column = Some(DeployAggregateSortColumn::BlockTimestamp);
     filter.sort_order = Some(SortOrder::Asc);
@@ -1094,50 +1065,7 @@ async fn setup_four_deploy_accepted_scenario(
         .save_deploy_expired(deploy_expired.clone(), 8, "127.0.0.1".to_string())
         .await
         .expect("Error saving deploy_expired");
-    let aggregate_1 = DeployAggregateEntity {
-        deploy_hash: deploy_accepted.hex_encoded_hash(),
-        deploy_accepted_raw: serde_json::to_string(&deploy_accepted).unwrap(),
-        deploy_processed_raw: Some(serde_json::to_string(&deploy_processed).unwrap()),
-        is_expired: false,
-        block_timestamp: Some(block_added.get_timestamp().millis() as i64),
-    };
-    let _ = sqlite_db
-        .save_deploy_aggregate(aggregate_1, Some(block_added.hex_encoded_hash()))
-        .await
-        .unwrap();
-    let aggregate_2 = DeployAggregateEntity {
-        deploy_hash: deploy_accepted_2.hex_encoded_hash(),
-        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_2).unwrap(),
-        deploy_processed_raw: Some(serde_json::to_string(&deploy_processed_2).unwrap()),
-        is_expired: false,
-        block_timestamp: None,
-    };
-    let _ = sqlite_db
-        .save_deploy_aggregate(aggregate_2, None)
-        .await
-        .unwrap();
-    let aggregate_3 = DeployAggregateEntity {
-        deploy_hash: deploy_accepted_3.hex_encoded_hash(),
-        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_3).unwrap(),
-        deploy_processed_raw: None,
-        is_expired: false,
-        block_timestamp: None,
-    };
-    let _ = sqlite_db
-        .save_deploy_aggregate(aggregate_3, None)
-        .await
-        .unwrap();
-    let aggregate_4 = DeployAggregateEntity {
-        deploy_hash: deploy_accepted_4.hex_encoded_hash(),
-        deploy_accepted_raw: serde_json::to_string(&deploy_accepted_4).unwrap(),
-        deploy_processed_raw: None,
-        is_expired: false,
-        block_timestamp: None,
-    };
-    let _ = sqlite_db
-        .save_deploy_aggregate(aggregate_4, None)
-        .await
-        .unwrap();
+    sqlite_db.update_pending_deploy_aggregates().await.unwrap();
     (
         deploy_accepted.hex_encoded_hash(),
         deploy_accepted_2.hex_encoded_hash(),
