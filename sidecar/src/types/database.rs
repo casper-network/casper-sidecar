@@ -1,5 +1,6 @@
+use super::transaction::TransactionWrapper;
 use crate::{
-    sql::tables,
+    sql::{backfill_pending_deploy_aggregations::BackfillPendingDeployAggregations, tables},
     types::sse_events::{
         BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
     },
@@ -342,11 +343,6 @@ pub trait MigrationScriptExecutor: Send + Sync {
     ) -> Result<(), DatabaseWriteError>;
 }
 
-#[async_trait]
-pub trait TransactionWrapper: Send + Sync {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
-}
-
 #[derive(Clone)]
 pub struct Migration {
     // version is optional to denote the special case of the first migration
@@ -395,7 +391,7 @@ impl Migration {
                     )),
                 ])
             },
-            script_executor: None,
+            script_executor: Some(BackfillPendingDeployAggregations::new()),
         }
     }
 

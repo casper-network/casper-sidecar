@@ -11,7 +11,7 @@ async-trait = "0.1.56"
 bytes = "1.2.0"
 casper-event-listener = { path = "../listener", version = "0.1.0" }
 casper-event-types = { path = "../types", version = "0.1.0" }
-casper-types = { version = "2.0.0", features = ["std"] }
+casper-types = { version = "3.0.0", features = ["std"] }
 clap = { version = "4.0.32", features = ["derive"] }
 derive-new = "0.5.9"
 eventsource-stream = "0.2.3"
@@ -44,7 +44,7 @@ tikv-jemallocator = "0.5"
 [dev-dependencies]
 async-stream = "0.3.4"
 casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"] }
-casper-types = { version = "2.0.0", features = ["std", "testing"] }
+casper-types = { version = "3.0.0", features = ["std", "testing"] }
 colored = "2.0.0"
 futures-util = "0.3.21"
 portpicker = "0.1.1"

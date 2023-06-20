@@ -1,11 +1,18 @@
+use crate::rest_server::test_helpers::populate_with_blocks_and_deploys_return_deploy_hashes;
+use crate::sql::backfill_pending_deploy_aggregations::BackfillPendingDeployAggregations;
 use crate::types::database::{
-    DatabaseReader, DatabaseWriteError, Migration, MigrationScriptExecutor, StatementWrapper,
-    TransactionWrapper,
+    DatabaseReader, DatabaseWriteError, DatabaseWriter, Migration, MigrationScriptExecutor,
+    StatementWrapper,
+};
+use crate::types::transaction::{
+    MaterializedTransactionStatementWrapper, TransactionStatement, TransactionWrapper,
 };
 use crate::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use async_trait::async_trait;
+use casper_types::testing::TestRng;
 use itertools::Itertools;
 use sqlx::{Executor, Row};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 const MAX_CONNECTIONS: u32 = 100;
@@ -236,6 +243,43 @@ async fn should_store_failed_version_if_script_fails() {
     assert!(sqlite_db.get_newest_migration_version().await.unwrap() == Some((1, false)))
 }
 
+#[tokio::test]
+async fn should_backfill_pending_deploy_aggregation() {
+    let mut test_rng = TestRng::new();
+    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .unwrap();
+    let all_deploy_hashes = populate_with_blocks_and_deploys_return_deploy_hashes(
+        &mut test_rng,
+        &sqlite_db,
+        1,
+        1,
+        None,
+    )
+    .await;
+    sqlite_db.update_pending_deploy_aggregates().await.unwrap(); // flush the pending deploy aggregates that were created via the save* functions. This
+                                                                 // is the only reasonable way to test the backfill procedure - since the save functions actually create the pending assembling rows
+    assert_eq!(
+        sqlite_db
+            .get_deploy_hashes_of_pending_aggregates()
+            .await
+            .len(),
+        0
+    ); //Just making sure that we don't have any residual data
+    MigrationManager::apply_migrations(
+        sqlite_db.clone(),
+        vec![build_migration_backfill_pending_deploy_aggregations(3)],
+    )
+    .await
+    .unwrap();
+    let pending_aggregates = sqlite_db.get_deploy_hashes_of_pending_aggregates().await;
+    let pending_aggregates_set: HashSet<_> = pending_aggregates.iter().collect();
+    assert_eq!(all_deploy_hashes.len(), pending_aggregates_set.len());
+    assert!(pending_aggregates
+        .iter()
+        .all(|item| all_deploy_hashes.contains(item)));
+}
+
 fn build_ok_migration(version: u32) -> Migration {
     Migration {
         version: Some(version),
@@ -308,6 +352,14 @@ fn build_migration_with_failing_script(version: u32) -> Migration {
     }
 }
 
+fn build_migration_backfill_pending_deploy_aggregations(version: u32) -> Migration {
+    Migration {
+        version: Some(version),
+        statement_producers: || Ok(vec![]),
+        script_executor: Some(BackfillPendingDeployAggregations::new()),
+    }
+}
+
 fn create_table_stmt(table_name: &str) -> String {
     format!("CREATE TABLE {table_name}(a int);")
 }
@@ -336,10 +388,16 @@ impl MigrationScriptExecutor for InsertValuesInTableScript {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
-        let values_sql_part = self.values.iter().map(|el| format!("({})", el)).join(",");
-        transaction
-            .execute(format!("INSERT INTO {} VALUES {}", self.table_name, values_sql_part).as_str())
-            .await
+        let sql = {
+            let values_sql_part = self.values.iter().map(|el| format!("({})", el)).join(",");
+            let statement_wrapper = TransactionStatement::Raw(format!(
+                "INSERT INTO {} VALUES {}",
+                self.table_name, values_sql_part
+            ));
+            transaction.materialize(statement_wrapper)
+        };
+        transaction.execute(sql).await?;
+        Ok(())
     }
 }
 
@@ -351,6 +409,8 @@ impl MigrationScriptExecutor for FailingScript {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
-        transaction.execute("CREATE TAB").await
+        let materialized_raw: MaterializedTransactionStatementWrapper =
+            MaterializedTransactionStatementWrapper::Raw(String::from("CREATE TAB"));
+        transaction.execute(materialized_raw).await.map(|_| ())
     }
 }

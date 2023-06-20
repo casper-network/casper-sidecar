@@ -5,6 +5,8 @@ use sea_query::{Alias, DeleteStatement, Expr, InsertStatement, SelectStatement};
 use serde::Deserialize;
 use sqlx::FromRow;
 
+use super::deploy_accepted::DeployAccepted;
+
 #[derive(Iden, Clone)]
 pub(super) enum PendingDeployAggregations {
     #[iden = "PendingDeployAggregations"]
@@ -132,6 +134,56 @@ pub fn delete_stmt(ids: Vec<u32>) -> DeleteStatement {
         .from_table(PendingDeployAggregations::Table)
         .cond_where(Expr::col(PendingDeployAggregations::Id).is_in(ids))
         .to_owned()
+}
+
+pub fn create_insert_from_deploy_accepted() -> SqResult<InsertStatement> {
+    let sub_select_deploy_hashes_deploy_accepted = Query::select()
+        .expr(Expr::col(DeployAccepted::DeployHash))
+        .from(DeployAccepted::Table)
+        .to_owned();
+    let builder = Query::insert()
+        .into_table(PendingDeployAggregations::Table)
+        .columns(vec![PendingDeployAggregations::DeployHash])
+        .select_from(sub_select_deploy_hashes_deploy_accepted)?
+        .to_owned();
+    Ok(builder)
+}
+
+/// Creates insert statement for a command to assemble aggregate DeployAggregate.
+/// The maybe_block_data is a option tuple of blocks deploy hash and its creation timestamp.
+pub fn create_multi_insert_stmt(
+    //vector of (deploy_hash, (Option(block_hash, block_timestamp)))
+    data: Vec<(String, Option<(String, u64)>)>,
+) -> SqResult<InsertStatement> {
+    let cols = vec![
+        PendingDeployAggregations::DeployHash,
+        PendingDeployAggregations::BlockHash,
+        PendingDeployAggregations::BlockTimestamp,
+    ];
+    let mut builder = Query::insert()
+        .into_table(PendingDeployAggregations::Table)
+        .columns(cols)
+        .to_owned();
+    for (deploy_hash, maybe_block_data) in data {
+        match maybe_block_data {
+            Some((block_hash, timestamp)) => {
+                builder.values(vec![
+                    deploy_hash.into(),
+                    block_hash.into(),
+                    timestamp.into(),
+                ])?;
+            }
+            _ => {
+                builder.values(vec![
+                    deploy_hash.into(),
+                    None::<String>.into(),
+                    None::<u64>.into(),
+                ])?;
+            }
+        }
+    }
+
+    Ok(builder.to_owned())
 }
 
 #[test]

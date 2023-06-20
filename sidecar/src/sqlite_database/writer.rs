@@ -7,10 +7,12 @@ use crate::{
         },
     },
     types::{
-        database::{
-            DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper, TransactionWrapper,
-        },
+        database::{DatabaseWriteError, DatabaseWriter, Migration, StatementWrapper},
         sse_events::*,
+        transaction::{
+            MaterializedTransactionStatementWrapper, TransactionStatement,
+            TransactionStatementResult, TransactionWrapper,
+        },
     },
 };
 use anyhow::{Context, Error};
@@ -18,9 +20,8 @@ use async_trait::async_trait;
 use casper_types::AsymmetricType;
 use itertools::Itertools;
 use sea_query::SqliteQueryBuilder;
-#[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
+use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction, Value, ValueRef};
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -367,10 +368,14 @@ impl DatabaseWriter for SqliteDatabase {
                 let sqls = materialize_statements(migration.get_migrations()?);
                 sqls.iter().join(";")
             };
-            match wrapper_arc.clone().execute(sql.as_str()).await {
+            let stmt = MaterializedTransactionStatementWrapper::Raw(sql);
+            match wrapper_arc.clone().execute(stmt).await {
                 Ok(_) => {
                     if let Some(script_executor) = migration.script_executor {
-                        script_executor.execute(wrapper_arc.clone()).await
+                        script_executor
+                            .execute(wrapper_arc.clone())
+                            .await
+                            .map(|_| ())
                     } else {
                         Ok(())
                     }
@@ -450,12 +455,52 @@ struct SqliteTransactionWrapper<'a> {
 
 #[async_trait]
 impl TransactionWrapper for SqliteTransactionWrapper<'_> {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+    fn materialize(
+        &self,
+        statement: TransactionStatement,
+    ) -> MaterializedTransactionStatementWrapper {
+        match statement {
+            TransactionStatement::SelectStatement(x) => {
+                MaterializedTransactionStatementWrapper::SelectStatement(
+                    x.to_string(SqliteQueryBuilder),
+                )
+            }
+            TransactionStatement::InsertStatement(x) => {
+                MaterializedTransactionStatementWrapper::InsertStatement(
+                    x.to_string(SqliteQueryBuilder),
+                )
+            }
+            TransactionStatement::Raw(sql) => MaterializedTransactionStatementWrapper::Raw(sql),
+        }
+    }
+
+    async fn execute(
+        &self,
+        sql_wrapper: MaterializedTransactionStatementWrapper,
+    ) -> Result<TransactionStatementResult, DatabaseWriteError> {
         let mut lock = self.transaction_mutex.lock().await;
-        lock.execute(sql)
-            .await
-            .map(|_| ())
-            .map_err(DatabaseWriteError::from)
+        match sql_wrapper {
+            MaterializedTransactionStatementWrapper::SelectStatement(sql) => lock
+                .fetch_all(sql.as_str())
+                .await
+                .map_err(anyhow::Error::from)
+                .and_then(|rows| {
+                    let results: Result<Vec<String>, anyhow::Error> =
+                        rows.into_iter().map(row_to_string).collect();
+                    results.map(TransactionStatementResult::RawData)
+                })
+                .map_err(DatabaseWriteError::from),
+            MaterializedTransactionStatementWrapper::InsertStatement(sql) => lock
+                .execute(sql.as_str())
+                .await
+                .map(|el| TransactionStatementResult::U64(el.rows_affected()))
+                .map_err(DatabaseWriteError::from),
+            MaterializedTransactionStatementWrapper::Raw(sql) => lock
+                .execute(sql.as_str())
+                .await
+                .map_err(DatabaseWriteError::from)
+                .map(|_| TransactionStatementResult::NoResult()),
+        }
     }
 }
 
@@ -493,4 +538,24 @@ fn handle_sqlite_result(
     result
         .map(|ok_query_result| ok_query_result.rows_affected() as usize)
         .map_err(std::convert::From::from)
+}
+
+fn row_to_string(row: SqliteRow) -> Result<String, Error> {
+    row.try_get_raw(0)
+        .map_err(anyhow::Error::from)
+        .and_then(|value_ref| {
+            if value_ref.is_null() {
+                Ok("".to_string())
+            } else {
+                let owned = value_ref.to_owned();
+                match value_ref.type_info().to_string().as_str() {
+                    "INTEGER" => Ok(owned.decode::<i64>().to_string()),
+                    "TEXT" => Ok(owned.decode::<String>()),
+                    t => Err(anyhow::Error::msg(format!(
+                        "Don't know how to turn type {} to string",
+                        t
+                    ))),
+                }
+            }
+        })
 }

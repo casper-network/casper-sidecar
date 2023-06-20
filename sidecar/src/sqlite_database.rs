@@ -161,4 +161,15 @@ impl SqliteDatabase {
         .unwrap()
         .get::<u32, usize>(0)
     }
+
+    #[cfg(test)]
+    pub async fn get_deploy_hashes_of_pending_aggregates(&self) -> Vec<String> {
+        self.connection_pool
+            .fetch_all("SELECT deploy_hash FROM PendingDeployAggregations")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| row.get::<String, usize>(0))
+            .collect()
+    }
 }
