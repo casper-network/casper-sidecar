@@ -33,7 +33,7 @@ use crate::{
         },
         mock_node::tests::MockNode,
         raw_sse_events_utils::tests::{
-            random_n_block_added, sse_server_example_1_4_10_data,
+            data_1_5_1_with_write_unbounding, random_n_block_added, sse_server_example_1_4_10_data,
             sse_server_example_1_4_10_data_other, sse_server_shutdown_1_0_0_data,
         },
         shared::EventType,
@@ -517,6 +517,35 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
     //Should not have data from node cache
     assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sidecar_should_deserialize_deploy_with_write_unbounding() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut node_mock = MockNode::new(
+        "1.5.1".to_string(),
+        data_1_5_1_with_write_unbounding(),
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    )
+    .await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    receiver.await.ok();
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
+    node_mock.stop().await;
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    let deploy_entry = events_received.get(1).unwrap();
+    assert!(deploy_entry.contains("\"DeployProcessed\""));
+    assert!(deploy_entry.contains("\"WriteUnbonding\""));
 }
 
 async fn partial_connection_test(
