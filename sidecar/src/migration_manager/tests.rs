@@ -1,4 +1,4 @@
-use crate::rest_server::test_helpers::{populate_with_blocks_and_deploys, fetch_ids_from_events};
+use crate::rest_server::test_helpers::{fetch_ids_from_events, populate_with_blocks_and_deploys};
 use crate::sql::backfill_pending_deploy_aggregations::BackfillPendingDeployAggregations;
 use crate::types::database::{
     DatabaseReader, DatabaseWriteError, DatabaseWriter, Migration, MigrationScriptExecutor,
