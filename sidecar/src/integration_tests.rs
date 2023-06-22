@@ -325,7 +325,7 @@ async fn should_fail_to_reconnect() {
     thread::sleep(time::Duration::from_secs(3)); //give some time for the data to propagate
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     let length = events_received.len();
     //The result should only have messages from one round of messages
     assert_eq!(length, 32);
@@ -366,7 +366,7 @@ async fn should_reconnect() {
     thread::sleep(time::Duration::from_secs(5)); //give some time for the data to propagate
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     let length = events_received.len();
     //The result should only have messages from both rounds of messages
     assert!(length > 32);
@@ -394,7 +394,7 @@ async fn shutdown_should_be_passed_through() {
     receiver.await.ok();
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     assert_eq!(events_received.len(), 3);
     assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
@@ -432,7 +432,7 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     assert_eq!(events_received.len(), 5);
     assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
@@ -469,7 +469,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     assert_eq!(events_received.len(), 3);
     assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
@@ -512,7 +512,7 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
     thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
     node_mock.stop().await;
 
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     assert_eq!(events_received.len(), 2);
     //Should not have data from node cache
     assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
@@ -541,7 +541,7 @@ async fn sidecar_should_deserialize_deploy_with_write_unbounding() {
     receiver.await.ok();
     thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
     node_mock.stop().await;
-    let events_received = tokio::join!(join_handle).0.unwrap();
+    let events_received = join_handle.await.unwrap();
     assert_eq!(events_received.len(), 2);
     let deploy_entry = events_received.get(1).unwrap();
     assert!(deploy_entry.contains("\"DeployProcessed\""));

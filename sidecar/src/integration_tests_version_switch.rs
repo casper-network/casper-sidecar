@@ -46,7 +46,7 @@ pub mod tests {
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
 
-        let events_received = tokio::join!(join_handle).0.unwrap();
+        let events_received = join_handle.await.unwrap();
         assert_eq!(events_received.len(), 4);
         assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
         //block hash for 1.0.0
@@ -91,7 +91,7 @@ pub mod tests {
         .await;
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
-        let events_received = tokio::join!(join_handle).0.unwrap();
+        let events_received = join_handle.await.unwrap();
         assert_eq!(events_received.len(), 5);
         assert!(events_received.get(0).unwrap().contains("\"1.0.0\""));
         //block hash for 1.0.0
@@ -138,7 +138,7 @@ pub mod tests {
         receiver.await.ok(); // Wait for the first event to go through to outbound
         thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
-        let events_received = tokio::join!(join_handle).0.unwrap();
+        let events_received = join_handle.await.unwrap();
         assert_eq!(events_received.len(), 2);
         //there should be no messages for 1.0.0
         assert!(events_received.get(0).unwrap().contains("\"1.3.9\""));
