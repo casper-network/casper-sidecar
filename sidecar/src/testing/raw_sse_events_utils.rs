@@ -3,8 +3,8 @@ pub(crate) mod tests {
     use crate::testing::fake_event_stream::wait_for_sse_server_to_be_up;
     use crate::testing::simple_sse_server::tests::{CacheAndData, SimpleSseServer};
     use casper_event_types::sse_data::test_support::{
-        example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
-        BLOCK_HASH_3,
+        example_block_added_1_4_10, example_finality_signature_1_4_10, write_unbounding_deploy,
+        BLOCK_HASH_1, BLOCK_HASH_2, BLOCK_HASH_3,
     };
     use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
@@ -21,6 +21,13 @@ pub(crate) mod tests {
                 Some("0".to_string()),
                 example_block_added_1_0_0(BLOCK_HASH_1, "1"),
             ),
+        ]
+    }
+
+    pub fn data_1_5_1_with_write_unbounding() -> EventsWithIds {
+        vec![
+            (None, "{\"ApiVersion\":\"1.5.1\"}".to_string()),
+            (Some("0".to_string()), write_unbounding_deploy()),
         ]
     }
 

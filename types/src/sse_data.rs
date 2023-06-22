@@ -213,4 +213,8 @@ pub mod test_support {
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }
+
+    pub fn write_unbounding_deploy() -> String {
+        "{\"DeployProcessed\": {\"deploy_hash\":\"e9564568cdffa4f0c571d4f415d874bc535e04e14e774fea82361d6667bb27bc\",\"account\":\"019c3b16c941c9cf84a2768fe96b4c5a92be615c82bbad890586d7f60c2f278151\",\"timestamp\":\"2020-08-07T01:21:12.966Z\",\"ttl\":\"14m 21s 886ms\",\"dependencies\":[],\"block_hash\":\"e79071ec34233c95c7f53edc1ccb9b261c1e95a593479fc7600f28cafb4d5935\",\"execution_result\":{\"Success\":{\"effect\":{\"operations\":[{\"key\":\"account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb\",\"kind\":\"Write\"},{\"key\":\"deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1\",\"kind\":\"Read\"}],\"transforms\":[{\"key\":\"uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007\",\"transform\":{\"WriteUnbonding\":[{\"bonding_purse\":\"uref-0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e-007\",\"validator_public_key\":\"01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61\",\"unbonder_public_key\":\"014508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff\",\"era_of_creation\":18446744073709551615,\"amount\":\"13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084094\",\"new_validator\":\"019475c6cf0eda34057528d8694781ecc92ad639d7e2bd27761ed3ef74924beb07\"}]}}]},\"transfers\":[],\"cost\":\"123456\"}}}}".to_string()
+    }
 }
