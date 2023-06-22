@@ -1,4 +1,4 @@
-use crate::rest_server::test_helpers::populate_with_blocks_and_deploys_return_deploy_hashes;
+use crate::rest_server::test_helpers::{populate_with_blocks_and_deploys, fetch_ids_from_events};
 use crate::sql::backfill_pending_deploy_aggregations::BackfillPendingDeployAggregations;
 use crate::types::database::{
     DatabaseReader, DatabaseWriteError, DatabaseWriter, Migration, MigrationScriptExecutor,
@@ -249,14 +249,9 @@ async fn should_backfill_pending_deploy_aggregation() {
     let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
         .await
         .unwrap();
-    let all_deploy_hashes = populate_with_blocks_and_deploys_return_deploy_hashes(
-        &mut test_rng,
-        &sqlite_db,
-        1,
-        1,
-        None,
-    )
-    .await;
+    let all_deploy_hashes = fetch_ids_from_events(
+        populate_with_blocks_and_deploys(&mut test_rng, &sqlite_db, 1, 1, None).await,
+    );
     sqlite_db.update_pending_deploy_aggregates().await.unwrap(); // flush the pending deploy aggregates that were created via the save* functions. This
                                                                  // is the only reasonable way to test the backfill procedure - since the save functions actually create the pending assembling rows
     assert_eq!(

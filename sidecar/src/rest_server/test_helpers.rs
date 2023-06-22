@@ -48,22 +48,11 @@ pub fn build_list_deploys_request() -> ListDeploysRequest {
     build_list_deploys_request_limit_offset(None, None)
 }
 
-pub async fn populate_with_blocks_and_deploys_return_deploy_hashes(
-    test_rng: &mut TestRng,
-    database: &impl DatabaseWriter,
-    number_of_blocks: u32,
-    deploys_in_block: u32,
-    id_base: Option<u32>,
+pub fn fetch_ids_from_events(
+    vecs: (Vec<BlockAdded>, Vec<DeployAccepted>, Vec<DeployProcessed>),
 ) -> HashSet<String> {
     let mut all_deploy_hashes = HashSet::new();
-    let (blocks, deploys_accepted, deploys_processed) = populate_with_blocks_and_deploys(
-        test_rng,
-        database,
-        number_of_blocks,
-        deploys_in_block,
-        id_base,
-    )
-    .await;
+    let (blocks, deploys_accepted, deploys_processed) = vecs;
     blocks
         .into_iter()
         .flat_map(|block| block.get_all_deploy_hashes())
