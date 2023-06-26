@@ -222,6 +222,9 @@ fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_step_by_era)
 }
 
+/// Return metrics data at a given time.
+/// Return: prometheus-formatted metrics data.
+/// Example: curl http://127.0.0.1:18888/metrics
 fn metrics_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("metrics")
         .and(warp::get())

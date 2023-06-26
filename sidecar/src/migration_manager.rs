@@ -8,10 +8,12 @@ use std::collections::HashMap;
 #[cfg(test)]
 mod tests;
 
+/// [MigrationManager] executes given migrations against a *db*
 pub struct MigrationManager<T>
 where
     T: DatabaseWriter + DatabaseReader + Send + Sync + 'static,
 {
+    /// Database connection against which the migrations will be executed
     db: T,
 }
 
@@ -19,6 +21,10 @@ impl<T> MigrationManager<T>
 where
     T: DatabaseWriter + DatabaseReader + Send + Sync + 'static,
 {
+    /// Executes a collection of migrations. Does basic checks on the migration:
+    /// * checks if they are uniquely numbered.
+    /// * checks if DB doesn't contain a failed migration
+    /// * filters out the migrations which versions are lower then the newest migration held in DB
     pub async fn migrate(&self, migrations: Vec<Migration>) -> Result<(), Error> {
         self.db
             .execute_migration(Migration::initial())
