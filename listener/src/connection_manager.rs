@@ -1,4 +1,5 @@
 use super::ConnectionTasks;
+use crate::SseEvent;
 use anyhow::Error;
 use bytes::Bytes;
 use casper_event_types::{
@@ -12,7 +13,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use reqwest::Url;
 use std::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Debug, Display},
     time::Duration,
 };
 use tokio::{
@@ -22,47 +23,16 @@ use tokio::{
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
-pub struct SseEvent {
-    pub id: u32,
-    pub data: SseData,
-    pub source: Url,
-    pub json_data: Option<String>,
-    pub inbound_filter: Filter,
-}
-
-impl SseEvent {
-    pub fn new(
-        id: u32,
-        data: SseData,
-        mut source: Url,
-        json_data: Option<String>,
-        inbound_filter: Filter,
-    ) -> Self {
-        // This is to remove the path e.g. /events/main
-        // Leaving just the IP and port
-        source.set_path("");
-        Self {
-            id,
-            data,
-            source,
-            json_data,
-            inbound_filter,
-        }
-    }
-}
-
-impl Display for SseEvent {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{id: {}, source: {}, event: {:?}}}",
-            self.id, self.source, self.data
-        )
-    }
-}
-
 type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
 
+const DESERIALIZATION_ERROR: &str = "deserialization_error";
+const EVENT_WITHOUT_ID: &str = "event_without_id";
+const SENDING_FAILED: &str = "sending_downstream_failed";
+const API_VERSION_SENDING_FAILED: &str = "api_version_sending_failed";
+const API_VERSION_DESERIALIZATION_FAILED: &str = "api_version_deserialization_failed";
+const API_VERSION_EXPECTED: &str = "api_version_expected";
+
+/// Implementation of a connection to a single sse endpoint of a node.
 pub(super) struct ConnectionManager {
     bind_address: Url,
     current_event_id: Option<u32>,
@@ -95,22 +65,35 @@ impl Display for ConnectionManagerError {
     }
 }
 
-fn non_recoverable_error(error: Error) -> ConnectionManagerError {
-    ConnectionManagerError::NonRecoverableError { error }
-}
-fn recoverable_error(error: Error) -> ConnectionManagerError {
-    ConnectionManagerError::InitialConnectionError { error }
-}
+/// Builder for [ConnectionManager]
 pub struct ConnectionManagerBuilder {
+    /// Address of the node
     pub(super) bind_address: Url,
+    /// Maximum attempts the connection manager will try to (initially) connect.
+    /// After connecting, if we loose connection, there will be no reconnects.
+    /// Reconnection in this scenario should be handled in EventListener by
+    /// creating a new ConnectionManager. This is done intentionally so if
+    /// the node goes down to change it's version we can do a full reconnect to
+    ///  establish the deserialization protocol.
     pub(super) max_attempts: usize,
+    /// Sender to which we will be pushing the data we collected from nodes endpoint
     pub(super) sse_data_sender: Sender<SseEvent>,
+    /// Optional synchronisation mechanism between connections. See docs of ConnectionTasks
     pub(super) maybe_tasks: Option<ConnectionTasks>,
+    /// Max duration we wait for one connection attempt to succeed
     pub(super) connection_timeout: Duration,
+    /// If this is set the connection will connect to the node with query param `&start_from=<start_from_event_id>`
     pub(super) start_from_event_id: Option<u32>,
+    /// Nodes filter to which we are connected
     pub(super) filter: Filter,
+    /// Build version of the node. It's necessary because after 1.2 non-backwards compatible changes to the event
+    /// structure were introduced and we need to apply different deserialization logic
     pub(super) node_build_version: ProtocolVersion,
+    /// Channel via which we inform that this filter observed a specific event_id so the ConnectionListener can give
+    /// a correct start_from_event_id parameter in case of a connection restart
     pub(super) current_event_id_sender: Sender<(Filter, u32)>,
+    /// Channel via which the manager can receive a force-close message. It will still be most likely not
+    /// instantaneous - this poison pill will not interrupt processing of an sse event that was already received and is ongoing
     pub(super) poison_pill_channel: BroadcastSender<()>,
 }
 
@@ -247,7 +230,7 @@ impl ConnectionManager {
                                         // ApiVersion events have no ID so parsing "" to u32 will fail.
                                         // This gate saves displaying a warning for a trivial error.
                                         if !event.data.contains("ApiVersion") {
-                                            count_error("event_without_id");
+                                            count_error(EVENT_WITHOUT_ID);
                                             warn!("Parse Error: {}", parse_error);
                                         }
                                     }
@@ -257,7 +240,7 @@ impl ConnectionManager {
                                     .map_err(non_recoverable_error)?;
                             }
                             Err(stream_error) => {
-                                count_error("fetching_from_stream_failed");
+                                count_error(EVENT_WITHOUT_ID);
                                 let error_message = format!("EventStream Error: {:?}", stream_error);
                                 return Err(non_recoverable_error(Error::msg(error_message)));
                             }
@@ -279,7 +262,7 @@ impl ConnectionManager {
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match (self.deserialization_fn)(&event.data) {
             Err(serde_error) => {
-                count_error("deserialization_error");
+                count_error(DESERIALIZATION_ERROR);
                 let error_message = format!("Serde Error: {}", serde_error);
                 error!(error_message);
                 return Err(Error::msg(error_message));
@@ -299,7 +282,7 @@ impl ConnectionManager {
                     self.filter.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
-                    count_error("sending_upstream_failed");
+                    count_error(SENDING_FAILED);
                     Error::msg(
                         "Error when trying to send message in ConnectionManager#handle_event",
                     )
@@ -336,20 +319,20 @@ impl ConnectionManager {
                                 self.filter.clone(),
                             );
                             self.sse_event_sender.send(sse_event).await.map_err(|_| {
-                                count_error("api_version_sending_upstream_failed");
+                                count_error(API_VERSION_SENDING_FAILED);
                                 non_recoverable_error(Error::msg(
                                 "Error when trying to send message in ConnectionManager#handle_event",
                             ))
                         })?
                         }
                         Ok(_sse_data) => {
-                            count_error("api_version_expected");
+                            count_error(API_VERSION_EXPECTED);
                             return Err(non_recoverable_error(Error::msg(
                                 "When trying to deserialize ApiVersion got other type of message",
                             )));
                         }
                         Err(x) => {
-                            count_error("api_version_deserialization_failed");
+                            count_error(API_VERSION_DESERIALIZATION_FAILED);
                             return Err(non_recoverable_error(Error::msg(format!(
                             "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
                             x, event.data
@@ -369,6 +352,14 @@ impl ConnectionManager {
             .with_label_values(&[self.filter.to_string().as_str()])
             .observe(payload_size as f64);
     }
+}
+
+fn non_recoverable_error(error: Error) -> ConnectionManagerError {
+    ConnectionManagerError::NonRecoverableError { error }
+}
+
+fn recoverable_error(error: Error) -> ConnectionManagerError {
+    ConnectionManagerError::InitialConnectionError { error }
 }
 
 fn couldnt_connect(
@@ -421,7 +412,6 @@ fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerEr
 }
 
 fn determine_deserializer(node_build_version: ProtocolVersion) -> DeserializationFn {
-    //AFAIK the format of messages changed in a backwards-incompatible way in casper-node v1.2.0
     let one_two_zero = ProtocolVersion::from_parts(1, 2, 0);
     if node_build_version.lt(&one_two_zero) {
         casper_event_types::sse_data_1_0_0::deserialize

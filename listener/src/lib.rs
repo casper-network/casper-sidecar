@@ -1,41 +1,46 @@
 mod connection_manager;
 mod connection_tasks;
+mod types;
 use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
-use connection_manager::ConnectionManagerError;
-pub use connection_manager::SseEvent;
+use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use serde_json::Value;
-use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
-        broadcast::channel as broadcast_channel,
+        broadcast::{channel as broadcast_channel, Sender as BroadcastSender},
         mpsc::{self, Sender},
         Mutex,
     },
     time::sleep,
 };
 use tracing::{debug, error, info, trace};
+pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 
-pub struct NodeConnectionInterface {
-    pub ip_address: IpAddr,
-    pub sse_port: u16,
-    pub rest_port: u16,
-}
-
+/// Listener that listens to a node and all the available filters it exposes.
 pub struct EventListener {
+    /// Version of the node the listener is listening to. This version is discovered by the Listener on connection.
     node_build_version: ProtocolVersion,
+    /// Data pointing to the node
     node: NodeConnectionInterface,
+    /// Maximum numbers the listener will retry connecting to the node.
     max_connection_attempts: usize,
+    /// Time the listener will wait between connection attempts
     delay_between_attempts: Duration,
+    /// If set to false, the listener needs to connect to all endpoints a node should expose in a given `node_build_version` for the listener to start processing data.
+    /// If set to true the listen will proceed after connecting to at least one connection.
     allow_partial_connection: bool,
+    /// Channel to which data from the node is pushed
     sse_event_sender: Sender<SseEvent>,
+    /// Maximum duration we will wait to establish a connection to the node
     connection_timeout: Duration,
+    /// Time adter which we do a sanitizing force reconnect. This mechanism was introduced to prevent hanging of the connection which was observed a few times.
     force_reconnect_timeout: Duration,
 }
 
@@ -69,6 +74,10 @@ impl EventListener {
         Url::parse(&url_str).map_err(Error::from)
     }
 
+    /// Spins up the connections and starts pushing data from node
+    ///
+    /// * `initial_api_version_sender` - channel through which the first node build version is sent
+    /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
     pub async fn stream_aggregated_events(
         &mut self,
         initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
@@ -149,21 +158,14 @@ impl EventListener {
                 if is_empty_database && start_from_event_id.is_none() {
                     start_from_event_id = Some(0);
                 }
-                let bind_address_for_filter = self.filtered_sse_url(&filter)?;
-                let builder = ConnectionManagerBuilder {
-                    bind_address: bind_address_for_filter,
-                    max_attempts: self.max_connection_attempts,
-                    sse_data_sender: self.sse_event_sender.clone(),
-                    maybe_tasks: maybe_tasks.clone(),
-                    connection_timeout: self.connection_timeout,
+                let connection = self.build_connection(
+                    maybe_tasks.clone(),
                     start_from_event_id,
-                    filter: filter.clone(),
-                    node_build_version: self.node_build_version,
-                    current_event_id_sender: last_seen_event_id_sender.clone(),
-                    poison_pill_channel: poison_pill_sender.clone(),
-                };
-
-                connections.insert(filter, builder.build());
+                    filter.clone(),
+                    last_seen_event_id_sender.clone(),
+                    poison_pill_sender.clone(),
+                )?;
+                connections.insert(filter, connection);
             }
             drop(guard);
 
@@ -275,6 +277,30 @@ impl EventListener {
             .context("Should have parsed JSON from response")?;
 
         try_resolve_version(response_json)
+    }
+
+    fn build_connection(
+        &self,
+        maybe_tasks: Option<ConnectionTasks>,
+        start_from_event_id: Option<u32>,
+        filter: Filter,
+        last_seen_event_id_sender: Sender<(Filter, u32)>,
+        poison_pill_sender: BroadcastSender<()>,
+    ) -> Result<ConnectionManager, Error> {
+        let bind_address_for_filter = self.filtered_sse_url(&filter)?;
+        let builder = ConnectionManagerBuilder {
+            bind_address: bind_address_for_filter,
+            max_attempts: self.max_connection_attempts,
+            sse_data_sender: self.sse_event_sender.clone(),
+            maybe_tasks,
+            connection_timeout: self.connection_timeout,
+            start_from_event_id,
+            filter,
+            node_build_version: self.node_build_version,
+            current_event_id_sender: last_seen_event_id_sender,
+            poison_pill_channel: poison_pill_sender,
+        };
+        Ok(builder.build())
     }
 }
 

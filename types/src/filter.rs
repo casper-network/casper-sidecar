@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+/// Enum representing all the possible endpoints a node can have.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum Filter {
     Events,

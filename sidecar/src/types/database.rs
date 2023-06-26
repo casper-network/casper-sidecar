@@ -10,7 +10,7 @@ use crate::types::sse_events::{
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
 /// Each method takes the `data` and `id` fields as well as the source IP address (useful for tying the node-specific `id` to the relevant node).
 ///
-/// For a reference implementation using Sqlite see, [SqliteDb](crate::SqliteDb)
+/// For a reference implementation using Sqlite see, [SqliteDatabase](crate::sqlite_database::SqliteDatabase)
 #[async_trait]
 pub trait DatabaseWriter {
     /// Save a BlockAdded event to the database.
@@ -173,49 +173,69 @@ impl From<anyhow::Error> for DatabaseWriteError {
 
 /// Describes a reference for the reading interface of an 'Event Store' database.
 ///
-/// For a reference implementation using Sqlite see, [SqliteDb](crate::SqliteDb)
+/// For a reference implementation using Sqlite see, [SqliteDatabase](crate::sqlite_database::SqliteDatabase)
 #[async_trait]
 pub trait DatabaseReader {
     /// Returns the latest [BlockAdded] by height from the database.
     async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError>;
-    /// Returns the [BlockAdded] corresponding to the provided [height].
+    /// Returns the [BlockAdded] corresponding to the provided `height`.
+    ///
+    /// * `height` - Height of the block which should be retrieved
     async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError>;
-    /// Returns the [BlockAdded] corresponding to the provided hex-encoded [hash].
+    /// Returns the [BlockAdded] corresponding to the provided hex-encoded `hash`.
+    ///
+    /// * `hash` - hash which identifies the block
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
     /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
+    ///
+    /// * `hash` - deploy hash of which the aggregate data should be fetched
     async fn get_deploy_aggregate_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployAggregate, DatabaseReadError>;
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
+    ///
+    /// * `hash` - deploy hash which identifies the deploy accepted
     async fn get_deploy_accepted_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployAccepted, DatabaseReadError>;
     /// Returns the [DeployProcessed] corresponding to the given hex-encoded `hash`
+    ///
+    /// * `hash` - deploy hash which identifies the deploy pocessed
     async fn get_deploy_processed_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployProcessed, DatabaseReadError>;
 
     /// Returns the [DeployExpired] corresponding to the given hex-encoded `hash`
+    ///
+    /// * `hash` - deploy hash which identifies the deploy expired
     async fn get_deploy_expired_by_hash(
         &self,
         hash: &str,
     ) -> Result<DeployExpired, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded [public_key]
+    ///
+    /// * `public_key` - key which identifies the fault
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
     ) -> Result<Vec<Fault>, DatabaseReadError>;
-    /// Returns all [Fault]s that occurred in the given [era]
+    /// Returns all [Fault]s that occurred in the given `era`
+    ///
+    /// * `era` - number of era for which faults should be fetched
     async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError>;
-    /// Returns all [FinalitySignature](casper_node::types::FinalitySignature)s for the given hex-encoded `block_hash`.
+    /// Returns all [FinalitySignature](casper_event_types::FinalitySignature)s for the given hex-encoded `block_hash`.
+    ///
+    /// * `block_hash` - block hash for which finality signatures should be fetched
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
     ) -> Result<Vec<FinSig>, DatabaseReadError>;
     /// Returns the [Step] event for the given era.
+    ///
+    /// * `era` - identifier of era
     async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
 
     /// Returns number of events stored in db
