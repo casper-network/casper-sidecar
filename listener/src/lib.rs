@@ -1,5 +1,6 @@
 mod connection_manager;
 mod connection_tasks;
+mod keep_alive_monitor;
 mod types;
 use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
@@ -7,11 +8,11 @@ use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
+use keep_alive_monitor::KeepAliveMonitor;
 use serde_json::Value;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
-        broadcast::{channel as broadcast_channel, Sender as BroadcastSender},
         mpsc::{self, Sender},
         Mutex,
     },
@@ -23,6 +24,32 @@ use url::Url;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 
+pub struct EventListenerBuilder {
+    pub node: NodeConnectionInterface,
+    pub max_connection_attempts: usize,
+    pub delay_between_attempts: Duration,
+    pub allow_partial_connection: bool,
+    pub sse_event_sender: Sender<SseEvent>,
+    pub connection_timeout: Duration,
+    pub sleep_between_keep_alive_checks: Duration,
+    pub no_message_timeout: Duration,
+}
+
+impl EventListenerBuilder {
+    pub fn build(&self) -> EventListener {
+        EventListener {
+            node_build_version: ProtocolVersion::from_parts(1, 0, 0),
+            node: self.node.clone(),
+            max_connection_attempts: self.max_connection_attempts,
+            delay_between_attempts: self.delay_between_attempts,
+            allow_partial_connection: self.allow_partial_connection,
+            sse_event_sender: self.sse_event_sender.clone(),
+            connection_timeout: self.connection_timeout,
+            sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
+            no_message_timeout: self.no_message_timeout,
+        }
+    }
+}
 /// Listener that listens to a node and all the available filters it exposes.
 pub struct EventListener {
     /// Version of the node the listener is listening to. This version is discovered by the Listener on connection.
@@ -40,32 +67,13 @@ pub struct EventListener {
     sse_event_sender: Sender<SseEvent>,
     /// Maximum duration we will wait to establish a connection to the node
     connection_timeout: Duration,
-    /// Time adter which we do a sanitizing force reconnect. This mechanism was introduced to prevent hanging of the connection which was observed a few times.
-    force_reconnect_timeout: Duration,
+    /// Time the KeepAliveMonitor wait between checks
+    sleep_between_keep_alive_checks: Duration,
+    /// Time of inactivity of a node connection that is allowed by KeepAliveMonitor
+    no_message_timeout: Duration,
 }
 
 impl EventListener {
-    pub fn new(
-        node: NodeConnectionInterface,
-        max_connection_attempts: usize,
-        delay_between_attempts: Duration,
-        allow_partial_connection: bool,
-        sse_event_sender: Sender<SseEvent>,
-        connection_timeout: Duration,
-        force_reconnect_timeout: Duration,
-    ) -> Self {
-        Self {
-            node_build_version: ProtocolVersion::from_parts(1, 0, 0),
-            node,
-            max_connection_attempts,
-            delay_between_attempts,
-            allow_partial_connection,
-            sse_event_sender,
-            connection_timeout,
-            force_reconnect_timeout,
-        }
-    }
-
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
             "http://{}:{}/{}",
@@ -141,14 +149,6 @@ impl EventListener {
                 }
             }
             let filters = filters_from_version(self.node_build_version);
-            let (poison_pill_sender, _) = broadcast_channel(filters.len());
-            let poison_pill_sender_clone = poison_pill_sender.clone();
-            let force_reconnect_timeout = self.force_reconnect_timeout;
-            tokio::spawn(async move {
-                sleep(force_reconnect_timeout * 3600).await;
-                let _ = poison_pill_sender_clone.send(());
-            });
-
             let mut connections = HashMap::new();
             let maybe_tasks =
                 (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
@@ -158,13 +158,14 @@ impl EventListener {
                 if is_empty_database && start_from_event_id.is_none() {
                     start_from_event_id = Some(0);
                 }
-                let connection = self.build_connection(
-                    maybe_tasks.clone(),
-                    start_from_event_id,
-                    filter.clone(),
-                    last_seen_event_id_sender.clone(),
-                    poison_pill_sender.clone(),
-                )?;
+                let connection = self
+                    .build_connection(
+                        maybe_tasks.clone(),
+                        start_from_event_id,
+                        filter.clone(),
+                        last_seen_event_id_sender.clone(),
+                    )
+                    .await?;
                 connections.insert(filter, connection);
             }
             drop(guard);
@@ -279,15 +280,23 @@ impl EventListener {
         try_resolve_version(response_json)
     }
 
-    fn build_connection(
+    async fn build_connection(
         &self,
         maybe_tasks: Option<ConnectionTasks>,
         start_from_event_id: Option<u32>,
         filter: Filter,
         last_seen_event_id_sender: Sender<(Filter, u32)>,
-        poison_pill_sender: BroadcastSender<()>,
     ) -> Result<ConnectionManager, Error> {
         let bind_address_for_filter = self.filtered_sse_url(&filter)?;
+        let keep_alive_monitor = KeepAliveMonitor::new(
+            bind_address_for_filter.clone(),
+            self.connection_timeout,
+            self.sleep_between_keep_alive_checks,
+            self.no_message_timeout,
+        );
+        keep_alive_monitor.start().await;
+        let cancellation_token = keep_alive_monitor.get_cancellation_token();
+
         let builder = ConnectionManagerBuilder {
             bind_address: bind_address_for_filter,
             max_attempts: self.max_connection_attempts,
@@ -298,7 +307,7 @@ impl EventListener {
             filter,
             node_build_version: self.node_build_version,
             current_event_id_sender: last_seen_event_id_sender,
-            poison_pill_channel: poison_pill_sender,
+            cancellation_token,
         };
         Ok(builder.build())
     }

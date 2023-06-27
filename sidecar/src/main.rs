@@ -34,7 +34,9 @@ use crate::{
     },
 };
 use anyhow::{Context, Error};
-use casper_event_listener::{EventListener, NodeConnectionInterface, SseEvent};
+use casper_event_listener::{
+    EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
+};
 use casper_event_types::{
     metrics::{self, register_metrics},
     sse_data::SseData,
@@ -122,15 +124,27 @@ async fn run(config: Config) -> Result<(), Error> {
             rest_port: connection.rest_port,
         };
 
-        let event_listener = EventListener::new(
-            node_interface,
-            connection.max_attempts,
-            Duration::from_secs(connection.delay_between_retries_in_seconds as u64),
-            connection.allow_partial_connection,
-            inbound_sse_data_sender,
-            Duration::from_secs(connection.connection_timeout_in_seconds.unwrap_or(5) as u64),
-            Duration::from_secs(connection.force_reconnect_in_hours.unwrap_or(12) as u64),
-        );
+        let event_listener = EventListenerBuilder {
+            node: node_interface,
+            max_connection_attempts: connection.max_attempts,
+            delay_between_attempts: Duration::from_secs(
+                connection.delay_between_retries_in_seconds as u64,
+            ),
+            allow_partial_connection: connection.allow_partial_connection,
+            sse_event_sender: inbound_sse_data_sender,
+            connection_timeout: Duration::from_secs(
+                connection.connection_timeout_in_seconds.unwrap_or(5) as u64,
+            ),
+            sleep_between_keep_alive_checks: Duration::from_secs(
+                connection
+                    .sleep_between_keep_alive_checks_in_seconds
+                    .unwrap_or(60) as u64,
+            ),
+            no_message_timeout: Duration::from_secs(
+                connection.no_message_timeout_in_seconds.unwrap_or(120) as u64,
+            ),
+        }
+        .build();
         event_listeners.push(event_listener);
     }
 
@@ -246,6 +260,14 @@ async fn handle_single_event(
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
+        SseData::ApiVersion(_) | SseData::Shutdown => {
+            //don't do debug counting for ApiVersion since we don't store it
+        }
+        _ => {
+            count_internal_event("main_inbound_sse_data", "event_received_start");
+        }
+    }
+    match sse_event.data {
         SseData::ApiVersion(version) => {
             let mut guard = last_reported_protocol_version.lock().await;
             match &mut *guard {
@@ -275,7 +297,7 @@ async fn handle_single_event(
                 info!("Block Added: {:18}", hex_block_hash);
                 debug!("Block Added: {}", hex_block_hash);
             }
-
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_block_added(
                     BlockAdded::new(block_hash, block.clone()),
@@ -286,6 +308,8 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::BlockAdded { block, block_hash },
@@ -294,13 +318,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received BlockAdded ({}), logged in event_log",
                         HexFmt(block_hash.inner())
@@ -308,10 +336,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_block_added");
                     warn!(?other_err, "Unexpected error saving BlockAdded");
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::DeployAccepted { deploy } => {
             if enable_event_logging {
@@ -320,12 +350,15 @@ async fn handle_single_event(
                 debug!("Deploy Accepted: {}", hex_deploy_hash);
             }
             let deploy_accepted = DeployAccepted::new(deploy.clone());
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_deploy_accepted(deploy_accepted, sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::DeployAccepted { deploy },
@@ -334,13 +367,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received DeployAccepted ({}), logged in event_log",
                         HexFmt(deploy.hash().inner())
@@ -348,10 +385,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_deploy_accepted");
                     warn!(?other_err, "Unexpected error saving DeployAccepted");
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::DeployExpired { deploy_hash } => {
             if enable_event_logging {
@@ -359,6 +398,7 @@ async fn handle_single_event(
                 info!("Deploy Expired: {:18}", hex_deploy_hash);
                 debug!("Deploy Expired: {}", hex_deploy_hash);
             }
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_deploy_expired(
                     DeployExpired::new(deploy_hash),
@@ -369,6 +409,8 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::DeployExpired { deploy_hash },
@@ -377,13 +419,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received DeployExpired ({}), logged in event_log",
                         HexFmt(deploy_hash.inner())
@@ -391,10 +437,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_deploy_expired");
                     warn!(?other_err, "Unexpected error saving DeployExpired");
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::DeployProcessed {
             deploy_hash,
@@ -419,6 +467,7 @@ async fn handle_single_event(
                 block_hash.clone(),
                 execution_result.clone(),
             );
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_deploy_processed(
                     deploy_processed.clone(),
@@ -429,6 +478,8 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::DeployProcessed {
@@ -445,13 +496,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received DeployProcessed ({}), logged in event_log",
                         HexFmt(deploy_hash.inner())
@@ -459,10 +514,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_deploy_processed");
                     warn!(?other_err, "Unexpected error saving DeployProcessed");
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::Fault {
             era_id,
@@ -471,12 +528,15 @@ async fn handle_single_event(
         } => {
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_fault(fault.clone(), sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::Fault {
@@ -489,21 +549,27 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!("Already received Fault ({:#?}), logged in event_log", fault);
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_fault");
                     warn!(?other_err, "Unexpected error saving Fault");
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::FinalitySignature(fs) => {
             if enable_event_logging {
@@ -514,6 +580,7 @@ async fn handle_single_event(
                 );
             }
             let finality_signature = FinalitySignature::new(fs.clone());
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_finality_signature(
                     finality_signature.clone(),
@@ -524,6 +591,8 @@ async fn handle_single_event(
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::FinalitySignature(fs),
@@ -532,13 +601,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received FinalitySignature ({}), logged in event_log",
                         fs.signature()
@@ -546,10 +619,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_finality_signature");
                     warn!(?other_err, "Unexpected error saving FinalitySignature")
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::Step {
             era_id,
@@ -559,12 +634,15 @@ async fn handle_single_event(
             if enable_event_logging {
                 info!("Step at era: {}", era_id.value());
             }
+            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = sqlite_database
                 .save_step(step, sse_event.id, sse_event.source.to_string())
                 .await;
 
             match res {
                 Ok(_) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
+                    count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::Step {
@@ -576,13 +654,17 @@ async fn handle_single_event(
                         ))
                         .await
                     {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                         debug!(
                             "Error when sending to outbound_sse_data_sender. Error: {}",
                             error
                         );
+                    } else {
+                        count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                     }
                 }
                 Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     debug!(
                         "Already received Step ({}), logged in event_log",
                         era_id.value()
@@ -590,10 +672,12 @@ async fn handle_single_event(
                     trace!(?uc_err);
                 }
                 Err(other_err) => {
+                    count_internal_event("main_inbound_sse_data", "db_save_end");
                     count_error("db_save_error_step");
                     warn!(?other_err, "Unexpected error saving Step")
                 }
             }
+            count_internal_event("main_inbound_sse_data", "event_received_end");
         }
         SseData::Shutdown => {
             warn!("Node ({}) is unavailable", sse_event.source.to_string());
@@ -666,5 +750,15 @@ async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
 fn count_error(reason: &str) {
     metrics::ERROR_COUNTS
         .with_label_values(&["main", reason])
+        .inc();
+}
+
+/// This metric is used for debugging of possible issues
+/// with sidecar to determine at which step of processing there was a hang.
+/// If we determine that this issue was fixed completely this can be removed
+/// (the corresponding metric also).
+fn count_internal_event(category: &str, reason: &str) {
+    metrics::INTERNAL_EVENTS
+        .with_label_values(&[category, reason])
         .inc();
 }

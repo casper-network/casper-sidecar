@@ -6,7 +6,6 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
-force_reconnect_in_hours = 123
 
 [storage]
 storage_path = "/var/lib/casper-event-sidecar"

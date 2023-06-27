@@ -1,6 +1,6 @@
 use super::run;
 use bytes::Bytes;
-use casper_event_listener::{EventListener, NodeConnectionInterface};
+use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface};
 use casper_event_types::sse_data::{
     test_support::{example_block_added_1_4_10, BLOCK_HASH_3},
     SseData,
@@ -599,19 +599,21 @@ async fn partial_connection_test(
     let (event_tx, mut event_rx) = mpsc::channel(100);
     let (api_version_tx, _api_version_rx) = mpsc::channel(100);
 
-    let mut test_event_listener = EventListener::new(
-        NodeConnectionInterface {
+    let mut test_event_listener = EventListenerBuilder {
+        node: NodeConnectionInterface {
             ip_address: IpAddr::from([127, 0, 0, 1]),
             sse_port: testing_config.event_stream_server_port(),
             rest_port: node_port_for_rest_connection,
         },
-        3,
-        Duration::from_secs(1),
-        false,
-        event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
+        max_connection_attempts: 3,
+        delay_between_attempts: Duration::from_secs(1),
+        allow_partial_connection: false,
+        sse_event_sender: event_tx,
+        connection_timeout: Duration::from_secs(100),
+        sleep_between_keep_alive_checks: Duration::from_secs(100),
+        no_message_timeout: Duration::from_secs(100),
+    }
+    .build();
 
     tokio::spawn(async move {
         let res = test_event_listener
@@ -705,19 +707,21 @@ async fn reconnection_test_with_port_dropping(
 
     let (event_tx, mut event_rx) = mpsc::channel(1000);
     let (api_version_tx, _api_version_rx) = mpsc::channel(5);
-    let mut test_event_listener = EventListener::new(
-        NodeConnectionInterface {
+    let mut test_event_listener = EventListenerBuilder {
+        node: NodeConnectionInterface {
             ip_address: IpAddr::from([127, 0, 0, 1]),
             sse_port: event_stream_server_port,
             rest_port: node_port_for_rest_connection,
         },
-        3,
-        Duration::from_secs(1),
-        false,
-        event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
+        max_connection_attempts: 3,
+        delay_between_attempts: Duration::from_secs(1),
+        allow_partial_connection: false,
+        sse_event_sender: event_tx,
+        connection_timeout: Duration::from_secs(100),
+        sleep_between_keep_alive_checks: Duration::from_secs(100),
+        no_message_timeout: Duration::from_secs(100),
+    }
+    .build();
 
     tokio::spawn(async move {
         let res = test_event_listener

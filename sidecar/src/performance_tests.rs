@@ -231,16 +231,17 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     };
     let (node_event_tx, node_event_rx) = mpsc::channel(100);
     let (node_api_version_tx, _node_api_version_rx) = mpsc::channel(100);
-
-    let mut node_event_listener = EventListener::new(
-        node_interface,
-        5,
-        Duration::from_secs(1),
-        false,
-        node_event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
+    let mut node_event_listener = EventListenerBuilder {
+        node: node_interface,
+        max_connection_attempts: 5,
+        delay_between_attempts: Duration::from_secs(1),
+        allow_partial_connection: false,
+        sse_event_sender: node_event_tx,
+        connection_timeout: Duration::from_secs(100),
+        sleep_between_keep_alive_checks: Duration::from_secs(100),
+        no_message_timeout: Duration::from_secs(100),
+    }
+    .build();
 
     tokio::spawn(async move {
         let res = node_event_listener
@@ -260,15 +261,17 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         rest_port: node_port_for_rest_connection,
     };
 
-    let mut sidecar_event_listener = EventListener::new(
-        sidecar_node_interface,
-        5,
-        Duration::from_secs(1),
-        false,
-        sidecar_event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
+    let mut sidecar_event_listener = EventListenerBuilder {
+        node: sidecar_node_interface,
+        max_connection_attempts: 5,
+        delay_between_attempts: Duration::from_secs(1),
+        allow_partial_connection: false,
+        sse_event_sender: sidecar_event_tx,
+        connection_timeout: Duration::from_secs(100),
+        sleep_between_keep_alive_checks: Duration::from_secs(100),
+        no_message_timeout: Duration::from_secs(100),
+    }
+    .build();
     tokio::spawn(async move {
         let res = sidecar_event_listener
             .stream_aggregated_events(sidecar_api_version_tx, false)
