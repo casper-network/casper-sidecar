@@ -1,4 +1,25 @@
 use super::run;
+use crate::{
+    event_stream_server::Config as EssConfig,
+    sqlite_database::SqliteDatabase,
+    testing::{
+        fake_event_stream::{
+            setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
+            GenericScenarioSettings, Restart, Scenario,
+        },
+        mock_node::tests::MockNode,
+        raw_sse_events_utils::tests::{
+            data_1_5_1_with_write_unbounding, random_n_block_added, sse_server_example_1_4_10_data,
+            sse_server_example_1_4_10_data_other, sse_server_shutdown_1_0_0_data,
+        },
+        shared::EventType,
+        testing_config::{prepare_config, TestingConfig},
+    },
+    types::{
+        database::DatabaseWriter,
+        sse_events::{BlockAdded, Fault},
+    },
+};
 use bytes::Bytes;
 use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface};
 use casper_event_types::sse_data::{
@@ -21,28 +42,6 @@ use tokio::{
         },
     },
     time::Instant,
-};
-
-use crate::{
-    event_stream_server::Config as EssConfig,
-    sqlite_database::SqliteDatabase,
-    testing::{
-        fake_event_stream::{
-            setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
-            GenericScenarioSettings, Restart, Scenario,
-        },
-        mock_node::tests::MockNode,
-        raw_sse_events_utils::tests::{
-            data_1_5_1_with_write_unbounding, random_n_block_added, sse_server_example_1_4_10_data,
-            sse_server_example_1_4_10_data_other, sse_server_shutdown_1_0_0_data,
-        },
-        shared::EventType,
-        testing_config::{prepare_config, TestingConfig},
-    },
-    types::{
-        database::DatabaseWriter,
-        sse_events::{BlockAdded, Fault},
-    },
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -225,13 +224,13 @@ async fn should_respond_to_rest_query() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_one_filter() {
-    let received_event_types = partial_connection_test(100, 1, true).await;
+    let received_event_types = partial_connection_test(100, 2, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_two_filters() {
-    let received_event_types = partial_connection_test(100, 2, true).await;
+    let received_event_types = partial_connection_test(100, 4, true).await;
     assert!(received_event_types.is_some())
 }
 

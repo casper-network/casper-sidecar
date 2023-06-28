@@ -14,7 +14,6 @@ use reqwest::Client;
 use reqwest::Url;
 use std::{
     fmt::{self, Debug, Display},
-    sync::Arc,
     time::Duration,
 };
 use tokio::{select, sync::mpsc::Sender};
@@ -43,7 +42,7 @@ pub(super) struct ConnectionManager {
     filter: Filter,
     deserialization_fn: DeserializationFn,
     current_event_id_sender: Sender<(Filter, u32)>,
-    cancellation_token: Arc<CancellationToken>,
+    cancellation_token: CancellationToken,
 }
 
 pub enum ConnectionManagerError {
@@ -92,7 +91,7 @@ pub struct ConnectionManagerBuilder {
     /// a correct start_from_event_id parameter in case of a connection restart
     pub(super) current_event_id_sender: Sender<(Filter, u32)>,
     /// Cancel token which can force ConnectionManager to halt if external curcomstances require it
-    pub(super) cancellation_token: Arc<CancellationToken>,
+    pub(super) cancellation_token: CancellationToken,
 }
 
 impl ConnectionManagerBuilder {

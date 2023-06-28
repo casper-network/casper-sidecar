@@ -20,7 +20,7 @@ pub struct KeepAliveMonitor {
     /// Address of the endpoint which the KeepAliveMonitor needs to observe
     bind_address: Url,
     /// Address of the endpoint which the KeepAliveMonitor needs to observe
-    cancellation_token: Arc<CancellationToken>,
+    cancellation_token: CancellationToken,
     /// KeepAliveMonitor will try connecting to bind_address at most this amount of time
     connection_timeout: Duration,
     /// Time the check job sleeps between checks
@@ -38,7 +38,7 @@ impl KeepAliveMonitor {
         sleep_between_checks: Duration,
         no_message_timeout: Duration,
     ) -> Self {
-        let cancellation_token = Arc::new(CancellationToken::new());
+        let cancellation_token = CancellationToken::new();
         let last_message_seen_at = Arc::new(Mutex::new(None));
         KeepAliveMonitor {
             bind_address,
@@ -50,7 +50,7 @@ impl KeepAliveMonitor {
         }
     }
 
-    pub fn get_cancellation_token(&self) -> Arc<CancellationToken> {
+    pub fn get_cancellation_token(&self) -> CancellationToken {
         self.cancellation_token.clone()
     }
 
@@ -76,7 +76,7 @@ impl KeepAliveMonitor {
         sleep_between_checks: Duration,
         no_message_timeout: Duration,
         bind_address: Url,
-        cancellation_token: Arc<CancellationToken>,
+        cancellation_token: CancellationToken,
     ) {
         tokio::spawn(async move {
             loop {
@@ -113,37 +113,41 @@ impl KeepAliveMonitor {
         arc_for_updater: Arc<Mutex<Option<Instant>>>,
         bind_address_for_updater: Url,
         connection_timeout: Duration,
-        cancellation_token: Arc<CancellationToken>,
+        cancellation_token: CancellationToken,
     ) {
         tokio::spawn(async move {
             let arc = arc_for_updater;
             let bind_address = bind_address_for_updater;
             let client_builder = Client::builder().connect_timeout(connection_timeout);
-            let client_res = client_builder.build();
-            if let Err(err) = client_res {
-                let error_message = format!(
-                    "Couldn't create client in KeepAliveMonitor for address {}. Error {}",
-                    bind_address.clone(),
-                    err
-                );
-                error!(error_message);
-                //If we can't connect - force the connection to restart
-                cancellation_token.cancel();
-                return;
-            }
-            let response_res = client_res.unwrap().get(bind_address.clone()).send().await;
-            if let Err(err) = response_res {
-                let error_message = format!(
-                    "Couldn't get response in KeepAliveMonitor for address {}. Error {}",
-                    bind_address.clone(),
-                    err
-                );
-                error!(error_message);
-                //If we can't connect - force the connection to restart
-                cancellation_token.cancel();
-                return;
-            }
-            let mut stream = response_res.unwrap().bytes_stream();
+            let client = match client_builder.build() {
+                Ok(client) => client,
+                Err(err) => {
+                    let error_message = format!(
+                        "Couldn't create client in KeepAliveMonitor for address {}. Error {}",
+                        bind_address.clone(),
+                        err
+                    );
+                    error!(error_message);
+                    //If we can't connect - force the connection to restart
+                    cancellation_token.cancel();
+                    return;
+                }
+            };
+            let response_res = client.get(bind_address.clone()).send().await;
+            let mut stream = match response_res {
+                Ok(response) => response.bytes_stream(),
+                Err(err) => {
+                    let error_message = format!(
+                        "Couldn't get response in KeepAliveMonitor for address {}. Error {}",
+                        bind_address.clone(),
+                        err
+                    );
+                    error!(error_message);
+                    //If we can't connect - force the connection to restart
+                    cancellation_token.cancel();
+                    return;
+                }
+            };
             while let Some(event) = stream.next().await {
                 match event {
                     Ok(_) => {
@@ -221,7 +225,7 @@ mod tests {
         let monitor = KeepAliveMonitor::new(
             url,
             Duration::from_secs(100),
-            Duration::from_secs(1),
+            Duration::from_secs(3),
             Duration::from_secs(3),
         );
         monitor.start().await;
