@@ -21,6 +21,7 @@
 //! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
+mod endpoint;
 mod event_indexer;
 mod http_server;
 mod sse_server;
@@ -49,10 +50,17 @@ use warp::Filter;
 /// that a new client can retrieve the entire set of buffered events if desired.
 const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
+pub type OutboundSender = UnboundedSender<(
+    Option<EventIndex>,
+    SseData,
+    Option<SseFilter>,
+    Option<String>,
+)>;
+
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
-    sse_data_sender: UnboundedSender<(Option<EventIndex>, SseData, SseFilter, Option<String>)>,
+    sse_data_sender: OutboundSender,
     event_indexer: EventIndexer,
     // This is linted as unused because in this implementation it is only printed to the output.
     #[allow(unused)]
@@ -119,7 +127,7 @@ impl EventStreamServer {
     pub(crate) fn broadcast(
         &mut self,
         sse_data: SseData,
-        inbound_filter: SseFilter,
+        inbound_filter: Option<SseFilter>,
         maybe_json_data: Option<String>,
     ) {
         let event_index = match sse_data {
