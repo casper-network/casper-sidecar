@@ -1,5 +1,6 @@
 //! Types and functions used by the http server to manage the event-stream.
 
+use super::endpoint::Endpoint;
 use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
 use casper_types::ProtocolVersion;
 use futures::{future, Stream, StreamExt};
@@ -39,11 +40,14 @@ pub const SSE_API_MAIN_PATH: &str = "main";
 pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
 /// The URL path part to subscribe to only `FinalitySignature` events.
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
+/// The URL path part to subscribe to sidecar specific events.
+pub const SSE_API_SIDECAR_PATH: &str = "sidecar";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
 
 /// The filter associated with `/events` path.
-const EVENTS_FILTER: [EventFilter; 4] = [
+const EVENTS_FILTER: [EventFilter; 5] = [
+    EventFilter::ApiVersion,
     EventFilter::BlockAdded,
     EventFilter::DeployProcessed,
     EventFilter::Fault,
@@ -51,7 +55,8 @@ const EVENTS_FILTER: [EventFilter; 4] = [
 ];
 
 /// The filter associated with `/events/main` path.
-const MAIN_FILTER: [EventFilter; 5] = [
+const MAIN_FILTER: [EventFilter; 6] = [
+    EventFilter::ApiVersion,
     EventFilter::BlockAdded,
     EventFilter::DeployProcessed,
     EventFilter::DeployExpired,
@@ -59,10 +64,12 @@ const MAIN_FILTER: [EventFilter; 5] = [
     EventFilter::Step,
 ];
 /// The filter associated with `/events/deploys` path.
-const DEPLOYS_FILTER: [EventFilter; 1] = [EventFilter::DeployAccepted];
+const DEPLOYS_FILTER: [EventFilter; 2] = [EventFilter::ApiVersion, EventFilter::DeployAccepted];
 /// The filter associated with `/events/sigs` path.
-const SIGNATURES_FILTER: [EventFilter; 1] = [EventFilter::FinalitySignature];
-
+const SIGNATURES_FILTER: [EventFilter; 2] =
+    [EventFilter::ApiVersion, EventFilter::FinalitySignature];
+/// The filter associated with `/events/sidecar` path.
+const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
 
@@ -91,6 +98,14 @@ impl ServerSentEvent {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),
+            json_data: None,
+            inbound_filter: None,
+        }
+    }
+    pub(super) fn sidecar_version_event(version: ProtocolVersion) -> Self {
+        ServerSentEvent {
+            id: None,
+            data: SseData::SidecarVersion(version),
             json_data: None,
             inbound_filter: None,
         }
@@ -134,7 +149,7 @@ pub(super) struct NewSubscriberInfo {
 /// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
 async fn filter_map_server_sent_event(
     event: &ServerSentEvent,
-    stream_filter: &SseFilter,
+    stream_filter: &Endpoint,
     event_filter: &[EventFilter],
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     if !event.data.should_include(event_filter) {
@@ -150,8 +165,11 @@ async fn filter_map_server_sent_event(
             id.to_string()
         }
         None => {
-            if !matches!(&event.data, &SseData::ApiVersion { .. }) {
-                error!("only ApiVersion may have no event ID");
+            if !matches!(
+                &event.data,
+                &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. }
+            ) {
+                error!("only ApiVersion and SidecarVersion may have no event ID");
                 return None;
             }
             String::new()
@@ -159,7 +177,7 @@ async fn filter_map_server_sent_event(
     };
 
     match &event.data {
-        &SseData::ApiVersion { .. } => {
+        &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
             let warp_event = event_to_warp_event(event).unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
@@ -205,12 +223,13 @@ async fn filter_map_server_sent_event(
         }
         &SseData::Shutdown => {
             let should_send_shutdown = match (&event.inbound_filter, stream_filter) {
-                (None, _) => true,
-                (Some(a), b) if a == b => true,
-                (Some(SseFilter::Main), SseFilter::Events) => true, //If this filter handles the `/events` endpoint
+                (None, Endpoint::Sidecar) => true,
+                (None, _) => false,
+                (Some(SseFilter::Main), Endpoint::Events) => true, //If this filter handles the `/events` endpoint
                 // then it should also propagate from inbounds `/events/main`
-                (Some(SseFilter::Events), SseFilter::Main) => true, //If we are connected to a legacy node
+                (Some(SseFilter::Events), Endpoint::Main) => true, //If we are connected to a legacy node
                 // and the client is listening to /events/main we want to get shutdown from that
+                (Some(a), b) if b.is_corresponding_to(a) => true,
                 _ => false,
             };
 
@@ -241,12 +260,13 @@ fn build_event_for_outbound(
         .id(id)))
 }
 
-pub(super) fn path_to_filter(path_param: &str) -> Option<&'static SseFilter> {
+pub(super) fn path_to_filter(path_param: &str) -> Option<&'static Endpoint> {
     match path_param {
-        SSE_API_ROOT_PATH => Some(&SseFilter::Events),
-        SSE_API_MAIN_PATH => Some(&SseFilter::Main),
-        SSE_API_DEPLOYS_PATH => Some(&SseFilter::Deploys),
-        SSE_API_SIGNATURES_PATH => Some(&SseFilter::Sigs),
+        SSE_API_ROOT_PATH => Some(&Endpoint::Events),
+        SSE_API_MAIN_PATH => Some(&Endpoint::Main),
+        SSE_API_DEPLOYS_PATH => Some(&Endpoint::Deploys),
+        SSE_API_SIGNATURES_PATH => Some(&Endpoint::Sigs),
+        SSE_API_SIDECAR_PATH => Some(&Endpoint::Sidecar),
         _ => None,
     }
 }
@@ -257,6 +277,7 @@ pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
         SSE_API_MAIN_PATH => Some(&MAIN_FILTER[..]),
         SSE_API_DEPLOYS_PATH => Some(&DEPLOYS_FILTER[..]),
         SSE_API_SIGNATURES_PATH => Some(&SIGNATURES_FILTER[..]),
+        SSE_API_SIDECAR_PATH => Some(&SIDECAR_FILTER[..]),
         _ => None,
     }
 }
@@ -450,7 +471,7 @@ impl ChannelsAndFilter {
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
-    stream_filter: &'static SseFilter,
+    stream_filter: &'static Endpoint,
     event_filter: &'static [EventFilter],
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
@@ -508,17 +529,15 @@ fn stream_to_client(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use casper_event_types::DeployHash;
     use casper_types::testing::TestRng;
     use regex::Regex;
     use std::iter;
 
-    use casper_event_types::{DeployHash, Filter as SseFilter};
-
-    use super::*;
-
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+            filter_map_server_sent_event(event, &Endpoint::Main, filter)
                 .await
                 .is_none(),
             "should filter out {:?} with {:?}",
@@ -529,7 +548,7 @@ mod tests {
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &SseFilter::Main, filter)
+            filter_map_server_sent_event(event, &Endpoint::Main, filter)
                 .await
                 .is_some(),
             "should not filter out {:?} with {:?}",
@@ -599,7 +618,9 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::Shutdown,
             json_data: None,
-            inbound_filter: None,
+            inbound_filter: Some(SseFilter::Main),
+            //For shutdown we need to provide the inbound
+            //filter because we send shutdowns only to corresponding outbounds to prevent duplicates
         };
 
         // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.

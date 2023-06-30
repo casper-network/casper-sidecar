@@ -441,6 +441,38 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn should_produce_shutdown_to_sidecar_endpoint() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut node_mock = MockNode::new(
+        "1.4.10".to_string(),
+        sse_server_example_1_4_10_data(),
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    )
+    .await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/sidecar", event_stream_server_port).await;
+    receiver.await.ok();
+    thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and data to propagate
+    node_mock.stop().await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    assert!(events_received
+        .get(0)
+        .unwrap()
+        .contains("\"SidecarVersion\""));
+    assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sidecar_should_use_start_from_if_database_is_empty() {
     let (

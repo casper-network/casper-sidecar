@@ -277,7 +277,7 @@ impl TestFixture {
             };
             let api_version_event = SseData::ApiVersion(protocol_version);
 
-            server.broadcast(api_version_event.clone(), SseFilter::Main, None);
+            server.broadcast(api_version_event.clone(), Some(SseFilter::Main), None);
             for (id, (event, maybe_json_data)) in
                 events.iter().cycle().enumerate().take(event_count as usize)
             {
@@ -290,7 +290,7 @@ impl TestFixture {
                     .await;
                 server.broadcast(
                     event.clone(),
-                    SseFilter::Main,
+                    Some(SseFilter::Main),
                     maybe_json_data
                         .as_ref()
                         .map(|el| serde_json::from_str(el.as_str()).unwrap()),

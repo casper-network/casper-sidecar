@@ -101,6 +101,7 @@ struct EventLatency {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum EventType {
     ApiVersion,
+    SidecarVersion,
     BlockAdded,
     DeployAccepted,
     DeployExpired,
@@ -115,6 +116,7 @@ impl From<SseData> for EventType {
     fn from(sse_data: SseData) -> Self {
         match sse_data {
             SseData::ApiVersion(_) => EventType::ApiVersion,
+            SseData::SidecarVersion(_) => EventType::SidecarVersion,
             SseData::BlockAdded { .. } => EventType::BlockAdded,
             SseData::DeployAccepted { .. } => EventType::DeployAccepted,
             SseData::DeployProcessed { .. } => EventType::DeployProcessed,
@@ -131,6 +133,7 @@ impl Display for EventType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             EventType::ApiVersion => "ApiVersion",
+            EventType::SidecarVersion => "SidecarVersion",
             EventType::BlockAdded => "BlockAdded",
             EventType::DeployAccepted => "DeployAccepted",
             EventType::DeployExpired => "DeployExpired",
@@ -152,6 +155,7 @@ impl TimestampedEvent {
     fn identifier(&self) -> String {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
+            SseData::SidecarVersion(_) => "SidecarVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
             SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
             SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),

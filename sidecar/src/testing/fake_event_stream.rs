@@ -130,7 +130,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, SseFilter::Main, None);
+                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
                 }
             });
 
@@ -160,7 +160,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, SseFilter::Main, None);
+                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
                 }
             });
 
@@ -195,7 +195,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, SseFilter::Main, None);
+                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
                 }
             });
 
@@ -230,7 +230,7 @@ pub(crate) async fn spin_up_fake_event_stream(
 
             let broadcasting_task = tokio::spawn(async move {
                 while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, SseFilter::Main, None);
+                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
                 }
             });
 

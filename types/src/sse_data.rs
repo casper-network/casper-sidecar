@@ -4,6 +4,8 @@
 /// A filter for event types a client has subscribed to receive.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum EventFilter {
+    ApiVersion,
+    SidecarVersion,
     BlockAdded,
     DeployAccepted,
     DeployProcessed,
@@ -55,6 +57,10 @@ pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     ApiVersion(ProtocolVersion),
+    /// This event is specific only to the Sidecar. For now it is put here but ultimately we will
+    /// need to split the way we store events going to outbound so we can discern between events
+    /// coming from inbound and the sidecar itself
+    SidecarVersion(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -98,7 +104,9 @@ pub enum SseData {
 impl SseData {
     pub fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
-            SseData::ApiVersion(_) | SseData::Shutdown => true,
+            SseData::Shutdown => true,
+            SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
+            SseData::SidecarVersion(_) => filter.contains(&EventFilter::SidecarVersion),
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
             SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
