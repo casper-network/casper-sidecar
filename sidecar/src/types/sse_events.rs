@@ -1,22 +1,20 @@
-use std::{
-    fmt::{Display, Formatter},
-    sync::Arc,
-};
-
 #[cfg(test)]
 use casper_event_types::Digest;
 use casper_event_types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
 #[cfg(test)]
 use casper_types::testing::TestRng;
+use casper_types::{
+    AsymmetricType, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 use derive_new::new;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-
-use casper_types::{
-    AsymmetricType, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-};
 use serde_json::value::RawValue;
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.

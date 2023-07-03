@@ -53,6 +53,7 @@ use tokio::{
         Mutex,
     },
     task::JoinHandle,
+    time::sleep,
 };
 use tracing::{debug, error, info, trace, warn};
 use types::database::DatabaseReader;
@@ -179,10 +180,19 @@ async fn run(config: Config) -> Result<(), Error> {
 
         // The original sender needs to be dropped here as it's existence prevents the event broadcasting logic to proceed
         drop(api_version_tx);
-        drop(outbound_sse_data_sender);
 
         let _ = join_all(join_handles).await;
-
+        //Send Shutdown to the sidecar sse endpoint
+        let _ = outbound_sse_data_sender
+            .send((SseData::Shutdown, None, None))
+            .await;
+        // Below sleep is a workaround to allow the above Shutdown to propagate.
+        // If we don't do this there is a race condition between handling of the message and dropping of the outbound server
+        // which happens when we leave this function and the `tokio::try_join!` exits due to this. This race condition causes 9 of 10
+        // tries to not propagate the Shutdown (ususally drop happens faster than message propagation to outbound).
+        // Fixing this race condition would require rewriting a lot of code. AFAICT the only drawback to this workaround is that the
+        // rest server and the sse server will exit 200ms later than it would without it.
+        sleep(Duration::from_millis(200)).await;
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     });
 
@@ -242,10 +252,13 @@ async fn handle_single_event(
     sse_event: SseEvent,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
 ) {
     match sse_event.data {
+        SseData::SidecarVersion(_) => {
+            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
+        }
         SseData::ApiVersion(version) => {
             let mut guard = last_reported_protocol_version.lock().await;
             match &mut *guard {
@@ -255,7 +268,11 @@ async fn handle_single_event(
                 None | Some(_) => {
                     *guard = Some(version);
                     if let Err(error) = outbound_sse_data_sender
-                        .send((SseData::ApiVersion(version), sse_event.inbound_filter, None))
+                        .send((
+                            SseData::ApiVersion(version),
+                            Some(sse_event.inbound_filter),
+                            None,
+                        ))
                         .await
                     {
                         debug!(
@@ -289,7 +306,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::BlockAdded { block, block_hash },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -329,7 +346,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::DeployAccepted { deploy },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -372,7 +389,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::DeployExpired { deploy_hash },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -440,7 +457,7 @@ async fn handle_single_event(
                                 block_hash,
                                 execution_result,
                             },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -484,7 +501,7 @@ async fn handle_single_event(
                                 timestamp,
                                 public_key,
                             },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -527,7 +544,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::FinalitySignature(fs),
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -571,7 +588,7 @@ async fn handle_single_event(
                                 era_id,
                                 execution_effect,
                             },
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -608,7 +625,7 @@ async fn handle_single_event(
                     if let Err(error) = outbound_sse_data_sender
                         .send((
                             SseData::Shutdown,
-                            sse_event.inbound_filter,
+                            Some(sse_event.inbound_filter),
                             sse_event.json_data,
                         ))
                         .await
@@ -632,7 +649,7 @@ async fn sse_processor(
     mut sse_event_listener: EventListener,
     api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Filter, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     is_empty_database: bool,

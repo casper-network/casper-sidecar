@@ -18,6 +18,9 @@ use tokio::{
 use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
 
+pub type OutboundReceiver =
+    mpsc::UnboundedReceiver<(Option<EventIndex>, SseData, Option<Filter>, Option<String>)>;
+
 /// Run the HTTP server.
 ///
 /// * `server_with_shutdown` is the actual server as a future which can be gracefully shut down.
@@ -33,12 +36,7 @@ pub(super) async fn run(
     config: Config,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
-    mut data_receiver: mpsc::UnboundedReceiver<(
-        Option<EventIndex>,
-        SseData,
-        Filter,
-        Option<String>,
-    )>,
+    mut data_receiver: OutboundReceiver,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
@@ -63,6 +61,7 @@ pub(super) async fn run(
             select! {
                 maybe_new_subscriber = new_subscriber_info_receiver.recv() => {
                     if let Some(subscriber) = maybe_new_subscriber {
+                        let _ = send_sidecar_version(&subscriber).await;
                         let mut observed_events = false;
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
@@ -108,7 +107,7 @@ pub(super) async fn run(
                             match latest_protocol_version{
                                 None => {},
                                 Some(v) => {
-                                    let _ = send_api_version_from_global_state(v, subscriber).await;
+                                    let _ = send_api_version_from_global_state(v, &subscriber).await;
                                 }
                             }
                         }
@@ -120,7 +119,7 @@ pub(super) async fn run(
                         Some((maybe_event_index, data, inbound_filter, maybe_json_data)) => {
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data.clone());
-                            let event = ServerSentEvent { id: maybe_event_index, data: data.clone(), json_data: maybe_json_data, inbound_filter: Some(inbound_filter), };
+                            let event = ServerSentEvent { id: maybe_event_index, data: data.clone(), json_data: maybe_json_data, inbound_filter, };
                             match data {
                                 SseData::ApiVersion(v) => latest_protocol_version = Some(v),
                                 _ => {
@@ -163,9 +162,20 @@ pub(super) async fn run(
 
 async fn send_api_version_from_global_state(
     protocol_version: ProtocolVersion,
-    subscriber: NewSubscriberInfo,
+    subscriber: &NewSubscriberInfo,
 ) -> Result<(), SendError<ServerSentEvent>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::initial_event(protocol_version))
+}
+
+async fn send_sidecar_version(
+    subscriber: &NewSubscriberInfo,
+) -> Result<(), SendError<ServerSentEvent>> {
+    // #TODO this version shouldn't be hardcoded, it should come from the build process
+    subscriber
+        .initial_events_sender
+        .send(ServerSentEvent::sidecar_version_event(
+            ProtocolVersion::from_parts(1, 1, 0),
+        ))
 }
