@@ -1,6 +1,6 @@
 use super::run;
 use bytes::Bytes;
-use casper_event_listener::{EventListener, NodeConnectionInterface};
+use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface};
 use casper_event_types::sse_data::{
     test_support::{example_block_added_1_4_10, BLOCK_HASH_3},
     SseData,
@@ -225,13 +225,13 @@ async fn should_respond_to_rest_query() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_one_filter() {
-    let received_event_types = partial_connection_test(100, 1, true).await;
+    let received_event_types = partial_connection_test(100, 2, true).await;
     assert!(received_event_types.is_some())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_two_filters() {
-    let received_event_types = partial_connection_test(100, 2, true).await;
+    let received_event_types = partial_connection_test(100, 4, true).await;
     assert!(received_event_types.is_some())
 }
 
@@ -269,23 +269,6 @@ async fn should_not_attempt_reconnection() {
     let total_stream_duration = shutdown_after;
 
     assert!(time_for_sidecar_to_shutdown < total_stream_duration + Duration::from_secs(3));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-async fn should_successfully_reconnect() {
-    // Configure the sidecar to make 5 retries
-    let max_attempts = 5;
-    let delay_between_retries = 1;
-
-    // And then resume after 5s e.g. less than the total retry window
-    let restart_after = Duration::from_secs(5);
-
-    let read_messages =
-        reconnection_test_with_port_dropping(max_attempts, delay_between_retries, restart_after)
-            .await;
-    let length = read_messages.len();
-    //The result should only have messages from two rounds of messages
-    assert!(length > 61);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
@@ -369,7 +352,7 @@ async fn should_reconnect() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     //The result should only have messages from both rounds of messages
-    assert!(length > 32);
+    assert_eq!(length, 63);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
@@ -602,19 +585,21 @@ async fn partial_connection_test(
     let (event_tx, mut event_rx) = mpsc::channel(100);
     let (api_version_tx, _api_version_rx) = mpsc::channel(100);
 
-    let mut test_event_listener = EventListener::new(
-        NodeConnectionInterface {
+    let mut test_event_listener = EventListenerBuilder {
+        node: NodeConnectionInterface {
             ip_address: IpAddr::from([127, 0, 0, 1]),
             sse_port: testing_config.event_stream_server_port(),
             rest_port: node_port_for_rest_connection,
         },
-        3,
-        Duration::from_secs(1),
-        false,
-        event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
+        max_connection_attempts: 3,
+        delay_between_attempts: Duration::from_secs(1),
+        allow_partial_connection: false,
+        sse_event_sender: event_tx,
+        connection_timeout: Duration::from_secs(100),
+        sleep_between_keep_alive_checks: Duration::from_secs(100),
+        no_message_timeout: Duration::from_secs(100),
+    }
+    .build();
 
     tokio::spawn(async move {
         let res = test_event_listener
@@ -685,86 +670,6 @@ async fn reconnection_test(
 
     let (_, time_for_sidecar_to_shutdown) = tokio::join!(fes_handle, sidecar_handle);
     time_for_sidecar_to_shutdown.unwrap()
-}
-
-async fn reconnection_test_with_port_dropping(
-    max_attempts: usize,
-    delay_between_retries: usize,
-    restart_after: Duration,
-) -> Vec<EventType> {
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-    testing_config.set_retries_for_node(
-        node_port_for_sse_connection,
-        max_attempts,
-        delay_between_retries,
-    );
-    let event_stream_server_port = testing_config.event_stream_server_port();
-
-    let (event_tx, mut event_rx) = mpsc::channel(1000);
-    let (api_version_tx, _api_version_rx) = mpsc::channel(5);
-    let mut test_event_listener = EventListener::new(
-        NodeConnectionInterface {
-            ip_address: IpAddr::from([127, 0, 0, 1]),
-            sse_port: event_stream_server_port,
-            rest_port: node_port_for_rest_connection,
-        },
-        3,
-        Duration::from_secs(1),
-        false,
-        event_tx,
-        Duration::from_secs(100),
-        Duration::from_secs(1000),
-    );
-
-    tokio::spawn(async move {
-        let res = test_event_listener
-            .stream_aggregated_events(api_version_tx, false)
-            .await;
-
-        if let Err(error) = res {
-            println!("Listener Error: {}", error)
-        }
-    });
-
-    let data_handle = tokio::spawn(async move {
-        let mut event_types_received = Vec::new();
-
-        while let Some(event) = event_rx.recv().await {
-            event_types_received.push(event.data.into())
-        }
-        event_types_received
-    });
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-    let fes_handle = tokio::spawn(async move {
-        let mut test_rng = Box::leak(Box::new(TestRng::new()));
-        test_rng = spin_up_fake_event_stream(
-            test_rng,
-            ess_config.clone(),
-            Scenario::Counted(GenericScenarioSettings::new(Bound::Counted(60), None)),
-        )
-        .await;
-        tokio::time::sleep(restart_after).await;
-        spin_up_fake_event_stream(
-            test_rng,
-            ess_config.clone(),
-            Scenario::Counted(GenericScenarioSettings::new(Bound::Counted(60), None)),
-        )
-        .await;
-    });
-
-    let sidecar_handle = tokio::spawn(async move {
-        let _ = run(testing_config.inner()).await;
-    });
-
-    let (_, _, data) = tokio::join!(fes_handle, sidecar_handle, data_handle);
-    data.expect("Expecting data")
 }
 
 pub async fn try_connect_to_single_stream(

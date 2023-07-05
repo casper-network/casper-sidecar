@@ -16,11 +16,9 @@ use std::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use tokio::{
-    select,
-    sync::{broadcast::Sender as BroadcastSender, mpsc::Sender},
-};
+use tokio::{select, sync::mpsc::Sender};
 use tokio_stream::Stream;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};
 
 type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
@@ -44,7 +42,7 @@ pub(super) struct ConnectionManager {
     filter: Filter,
     deserialization_fn: DeserializationFn,
     current_event_id_sender: Sender<(Filter, u32)>,
-    poison_pill_channel: BroadcastSender<()>,
+    cancellation_token: CancellationToken,
 }
 
 pub enum ConnectionManagerError {
@@ -92,9 +90,8 @@ pub struct ConnectionManagerBuilder {
     /// Channel via which we inform that this filter observed a specific event_id so the ConnectionListener can give
     /// a correct start_from_event_id parameter in case of a connection restart
     pub(super) current_event_id_sender: Sender<(Filter, u32)>,
-    /// Channel via which the manager can receive a force-close message. It will still be most likely not
-    /// instantaneous - this poison pill will not interrupt processing of an sse event that was already received and is ongoing
-    pub(super) poison_pill_channel: BroadcastSender<()>,
+    /// Cancel token which can force ConnectionManager to halt if external curcomstances require it
+    pub(super) cancellation_token: CancellationToken,
 }
 
 impl ConnectionManagerBuilder {
@@ -111,7 +108,7 @@ impl ConnectionManagerBuilder {
             filter: self.filter,
             deserialization_fn: determine_deserializer(self.node_build_version),
             current_event_id_sender: self.current_event_id_sender,
-            poison_pill_channel: self.poison_pill_channel,
+            cancellation_token: self.cancellation_token,
         }
     }
 }
@@ -215,7 +212,6 @@ impl ConnectionManager {
         E: Debug,
         S: Stream<Item = Result<Event, E>> + Sized + Unpin,
     {
-        let mut poison_pill_channel = self.poison_pill_channel.subscribe();
         loop {
             select! {
                 maybe_event = event_stream.next() => {
@@ -250,11 +246,9 @@ impl ConnectionManager {
                         return Err(decorate_with_event_stream_closed(self.bind_address.clone()))
                     }
                 }
-                poison_pill_result = poison_pill_channel.recv() => {
-                    return match poison_pill_result {
-                        Ok(_) => Ok(()),
-                        Err(err) => Err(non_recoverable_error(Error::msg(format!("Error when waiting for force reconnection signal, error: {}", err)))),
-                    }
+                _ = self.cancellation_token.cancelled() => {
+                    count_internal_event("connection_manager", "cancellation");
+                    return Err(non_recoverable_error(Error::msg(format!("Detected sse connection inactivity on filter {}", self.bind_address.as_str()))))
                 }
             }
         }
@@ -355,6 +349,12 @@ impl ConnectionManager {
             .with_label_values(&[self.filter.to_string().as_str()])
             .observe(payload_size as f64);
     }
+}
+
+fn count_internal_event(category: &str, reason: &str) {
+    metrics::INTERNAL_EVENTS
+        .with_label_values(&[category, reason])
+        .inc();
 }
 
 fn non_recoverable_error(error: Error) -> ConnectionManagerError {

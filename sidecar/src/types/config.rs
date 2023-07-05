@@ -29,7 +29,8 @@ pub struct Connection {
     pub allow_partial_connection: bool,
     pub enable_logging: bool,
     pub connection_timeout_in_seconds: Option<usize>,
-    pub force_reconnect_in_hours: Option<usize>,
+    pub sleep_between_keep_alive_checks_in_seconds: Option<usize>,
+    pub no_message_timeout_in_seconds: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -78,7 +79,8 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: true,
                     connection_timeout_in_seconds: None,
-                    force_reconnect_in_hours: Some(123),
+                    sleep_between_keep_alive_checks_in_seconds: None,
+                    no_message_timeout_in_seconds: None,
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -89,7 +91,8 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: false,
                     connection_timeout_in_seconds: None,
-                    force_reconnect_in_hours: Some(456),
+                    sleep_between_keep_alive_checks_in_seconds: None,
+                    no_message_timeout_in_seconds: None,
                 },
                 Connection {
                     ip_address: "127.0.0.1".to_string(),
@@ -100,7 +103,8 @@ mod tests {
                     allow_partial_connection: false,
                     enable_logging: false,
                     connection_timeout_in_seconds: Some(3),
-                    force_reconnect_in_hours: None,
+                    sleep_between_keep_alive_checks_in_seconds: None,
+                    no_message_timeout_in_seconds: None,
                 },
             ],
             storage: StorageConfig {
@@ -143,7 +147,8 @@ mod tests {
                 allow_partial_connection: false,
                 enable_logging: true,
                 connection_timeout_in_seconds: None,
-                force_reconnect_in_hours: Some(123),
+                sleep_between_keep_alive_checks_in_seconds: None,
+                no_message_timeout_in_seconds: None,
             }],
             storage: StorageConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
@@ -182,7 +187,8 @@ mod tests {
                 delay_between_retries_in_seconds: 5,
                 enable_logging: false,
                 connection_timeout_in_seconds: None,
-                force_reconnect_in_hours: Some(456),
+                sleep_between_keep_alive_checks_in_seconds: None,
+                no_message_timeout_in_seconds: None,
             }
         }
     }

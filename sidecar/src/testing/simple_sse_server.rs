@@ -5,8 +5,10 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use std::convert::Infallible;
     use std::iter::FromIterator;
+    use std::sync::Arc;
     use tokio::sync::broadcast::{self};
     use tokio::sync::mpsc::{channel, Receiver, Sender};
+    use tokio::sync::Mutex;
     use warp::filters::BoxedFilter;
     use warp::{path, sse::Event, Filter, Rejection, Reply};
 
@@ -35,11 +37,11 @@ pub(crate) mod tests {
             let (shutdown_tx, mut shutdown_rx) = channel(10);
             let (after_shutdown_tx, after_shutdown_rx) = channel(10);
             let v = Vec::from_iter(self.routes.iter());
-            let mut shutdown_broadcasts: Vec<BroadcastSender> = Vec::new();
+            let shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>> =
+                Arc::new(Mutex::new(Vec::new()));
             let mut routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = v
                 .into_iter()
                 .map(|(key, value)| {
-                    let (sender, _) = tokio::sync::broadcast::channel(100);
                     let base_filter = key
                         .iter()
                         .fold(warp::get().boxed(), |route, part| {
@@ -48,12 +50,17 @@ pub(crate) mod tests {
                         .and(path::end())
                         .boxed();
                     let data = value.clone();
-                    shutdown_broadcasts.push(sender.clone());
                     base_filter
                         .and(with_data(data))
-                        .and(with_sender(sender))
                         .and(warp::query())
-                        .and_then(do_handle)
+                        .and(with_shutdown_broadcasts(shutdown_broadcasts.clone()))
+                        .and_then(|data, query, shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>>| async move {
+                            let (sender, _) = tokio::sync::broadcast::channel(100);
+                            let mut guard = shutdown_broadcasts.lock().await;
+                            guard.push(sender.clone());
+                            drop(guard);
+                            do_handle(data, sender.clone(), query).await
+                        })
                         .boxed()
                 })
                 .collect();
@@ -65,9 +72,11 @@ pub(crate) mod tests {
                 let server = warp::serve(api)
                     .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
                         let _ = shutdown_rx.recv().await;
-                        for sender in shutdown_broadcasts.iter() {
+                        let guard = shutdown_broadcasts.lock().await;
+                        for sender in guard.iter() {
                             let _ = sender.send(None);
                         }
+                        drop(guard);
                     })
                     .1;
                 server.await;
@@ -141,9 +150,10 @@ pub(crate) mod tests {
         warp::any().map(move || x.clone())
     }
 
-    fn with_sender(
-        sender: BroadcastSender,
-    ) -> impl Filter<Extract = (BroadcastSender,), Error = Infallible> + Clone {
-        warp::any().map(move || sender.clone())
+    fn with_shutdown_broadcasts(
+        x: Arc<Mutex<Vec<BroadcastSender>>>,
+    ) -> impl Filter<Extract = (Arc<Mutex<Vec<BroadcastSender>>>,), Error = Infallible> + Clone
+    {
+        warp::any().map(move || x.clone())
     }
 }

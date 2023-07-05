@@ -17,7 +17,12 @@ lazy_static! {
         },
         &["filter"]
     )
-    .expect("metric can be created");
+    .expect("metric can't be created");
+    pub static ref INTERNAL_EVENTS: IntCounterVec = IntCounterVec::new(
+        Opts::new("internal_events", "Count of internal events"),
+        &["category", "description"]
+    )
+    .expect("metric can't be created");
 }
 
 pub fn register_metrics() {
@@ -26,6 +31,9 @@ pub fn register_metrics() {
         .expect("cannot register metric");
     REGISTRY
         .register(Box::new(RECEIVED_BYTES.clone()))
+        .expect("cannot register metric");
+    REGISTRY
+        .register(Box::new(INTERNAL_EVENTS.clone()))
         .expect("cannot register metric");
 }
 pub struct MetricCollectionError {

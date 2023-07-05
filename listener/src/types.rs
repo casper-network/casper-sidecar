@@ -6,6 +6,7 @@ use std::{
 };
 
 /// Data on how to connect to a node
+#[derive(Clone)]
 pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
     pub sse_port: u16,
