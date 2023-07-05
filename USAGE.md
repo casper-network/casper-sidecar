@@ -1,16 +1,31 @@
 # Casper Event Sidecar USAGE
 
-This document outlines the functionality of the Sidecar's [event stream endpoint](#the-event-stream) and [RESTful endpoint](#the-rest-server).
+This document describes how to consume events and perform queries using the Sidecar, covering the following topics:
+
+- Node-generated events emitted by the node(s) to which the Sidecar connects
+- Sidecar-generated events originating solely from the Sidecar service and not from a node
+- The RESTful endpoint for performing useful queries about the state of the network
 
 ## Prerequisites
 
 * Run the service as described in the [README](README.md).
 
-## The Event Stream
+## The Sidecar Event Stream
 
-The Sidecar's event stream endpoint is a passthrough for all the events emitted by the node to which the Sidecar connects. For more information on various event types, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
+The Sidecar event stream is a passthrough for all the events emitted by the node(s) to which the Sidecar connects. This stream also includes one endpoint for Sidecar-generated events that can be useful, although the node did not emit them.
 
-It is possible to monitor the Sidecar's event stream using *cURL*, depending on how the HOST and PORT are configured.
+Events are divided into four categories and emitted on their respective endpoints:
+
+- **Deploy events** - Associated with Deploys on a node and emitted on the `events/deploys` endpoint. Currently, only a `DeployAccepted` event is emitted. The URL to consume these events using Sidecar on a Mainnet or Testnet node is `http://<HOST>:19999/events/deploys/`.
+- **Finality Signature events** - Emitted on the `events/sigs` endpoint when a block has been finalized and cannot be altered. The URL to consume finality signature events using Sidecar on a Mainnet or Testnet node is `http://<HOST>:19999/events/sigs/`.
+- **Main events** - All other events are emitted on the `events/main` endpoint, including `BlockAdded`, `DeployProcessed`, `DeployExpired`, `Fault`, and `Step` events. The URL to consume these events using Sidecar on a Mainnet or Testnet node is `http://<HOST>:19999/events/main/`.
+- **Sidecar-generated events** - The Sidecar also emits events on the `events/sidecar` endpoint, designated for events originating solely from the Sidecar service. The URL to consume these events using Sidecar on a Mainnet or Testnet node is `http://<HOST>:19999/events/sidecar/`.
+
+For more information on various event types emitted by the node, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
+
+### Monitoring the Sidecar Event Stream
+
+It is possible to monitor the Sidecar event stream using *cURL*, depending on how the HOST and PORT are configured.
 
 ```json
 curl -s http://<HOST:PORT>/events/<TYPE>
@@ -18,15 +33,37 @@ curl -s http://<HOST:PORT>/events/<TYPE>
 
 - `HOST` - The IP address where the Sidecar is running
 - `PORT` - The port number where the Sidecar emits events
-- `TYPE` - The type of emitted event
+- `TYPE` - The type of event emitted
 
-Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), the command would look like this:
+Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), here are the commands for each endpoint:
 
-```json
-curl -sN http://127.0.0.1:19999/events/deploys
-```
+- **Deploy events:** 
 
-### The API Version of Events
+    ```json
+    curl -sN http://127.0.0.1:19999/events/deploys
+    ```
+
+- **Finality Signature events:** 
+
+    ```json
+    curl -sN http://127.0.0.1:19999/events/sigs
+    ```
+
+- **Main events:** 
+
+    ```json
+    curl -sN http://127.0.0.1:19999/events/main
+    ```
+
+- **Sidecar-generated events:** 
+
+    ```json
+    curl -sN http://127.0.0.1:19999/events/sidecar
+    ```
+
+### The API Version of Node Events
+
+An `ApiVersion` event is always emitted when a new client connects to a node's SSE server, informing the client of the node's software version.
 
 When a client connects to the Sidecar, the Sidecar displays the node’s API version, `ApiVersion`, which it receives from the node. Then, it starts streaming the events coming from the node. The `ApiVersion` may differ from the node’s build version.
 
@@ -49,9 +86,26 @@ id:21821471
 :
 ```
 
-### The Shutdown Event
+### The Version of Sidecar Events
 
-When the node sends a Shutdown event and disconnects from the Sidecar, the Sidecar will report it as part of the event stream. The Sidecar will continue to operate and attempt to reconnect to the node according to the `max_attempts` and `delay_between_retries_in_seconds` settings specified in its configuration.
+When a client connects to the `events/sidecar` endpoint, it will receive a message containing the version of the Sidecar software. Release version `1.1.0` would look like this:
+
+```
+curl -sN http://127.0.0.1:19999/events/sidecar
+
+data:{"SidecarVersion":"1.1.0"}
+
+:
+
+:
+
+```
+
+Note that the SidecarVersion differs from the APIVersion emitted by the node event streams. You will also see the keep-alive messages as colons, ensuring the connection is active.
+
+### The Node Shutdown Event
+
+When the node sends a Shutdown event and disconnects from the Sidecar, the Sidecar will report it as part of the event stream and on the `/events/deploys` endpoint. The Sidecar will continue to operate and attempt to reconnect to the node according to the `max_attempts` and `delay_between_retries_in_seconds` settings specified in its configuration.
 
 The Sidecar does not expose Shutdown events via its REST API. 
 
@@ -87,6 +141,28 @@ id:3
 
 ```
 
+Note that the Sidecar can emit another type of shutdown event on the `events/sidecar` endpoint, as described below.
+
+### The Sidecar Shutdown Event
+
+If the Sidecar attempts to connect to a node that does not come back online within the maximum number of reconnection attempts, the Sidecar will start a controlled shutdown process. It will emit a Sidecar-specific Shutdown event on the [events/sidecar](#the-sidecar-shutdown-event) endpoint, designated for events originating solely from the Sidecar service. The other event streams do not get this message because they only emit messages from the node.
+
+The message structure of the Sidecar shutdown event is the same as the [node shutdown event](#the-node-shutdown-event). The sidecar event stream would look like this:
+
+```
+curl -sN http://127.0.0.1:19999/events/sidecar
+
+data:{"SidecarVersion":"1.1.0"}
+
+:
+
+:
+
+:
+
+data:"Shutdown"
+id:8
+```
 
 ## The REST Server
 
