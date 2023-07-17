@@ -1,5 +1,5 @@
 extern crate core;
-
+mod admin_server;
 mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
@@ -25,6 +25,7 @@ use std::{
 };
 
 use crate::{
+    admin_server::run_server as start_admin_server,
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     sqlite_database::SqliteDatabase,
@@ -163,6 +164,15 @@ async fn run(config: Config) -> Result<(), Error> {
         sqlite_database.clone(),
     ));
 
+    let admin_server_config = config.admin_server.clone();
+    let admin_server_handle = tokio::spawn(async move {
+        if let Some(config) = admin_server_config {
+            start_admin_server(config).await
+        } else {
+            Ok(())
+        }
+    });
+
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, mut outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
@@ -246,7 +256,8 @@ async fn run(config: Config) -> Result<(), Error> {
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
         flatten_handle(rest_server_handle),
-        flatten_handle(listening_task_handle)
+        flatten_handle(listening_task_handle),
+        flatten_handle(admin_server_handle),
     )
     .map(|_| Ok(()))?
 }

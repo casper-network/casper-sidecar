@@ -1,8 +1,8 @@
-use super::{
-    errors::{handle_rejection, InvalidPath},
-    handlers,
+use super::{errors::handle_rejection, handlers};
+use crate::{
+    types::database::DatabaseReader,
+    utils::{root_filter, InvalidPath},
 };
-use crate::types::database::DatabaseReader;
 use std::convert::Infallible;
 use warp::Filter;
 
@@ -20,17 +20,7 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(faults_by_public_key(db.clone()))
         .or(faults_by_era(db.clone()))
         .or(finality_signatures_by_block(db))
-        .or(metrics_filter())
         .recover(handle_rejection)
-}
-
-/// Handle the case where no filter URL was specified after the root address (HOST:PORT).
-/// Return: a message that an invalid path was provided.
-/// Example: curl http://127.0.0.1:18888
-/// {"code":400,"message":"Invalid request path provided"}
-fn root_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path::end()
-        .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
 }
 
 /// Handle the case where an invalid path was provided.
@@ -220,15 +210,6 @@ fn step_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_step_by_era)
-}
-
-/// Return metrics data at a given time.
-/// Return: prometheus-formatted metrics data.
-/// Example: curl http://127.0.0.1:18888/metrics
-fn metrics_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("metrics")
-        .and(warp::get())
-        .and_then(handlers::metrics_handler)
 }
 
 /// Helper function to extract data from a database

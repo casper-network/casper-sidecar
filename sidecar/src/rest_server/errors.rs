@@ -1,13 +1,15 @@
 use std::convert::Infallible;
 
+use crate::{
+    types::database::DatabaseReadError,
+    utils::{InvalidPath, Unexpected},
+};
 use http::StatusCode;
 #[cfg(test)]
 use hyper::body::HttpBody;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use warp::{reject, Rejection, Reply};
-
-use crate::types::database::DatabaseReadError;
 
 #[derive(Deserialize, Serialize)]
 struct ApiError {
@@ -16,20 +18,12 @@ struct ApiError {
 }
 
 #[derive(Debug)]
-pub(super) struct InvalidPath;
-impl reject::Reject for InvalidPath {}
-
-#[derive(Debug)]
 pub(super) struct InvalidParam(pub(super) anyhow::Error);
 impl reject::Reject for InvalidParam {}
 
 #[derive(Debug)]
 pub(super) struct StorageError(pub(super) DatabaseReadError);
 impl reject::Reject for StorageError {}
-
-#[derive(Debug)]
-pub(super) struct Unexpected(pub(super) anyhow::Error);
-impl reject::Reject for Unexpected {}
 
 /// Handle various REST server errors:
 /// - Unexpected internal server errors

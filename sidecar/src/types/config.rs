@@ -17,6 +17,7 @@ pub struct Config {
     pub storage: StorageConfig,
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
+    pub admin_server: Option<AdminServerConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -58,6 +59,13 @@ pub struct EventStreamServerConfig {
     pub port: u16,
     pub max_concurrent_subscribers: u32,
     pub event_stream_buffer_length: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct AdminServerConfig {
+    pub port: u16,
+    pub max_concurrent_requests: u32,
+    pub max_requests_per_second: u32,
 }
 
 #[cfg(test)]
@@ -125,6 +133,7 @@ mod tests {
                 max_concurrent_subscribers: 100,
                 event_stream_buffer_length: 5000,
             },
+            admin_server: None,
         };
 
         let parsed_config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
@@ -168,6 +177,11 @@ mod tests {
                 max_concurrent_subscribers: 100,
                 event_stream_buffer_length: 5000,
             },
+            admin_server: Some(AdminServerConfig {
+                port: 18887,
+                max_concurrent_requests: 1,
+                max_requests_per_second: 1,
+            }),
         };
 
         let parsed_config = read_config("../EXAMPLE_NODE_CONFIG.toml")

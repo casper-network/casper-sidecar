@@ -7,6 +7,15 @@ use std::{
 };
 
 use thiserror::Error;
+use warp::{reject, Filter};
+
+#[derive(Debug)]
+pub struct Unexpected(pub(super) anyhow::Error);
+impl reject::Reject for Unexpected {}
+
+#[derive(Debug)]
+pub struct InvalidPath;
+impl reject::Reject for InvalidPath {}
 
 /// DNS resolution error.
 #[derive(Debug, Error)]
@@ -85,4 +94,14 @@ pub(crate) fn display_duration(duration: Duration) -> String {
     } else {
         format!("{}s", duration.as_secs())
     }
+}
+
+/// Handle the case where no filter URL was specified after the root address (HOST:PORT).
+/// Return: a message that an invalid path was provided.
+/// Example: curl http://127.0.0.1:18888
+/// {"code":400,"message":"Invalid request path provided"}
+pub fn root_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
+{
+    warp::path::end()
+        .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
 }
