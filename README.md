@@ -129,6 +129,21 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
+### Admin server
+
+```
+[admin_server]
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 1
+```
+
+This information determines configuration for the Sidecar's `admin_server`. It is optional - if this section of configuration isn't specified then sidecar will not start an admin server.
+
+* `port` - The port for accessing the sidecar's `admin_server`.
+* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
+* `max_requests_per_second` - The maximum total number of requests that can be made per second.
+
 ## Unit Testing the Sidecar Application
 
 You can run included unit tests with the following command:

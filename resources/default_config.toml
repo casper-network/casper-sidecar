@@ -25,3 +25,8 @@ max_requests_per_second = 50
 port = 19999
 max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
+
+[admin_server]
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 1
