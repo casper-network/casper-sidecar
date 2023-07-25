@@ -1,4 +1,4 @@
-use super::{errors::handle_rejection, handlers};
+use super::{errors::handle_rejection, handlers, openapi::build_open_api_filters};
 use crate::{
     types::database::DatabaseReader,
     utils::{root_filter, InvalidPath},
@@ -20,6 +20,7 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(faults_by_public_key(db.clone()))
         .or(faults_by_era(db.clone()))
         .or(finality_signatures_by_block(db))
+        .or(build_open_api_filters())
         .recover(handle_rejection)
 }
 
@@ -62,7 +63,14 @@ fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: data about the latest block.
 /// Path URL: block
 /// Example: curl http://127.0.0.1:18888/block
-fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
+#[utoipa::path(
+    get,
+    path = "/block",
+    responses(
+        (status = 200, description = "fetch latest stored block", body = [BlockAdded])
+    )
+)]
+pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::path!("block")
@@ -76,6 +84,16 @@ fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: data about the block specified.
 /// Path URL: block/<block-hash>
 /// Example: curl http://127.0.0.1:18888/block/c0292d8408e9d83d1aaceadfbeb25dc38cda36bcb91c3d403a0deb594dc3d63f
+#[utoipa::path(
+    get,
+    path = "/block/{block_hash}",
+    params(
+        ("block_hash" = String, Path, description = "Base64 encoded block hash of requested block")
+    ),
+    responses(
+        (status = 200, description = "fetch latest stored block", body = [BlockAdded])
+    )
+)]
 fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -90,6 +108,16 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: data about the block requested.
 /// Path URL: block/<block-height>
 /// Example: curl http://127.0.0.1:18888/block/630151
+#[utoipa::path(
+    get,
+    path = "/block/{height}",
+    params(
+        ("height" = u32, Path, description = "Height of the requested block")
+    ),
+    responses(
+        (status = 200, description = "fetch latest stored block", body = [BlockAdded])
+    )
+)]
 fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -105,6 +133,16 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: data about the deploy specified.
 /// Path URL: deploy/<deploy-hash>
 /// Example: curl http://127.0.0.1:18888/deploy/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+#[utoipa::path(
+    get,
+    path = "/deploy/{deploy_hash}",
+    params(
+        ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy")
+    ),
+    responses(
+        (status = 200, description = "fetch aggregate data for deploy events", body = [DeployAggregate])
+    )
+)]
 fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -119,6 +157,16 @@ fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 /// Return: data about the accepted deploy.
 /// Path URL: deploy/accepted/<deploy-hash>
 /// Example: curl http://127.0.0.1:18888/deploy/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+#[utoipa::path(
+get,
+path = "/deploy/accepted/{deploy_hash}",
+params(
+    ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy accepted")
+),
+responses(
+    (status = 200, description = "fetch stored deploy", body = [DeployAccepted])
+)
+)]
 fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {

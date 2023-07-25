@@ -12,6 +12,7 @@ use casper_types::{
     system::auction::ARG_AMOUNT, CLValue, ContractHash, ContractPackageHash, ContractVersion,
     RuntimeArgs, U512,
 };
+use utoipa::ToSchema;
 
 #[cfg(feature = "sse-data-testing")]
 const TAG_LENGTH: usize = 1;
@@ -31,13 +32,14 @@ const TRANSFER_TAG: u8 = 5;
 const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 
 /// The payment or session code of a [`Deploy`].
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
     /// Raw bytes of compiled Wasm code, which must include a `call` entry point, and the arguments
     /// to call at runtime.
     ModuleBytes {
         /// The compiled Wasm bytes.
+        #[schema(value_type = String)]
         module_bytes: Bytes,
         /// The arguments to be passed to the entry point at runtime.
         args: RuntimeArgs,

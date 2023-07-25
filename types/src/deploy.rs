@@ -15,12 +15,24 @@ use casper_types::{
     bytesrepr::{self},
     runtime_args, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512,
 };
+use utoipa::ToSchema;
 
 use crate::{Digest, ExecutableDeployItem};
 
 /// A cryptographic hash uniquely identifying a [`Deploy`].
 #[derive(
-    Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+    Copy,
+    Clone,
+    Default,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    ToSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub struct DeployHash(Digest);
@@ -55,11 +67,15 @@ impl ToBytes for DeployHash {
 }
 
 /// The header portion of a [`Deploy`].
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeployHeader {
+    /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    #[schema(value_type = String)]
     account: PublicKey,
+    #[schema(value_type = String)]
     timestamp: Timestamp,
+    #[schema(value_type = String)]
     ttl: TimeDiff,
     gas_price: u64,
     body_hash: Digest,
@@ -140,10 +156,13 @@ impl ToBytes for DeployHeader {
 }
 
 /// The signature of a deploy and the public key of the signer.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Approval {
+    /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    #[schema(value_type = String)]
     signer: PublicKey,
+    #[schema(value_type = String)]
     signature: Signature,
 }
 
@@ -157,13 +176,14 @@ impl Approval {
 }
 
 /// A signed item sent to the network used to request execution of Wasm.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
+    #[schema(value_type = Vec<Approval>)]
     approvals: BTreeSet<Approval>,
 }
 

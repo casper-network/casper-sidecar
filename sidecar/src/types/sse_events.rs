@@ -15,6 +15,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
+use utoipa::ToSchema;
 
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.
@@ -22,7 +23,7 @@ use std::{
 pub struct ApiVersion(ProtocolVersion);
 
 /// The given block has been added to the linear chain and stored locally.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct BlockAdded {
     block_hash: BlockHash,
     block: Box<JsonBlock>,
@@ -50,9 +51,8 @@ impl BlockAdded {
 }
 
 /// The given deploy has been newly-accepted by this node.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct DeployAccepted {
-    #[serde(flatten)]
     // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
     deploy: Arc<Deploy>,
 }
@@ -76,11 +76,14 @@ impl DeployAccepted {
 }
 
 /// The given deploy has been executed, committed and forms part of the given block.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct DeployProcessed {
     deploy_hash: Box<DeployHash>,
+    #[schema(value_type = String)]
     account: Box<PublicKey>,
+    #[schema(value_type = String)]
     timestamp: Timestamp,
+    #[schema(value_type = String)]
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
     block_hash: Box<BlockHash>,
@@ -127,10 +130,14 @@ impl DeployExpired {
 }
 
 /// Generic representation of validator's fault in an era.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct Fault {
+    #[schema(value_type = u64)]
     pub era_id: EraId,
+    /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    #[schema(value_type = String)]
     pub public_key: PublicKey,
+    #[schema(value_type = String)]
     pub timestamp: Timestamp,
 }
 
@@ -179,8 +186,9 @@ impl FinalitySignature {
 }
 
 /// The execution effects produced by a `StepRequest`.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct Step {
+    #[schema(value_type = u64)]
     pub era_id: EraId,
     execution_effect: Box<RawValue>,
 }
