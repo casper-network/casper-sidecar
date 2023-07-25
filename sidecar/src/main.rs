@@ -8,7 +8,7 @@ mod integration_tests_version_switch;
 mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
-mod rest_server;
+pub mod rest_server;
 mod sql;
 mod sqlite_database;
 #[cfg(test)]
@@ -172,7 +172,6 @@ async fn run(config: Config) -> Result<(), Error> {
             Ok(())
         }
     });
-
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, mut outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));

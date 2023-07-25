@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate lazy_static;
-mod block;
-mod deploy;
+#[cfg_attr(not(test), macro_use)]
+extern crate alloc;
+pub mod block;
+pub mod deploy;
 mod digest;
 mod executable_deploy_item;
 mod filter;

@@ -1,6 +1,7 @@
 mod errors;
-mod filters;
+pub mod filters;
 mod handlers;
+mod openapi;
 #[cfg(test)]
 mod tests;
 
@@ -10,6 +11,7 @@ use std::time::Duration;
 use anyhow::Error;
 use hyper::Server;
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use warp::Filter;
 
 use crate::{
     sqlite_database::SqliteDatabase, types::config::RestServerConfig, utils::resolve_address,
@@ -22,13 +24,12 @@ pub async fn run_server(
     sqlite_database: SqliteDatabase,
 ) -> Result<(), Error> {
     let api = filters::combined_filters(sqlite_database);
-
     let address = format!("{}:{}", BIND_ALL_INTERFACES, config.port);
     let socket_address = resolve_address(&address)?;
 
     let listener = TcpListener::bind(socket_address)?;
 
-    let warp_service = warp::service(api);
+    let warp_service = warp::service(api.with(warp::cors().allow_any_origin()));
     let tower_service = ServiceBuilder::new()
         .concurrency_limit(config.max_concurrent_requests as usize)
         .rate_limit(

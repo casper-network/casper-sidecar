@@ -16,9 +16,10 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 #[cfg(feature = "sse-data-testing")]
 use casper_types::bytesrepr::{self, ToBytes};
 use casper_types::{checksummed_hex, testing::TestRng};
+use utoipa::ToSchema;
 
 /// The output of the hash function.
-#[derive(Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, ToSchema)]
 pub struct Digest([u8; Digest::LENGTH]);
 
 impl Digest {
