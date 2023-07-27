@@ -1,12 +1,12 @@
 [package]
 name = "casper-event-listener"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0.65"
 bytes = "1.2.0"
-casper-event-types = { path = "../types", version = "0.1.0" }
+casper-event-types = { path = "../types", version = "0.1.1" }
 casper-types = { version = "2.0.0", features = ["std"] }
 eventsource-stream = "0.2.3"
 futures = "0.3.24"
@@ -21,7 +21,7 @@ tracing = "0.1"
 url = "2.3.1"
 
 [dev-dependencies]
-casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"]}
+casper-event-types = { path = "../types", version = "0.1.1", features = ["sse-data-testing"]}
 futures-util = "0.3.28"
 portpicker = "0.1.1"
 warp = { version = "0.3.3"}
