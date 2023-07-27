@@ -6,12 +6,14 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
+use casper_types::bytesrepr::Bytes;
 #[cfg(feature = "sse-data-testing")]
-use casper_types::bytesrepr::{self, Bytes, ToBytes};
 use casper_types::{
-    system::auction::ARG_AMOUNT, CLValue, ContractHash, ContractPackageHash, ContractVersion,
-    RuntimeArgs, U512,
+    bytesrepr::{self, ToBytes},
+    system::auction::ARG_AMOUNT,
+    CLValue, U512,
 };
+use casper_types::{ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs};
 
 #[cfg(feature = "sse-data-testing")]
 const TAG_LENGTH: usize = 1;

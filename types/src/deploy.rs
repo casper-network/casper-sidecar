@@ -10,11 +10,13 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{bytesrepr::ToBytes, testing::TestRng};
 use casper_types::{
-    bytesrepr::{self},
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512,
+    bytesrepr::{self, ToBytes},
+    runtime_args,
+    testing::TestRng,
+    RuntimeArgs, SecretKey, U512,
 };
+use casper_types::{PublicKey, Signature, TimeDiff, Timestamp};
 
 use crate::{Digest, ExecutableDeployItem};
 

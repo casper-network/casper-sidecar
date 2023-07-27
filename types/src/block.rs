@@ -1,19 +1,19 @@
+#[cfg(feature = "sse-data-testing")]
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "sse-data-testing")]
+use std::iter;
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     hash::Hash,
-    iter,
 };
 
 #[cfg(feature = "sse-data-testing")]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-
-use casper_types::{
-    bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
-};
+use casper_types::{bytesrepr, SecretKey};
 #[cfg(feature = "sse-data-testing")]
 use casper_types::{bytesrepr::ToBytes, crypto, testing::TestRng};
+use casper_types::{EraId, ProtocolVersion, PublicKey, Signature, Timestamp, U512};
 
 use crate::{DeployHash, Digest};
 
