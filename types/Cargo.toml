@@ -15,7 +15,7 @@ rand = { version = "0.8.5", optional = true }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc", "raw_value"] }
 thiserror = "1.0.39"
-utoipa = { git = "https://github.com/juhaku/utoipa", rev = "cea4c50112c6cc0883767a43ff611db367cd13b5", features = ["rc_schema"]}
+utoipa = { version = "3.4.4", features = ["rc_schema"]}
 
 [features]
 sse-data-testing = ["blake2", "casper-types/testing", "rand"]

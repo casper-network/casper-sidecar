@@ -31,10 +31,11 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        node_mock.start().await;
         start_sidecar(testing_config).await;
-        let (join_handle, receiver) =
+        let (join_handle, mut receiver) =
             fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-        receiver.await.ok();
+        receiver.recv().await.unwrap();
         node_mock.stop().await;
         let mut node_mock = MockNode::new(
             "1.4.10".to_string(),
@@ -43,6 +44,7 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        node_mock.start().await;
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
 
@@ -76,10 +78,11 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        node_mock.start().await;
         start_sidecar(testing_config).await;
-        let (join_handle, receiver) =
+        let (join_handle, mut receiver) =
             fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-        receiver.await.ok();
+        receiver.recv().await.unwrap();
         node_mock.stop().await;
 
         let mut node_mock = MockNode::new(
@@ -89,6 +92,7 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
+        node_mock.start().await;
         thread::sleep(time::Duration::from_secs(5)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
         let events_received = tokio::join!(join_handle).0.unwrap();
@@ -124,7 +128,8 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
-        let (join_handle, receiver) =
+        node_mock.start().await;
+        let (join_handle, mut receiver) =
             fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
         start_sidecar(testing_config).await;
         node_mock.stop().await;
@@ -135,7 +140,8 @@ pub mod tests {
             node_port_for_rest_connection,
         )
         .await;
-        receiver.await.ok(); // Wait for the first event to go through to outbound
+        node_mock.start().await;
+        receiver.recv().await.unwrap(); // Wait for the first event to go through to outbound
         thread::sleep(time::Duration::from_secs(3)); //give some time for sidecar to connect and read data
         node_mock.stop().await;
         let events_received = tokio::join!(join_handle).0.unwrap();

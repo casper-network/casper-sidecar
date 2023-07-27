@@ -18,7 +18,7 @@ static USED_PORTS: Lazy<Arc<Mutex<Vec<u16>>>> = Lazy::new(|| Arc::new(Mutex::new
 /// This function (used in tests only) is used to make sure that concurrently running
 /// IT tests don't accidentally pick the same port. If in the future our tests would run
 /// slowly or not run at all because of this we need to figure out a way of returning ports after an IT test finishes
-fn get_port() -> u16 {
+pub fn get_port() -> u16 {
     let mut guard = USED_PORTS.lock().unwrap();
     let mut maybe_port = portpicker::pick_unused_port().unwrap();
     let mut attempt = 0;
