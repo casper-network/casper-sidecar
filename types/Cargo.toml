@@ -2,6 +2,12 @@
 name = "casper-event-types"
 version = "0.1.1"
 edition = "2021"
+description = "Types for casper-event-listener library"
+license = ""
+license-file = ""
+documentation = "README.md"
+homepage = "" 
+repository = "https://github.com/CasperLabs/event-sidecar"
 
 [dependencies]
 blake2 = { version = "0.9.0", optional = true }

@@ -2,6 +2,12 @@
 name = "casper-event-listener"
 version = "0.1.1"
 edition = "2021"
+description = "Event listener for casper-event-listener library"
+license = ""
+license-file = ""
+documentation = "README.md"
+homepage = "" 
+repository = "https://github.com/CasperLabs/event-sidecar"
 
 [dependencies]
 anyhow = "1.0.65"

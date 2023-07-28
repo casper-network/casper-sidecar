@@ -4,6 +4,12 @@ authors = ["George Williamson <george@casperlabs.io>", "Jakub Zajkowski <jakub@c
 version = "0.1.1"
 edition = "2018"
 readme = "README.md"
+description = "App for storing and republishing sse events of a casper node"
+license = ""
+license-file = ""
+documentation = "README.md"
+homepage = "" 
+repository = "https://github.com/CasperLabs/event-sidecar"
 
 [dependencies]
 anyhow = { version = "1.0.44", default-features = false }
