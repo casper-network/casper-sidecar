@@ -1,4 +1,5 @@
 [workspace]
+license-file = "LICENSE"
 members = [
     "sidecar",
     "listener",

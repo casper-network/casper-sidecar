@@ -5,10 +5,9 @@ version = "0.1.1"
 edition = "2018"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
-license = ""
-license-file = ""
+license-file = "../LICENSE"
 documentation = "README.md"
-homepage = "" 
+homepage = "https://github.com/CasperLabs/event-sidecar"
 repository = "https://github.com/CasperLabs/event-sidecar"
 
 [dependencies]
