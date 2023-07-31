@@ -251,7 +251,6 @@ async fn should_allow_partial_connection_on_one_filter() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert!(!events_received.is_empty());
-
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
