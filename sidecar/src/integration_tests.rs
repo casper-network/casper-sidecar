@@ -225,8 +225,33 @@ async fn should_respond_to_rest_query() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_one_filter() {
-    let received_event_types = partial_connection_test(100, 2, true).await;
-    assert!(received_event_types.is_some())
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+
+    //MockNode::new should only have /events/main and /events sse endpoints,
+    // simulating a situation when a node doesn't expose all endpoints.
+    let mut node_mock = MockNode::new(
+        "1.4.10".to_string(),
+        sse_server_example_1_4_10_data(),
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    )
+    .await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+
+    receiver.await.ok(); // wait for the first event to be seen
+    node_mock.stop().await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert!(!events_received.is_empty());
+
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
