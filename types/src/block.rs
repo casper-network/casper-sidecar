@@ -5,21 +5,32 @@ use std::{
     iter,
 };
 
-#[cfg(feature = "sse-data-testing")]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-
 use casper_types::{
     bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(feature = "sse-data-testing")]
 use casper_types::{bytesrepr::ToBytes, crypto, testing::TestRng};
+#[cfg(feature = "sse-data-testing")]
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{DeployHash, Digest};
 
 /// A cryptographic hash identifying a [`Block`].
 #[derive(
-    Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+    Copy,
+    Clone,
+    Default,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    ToSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub struct BlockHash(Digest);
@@ -57,10 +68,13 @@ impl ToBytes for BlockHash {
     }
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 pub struct EraReport {
+    #[schema(value_type = Vec<String>)]
     equivocators: Vec<PublicKey>,
+    #[schema(value_type = Map<String, u64>)]
     rewards: BTreeMap<PublicKey, u64>,
+    #[schema(value_type = Vec<String>)]
     inactive_validators: Vec<PublicKey>,
 }
 
@@ -106,7 +120,7 @@ impl ToBytes for EraEnd {
 }
 
 /// The header portion of a [`Block`].
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
@@ -114,9 +128,13 @@ pub struct BlockHeader {
     random_bit: bool,
     accumulated_seed: Digest,
     era_end: Option<EraEnd>,
+    #[schema(value_type = String)]
     timestamp: Timestamp,
+    #[schema(value_type = u64)]
     era_id: EraId,
     height: u64,
+    /// The protocol version.
+    #[schema(value_type = String)]
     protocol_version: ProtocolVersion,
 }
 
@@ -151,8 +169,10 @@ impl ToBytes for BlockHeader {
     }
 }
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, ToSchema)]
 pub struct BlockBody {
+    /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    #[schema(value_type = String)]
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
@@ -275,11 +295,15 @@ impl Block {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct FinalitySignature {
     block_hash: BlockHash,
+    #[schema(value_type = u64)]
     era_id: EraId,
+    #[schema(value_type = String)]
     signature: Signature,
+    /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    #[schema(value_type = String)]
     public_key: PublicKey,
 }
 
@@ -326,27 +350,36 @@ impl FinalitySignature {
 pub mod json_compatibility {
     use super::*;
     use casper_types::PublicKey;
+    use utoipa::ToSchema;
 
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
-    struct Reward {
+    pub struct Reward {
+        /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+        #[schema(value_type = String)]
         validator: PublicKey,
+        #[schema(value_type = String)]
         amount: u64,
     }
 
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
-    struct ValidatorWeight {
+    pub struct ValidatorWeight {
+        /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+        #[schema(value_type = String)]
         validator: PublicKey,
+        #[schema(value_type = String)]
         weight: U512,
     }
 
     /// Equivocation and reward information to be included in the terminal block.
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
-    struct JsonEraReport {
+    pub struct JsonEraReport {
+        #[schema(value_type = Vec<String>)]
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
+        #[schema(value_type = Vec<String>)]
         inactive_validators: Vec<PublicKey>,
     }
 
@@ -381,7 +414,7 @@ pub mod json_compatibility {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonEraEnd {
         era_report: JsonEraReport,
@@ -424,7 +457,7 @@ pub mod json_compatibility {
     }
 
     /// JSON representation of a block header.
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlockHeader {
         /// The parent hash.
@@ -440,12 +473,15 @@ pub mod json_compatibility {
         /// The era end.
         pub era_end: Option<JsonEraEnd>,
         /// The block timestamp.
+        #[schema(value_type = String)]
         pub timestamp: Timestamp,
         /// The block era id.
+        #[schema(value_type = u64)]
         pub era_id: EraId,
         /// The block height.
         pub height: u64,
         /// The protocol version.
+        #[schema(value_type = String)]
         pub protocol_version: ProtocolVersion,
     }
 
@@ -484,9 +520,11 @@ pub mod json_compatibility {
     }
 
     /// A JSON-friendly representation of `Body`
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlockBody {
+        /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+        #[schema(value_type = String)]
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
@@ -513,7 +551,7 @@ pub mod json_compatibility {
     }
 
     /// A JSON-friendly representation of `Block`.
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlock {
         /// `BlockHash`
@@ -584,10 +622,13 @@ pub mod json_compatibility {
     }
 
     /// A JSON-friendly representation of a proof, i.e. a block's finality signature.
-    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonProof {
+        /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+        #[schema(value_type = String)]
         public_key: PublicKey,
+        #[schema(value_type = String)]
         signature: Signature,
     }
 

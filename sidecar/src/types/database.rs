@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -265,7 +266,7 @@ pub enum DatabaseReadError {
     Unhandled(anyhow::Error),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
 pub struct DeployAggregate {
     pub(crate) deploy_hash: String,
     pub(crate) deploy_accepted: Option<DeployAccepted>,
