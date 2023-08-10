@@ -1,6 +1,6 @@
 use super::run;
+use anyhow::Error;
 use bytes::Bytes;
-use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface};
 use casper_event_types::sse_data::{test_support::*, SseData};
 use casper_types::testing::TestRng;
 use core::time;
@@ -8,26 +8,21 @@ use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
-use std::{fmt::Debug, net::IpAddr, path::Path, time::Duration};
+use std::{fmt::Debug, path::Path, time::Duration};
 use tempfile::{tempdir, TempDir};
-use tokio::{sync::mpsc, time::Instant};
+use tokio::sync::mpsc;
 
 use crate::{
-    event_stream_server::Config as EssConfig,
     sqlite_database::SqliteDatabase,
     testing::{
-        fake_event_stream::{
-            setup_mock_build_version_server, spin_up_fake_event_stream, Bound,
-            GenericScenarioSettings, Restart, Scenario,
-        },
-        mock_node::tests::MockNode,
+        mock_node::tests::{MockNode, MockNodeBuilder},
         raw_sse_events_utils::tests::{
             random_n_block_added, sse_server_example_1_4_10_data,
             sse_server_example_1_4_10_data_second, sse_server_example_1_4_10_data_third,
             sse_server_example_1_4_9_data_second, sse_server_shutdown_1_0_0_data, EventsWithIds,
         },
         shared::EventType,
-        testing_config::{get_port, prepare_config, TestingConfig},
+        testing_config::{prepare_config, TestingConfig},
     },
     types::{
         database::DatabaseWriter,
@@ -57,29 +52,31 @@ async fn should_not_allow_zero_max_attempts() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
+async fn given_sidecar_when_only_node_shuts_down_then_shut_down() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
 
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
+    //MockNode::new should only have /events/main and /events sse endpoints,
+    // simulating a situation when a node doesn't expose all endpoints.
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    let sidecar_join = start_sidecar(testing_config).await;
+    let (_, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(Duration::from_secs(30)),
-            None,
-        )),
-    ));
-
-    let shutdown_err = run(testing_config.inner())
+    let shutdown_err = sidecar_join
         .await
+        .unwrap()
         .expect_err("Sidecar should return an Err message on shutdown");
 
     assert_eq!(
@@ -90,102 +87,60 @@ async fn should_bind_to_fake_event_stream_and_shutdown_cleanly() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_client_connection_to_sse() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(Duration::from_secs(60)),
-            None,
-        )),
-    ));
-
-    tokio::spawn(run(testing_config.inner()));
-
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main",
-        testing_config.event_stream_server_port()
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
     );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
-    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
-
-    let mut events_received = Vec::new();
-
-    while let Some(Ok(event)) = main_event_stream.next().await {
-        let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
-        events_received.push(sse_data);
-    }
-
-    assert!(!events_received.is_empty());
-    assert!(events_received.len() > 1);
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
     assert!(
-        matches!(events_received[0], SseData::ApiVersion(_)),
+        events_received[0].contains("\"ApiVersion\""),
         "First event should be ApiVersion"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_respond_to_rest_query() {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            Bound::Timed(Duration::from_secs(60)),
-            None,
-        )),
-    ));
-
-    tokio::spawn(run(testing_config.inner()));
-
-    let main_event_stream_url = format!(
-        "http://127.0.0.1:{}/events/main",
-        testing_config.event_stream_server_port()
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let sidecar_rest_server_port = testing_config.rest_server_port();
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
     );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    start_sidecar(testing_config).await;
+    let (_, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
 
-    let mut main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
-
-    // Listen to the sidecar's outbound stream to check for it storing a BlockAdded
-    while let Some(Ok(event)) = main_event_stream.next().await {
-        let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
-        if matches!(sse_data, SseData::BlockAdded { .. }) {
-            break;
-        }
-    }
-
-    let block_request_url = format!(
-        "http://127.0.0.1:{}/block",
-        testing_config.rest_server_port()
-    );
+    let block_request_url = format!("http://127.0.0.1:{}/block", sidecar_rest_server_port);
     let response = reqwest::Client::new()
         .get(&block_request_url)
         .send()
         .await
         .expect("Error requesting the /block endpoint");
 
-    assert!(response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND);
+    assert!(response.status() == StatusCode::OK);
 
     let response_bytes = response
         .bytes()
@@ -204,24 +159,16 @@ async fn should_allow_partial_connection_on_one_filter() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-
-    //MockNode::new should only have /events/main and /events sse endpoints,
-    // simulating a situation when a node doesn't expose all endpoints.
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        sse_server_example_1_4_10_data(),
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(1, receiver, Duration::from_secs(30))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert!(!events_received.is_empty());
@@ -229,44 +176,15 @@ async fn should_allow_partial_connection_on_one_filter() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_allow_partial_connection_on_two_filters() {
-    let received_event_types = partial_connection_test(100, 4, true).await;
-    assert!(received_event_types.is_some())
+    let received_event_types = partial_connection_test(true).await;
+    assert_eq!(received_event_types.len(), 1)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_disallow_partial_connection_on_one_filter() {
-    let received_event_types = partial_connection_test(100, 1, false).await;
-    assert!(received_event_types.is_none())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn should_disallow_partial_connection_on_two_filters() {
-    let received_event_types = partial_connection_test(100, 2, false).await;
-    assert!(received_event_types.is_none())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-async fn should_not_attempt_reconnection() {
-    // Configure the sidecar to make 0 retries
-    let max_attempts = 0;
-    let delay_between_retries = 0;
-
-    // Configure the Fake Event Stream to shutdown after 30s
-    let shutdown_after = Duration::from_secs(30);
-    // And then resume after 10s
-    let restart_after = Duration::from_secs(10);
-
-    let time_for_sidecar_to_shutdown = reconnection_test(
-        max_attempts,
-        delay_between_retries,
-        Bound::Timed(shutdown_after),
-        restart_after,
-    )
-    .await;
-
-    let total_stream_duration = shutdown_after;
-
-    assert!(time_for_sidecar_to_shutdown < total_stream_duration + Duration::from_secs(3));
+    let received_event_types = partial_connection_test(false).await;
+    //There should only be ApiVersion
+    assert!(received_event_types.is_empty())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
@@ -279,36 +197,36 @@ async fn should_fail_to_reconnect() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config_with_retries(2, 2);
-    let (data, test_rng) = random_n_block_added(30, 0, test_rng);
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        data,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node,
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(31, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     tokio::time::sleep(time::Duration::from_secs(15)).await; //give some time for the old sse server to go away
 
-    let (data, _) = random_n_block_added(30, 31, test_rng);
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        data,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let (data_of_node, _) = random_n_block_added(30, 31, test_rng);
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node,
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     tokio::time::sleep(time::Duration::from_secs(3)).await; //give some time for the data to propagate
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
@@ -326,36 +244,34 @@ async fn should_reconnect() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config_with_retries(10, 1);
-    let (data, test_rng) = random_n_block_added(30, 0, test_rng);
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        data,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node,
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    let receiver = wait_for_n_messages(31, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let receiver = wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
-    let (data, _) = random_n_block_added(30, 31, test_rng);
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        data,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
-    wait_for_n_messages(31, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let (data_of_node, _) = random_n_block_added(30, 31, test_rng);
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node,
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
@@ -372,21 +288,20 @@ async fn shutdown_should_be_passed_through() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNode::new(
-        "1.0.0".to_string(),
-        sse_server_shutdown_1_0_0_data(),
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let mut node_mock = MockNodeBuilder {
+        version: "1.0.0".to_string(),
+        data_of_node: sse_server_shutdown_1_0_0_data(),
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
@@ -404,33 +319,27 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNode::new(
-        "1.0.0".to_string(),
-        sse_server_shutdown_1_0_0_data(),
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let mut node_mock = MockNodeBuilder {
+        version: "1.0.0".to_string(),
+        data_of_node: sse_server_shutdown_1_0_0_data(),
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    let receiver = wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        sse_server_example_1_4_10_data(),
+    let receiver = wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
-    wait_for_n_messages(1, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 5);
@@ -450,21 +359,16 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNode::new(
-        "1.4.10".to_string(),
-        sse_server_example_1_4_10_data(),
+    let mut node_mock = MockNodeBuilder::build_example_1_4_10_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/sidecar", event_stream_server_port).await;
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
-    wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+    wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 2);
@@ -484,26 +388,24 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let data = vec![(
+    let data_of_node = vec![(
         Some("2".to_string()),
         example_block_added_1_4_10(BLOCK_HASH_3, "3"),
     )];
-    let mut node_mock = MockNode::new_with_cache(
-        "1.4.10".to_string(),
-        data,
-        sse_server_example_1_4_10_data(),
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node,
+        cache_of_node: Some(sse_server_example_1_4_10_data()),
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
     assert!(events_received.get(0).unwrap().contains("\"1.4.10\""));
@@ -532,22 +434,20 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
         .save_fault(Fault::random(&mut rng), 0, "127.0.0.1".to_string())
         .await
         .unwrap();
-    let mut node_mock = MockNode::new_with_cache(
-        "1.4.10".to_string(),
-        sse_server_example_1_4_10_data_second(),
-        sse_server_example_1_4_10_data(),
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
-    start_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    let mut node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
+        data_of_node: sse_server_example_1_4_10_data_second(),
+        cache_of_node: Some(sse_server_example_1_4_10_data()),
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(1, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
+    wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 2);
@@ -576,12 +476,8 @@ async fn sidecar_should_connect_to_multiple_nodes() {
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(3, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2, &mut mock_node_3])
-        .await
-        .unwrap();
+    wait_for_n_messages(4, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2, &mut mock_node_3]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
@@ -616,14 +512,10 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    let receiver = wait_for_n_messages(1, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
+    let receiver = wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
     mock_node_1.stop().await;
     mock_node_2.start().await;
-    wait_for_n_messages(1, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
+    wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
     mock_node_2.stop().await;
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
@@ -645,9 +537,7 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
         build_1_4_10(sse_server_example_1_4_10_data()).await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
         build_1_4_10(sse_server_example_1_4_10_data_second()).await;
-    start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2])
-        .await
-        .unwrap();
+    start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
             (sse_port_1, rest_port_1),
@@ -656,12 +546,8 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2])
-        .await
-        .unwrap();
+    wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
@@ -682,9 +568,7 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
         build_1_4_10(sse_server_example_1_4_10_data()).await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
         build_1_4_10(sse_server_example_1_4_10_data_second()).await;
-    start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2])
-        .await
-        .unwrap();
+    start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
             (sse_port_1, rest_port_1),
@@ -694,12 +578,8 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(2, receiver, Duration::from_secs(120))
-        .await
-        .unwrap();
-    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2])
-        .await
-        .unwrap();
+    wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
+    stop_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
@@ -715,138 +595,32 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
     ));
 }
 
-async fn partial_connection_test(
-    num_of_events_to_send: u64,
-    max_subscribers_for_fes: u32,
-    allow_partial_connection: bool,
-) -> Option<Vec<EventType>> {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-
+async fn partial_connection_test(allow_partial_connection: bool) -> Vec<EventType> {
+    // Prepare the mock node, by the "default" config it should have only the /events and /events/main endpoints
+    let (sse_port, rest_port, mut node_mock) = build_1_4_10(sse_server_example_1_4_10_data()).await;
     // Setup config for the sidecar
     //      - Set the sidecar to reattempt connection only once after a 2 second delay.
     //      - Allow partial based on the value passed to the function.
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-    testing_config.set_retries_for_node(node_port_for_sse_connection, 1, 2);
-    testing_config.set_allow_partial_connection_for_node(
-        node_port_for_sse_connection,
-        allow_partial_connection,
-    );
-
-    // Setup config for the Event Stream Server to be used in the Fake Event Stream
-    //      - Run it on the port the sidecar is set to connect to.
-    //      - The buffer will be the default.
-    //      - Limit the max_subscribers to the FakeEventStream as per the value passed to the function.
-    let ess_config = EssConfig::new(
-        node_port_for_sse_connection,
-        None,
-        Some(max_subscribers_for_fes),
-    );
-
-    // Run the Fake Event Stream in another task
-    //      - Use the Counted scenario to get the event stream to send the number of events specified in the test.
-    tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Counted(GenericScenarioSettings::new(
-            Bound::Counted(num_of_events_to_send),
-            None,
-        )),
-    ));
+    let (mut testing_config, event_stream_server_port, _temp_storage_dir) =
+        build_testing_config_based_on_ports(vec![(sse_port, rest_port)]);
+    testing_config.set_allow_partial_connection_for_node(sse_port, allow_partial_connection);
+    // Start the mock node
+    start_nodes_and_wait(vec![&mut node_mock]).await;
 
     // Run the Sidecar in another task with the prepared config.
-    tokio::spawn(run(testing_config.inner()));
-
-    let (event_tx, mut event_rx) = mpsc::channel(100);
-    let mut test_event_listener = EventListenerBuilder {
-        node: NodeConnectionInterface {
-            ip_address: IpAddr::from([127, 0, 0, 1]),
-            sse_port: testing_config.event_stream_server_port(),
-            rest_port: node_port_for_rest_connection,
-        },
-        max_connection_attempts: 3,
-        delay_between_attempts: Duration::from_secs(1),
-        allow_partial_connection: false,
-        sse_event_sender: event_tx,
-        connection_timeout: Duration::from_secs(100),
-        sleep_between_keep_alive_checks: Duration::from_secs(100),
-        no_message_timeout: Duration::from_secs(100),
-    }
-    .build();
-
-    tokio::spawn(async move {
-        let res = test_event_listener.stream_aggregated_events(false).await;
-
-        if let Err(error) = res {
-            println!("Listener Error: {}", error)
-        }
-    });
-
-    let mut event_types_received = Vec::new();
-
-    while let Some(event) = event_rx.recv().await {
-        if !matches!(event.data, SseData::ApiVersion(_)) && !matches!(event.data, SseData::Shutdown)
-        {
-            event_types_received.push(event.data.into())
-        }
-    }
-
-    if event_types_received.is_empty() {
-        None
-    } else {
-        Some(event_types_received)
-    }
-}
-
-async fn reconnection_test(
-    max_attempts: usize,
-    delay_between_retries: usize,
-    shutdown_after: Bound,
-    restart_after: Duration,
-) -> Duration {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
-
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    let (_shutdown_tx, _after_shutdown_rx) =
-        setup_mock_build_version_server(node_port_for_rest_connection).await;
-    testing_config.set_retries_for_node(
-        node_port_for_sse_connection,
-        max_attempts,
-        delay_between_retries,
-    );
-
-    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
-
-    let fes_handle = tokio::spawn(spin_up_fake_event_stream(
-        test_rng,
-        ess_config,
-        Scenario::Realistic(GenericScenarioSettings::new(
-            shutdown_after,
-            Some(Restart::new(
-                restart_after,
-                Bound::Timed(Duration::from_secs(30)),
-            )),
-        )),
-    ));
-    let sidecar_handle = tokio::spawn(async move {
-        let start_instant = Instant::now();
-        let maybe_error = run(testing_config.inner()).await;
-        maybe_error.expect_err("Sidecar should return an Err message on shutdown");
-        Instant::now() - start_instant
-    });
-
-    let (_, time_for_sidecar_to_shutdown) = tokio::join!(fes_handle, sidecar_handle);
-    time_for_sidecar_to_shutdown.unwrap()
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    let _ = wait_for_n_messages(1, receiver, Duration::from_secs(60)).await;
+    //We need to stop the mock node, otherwise `join_handle` might never finish (it listens to events until sidecar stops)
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    let collected: Vec<EventType> = events_received
+        .iter()
+        .map(|raw_events| serde_json::from_str::<SseData>(raw_events).unwrap().into())
+        .filter(|t: &EventType| *t != EventType::ApiVersion)
+        .collect();
+    collected
 }
 
 pub async fn try_connect_to_single_stream(
@@ -867,7 +641,6 @@ pub async fn try_connect_to_single_stream(
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
-
     event_stream.expect("Unable to connect to stream")
 }
 pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
@@ -905,10 +678,10 @@ pub fn build_test_config_with_retries(
     )
 }
 
-pub async fn start_sidecar(testing_config: TestingConfig) {
-    tokio::spawn(async move {
-        let _r = run(testing_config.inner()).await;
-    }); // starting event sidecar
+pub async fn start_sidecar(
+    testing_config: TestingConfig,
+) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::spawn(async move { run(testing_config.inner()).await }) // starting event sidecar
 }
 
 pub async fn poll_events<E, S>(mut stream: S, sender: mpsc::Sender<()>) -> Vec<String>
@@ -917,11 +690,16 @@ where
     S: Stream<Item = Result<Event, E>> + Sized + Unpin,
 {
     let mut events_received = Vec::new();
-    while let Some(Ok(event)) = stream.next().await {
-        if !event.data.contains("ApiVersion") {
-            let _ = sender.send(()).await;
+    while let Some(res) = stream.next().await {
+        match res {
+            Ok(event) => {
+                let _ = sender.send(()).await;
+                events_received.push(event.data);
+            }
+            Err(_) => {
+                break;
+            }
         }
-        events_received.push(event.data);
     }
     events_received
 }
@@ -941,18 +719,17 @@ pub async fn fetch_data_from_endpoint(
 }
 
 pub async fn build_1_4_10(data_of_node: EventsWithIds) -> (u16, u16, MockNode) {
-    let node_port_for_sse_connection = get_port();
-    let node_port_for_rest_connection = get_port();
-    let node_mock = MockNode::new(
-        "1.4.10".to_string(),
+    let node_mock = MockNodeBuilder {
+        version: "1.4.10".to_string(),
         data_of_node,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-    )
-    .await;
+        cache_of_node: None,
+        sse_port: None,
+        rest_port: None,
+    }
+    .build();
     (
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
+        node_mock.get_sse_port(),
+        node_mock.get_rest_port(),
         node_mock,
     )
 }

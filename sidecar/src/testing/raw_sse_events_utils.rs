@@ -8,7 +8,6 @@ pub(crate) mod tests {
     use hex_fmt::HexFmt;
     use std::collections::HashMap;
     use tokio::sync::mpsc::{Receiver, Sender};
-    use tokio_util::sync::CancellationToken;
 
     pub type EventsWithIds = Vec<(Option<String>, String)>;
     pub fn example_data_1_0_0() -> EventsWithIds {
@@ -118,7 +117,6 @@ pub(crate) mod tests {
         port: u16,
         data: EventsWithIds,
         cache: EventsWithIds,
-        sse_initial_latch: CancellationToken,
     ) -> (Sender<()>, Receiver<()>, Vec<String>) {
         let cache_and_data = CacheAndData { cache, data };
         let paths_and_data: HashMap<Vec<String>, CacheAndData> = HashMap::from([
@@ -130,7 +128,6 @@ pub(crate) mod tests {
         ]);
         let sse_server = SimpleSseServer {
             routes: paths_and_data,
-            sse_initial_latch,
         };
         let (shutdown_tx, after_shutdown_rx) = sse_server.serve(port).await;
         let urls: Vec<String> = vec![

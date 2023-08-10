@@ -12,8 +12,6 @@ use std::{
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
 #[cfg(test)]
-use tokio::time::error::Elapsed;
-#[cfg(test)]
 use tokio::time::timeout;
 
 use thiserror::Error;
@@ -108,26 +106,29 @@ pub(crate) fn display_duration(duration: Duration) -> String {
 
 #[cfg(test)]
 /// Forces a stop on the given nodes and waits until all starts finish. Will timeout if the nodes can't start in 3 minutes.
-pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
     let mut futures = vec![];
     for node in nodes {
         futures.push(node.start());
     }
-    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+    timeout(Duration::from_secs(180), futures::future::join_all(futures))
+        .await
+        .unwrap()
 }
 
 #[cfg(test)]
 /// wait_for_n_messages waits at most the `timeout_after` for observing `n` messages received on the `receiver`
-/// It's worth to note that using this function with receivers returned by `fetch_data_from_endpoint` should take into account
-/// that `fetch_data_from_endpoint` doesn't pass ApiVersion to receiver
+/// If the receiver returns a None the function will finish early
 pub(crate) async fn wait_for_n_messages<T: Send + Sync + 'static>(
     n: usize,
     mut receiver: Receiver<T>,
     timeout_after: Duration,
-) -> Result<Receiver<T>, Error> {
+) -> Receiver<T> {
     let join_handle = tokio::spawn(async move {
         for _ in 0..n {
-            receiver.recv().await.unwrap();
+            if receiver.recv().await.is_none() {
+                break;
+            }
         }
         receiver
     });
@@ -135,16 +136,19 @@ pub(crate) async fn wait_for_n_messages<T: Send + Sync + 'static>(
         Ok(res) => res.map_err(|err| Error::msg(format!("Failed to wait for receiver, {}", err))),
         Err(_) => Err(Error::msg("Waiting for messages timed out")),
     }
+    .unwrap()
 }
 
 #[cfg(test)]
 /// Forces a stop on the given nodes and waits until the stop happens. Will timeout if the nodes can't stop in 3 minutes.
-pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
     let mut futures = vec![];
     for node in nodes {
         futures.push(node.stop());
     }
-    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+    timeout(Duration::from_secs(180), futures::future::join_all(futures))
+        .await
+        .unwrap()
 }
 
 #[cfg(test)]

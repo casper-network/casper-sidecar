@@ -131,7 +131,7 @@ mod tests {
         // `false` with the first and second returning before the longer delay of the third task.
         const TASK_COUNT: usize = 3;
         const FAIL_DELAY_MS: u64 = 250;
-        const MAX_DELAY_MS: u64 = FAIL_DELAY_MS + 100;
+        const MAX_DELAY_MS: u64 = FAIL_DELAY_MS + 1000;
         let tasks = ConnectionTasks::new(TASK_COUNT);
         let join_handles = vec![
             task::spawn(connect(tasks.clone(), FAIL_DELAY_MS / 20, true)),

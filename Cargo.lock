@@ -363,6 +363,7 @@ name = "casper-event-listener"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "casper-event-types",
  "casper-types",

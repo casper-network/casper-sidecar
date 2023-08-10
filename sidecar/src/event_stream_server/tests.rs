@@ -24,7 +24,7 @@ use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
     task::{self, JoinHandle},
-    time,
+    time::{self, timeout},
 };
 use tracing::debug;
 
@@ -125,9 +125,13 @@ impl ServerBehavior {
         for client_behavior in &self.clients {
             if client_behavior.join_before_event == id {
                 debug!("server waiting before event {}", id);
-                client_behavior.barrier.wait().await;
+                timeout(Duration::from_secs(60), client_behavior.barrier.wait())
+                    .await
+                    .unwrap();
                 debug!("server waiting for client to connect before event {}", id);
-                client_behavior.barrier.wait().await;
+                timeout(Duration::from_secs(60), client_behavior.barrier.wait())
+                    .await
+                    .unwrap();
                 debug!("server finished waiting before event {}", id);
             }
         }
@@ -458,10 +462,14 @@ async fn subscribe(
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     debug!("{} waiting before connecting via {}", client_id, url);
-    barrier.wait().await;
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
     let response = reqwest::get(url).await?;
     debug!("{} waiting after connecting", client_id);
-    barrier.wait().await;
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
     debug!("{} finished waiting", client_id);
     handle_response(response, final_event_id, client_id).await
 }
@@ -804,9 +812,13 @@ async fn lagging_clients_should_be_disconnected() {
         barrier: Arc<Barrier>,
         client_id: &str,
     ) -> Result<(), reqwest::Error> {
-        barrier.wait().await;
+        timeout(Duration::from_secs(60), barrier.wait())
+            .await
+            .unwrap();
         let response = reqwest::get(url).await.unwrap();
-        barrier.wait().await;
+        timeout(Duration::from_secs(60), barrier.wait())
+            .await
+            .unwrap();
 
         time::sleep(Duration::from_secs(5)).await;
 
@@ -822,7 +834,6 @@ async fn lagging_clients_should_be_disconnected() {
             }
             time::sleep(pause_between_events).await;
         }
-
         Ok(())
     }
 
@@ -849,7 +860,6 @@ async fn lagging_clients_should_be_disconnected() {
         subscribe_slow(&url_sigs, barrier_sigs, "client 3"),
     );
     fixture.stop_server().await;
-
     // Ensure both slow clients' streams terminated with an `UnexpectedEof` error.
     let check_error = |result: Result<(), reqwest::Error>| {
         let kind = result
@@ -879,7 +889,7 @@ async fn should_handle_bad_url_path() {
     let server_address = fixture.run_server(ServerBehavior::new()).await;
 
     #[rustfmt::skip]
-        let urls = [
+    let urls = [
         format!("http://{}", server_address),
         format!("http://{}?{}=0", server_address, QUERY_FIELD),
         format!("http://{}/bad", server_address),

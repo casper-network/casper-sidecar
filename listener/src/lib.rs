@@ -1,6 +1,7 @@
 mod connection_manager;
 mod connection_tasks;
 mod keep_alive_monitor;
+mod sse_connector;
 mod types;
 use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
@@ -175,7 +176,6 @@ impl EventListener {
                             "Unable to retrieve build version from node status",
                         ));
                     }
-
                     sleep(self.delay_between_attempts).await;
                     attempts += 1;
                     continue;
@@ -282,6 +282,8 @@ impl EventListener {
                     EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
                 }
             }
+
+            sleep(Duration::from_secs(1)).await;
         }
         EventListenerStatus::Defunct.log_status_for_event_listener(self);
         Ok(())
