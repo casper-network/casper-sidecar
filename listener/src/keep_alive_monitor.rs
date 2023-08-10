@@ -225,8 +225,8 @@ mod tests {
         let monitor = KeepAliveMonitor::new(
             url,
             Duration::from_secs(100),
-            Duration::from_secs(3),
-            Duration::from_secs(3),
+            Duration::from_secs(5),
+            Duration::from_secs(30),
         );
         monitor.start().await;
         let cancellation_token = monitor.get_cancellation_token();

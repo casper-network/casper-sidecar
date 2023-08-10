@@ -10,7 +10,6 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
-use tokio::task::JoinHandle;
 use tokio::{
     sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     time::Instant,
@@ -32,19 +31,16 @@ const API_VERSION_1_4_0: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 10)
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u64;
-type NumberOfEventsToSend = u64;
 
 #[derive(Clone)]
 pub enum Bound {
     Timed(Duration),
-    Counted(NumberOfEventsToSend),
 }
 
 impl Display for Bound {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Bound::Timed(duration) => write!(f, "{}", display_duration(duration.to_owned())),
-            Bound::Counted(count) => write!(f, "{}", count),
         }
     }
 }
@@ -63,7 +59,6 @@ pub struct Restart {
 
 #[derive(Clone)]
 pub enum Scenario {
-    Counted(GenericScenarioSettings),
     Realistic(GenericScenarioSettings),
     LoadTestingStep(GenericScenarioSettings, FrequencyOfStepEvents),
     LoadTestingDeploy(GenericScenarioSettings, NumberOfDeployEventsInBurst),
@@ -72,9 +67,6 @@ pub enum Scenario {
 impl Display for Scenario {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Scenario::Counted(GenericScenarioSettings { initial_phase, .. }) => {
-                write!(f, "Counted ({})", initial_phase)
-            }
             Scenario::Realistic(_) => write!(f, "Realistic"),
             Scenario::LoadTestingStep(_, _) => {
                 write!(f, "Load Testing [Step]")
@@ -107,36 +99,6 @@ pub(crate) async fn spin_up_fake_event_stream(
     let (events_sender, mut events_receiver) = mpsc_channel(500);
 
     let returned_test_rng = match scenario {
-        Scenario::Counted(settings) => {
-            let scenario_task = tokio::spawn(async move {
-                counted_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
-                    .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    events_sender
-                        .send(SseData::Shutdown)
-                        .await
-                        .expect("Scenario::Counted failed sending shutdown message!");
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    counted_event_streaming(test_rng, events_sender, final_phase).await;
-                }
-                test_rng
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
-                }
-            });
-
-            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
-            test_rng.expect("Should have returned TestRng for re-use")
-        }
         Scenario::Realistic(settings) => {
             let scenario_task = tokio::spawn(async move {
                 realistic_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
@@ -252,39 +214,6 @@ fn plus_twenty_percent(base_value: u64) -> u64 {
     base_value + 2 * ten_percent
 }
 
-async fn counted_event_streaming(
-    test_rng: &mut TestRng,
-    event_sender: Sender<SseData>,
-    count: Bound,
-) {
-    if let Bound::Counted(count) = count {
-        event_sender
-            .send(SseData::ApiVersion(API_VERSION_1_4_0))
-            .await
-            .unwrap();
-        let mut events_sent = 0;
-
-        while events_sent <= count {
-            event_sender
-                .send(SseData::random_deploy_accepted(test_rng).0)
-                .await
-                .expect("counted_event_streaming failed sending random_deploy_accepted!");
-            event_sender
-                .send(SseData::random_block_added(test_rng))
-                .await
-                .expect("counted_event_streaming failed sending random_block_added!");
-            event_sender
-                .send(SseData::random_finality_signature(test_rng))
-                .await
-                .expect("counted_event_streaming failed sending random_finality_signature!");
-            events_sent += 3;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-    } else {
-        panic!("Should have used Bound::Counted for counted_event_streaming")
-    }
-}
-
 async fn realistic_event_streaming(
     test_rng: &mut TestRng,
     events_sender: Sender<SseData>,
@@ -292,14 +221,10 @@ async fn realistic_event_streaming(
 ) {
     let start = Instant::now();
 
-    let events_per_loop =
-        BLOCKS_IN_ERA * (NUMBER_OF_VALIDATORS + 2 * NUMBER_OF_DEPLOYS_PER_BLOCK) as u64 + 2;
-
     let loops_in_duration = match bound {
         Bound::Timed(duration) => {
             BLOCKS_IN_ERA * duration.div(TIME_BETWEEN_BLOCKS.as_secs() as u32).as_secs() + 2
         }
-        Bound::Counted(count) => count / events_per_loop + 2,
     };
 
     let finality_signatures_per_loop = NUMBER_OF_VALIDATORS as u64;
@@ -341,18 +266,12 @@ async fn realistic_event_streaming(
         .await
         .unwrap();
     let mut era_counter: u16 = 0;
-    let mut events_sent = 0;
     'outer: loop {
         for _ in 0..BLOCKS_IN_ERA {
             interval.tick().await;
             match bound {
                 Bound::Timed(duration) => {
                     if start.elapsed() >= duration {
-                        break 'outer;
-                    }
-                }
-                Bound::Counted(count) => {
-                    if events_sent >= count {
                         break 'outer;
                     }
                 }
@@ -365,7 +284,6 @@ async fn realistic_event_streaming(
                     .await
                     .expect("Failed sending finality_signature_event");
             }
-            events_sent += NUMBER_OF_VALIDATORS as u64;
 
             // Emit DeployProcessed events for the next BlockAdded
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
@@ -374,14 +292,12 @@ async fn realistic_event_streaming(
                     .await
                     .expect("Failed sending deploy_processed_events");
             }
-            events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
 
             // Emit the BlockAdded
             events_sender
                 .send(block_added_events.pop().unwrap())
                 .await
                 .expect("Failed sending block_added_event");
-            events_sent += 1;
 
             // Emit DeployAccepted Events
             for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
@@ -390,7 +306,6 @@ async fn realistic_event_streaming(
                     .await
                     .expect("Failed sending deploy_accepted_event");
             }
-            events_sent += NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
         }
 
         if era_counter % 2 == 0 {
@@ -404,14 +319,12 @@ async fn realistic_event_streaming(
                 .await
                 .expect("Failed sending fault_event");
         }
-        events_sent += 1;
 
         // Then a Step
         events_sender
             .send(step_events.pop().unwrap())
             .await
             .expect("Failed sending step_event");
-        events_sent += 1;
 
         era_counter += 1;
     }
@@ -435,17 +348,6 @@ async fn load_testing_step(
                     .send(SseData::random_step(test_rng))
                     .await
                     .expect("Bound::Timed Failed sending random_step");
-                tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
-            }
-        }
-        Bound::Counted(count) => {
-            let mut events_sent = 0;
-            while events_sent <= count {
-                event_sender
-                    .send(SseData::random_step(test_rng))
-                    .await
-                    .expect("Bound::Counted Failed sending random_step");
-                events_sent += 1;
                 tokio::time::sleep(Duration::from_millis(1000 / frequency as u64)).await;
             }
         }
@@ -482,25 +384,6 @@ async fn load_testing_deploy(
                 }
             }
         }
-        Bound::Counted(count) => {
-            let mut events_sent = 0;
-            while events_sent <= count {
-                for _ in 0..burst_size {
-                    events_sender
-                        .send(SseData::random_deploy_accepted(test_rng).0)
-                        .await
-                        .expect("failed sending random_deploy_accepted");
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                for _ in 0..burst_size {
-                    events_sender
-                        .send(SseData::random_deploy_processed(test_rng))
-                        .await
-                        .expect("failed sending random_deploy_processed");
-                }
-                events_sent += burst_size * 2;
-            }
-        }
     }
 }
 
@@ -532,41 +415,10 @@ pub async fn setup_mock_build_version_server_with_version(
     });
 
     tokio::spawn(async move {
-        let result = server_thread.await;
-        if result.is_err() {
-            println!("setup_mock_build_version_server_with_version: {:?}", result);
-        }
+        let _ = server_thread.await;
     });
     wait_for_build_version_server_to_be_up(port).await;
     (shutdown_tx, after_shutdown_rx)
-}
-
-pub async fn wait_for_sse_server_to_be_up(urls: Vec<String>) {
-    let join_handles: Vec<JoinHandle<bool>> = urls
-        .clone()
-        .into_iter()
-        .map(|url| {
-            tokio::spawn(async move {
-                for _ in 0..10 {
-                    let event_source = reqwest::Client::new().get(url.as_str()).send().await;
-                    if event_source.is_ok() {
-                        return true;
-                    } else {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
-                }
-                false
-            })
-        })
-        .collect();
-    let result = futures::future::join_all(join_handles).await;
-    let potential_error_message = format!(
-        "Sse server didn't start for urls: {:?}, return values: {:?}",
-        urls, result
-    );
-    if !result.into_iter().all(|elem| elem.is_ok() && elem.unwrap()) {
-        panic!("{}", potential_error_message);
-    }
 }
 
 pub async fn wait_for_build_version_server_to_be_up(port: u16) {

@@ -138,4 +138,8 @@ pub mod test_support {
         let _ = super::deserialize(&raw_shutdown).expect("malformed raw json"); // deserializing to make sure that the raw json string is in correct form
         raw_shutdown
     }
+
+    pub fn example_api_version() -> String {
+        "{\"ApiVersion\":\"1.0.0\"}".to_string()
+    }
 }

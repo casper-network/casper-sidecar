@@ -9,7 +9,6 @@ pub(crate) mod tests {
     use tokio::sync::broadcast::{self};
     use tokio::sync::mpsc::{channel, Receiver, Sender};
     use tokio::sync::Mutex;
-    use tokio_util::sync::CancellationToken;
     use warp::filters::BoxedFilter;
     use warp::{path, sse::Event, Filter, Rejection, Reply};
 
@@ -27,7 +26,6 @@ pub(crate) mod tests {
 
     pub(crate) struct SimpleSseServer {
         pub routes: HashMap<Vec<String>, CacheAndData>,
-        pub sse_initial_latch: CancellationToken,
     }
 
     #[derive(Debug)]
@@ -56,17 +54,15 @@ pub(crate) mod tests {
                         .and(with_data(data))
                         .and(warp::query())
                         .and(with_shutdown_broadcasts(shutdown_broadcasts.clone()))
-                        .and(with_initial_latch(self.sse_initial_latch.clone()))
                         .and_then(
                             |data,
                              query,
-                             shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>>,
-                             sse_initial_latch: CancellationToken| async move {
+                             shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>>| async move {
                                 let (sender, _) = tokio::sync::broadcast::channel(100);
                                 let mut guard = shutdown_broadcasts.lock().await;
                                 guard.push(sender.clone());
                                 drop(guard);
-                                do_handle(data, sender.clone(), sse_initial_latch.clone(), query)
+                                do_handle(data, sender.clone(), query)
                                     .await
                             },
                         )
@@ -103,11 +99,9 @@ pub(crate) mod tests {
 
     fn build_stream(
         mut broadcast_receiver: BroadcastReceiver,
-        sse_initial_latch: CancellationToken,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         stream! {
             while let Ok(z) = broadcast_receiver.recv().await {
-                sse_initial_latch.cancelled().await;
                 match z {
                     Some(event_data) => {
                         let mut event = Event::default().data(event_data.1);
@@ -125,15 +119,13 @@ pub(crate) mod tests {
     async fn do_handle(
         mut cache_and_data: CacheAndData,
         sender: BroadcastSender,
-        sse_initial_latch: CancellationToken,
         query: HashMap<String, String>,
     ) -> Result<Box<dyn Reply>, Rejection> {
         let maybe_start_from = query
             .get("start_from")
             .and_then(|id_str| id_str.parse::<u32>().ok());
-        let reply = warp::sse::reply(
-            warp::sse::keep_alive().stream(build_stream(sender.subscribe(), sse_initial_latch)),
-        );
+        let reply =
+            warp::sse::reply(warp::sse::keep_alive().stream(build_stream(sender.subscribe())));
         let mut effective_data = Vec::new();
         if let Some(start_from) = maybe_start_from {
             let mut filtered: EventsWithIds = cache_and_data
@@ -167,11 +159,6 @@ pub(crate) mod tests {
         x: Arc<Mutex<Vec<BroadcastSender>>>,
     ) -> impl Filter<Extract = (Arc<Mutex<Vec<BroadcastSender>>>,), Error = Infallible> + Clone
     {
-        warp::any().map(move || x.clone())
-    }
-    fn with_initial_latch(
-        x: CancellationToken,
-    ) -> impl Filter<Extract = (CancellationToken,), Error = Infallible> + Clone {
         warp::any().map(move || x.clone())
     }
 }

@@ -1,25 +1,27 @@
 use super::ConnectionTasks;
-use crate::SseEvent;
+use crate::{
+    sse_connector::{SseConnection, StreamConnector},
+    SseEvent,
+};
 use anyhow::Error;
-use bytes::Bytes;
 use casper_event_types::{
     metrics,
     sse_data::{deserialize, SseData, SseDataDeserializeError},
     Filter,
 };
 use casper_types::ProtocolVersion;
-use eventsource_stream::{Event, EventStream, Eventsource};
-use futures::StreamExt;
-use reqwest::Client;
+use eventsource_stream::Event;
 use reqwest::Url;
 use std::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use tokio::{select, sync::mpsc::Sender};
-use tokio_stream::Stream;
+use tokio::{
+    select,
+    sync::mpsc::{Receiver, Sender},
+};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, trace, warn};
+use tracing::{error, trace, warn};
 
 type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
 const FETCHING_FROM_STREAM_FAILED: &str = "fetching_from_stream_failed";
@@ -32,13 +34,11 @@ const API_VERSION_EXPECTED: &str = "api_version_expected";
 
 /// Implementation of a connection to a single sse endpoint of a node.
 pub(super) struct ConnectionManager {
+    connector: Box<dyn StreamConnector + Send + Sync>,
     bind_address: Url,
     current_event_id: Option<u32>,
-    max_attempts: usize,
-    delay_between_attempts: Duration,
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
-    connection_timeout: Duration,
     filter: Filter,
     deserialization_fn: DeserializationFn,
     current_event_id_sender: Sender<(Filter, u32)>,
@@ -97,14 +97,19 @@ pub struct ConnectionManagerBuilder {
 impl ConnectionManagerBuilder {
     pub(super) fn build(self) -> ConnectionManager {
         trace!("Creating connection manager for: {}", self.bind_address);
-        ConnectionManager {
-            bind_address: self.bind_address,
-            current_event_id: self.start_from_event_id,
+        let connector = Box::new(SseConnection {
             max_attempts: self.max_attempts,
             delay_between_attempts: Duration::from_secs(1),
+            connection_timeout: self.connection_timeout,
+            channel_buffer_size: 200,
+            bind_address: self.bind_address.clone(),
+        });
+        ConnectionManager {
+            connector,
+            bind_address: self.bind_address,
+            current_event_id: self.start_from_event_id,
             sse_event_sender: self.sse_data_sender,
             maybe_tasks: self.maybe_tasks,
-            connection_timeout: self.connection_timeout,
             filter: self.filter,
             deserialization_fn: determine_deserializer(self.node_build_version),
             current_event_id_sender: self.current_event_id_sender,
@@ -120,62 +125,17 @@ impl ConnectionManager {
         self.do_start_handling().await
     }
 
-    async fn connect_with_retries(
-        &mut self,
-    ) -> Result<
-        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
-        ConnectionManagerError,
-    > {
-        let mut retry_count = 0;
-        let mut last_error = None;
-        while retry_count <= self.max_attempts {
-            match self.connect().await {
-                Ok(event_stream) => return Ok(event_stream),
-                Err(ConnectionManagerError::NonRecoverableError { error }) => {
-                    return Err(ConnectionManagerError::NonRecoverableError { error })
-                }
-                Err(err) => last_error = Some(err),
-            }
-            retry_count += 1;
-            tokio::time::sleep(self.delay_between_attempts).await;
+    async fn connect(&mut self) -> Result<Receiver<Result<Event, Error>>, ConnectionManagerError> {
+        let maybe_event_tx = self.connector.connect(self.current_event_id).await;
+        if let Ok(event_tx) = maybe_event_tx {
+            self.consume_api_version(event_tx).await
+        } else {
+            maybe_event_tx
         }
-        Err(couldnt_connect(
-            last_error,
-            self.bind_address.clone(),
-            self.max_attempts,
-        ))
-    }
-
-    async fn connect(
-        &mut self,
-    ) -> Result<
-        EventStream<impl Stream<Item = reqwest::Result<Bytes>> + Sized>,
-        ConnectionManagerError,
-    > {
-        let mut bind_address = self.bind_address.clone();
-
-        if let Some(event_id) = self.current_event_id {
-            let query = format!("start_from={}", event_id);
-            bind_address.set_query(Some(&query))
-        }
-
-        debug!("Connecting to node...\t{}", bind_address);
-        let client = Client::builder()
-            .connect_timeout(self.connection_timeout)
-            .build()
-            .map_err(|err| recoverable_error(Error::new(err)))?;
-        let sse_response = client
-            .get(bind_address)
-            .send()
-            .await
-            .map_err(|err| recoverable_error(Error::new(err)))?;
-        let event_source = sse_response.bytes_stream().eventsource();
-        // Parse the first event to see if the connection was successful
-        self.consume_api_version(event_source).await
     }
 
     async fn do_start_handling(&mut self) -> Result<(), ConnectionManagerError> {
-        let event_stream = match self.connect_with_retries().await {
+        let receiver = match self.connect().await {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
                     tasks.register_success()
@@ -201,20 +161,19 @@ impl ConnectionManager {
         }
         //If we loose connection for some reason we need to go back to the event listener and do
         // the whole handshake process again. The Ok branch here means that we need to do a force restart of connection manager
-        self.handle_stream(event_stream).await
+        self.handle_stream(receiver).await
     }
 
-    async fn handle_stream<E, S>(
+    async fn handle_stream<E>(
         &mut self,
-        mut event_stream: S,
+        mut receiver: Receiver<Result<Event, E>>,
     ) -> Result<(), ConnectionManagerError>
     where
         E: Debug,
-        S: Stream<Item = Result<Event, E>> + Sized + Unpin,
     {
         loop {
             select! {
-                maybe_event = event_stream.next() => {
+                maybe_event = receiver.recv() => {
                     if let Some(event) = maybe_event {
                         match event {
                             Ok(event) => {
@@ -287,17 +246,16 @@ impl ConnectionManager {
         Ok(())
     }
 
-    async fn consume_api_version<S, E>(
+    async fn consume_api_version<E>(
         &mut self,
-        mut stream: EventStream<S>,
-    ) -> Result<EventStream<S>, ConnectionManagerError>
+        mut receiver: Receiver<Result<Event, E>>,
+    ) -> Result<Receiver<Result<Event, E>>, ConnectionManagerError>
     where
         E: Debug,
-        S: Stream<Item = Result<Bytes, E>> + Sized + Unpin,
     {
         // We want to see if the first message got from a connection is ApiVersion. That is the protocols guarantee.
         // If it's not - something went very wrong and we shouldn't consider this connection valid
-        match stream.next().await {
+        match receiver.recv().await {
             None => Err(recoverable_error(Error::msg("First event was empty"))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
@@ -336,7 +294,7 @@ impl ConnectionManager {
                         ))));
                         }
                     }
-                    Ok(stream)
+                    Ok(receiver)
                 } else {
                     Err(expected_first_message_to_be_api_version(event.data))
                 }
@@ -357,37 +315,12 @@ fn count_internal_event(category: &str, reason: &str) {
         .inc();
 }
 
-fn non_recoverable_error(error: Error) -> ConnectionManagerError {
+pub fn non_recoverable_error(error: Error) -> ConnectionManagerError {
     ConnectionManagerError::NonRecoverableError { error }
 }
 
-fn recoverable_error(error: Error) -> ConnectionManagerError {
+pub fn recoverable_error(error: Error) -> ConnectionManagerError {
     ConnectionManagerError::InitialConnectionError { error }
-}
-
-fn couldnt_connect(
-    last_error: Option<ConnectionManagerError>,
-    url: Url,
-    attempts: usize,
-) -> ConnectionManagerError {
-    let message = format!(
-        "Couldn't connect to address {:?} in {:?} attempts",
-        url.as_str(),
-        attempts
-    );
-    match last_error {
-        None => non_recoverable_error(Error::msg(message)),
-        Some(ConnectionManagerError::InitialConnectionError { error }) => {
-            ConnectionManagerError::InitialConnectionError {
-                error: error.context(message),
-            }
-        }
-        Some(ConnectionManagerError::NonRecoverableError { error }) => {
-            ConnectionManagerError::NonRecoverableError {
-                error: error.context(message),
-            }
-        }
-    }
 }
 
 fn decorate_with_event_stream_closed(address: Url) -> ConnectionManagerError {
@@ -431,6 +364,137 @@ fn count_error(reason: &str) {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        connection_manager::{ConnectionManager, ConnectionManagerError},
+        sse_connector::{MockSseConnection, StreamConnector},
+        SseEvent,
+    };
+    use casper_event_types::{sse_data::test_support::*, sse_data_1_0_0::test_support::*, Filter};
+    use tokio::sync::mpsc::{channel, Receiver};
+    use tokio_util::sync::CancellationToken;
+    use url::Url;
+
+    #[tokio::test]
+    async fn given_connection_fail_should_return_error() {
+        let connector = Box::new(MockSseConnection::build_failing_on_connection());
+        let (mut connection_manager, _, _) = build_manager(connector);
+        let res = connection_manager.do_start_handling().await;
+        if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
+            assert_eq!(error.to_string(), "Some error on connection");
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[tokio::test]
+    async fn given_failure_on_message_should_return_error() {
+        let connector = Box::new(MockSseConnection::build_failing_on_message());
+        let (mut connection_manager, _, _) = build_manager(connector);
+        let res = connection_manager.do_start_handling().await;
+        if let Err(ConnectionManagerError::InitialConnectionError { error }) = res {
+            assert_eq!(error.to_string(), "First event was empty");
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[tokio::test]
+    async fn given_data_without_api_version_should_fail() {
+        let data = vec![
+            example_block_added_1_0_0(BLOCK_HASH_1, "1"),
+            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+        ];
+        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let (mut connection_manager, _, _) = build_manager(connector);
+        let res = connection_manager.do_start_handling().await;
+        if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
+            assert!(error
+                .to_string()
+                .starts_with("Expected first message to be ApiVersion"));
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[tokio::test]
+    async fn given_data_should_pass_data() {
+        let data = vec![
+            example_api_version(),
+            example_block_added_1_0_0(BLOCK_HASH_1, "1"),
+            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+        ];
+        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let (mut connection_manager, data_tx, event_ids) = build_manager(connector);
+        let events_join = tokio::spawn(async move { poll_events(data_tx).await });
+        let event_ids_join = tokio::spawn(async move { poll_events(event_ids).await });
+        tokio::spawn(async move { connection_manager.do_start_handling().await });
+        let events = events_join.await.unwrap();
+        assert_eq!(events.len(), 3);
+        let event_ids = event_ids_join.await.unwrap();
+        assert_eq!(event_ids.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn given_data_containing_non_deserializable_data_should_fail_on_that_message() {
+        let data = vec![
+            example_api_version(),
+            "XYZ".to_string(),
+            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+        ];
+        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let (mut connection_manager, data_tx, _event_ids) = build_manager(connector);
+        let events_join = tokio::spawn(async move { poll_events(data_tx).await });
+        let connection_manager_joiner =
+            tokio::spawn(async move { connection_manager.do_start_handling().await });
+        let events = events_join.await.unwrap();
+        assert_eq!(events.len(), 1);
+        let res = connection_manager_joiner.await;
+        if let Ok(Err(ConnectionManagerError::NonRecoverableError { error })) = res {
+            assert_eq!(
+                error.to_string(),
+                "Serde Error: Couldn't deserialize Serde Error: expected value at line 1 column 1"
+            )
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub async fn poll_events<T>(mut receiver: Receiver<T>) -> Vec<T> {
+        let mut events_received = Vec::new();
+        while let Some(event) = receiver.recv().await {
+            events_received.push(event);
+        }
+        events_received
+    }
+
+    fn build_manager(
+        connector: Box<dyn StreamConnector + Send + Sync>,
+    ) -> (
+        ConnectionManager,
+        Receiver<SseEvent>,
+        Receiver<(Filter, u32)>,
+    ) {
+        let bind_address = Url::parse("http://localhost:123").unwrap();
+        let (data_tx, data_rx) = channel(100);
+        let (event_id_tx, event_id_rx) = channel(100);
+        let cancellation_token = CancellationToken::new();
+        let manager = ConnectionManager {
+            connector,
+            bind_address,
+            current_event_id: None,
+            sse_event_sender: data_tx,
+            maybe_tasks: None,
+            filter: Filter::Sigs,
+            deserialization_fn: casper_event_types::sse_data_1_0_0::deserialize,
+            current_event_id_sender: event_id_tx,
+            cancellation_token,
+        };
+        (manager, data_rx, event_id_rx)
+    }
+}
+
+#[cfg(test)]
+mod deserialization_tests {
     use casper_event_types::{
         sse_data::test_support::{example_block_added_1_4_10, BLOCK_HASH_1},
         sse_data_1_0_0::test_support::example_block_added_1_0_0,

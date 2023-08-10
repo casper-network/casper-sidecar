@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.65"
+async-trait = "0.1.72"
 bytes = "1.2.0"
 casper-event-types = { path = "../types", version = "0.1.0" }
 casper-types = { version = "3.0.0", features = ["std"] }
