@@ -9,9 +9,7 @@ pub mod tests {
     use crate::testing::fake_event_stream::{
         setup_mock_build_version_server_with_version, wait_for_sse_server_to_be_up,
     };
-    use crate::testing::raw_sse_events_utils::tests::{
-        simple_sse_server, simple_sse_server_with_sigs, EventsWithIds,
-    };
+    use crate::testing::raw_sse_events_utils::tests::{simple_sse_server, EventsWithIds};
 
     type SpinUpSseServerLambda = Box<
         dyn FnOnce(u16, CancellationToken) -> JoinHandle<(Sender<()>, Receiver<()>, Vec<String>)>,
@@ -27,30 +25,6 @@ pub mod tests {
     }
 
     impl MockNode {
-        pub async fn new_with_sigs(
-            version: String,
-            main_and_sigs: (EventsWithIds, EventsWithIds),
-            sse_port: u16,
-            rest_port: u16,
-        ) -> Self {
-            let main_clone = main_and_sigs.0.clone();
-            let sigs_clone = main_and_sigs.1.clone();
-            let spin_up_sse_server = |port, sse_initial_latch| {
-                tokio::spawn(async move {
-                    simple_sse_server_with_sigs(
-                        port,
-                        main_clone,
-                        vec![],
-                        sigs_clone,
-                        vec![],
-                        sse_initial_latch,
-                    )
-                    .await
-                })
-            };
-            Self::build_mock(version, sse_port, rest_port, Box::new(spin_up_sse_server)).await
-        }
-
         pub async fn new(
             version: String,
             data_of_node: EventsWithIds,

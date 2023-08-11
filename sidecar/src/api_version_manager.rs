@@ -21,17 +21,16 @@ impl ApiVersionManager {
 
     /// Stores protocol version. If the stored `protocol_version` is higher than the highest observed protocol version - returns true. Otherwise returns false.
     pub fn store_version(&mut self, protocol_version: ProtocolVersion) -> bool {
-        let mut did_change_latest_stored_version = false;
         if let Some(current) = self.newest_protocol_version {
-            if protocol_version.gt(&current) {
+            if protocol_version > current {
                 self.newest_protocol_version = Some(protocol_version);
-                did_change_latest_stored_version = true
+                return true;
             }
+            false
         } else {
             self.newest_protocol_version = Some(protocol_version);
-            did_change_latest_stored_version = true;
+            true
         }
-        did_change_latest_stored_version
     }
 }
 
