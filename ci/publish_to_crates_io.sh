@@ -19,14 +19,14 @@ run_curl() {
 local_version() {
     local CRATE_DIR="$1"
     printf "Local version:         "
-    LOCAL_VERSION=$(cat Cargo.toml | grep -m 1 -h 'version = ' | sed -n -r 's/version = //p' | tr -d '"')
-    printf "%s\n" $LOCAL_VERSION
+    LOCAL_VERSION=$(grep -m 1 -h 'version = ' "$CRATE_DIR/Cargo.toml" | sed -n -r 's/version = //p' | tr -d '"' | tr -d '\n')
+    printf "%s\n$LOCAL_VERSION"
 }
 
 max_version_in_crates_io() {
     local CRATE=$1
     printf "Max published version: "
-    run_curl $CRATES_URL/$CRATE
+    run_curl "$CRATES_URL/$CRATE"
     if [[ "$CURL_OUTPUT" == "{\"errors\":[{\"detail\":\"Not Found\"}]}" ]]; then
         CRATES_IO_VERSION="N/A (not found in crates.io)"
     else
@@ -38,7 +38,7 @@ max_version_in_crates_io() {
 publish() {
     CRATE_DIR="$1"
     local CRATE_DIR
-    CRATE_NAME=$(cat $ROOT_DIR/$CRATE_DIR/Cargo.toml | python3 -c "import sys, toml; print(toml.load(sys.stdin)['package']['name'])")
+    CRATE_NAME=$(grep -m 1 -h 'name = ' "$ROOT_DIR/$CRATE_DIR/Cargo.toml" | sed -n -r 's/name = //p' | tr -d '"' | tr -d '\n')
     local CRATE_NAME
     printf "%s\n" "$CRATE_NAME"
 
