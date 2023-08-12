@@ -1,0 +1,24 @@
+---
+name: publish-casper-event-sidecar-crates
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
+      - name: Crate Publish
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          token: ${{ secrets.CRATES_IO_TOKEN }}
