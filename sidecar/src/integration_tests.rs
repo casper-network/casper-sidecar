@@ -291,7 +291,7 @@ async fn should_fail_to_reconnect() {
     start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
-    wait_for_n_messages(1, receiver, Duration::from_secs(120))
+    wait_for_n_messages(31, receiver, Duration::from_secs(120))
         .await
         .unwrap();
     stop_nodes_and_wait(vec![&mut node_mock]).await.unwrap();
