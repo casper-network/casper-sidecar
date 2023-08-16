@@ -25,7 +25,7 @@ lazy_static! {
     .expect("metric can't be created");
 
     pub static ref NODE_STATUSES: GaugeVec = GaugeVec::new(
-        Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - setting up; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct (used up all connection attempts)"),
+        Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct (used up all connection attempts)"),
         &["node"]
     )
     .expect("metric can't be created");

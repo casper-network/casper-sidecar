@@ -77,10 +77,17 @@ pub struct EventListener {
 /// Helper enum determining in what state connection to a node is in.
 /// It's used to named different situations in which the connection can be.
 enum EventListenerStatus {
-    SettingUp,
+    /// Event Listener has not yet started to attempt the connection
+    Preparing,
+    /// Event Listener started establishing relevant sse connections to filters of the node
     Connecting,
+    /// Event Listener got data from at least one of the nodes sse connections.
     Connected,
+    /// For some reason Event Listener lost connection to the node and is trying to establish it again
     Reconnecting,
+    /// If Event Listener reports this state it means that it was unable to establish a connection
+    /// with node and there are no more `max_connection_attempts` left. There will be no futhrer
+    /// tries to establish the connection.
     Defunct,
 }
 
@@ -93,7 +100,7 @@ impl EventListenerStatus {
 
     fn log_status(&self, node_address: &str, sse_port: u16) {
         let status = match self {
-            EventListenerStatus::SettingUp => 0,
+            EventListenerStatus::Preparing => 0,
             EventListenerStatus::Connecting => 1,
             EventListenerStatus::Connected => 2,
             EventListenerStatus::Reconnecting => 3,
@@ -119,7 +126,7 @@ impl EventListener {
     ///
     /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
     pub async fn stream_aggregated_events(&mut self, is_empty_database: bool) -> Result<(), Error> {
-        EventListenerStatus::SettingUp.log_status_for_event_listener(self);
+        EventListenerStatus::Preparing.log_status_for_event_listener(self);
         let mut attempts = 1;
         let last_event_id_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
         let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
