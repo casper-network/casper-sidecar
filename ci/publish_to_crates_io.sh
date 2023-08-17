@@ -33,14 +33,14 @@ publish() {
     local CRATE_DIR
     pushd "$ROOT_DIR/$CRATE_DIR" >/dev/null
 
-    CRATE_NAME=$(cargo read-manifest  | jq -r '.name')
+    CRATE_NAME=$(cargo read-manifest  | jq -r '.name' | tr -d '\n')
     local CRATE_NAME
     printf "%s\n" "$CRATE_NAME"
 
     max_version_in_crates_io "$CRATE_NAME"
 
     printf "Local version:         "
-    LOCAL_VERSION=$(cargo read-manifest  | jq -r '.version')
+    LOCAL_VERSION=$(cargo read-manifest  | jq -r '.version' | tr -d '\n')
     printf "%s\n$LOCAL_VERSION"
 
     if [[ "$LOCAL_VERSION" == "$CRATES_IO_VERSION" ]]; then
