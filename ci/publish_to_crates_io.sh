@@ -16,13 +16,6 @@ run_curl() {
     fi
 }
 
-local_version() {
-    local CRATE_DIR="$1"
-    printf "Local version:         "
-    LOCAL_VERSION=$(grep -m 1 -h 'version = ' "$CRATE_DIR/Cargo.toml" | sed -n -r 's/version = //p' | tr -d '"' | tr -d '\n')
-    printf "%s\n$LOCAL_VERSION"
-}
-
 max_version_in_crates_io() {
     local CRATE=$1
     printf "Max published version: "
@@ -30,7 +23,7 @@ max_version_in_crates_io() {
     if [[ "$CURL_OUTPUT" == "{\"errors\":[{\"detail\":\"Not Found\"}]}" ]]; then
         CRATES_IO_VERSION="N/A (not found in crates.io)"
     else
-        CRATES_IO_VERSION=$(echo "$CURL_OUTPUT" | python3 -c "import sys, json; print(json.load(sys.stdin)['crate']['max_version'])")
+        CRATES_IO_VERSION=$(echo "$CURL_OUTPUT" | jq -r .crate.max_version)
     fi
     printf "%s\n" "$CRATES_IO_VERSION"
 }
@@ -38,28 +31,31 @@ max_version_in_crates_io() {
 publish() {
     CRATE_DIR="$1"
     local CRATE_DIR
-    CRATE_NAME=$(grep -m 1 -h 'name = ' "$ROOT_DIR/$CRATE_DIR/Cargo.toml" | sed -n -r 's/name = //p' | tr -d '"' | tr -d '\n')
+    pushd "$ROOT_DIR/$CRATE_DIR" >/dev/null
+
+    CRATE_NAME=$(cargo read-manifest  | jq -r '.name')
     local CRATE_NAME
     printf "%s\n" "$CRATE_NAME"
 
     max_version_in_crates_io "$CRATE_NAME"
 
-    local_version "$CRATE_DIR"
+    printf "Local version:         "
+    LOCAL_VERSION=$(cargo read-manifest  | jq -r '.version')
+    printf "%s\n$LOCAL_VERSION"
 
     if [[ "$LOCAL_VERSION" == "$CRATES_IO_VERSION" ]]; then
         printf "Skipping\n"
     else
         printf "Publishing...\n"
-        pushd "$ROOT_DIR/$CRATE_DIR" >/dev/null
         set +u
         cargo publish "${@:2}" --token "${CARGO_TOKEN}"
         set -u
-        popd >/dev/null
         printf "Published version %s\n$LOCAL_VERSION"
         printf "Sleeping for 60 seconds...\n"
         sleep 60
     fi
     printf "================================================================================\n\n"
+    popd >/dev/null
 }
 
 # These are the subdirs of casper-node which contain packages for publishing.  They should remain ordered from

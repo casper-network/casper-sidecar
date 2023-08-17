@@ -13,12 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
 
-      - name: Crate Publish
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          token: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: update toolchain
+        run: rustup update nightly
+
+      - name: Publish Crates
+        env:
+          CARGO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: ./ci/publish_to_crates_io.sh
