@@ -1,10 +1,20 @@
 #[cfg(test)]
+use crate::testing::mock_node::tests::MockNode;
+#[cfg(test)]
+use anyhow::Error;
+#[cfg(test)]
 use std::time::Duration;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, ToSocketAddrs},
 };
+#[cfg(test)]
+use tokio::sync::mpsc::Receiver;
+#[cfg(test)]
+use tokio::time::error::Elapsed;
+#[cfg(test)]
+use tokio::time::timeout;
 
 use thiserror::Error;
 use warp::{reject, Filter};
@@ -94,6 +104,53 @@ pub(crate) fn display_duration(duration: Duration) -> String {
     } else {
         format!("{}s", duration.as_secs())
     }
+}
+
+#[cfg(test)]
+/// Forces a stop on the given nodes and waits until all starts finish. Will timeout if the nodes can't start in 3 minutes.
+pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+    let mut futures = vec![];
+    for node in nodes {
+        futures.push(node.start());
+    }
+    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+}
+
+#[cfg(test)]
+/// wait_for_n_messages waits at most the `timeout_after` for observing `n` messages received on the `receiver`
+/// It's worth to note that using this function with receivers returned by `fetch_data_from_endpoint` should take into account
+/// that `fetch_data_from_endpoint` doesn't pass ApiVersion to receiver
+pub(crate) async fn wait_for_n_messages<T: Send + Sync + 'static>(
+    n: usize,
+    mut receiver: Receiver<T>,
+    timeout_after: Duration,
+) -> Result<Receiver<T>, Error> {
+    let join_handle = tokio::spawn(async move {
+        for _ in 0..n {
+            receiver.recv().await.unwrap();
+        }
+        receiver
+    });
+    match timeout(timeout_after, join_handle).await {
+        Ok(res) => res.map_err(|err| Error::msg(format!("Failed to wait for receiver, {}", err))),
+        Err(_) => Err(Error::msg("Waiting for messages timed out")),
+    }
+}
+
+#[cfg(test)]
+/// Forces a stop on the given nodes and waits until the stop happens. Will timeout if the nodes can't stop in 3 minutes.
+pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+    let mut futures = vec![];
+    for node in nodes {
+        futures.push(node.stop());
+    }
+    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+}
+
+#[cfg(test)]
+pub(crate) fn any_string_contains(data: &[String], infix: String) -> bool {
+    let infix_str = infix.as_str();
+    data.iter().any(|x| x.contains(infix_str))
 }
 
 /// Handle the case where no filter URL was specified after the root address (HOST:PORT).

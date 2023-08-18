@@ -1,17 +1,14 @@
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::testing::fake_event_stream::wait_for_sse_server_to_be_up;
     use crate::testing::simple_sse_server::tests::{CacheAndData, SimpleSseServer};
-    use casper_event_types::sse_data::test_support::{
-        example_block_added_1_4_10, example_finality_signature_1_4_10, BLOCK_HASH_1, BLOCK_HASH_2,
-        BLOCK_HASH_3,
-    };
+    use casper_event_types::sse_data::test_support::*;
     use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data_1_0_0::test_support::{example_block_added_1_0_0, shutdown};
     use casper_types::testing::TestRng;
     use hex_fmt::HexFmt;
     use std::collections::HashMap;
     use tokio::sync::mpsc::{Receiver, Sender};
+    use tokio_util::sync::CancellationToken;
 
     pub type EventsWithIds = Vec<(Option<String>, String)>;
     pub fn example_data_1_0_0() -> EventsWithIds {
@@ -49,24 +46,6 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn example_data_1_3_9_with_sigs() -> (EventsWithIds, EventsWithIds) {
-        let main = vec![
-            (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
-            (
-                Some("1".to_string()),
-                example_block_added_1_4_10(BLOCK_HASH_2, "2"), //1.3.9 should use 1.4.x compliant BlockAdded messages
-            ),
-        ];
-        let sigs = vec![
-            (None, "{\"ApiVersion\":\"1.3.9\"}".to_string()),
-            (
-                Some("2".to_string()),
-                example_finality_signature_1_4_10(BLOCK_HASH_2), //1.3.9 should use 1.4.x compliant FinalitySingatures messages
-            ),
-        ];
-        (main, sigs)
-    }
-
     pub fn random_n_block_added(
         number_of_block_added_messages: u32,
         start_index: u32,
@@ -91,12 +70,36 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn sse_server_example_1_4_10_data_other() -> EventsWithIds {
+    pub fn sse_server_example_1_4_9_data_second() -> EventsWithIds {
+        vec![
+            (None, "{\"ApiVersion\":\"1.4.9\"}".to_string()),
+            (
+                Some("1".to_string()),
+                example_block_added_1_4_10(BLOCK_HASH_3, "3"),
+            ),
+        ]
+    }
+
+    pub fn sse_server_example_1_4_10_data_second() -> EventsWithIds {
+        vec![
+            (None, "{\"ApiVersion\":\"1.4.10\"}".to_string()),
+            (
+                Some("3".to_string()),
+                example_block_added_1_4_10(BLOCK_HASH_3, "3"),
+            ),
+        ]
+    }
+
+    pub fn sse_server_example_1_4_10_data_third() -> EventsWithIds {
         vec![
             (None, "{\"ApiVersion\":\"1.4.10\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_1_4_10(BLOCK_HASH_3, "3"),
+            ),
+            (
+                Some("1".to_string()),
+                example_block_added_1_4_10(BLOCK_HASH_4, "4"),
             ),
         ]
     }
@@ -115,7 +118,8 @@ pub(crate) mod tests {
         port: u16,
         data: EventsWithIds,
         cache: EventsWithIds,
-    ) -> (Sender<()>, Receiver<()>) {
+        sse_initial_latch: CancellationToken,
+    ) -> (Sender<()>, Receiver<()>, Vec<String>) {
         let cache_and_data = CacheAndData { cache, data };
         let paths_and_data: HashMap<Vec<String>, CacheAndData> = HashMap::from([
             (
@@ -126,51 +130,14 @@ pub(crate) mod tests {
         ]);
         let sse_server = SimpleSseServer {
             routes: paths_and_data,
+            sse_initial_latch,
         };
         let (shutdown_tx, after_shutdown_rx) = sse_server.serve(port).await;
         let urls: Vec<String> = vec![
             format!("http://127.0.0.1:{}/events/main", port),
             format!("http://127.0.0.1:{}/events", port),
         ];
-        wait_for_sse_server_to_be_up(urls).await;
-        (shutdown_tx, after_shutdown_rx)
-    }
-
-    pub async fn simple_sse_server_with_sigs(
-        port: u16,
-        main_data: EventsWithIds,
-        main_cache: EventsWithIds,
-        sigs_data: EventsWithIds,
-        sigs_cache: EventsWithIds,
-    ) -> (Sender<()>, Receiver<()>) {
-        let main_cache_and_data = CacheAndData {
-            cache: main_cache,
-            data: main_data,
-        };
-        let sigs_cache_and_data = CacheAndData {
-            cache: sigs_cache,
-            data: sigs_data,
-        };
-        let paths_and_data: HashMap<Vec<String>, CacheAndData> = HashMap::from([
-            (
-                vec!["events".to_string(), "main".to_string()],
-                main_cache_and_data,
-            ),
-            (
-                vec!["events".to_string(), "sigs".to_string()],
-                sigs_cache_and_data,
-            ),
-        ]);
-        let sse_server = SimpleSseServer {
-            routes: paths_and_data,
-        };
-        let (shutdown_tx, after_shutdown_rx) = sse_server.serve(port).await;
-        let urls = vec![
-            format!("http://127.0.0.1:{}/events/main", port),
-            format!("http://127.0.0.1:{}/events/sigs", port),
-        ];
-        wait_for_sse_server_to_be_up(urls).await;
-        (shutdown_tx, after_shutdown_rx)
+        (shutdown_tx, after_shutdown_rx, urls)
     }
 
     fn generate_random_blocks_added(

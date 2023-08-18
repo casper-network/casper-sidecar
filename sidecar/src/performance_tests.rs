@@ -234,7 +234,6 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         rest_port: node_port_for_rest_connection,
     };
     let (node_event_tx, node_event_rx) = mpsc::channel(100);
-    let (node_api_version_tx, _node_api_version_rx) = mpsc::channel(100);
 
     let mut node_event_listener = EventListenerBuilder {
         node: node_interface,
@@ -249,16 +248,13 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     .build();
 
     tokio::spawn(async move {
-        let res = node_event_listener
-            .stream_aggregated_events(node_api_version_tx, false)
-            .await;
+        let res = node_event_listener.stream_aggregated_events(false).await;
         if let Err(error) = res {
             println!("Node listener Error: {}", error)
         }
     });
 
     let (sidecar_event_tx, sidecar_event_rx) = mpsc::channel(100);
-    let (sidecar_api_version_tx, _sidecar_api_version_rx) = mpsc::channel(100);
 
     let sidecar_node_interface = NodeConnectionInterface {
         ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
@@ -278,9 +274,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     }
     .build();
     tokio::spawn(async move {
-        let res = sidecar_event_listener
-            .stream_aggregated_events(sidecar_api_version_tx, false)
-            .await;
+        let res = sidecar_event_listener.stream_aggregated_events(false).await;
         if let Err(error) = res {
             println!("Sidecar listener Error: {}", error)
         }

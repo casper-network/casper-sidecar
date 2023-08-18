@@ -1,5 +1,6 @@
 extern crate core;
 mod admin_server;
+mod api_version_manager;
 mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
@@ -20,7 +21,6 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
@@ -36,6 +36,7 @@ use crate::{
     },
 };
 use anyhow::{Context, Error};
+use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
@@ -44,21 +45,17 @@ use casper_event_types::{
     sse_data::SseData,
     Filter,
 };
-use casper_types::ProtocolVersion;
 use clap::Parser;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 use tokio::{
-    sync::{
-        mpsc::{channel as mpsc_channel, Receiver, Sender},
-        Mutex,
-    },
+    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 use types::database::DatabaseReader;
 
 #[cfg(not(target_env = "msvc"))]
@@ -92,14 +89,6 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run(config: Config) -> Result<(), Error> {
-    // This is a temporary constraint whilst we iron out the details of handling connection to multiple nodes
-    // Beofre we remove it we need to figure out how we want to handle api versioning for multiple nodes
-    if config.connections.len() > 1 {
-        return Err(Error::msg(
-            "Unable to run with multiple connections specified in config",
-        ));
-    }
-
     if config
         .connections
         .iter()
@@ -112,9 +101,6 @@ async fn run(config: Config) -> Result<(), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
 
     let mut sse_data_receivers = Vec::new();
-    let (api_version_tx, mut api_version_rx) =
-        mpsc_channel::<Result<ProtocolVersion, Error>>(config.connections.len() + 10);
-
     for connection in &config.connections {
         let (inbound_sse_data_sender, inbound_sse_data_receiver) =
             mpsc_channel(config.inbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
@@ -182,6 +168,7 @@ async fn run(config: Config) -> Result<(), Error> {
     // Task to manage incoming events from all three filters
     let listening_task_handle = tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
+        let api_version_manager = ApiVersionManager::new();
 
         for ((event_listener, connection_config), sse_data_receiver) in event_listeners
             .into_iter()
@@ -190,19 +177,16 @@ async fn run(config: Config) -> Result<(), Error> {
         {
             let join_handle = tokio::spawn(sse_processor(
                 event_listener,
-                api_version_tx.clone(),
                 sse_data_receiver,
                 outbound_sse_data_sender.clone(),
                 sqlite_database.clone(),
                 connection_config.enable_logging,
                 is_empty_database,
+                api_version_manager.clone(),
             ));
 
             join_handles.push(join_handle);
         }
-
-        // The original sender needs to be dropped here as it's existence prevents the event broadcasting logic to proceed
-        drop(api_version_tx);
 
         let _ = join_all(join_handles).await;
         //Send Shutdown to the sidecar sse endpoint
@@ -219,20 +203,7 @@ async fn run(config: Config) -> Result<(), Error> {
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     });
 
-    //TODO currently api version handling DOES NOT account for possibility of multiple connections
     let event_broadcasting_handle = tokio::spawn(async move {
-        if let Some(api_fetch_res) = api_version_rx.recv().await {
-            match api_fetch_res {
-                Ok(_) => {
-                    // We got a protocol version, event listener can start
-                }
-                Err(err) => {
-                    error!("Error fetching API version from connected node(s): {err}");
-                    return Err(err);
-                }
-            }
-        }
-
         // Create new instance for the Sidecar's Event Stream Server
         let mut event_stream_server = EventStreamServer::new(
             SseConfig::new(
@@ -277,7 +248,7 @@ async fn handle_single_event(
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
-    last_reported_protocol_version: Arc<Mutex<Option<ProtocolVersion>>>,
+    api_version_manager: GuardedApiVersionManager,
 ) {
     match sse_event.data {
         SseData::ApiVersion(_) | SseData::Shutdown => {
@@ -292,28 +263,24 @@ async fn handle_single_event(
             //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
         }
         SseData::ApiVersion(version) => {
-            let mut guard = last_reported_protocol_version.lock().await;
-            match &mut *guard {
-                Some(old_version) if old_version.eq(&&version) => {
-                    //do nothing
-                }
-                None | Some(_) => {
-                    *guard = Some(version);
-                    if let Err(error) = outbound_sse_data_sender
-                        .send((
-                            SseData::ApiVersion(version),
-                            Some(sse_event.inbound_filter),
-                            None,
-                        ))
-                        .await
-                    {
-                        debug!(
-                            "Error when sending to outbound_sse_data_sender. Error: {}",
-                            error
-                        );
-                    }
+            let mut manager_guard = api_version_manager.lock().await;
+            let changed_newest_version = manager_guard.store_version(version);
+            if changed_newest_version {
+                if let Err(error) = outbound_sse_data_sender
+                    .send((
+                        SseData::ApiVersion(version),
+                        Some(sse_event.inbound_filter),
+                        None,
+                    ))
+                    .await
+                {
+                    debug!(
+                        "Error when sending to outbound_sse_data_sender. Error: {}",
+                        error
+                    );
                 }
             }
+            drop(manager_guard);
             if enable_event_logging {
                 info!(%version, "API Version");
             }
@@ -741,27 +708,26 @@ async fn handle_single_event(
 
 async fn sse_processor(
     mut sse_event_listener: EventListener,
-    api_version_reporter: Sender<Result<ProtocolVersion, Error>>,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     sqlite_database: SqliteDatabase,
     enable_event_logging: bool,
     is_empty_database: bool,
+    api_version_manager: GuardedApiVersionManager,
 ) {
     // This task starts the listener pushing events to the sse_data_receiver
     tokio::spawn(async move {
         let _ = sse_event_listener
-            .stream_aggregated_events(api_version_reporter, is_empty_database)
+            .stream_aggregated_events(is_empty_database)
             .await;
     });
-    let last_reported_api_version: Arc<Mutex<Option<ProtocolVersion>>> = Arc::new(Mutex::new(None));
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
             sqlite_database.clone(),
             enable_event_logging,
             outbound_sse_data_sender.clone(),
-            last_reported_api_version.clone(),
+            api_version_manager.clone(),
         )
         .await
     }

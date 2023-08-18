@@ -1,4 +1,4 @@
-use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
+use prometheus::{GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
 const BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
@@ -23,6 +23,12 @@ lazy_static! {
         &["category", "description"]
     )
     .expect("metric can't be created");
+
+    pub static ref NODE_STATUSES: GaugeVec = GaugeVec::new(
+        Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct (used up all connection attempts)"),
+        &["node"]
+    )
+    .expect("metric can't be created");
 }
 
 pub fn register_metrics() {
@@ -34,6 +40,9 @@ pub fn register_metrics() {
         .expect("cannot register metric");
     REGISTRY
         .register(Box::new(INTERNAL_EVENTS.clone()))
+        .expect("cannot register metric");
+    REGISTRY
+        .register(Box::new(NODE_STATUSES.clone()))
         .expect("cannot register metric");
 }
 pub struct MetricCollectionError {

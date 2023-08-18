@@ -4,7 +4,7 @@ mod keep_alive_monitor;
 mod types;
 use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
-use casper_event_types::Filter;
+use casper_event_types::{metrics, Filter};
 use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
@@ -74,6 +74,45 @@ pub struct EventListener {
     no_message_timeout: Duration,
 }
 
+/// Helper enum determining in what state connection to a node is in.
+/// It's used to named different situations in which the connection can be.
+enum EventListenerStatus {
+    /// Event Listener has not yet started to attempt the connection
+    Preparing,
+    /// Event Listener started establishing relevant sse connections to filters of the node
+    Connecting,
+    /// Event Listener got data from at least one of the nodes sse connections.
+    Connected,
+    /// For some reason Event Listener lost connection to the node and is trying to establish it again
+    Reconnecting,
+    /// If Event Listener reports this state it means that it was unable to establish a connection
+    /// with node and there are no more `max_connection_attempts` left. There will be no futhrer
+    /// tries to establish the connection.
+    Defunct,
+}
+
+impl EventListenerStatus {
+    fn log_status_for_event_listener(&self, event_listener: &EventListener) {
+        let node_address = event_listener.node.ip_address.to_string();
+        let sse_port = event_listener.node.sse_port;
+        EventListenerStatus::log_status(self, node_address.as_str(), sse_port);
+    }
+
+    fn log_status(&self, node_address: &str, sse_port: u16) {
+        let status = match self {
+            EventListenerStatus::Preparing => 0,
+            EventListenerStatus::Connecting => 1,
+            EventListenerStatus::Connected => 2,
+            EventListenerStatus::Reconnecting => 3,
+            EventListenerStatus::Defunct => -1,
+        } as f64;
+        let node_label = format!("{}:{}", node_address, sse_port);
+        metrics::NODE_STATUSES
+            .with_label_values(&[node_label.as_str()])
+            .set(status);
+    }
+}
+
 impl EventListener {
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
@@ -85,29 +124,26 @@ impl EventListener {
 
     /// Spins up the connections and starts pushing data from node
     ///
-    /// * `initial_api_version_sender` - channel through which the first node build version is sent
     /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
-    pub async fn stream_aggregated_events(
-        &mut self,
-        initial_api_version_sender: Sender<Result<ProtocolVersion, Error>>,
-        is_empty_database: bool,
-    ) -> Result<(), Error> {
+    pub async fn stream_aggregated_events(&mut self, is_empty_database: bool) -> Result<(), Error> {
+        EventListenerStatus::Preparing.log_status_for_event_listener(self);
         let mut attempts = 1;
         let last_event_id_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
         let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
 
         let local_last_event_id_for_filter = last_event_id_for_filter.clone();
+        let node_address = self.node.ip_address.to_string();
+        let sse_port = self.node.sse_port;
         tokio::spawn(async move {
             while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
+                EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
                 let last_event_id_for_filter_clone = local_last_event_id_for_filter.clone();
                 let mut guard = last_event_id_for_filter_clone.lock().await;
                 guard.insert(filter, id);
                 drop(guard);
             }
         });
-
-        // Wrap the sender in an Option so it can be exhausted with .take() on the initial connection.
-        let mut single_use_reporter = Some(initial_api_version_sender);
+        EventListenerStatus::Connecting.log_status_for_event_listener(self);
         while attempts <= self.max_connection_attempts {
             info!(
                 "Attempting to connect...\t{}/{}",
@@ -116,11 +152,6 @@ impl EventListener {
             match self.fetch_build_version_from_status().await {
                 Ok(version) => {
                     let new_node_build_version = version;
-
-                    if let Some(sender) = single_use_reporter.take() {
-                        let _ = sender.send(Ok(new_node_build_version)).await;
-                    }
-
                     // Compare versions to reset attempts in the case that the version changed.
                     // This guards against endlessly retrying when the version hasn't changed, suggesting
                     // that the node is unavailable.
@@ -139,6 +170,7 @@ impl EventListener {
                     );
 
                     if attempts >= self.max_connection_attempts {
+                        EventListenerStatus::Defunct.log_status_for_event_listener(self);
                         return Err(Error::msg(
                             "Unable to retrieve build version from node status",
                         ));
@@ -215,6 +247,8 @@ impl EventListener {
                                         error
                                     );
                                     attempts += 1;
+                                    EventListenerStatus::Reconnecting
+                                        .log_status_for_event_listener(self);
                                     break;
                                 }
                                 ConnectionManagerError::InitialConnectionError { error } => {
@@ -222,6 +256,8 @@ impl EventListener {
                                     if futures_left.is_empty() {
                                         error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
                                         attempts += 1;
+                                        EventListenerStatus::Reconnecting
+                                            .log_status_for_event_listener(self);
                                         break;
                                     }
                                 }
@@ -238,13 +274,16 @@ impl EventListener {
                     let res = task_result.unwrap();
                     if res.is_err() {
                         attempts += 1;
+                        EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
                     }
                     //Not increasing attempts on "clean exit" of connection manager
                 } else {
                     attempts += 1;
+                    EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
                 }
             }
         }
+        EventListenerStatus::Defunct.log_status_for_event_listener(self);
         Ok(())
     }
 
