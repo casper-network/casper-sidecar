@@ -49,7 +49,8 @@ jobs:
         # run: cargo audit --deny warnings
         # RUSTSEC-2022-0090 I don't think we have much power over that, it's a transitive dependency of sqlx.
         # We need to keep an eye on the newest sqlx-core update and apply it ASAP.
-        run: cargo audit --ignore RUSTSEC-2022-0090
+        # RUSTSEC-2022-0093 - that is an issue that comes form casper-types, need to update that depenency as soon as a new release is made
+        run: cargo audit --ignore RUSTSEC-2022-0090 --ignore RUSTSEC-2022-0093
 
       - name: test
         run: cargo test
