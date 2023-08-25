@@ -1,3 +1,7 @@
+#![deny(clippy::complexity)]
+#![deny(clippy::cognitive_complexity)]
+#![deny(clippy::too_many_lines)]
+
 mod connection_manager;
 mod connection_tasks;
 mod keep_alive_monitor;
@@ -14,7 +18,7 @@ use serde_json::Value;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
-        mpsc::{self, Sender},
+        mpsc::{self, Receiver, Sender},
         Mutex,
     },
     time::sleep,
@@ -114,6 +118,10 @@ impl EventListenerStatus {
     }
 }
 
+enum ConnectOutcome {
+    ConnectionLost,
+    SystemReconnect, //In this case we don't increase the current_attempt counter
+}
 impl EventListener {
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
@@ -123,170 +131,200 @@ impl EventListener {
         Url::parse(&url_str).map_err(Error::from)
     }
 
+    async fn fetch_build_version(
+        &self,
+        curent_protocol_version: ProtocolVersion,
+        current_attempt: usize,
+    ) -> Result<Option<ProtocolVersion>, Error> {
+        info!(
+            "Attempting to connect...\t{}/{}",
+            current_attempt, self.max_connection_attempts
+        );
+        match self.fetch_build_version_from_status().await {
+            Ok(version) => {
+                let new_node_build_version = version;
+                // Compare versions to reset attempts in the case that the version changed.
+                // This guards against endlessly retrying when the version hasn't changed, suggesting
+                // that the node is unavailable.
+                // If the connection has been failing and we see the build version change we reset
+                // the attempts as it may have down for an upgrade.
+                if new_node_build_version != curent_protocol_version {
+                    return Ok(Some(new_node_build_version));
+                }
+                Ok(Some(curent_protocol_version))
+            }
+            Err(fetch_err) => {
+                error!(
+                    "Error fetching build version (for {}): {fetch_err}",
+                    self.node.ip_address
+                );
+                if current_attempt >= self.max_connection_attempts {
+                    EventListenerStatus::Defunct.log_status_for_event_listener(self);
+                    return Err(Error::msg(
+                        "Unable to retrieve build version from node status",
+                    ));
+                }
+                Ok(None)
+            }
+        }
+    }
+
     /// Spins up the connections and starts pushing data from node
     ///
     /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
     pub async fn stream_aggregated_events(&mut self, is_empty_database: bool) -> Result<(), Error> {
         EventListenerStatus::Preparing.log_status_for_event_listener(self);
-        let mut attempts = 1;
-        let last_event_id_for_filter = Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
-        let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
-
-        let local_last_event_id_for_filter = last_event_id_for_filter.clone();
-        let node_address = self.node.ip_address.to_string();
-        let sse_port = self.node.sse_port;
-        tokio::spawn(async move {
-            while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
-                EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
-                let last_event_id_for_filter_clone = local_last_event_id_for_filter.clone();
-                let mut guard = last_event_id_for_filter_clone.lock().await;
-                guard.insert(filter, id);
-                drop(guard);
-            }
-        });
+        let (last_seen_event_id_sender, last_seen_event_id_receiver) = mpsc::channel(10);
+        let last_event_id_for_filter = start_last_event_id_registry(
+            last_seen_event_id_receiver,
+            self.node.ip_address.to_string(),
+            self.node.sse_port,
+        );
         EventListenerStatus::Connecting.log_status_for_event_listener(self);
-        while attempts <= self.max_connection_attempts {
-            info!(
-                "Attempting to connect...\t{}/{}",
-                attempts, self.max_connection_attempts
-            );
-            match self.fetch_build_version_from_status().await {
-                Ok(version) => {
-                    let new_node_build_version = version;
-                    // Compare versions to reset attempts in the case that the version changed.
-                    // This guards against endlessly retrying when the version hasn't changed, suggesting
-                    // that the node is unavailable.
-                    // If the connection has been failing and we see the build version change we reset
-                    // the attempts as it may have down for an upgrade.
-                    if new_node_build_version != self.node_build_version {
-                        attempts = 1;
-                    }
-
+        let mut current_attempt = 1;
+        while current_attempt <= self.max_connection_attempts {
+            if let Some(new_node_build_version) = self
+                .fetch_build_version(self.node_build_version, current_attempt)
+                .await?
+            {
+                if self.node_build_version != new_node_build_version {
                     self.node_build_version = new_node_build_version;
-                }
-                Err(fetch_err) => {
-                    error!(
-                        "Error fetching build version (for {}): {fetch_err}",
-                        self.node.ip_address
-                    );
-
-                    if attempts >= self.max_connection_attempts {
-                        EventListenerStatus::Defunct.log_status_for_event_listener(self);
-                        return Err(Error::msg(
-                            "Unable to retrieve build version from node status",
-                        ));
-                    }
-                    sleep(self.delay_between_attempts).await;
-                    attempts += 1;
-                    continue;
-                }
-            }
-            let filters = filters_from_version(self.node_build_version);
-            let mut connections = HashMap::new();
-            let maybe_tasks =
-                (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
-            let guard = last_event_id_for_filter.lock().await;
-            for filter in filters {
-                let mut start_from_event_id = guard.get(&filter).copied();
-                if is_empty_database && start_from_event_id.is_none() {
-                    start_from_event_id = Some(0);
-                }
-                let connection = self
-                    .build_connection(
-                        maybe_tasks.clone(),
-                        start_from_event_id,
-                        filter.clone(),
-                        last_seen_event_id_sender.clone(),
-                    )
-                    .await?;
-                connections.insert(filter, connection);
-            }
-            drop(guard);
-
-            let mut connection_join_handles = Vec::new();
-
-            for (filter, mut connection) in connections.drain() {
-                debug!("Connecting filter... {}", filter);
-                let handle = tokio::spawn(async move {
-                    let res = connection.start_handling().await;
-                    match res {
-                        Ok(_) => Ok(()),
-                        Err(e) => {
-                            error!("Error on start_handling: {}", e);
-                            Err(e)
-                        }
-                    }
-                });
-                connection_join_handles.push(handle);
-            }
-
-            if self.allow_partial_connection {
-                // We wait until either
-                //  * all of the connections return error OR
-                //  * one of the connection returns Err(NonRecoverableError) OR
-                //  * one of the connection returns Ok(()) -> this means that we need to do a force reconnect to the node
-                loop {
-                    let select_result = futures::future::select_all(connection_join_handles).await;
-                    let task_result = select_result.0;
-                    let futures_left = select_result.2;
-                    if task_result.is_err() {
-                        break;
-                    }
-                    let res = task_result.unwrap();
-                    match res {
-                        Ok(_) => {
-                            //Not increasing attempts on "clean exit" of connection manager
-                            break;
-                        }
-                        Err(err) => {
-                            match err {
-                                ConnectionManagerError::NonRecoverableError { error } => {
-                                    error!(
-                                        "Restarting event listener {} because of NonRecoverableError: {}",
-                                        self.node.ip_address.to_string(),
-                                        error
-                                    );
-                                    attempts += 1;
-                                    EventListenerStatus::Reconnecting
-                                        .log_status_for_event_listener(self);
-                                    break;
-                                }
-                                ConnectionManagerError::InitialConnectionError { error } => {
-                                    //No futures_left means no more filters active, we need to restart the whole listener
-                                    if futures_left.is_empty() {
-                                        error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
-                                        attempts += 1;
-                                        EventListenerStatus::Reconnecting
-                                            .log_status_for_event_listener(self);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    connection_join_handles = futures_left
+                    current_attempt = 1
                 }
             } else {
-                // Return on the first completed connection
-                let select_result = futures::future::select_all(connection_join_handles).await;
-                let task_result = select_result.0;
-                if task_result.is_ok() {
-                    let res = task_result.unwrap();
-                    if res.is_err() {
-                        attempts += 1;
-                        EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
-                    }
-                    //Not increasing attempts on "clean exit" of connection manager
-                } else {
-                    attempts += 1;
-                    EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
-                }
+                sleep(self.delay_between_attempts).await;
+                current_attempt += 1;
+                continue;
             }
-
+            match self
+                .do_connect(
+                    last_event_id_for_filter.clone(),
+                    is_empty_database,
+                    last_seen_event_id_sender.clone(),
+                )
+                .await?
+            {
+                ConnectOutcome::ConnectionLost => current_attempt += 1,
+                ConnectOutcome::SystemReconnect => {}
+            };
             sleep(Duration::from_secs(1)).await;
         }
         EventListenerStatus::Defunct.log_status_for_event_listener(self);
         Ok(())
+    }
+
+    async fn do_connect(
+        &mut self,
+        last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
+        is_empty_database: bool,
+        last_seen_event_id_sender: Sender<(Filter, u32)>,
+    ) -> Result<ConnectOutcome, Error> {
+        let connections = self
+            .build_connections(
+                last_event_id_for_filter.clone(),
+                is_empty_database,
+                last_seen_event_id_sender.clone(),
+            )
+            .await?;
+        let connection_join_handles = start_connections(connections);
+        if self.allow_partial_connection {
+            // We wait until either
+            //  * all of the connections return error OR
+            //  * one of the connection returns Err(NonRecoverableError) OR
+            //  * one of the connection returns Ok(()) -> this means that we need to do a force reconnect to the node
+            Ok(self
+                .allow_partial_connection_wait(connection_join_handles)
+                .await)
+        } else {
+            // Return on the first completed connection
+            let select_result = futures::future::select_all(connection_join_handles).await;
+            let task_result = select_result.0;
+            if task_result.is_ok() {
+                let res = task_result.unwrap();
+                if res.is_err() {
+                    EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                    return Ok(ConnectOutcome::ConnectionLost);
+                }
+                Ok(ConnectOutcome::SystemReconnect)
+            } else {
+                EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                Ok(ConnectOutcome::ConnectionLost)
+            }
+        }
+    }
+    async fn allow_partial_connection_wait(
+        &mut self,
+        mut connection_join_handles: Vec<
+            tokio::task::JoinHandle<Result<(), ConnectionManagerError>>,
+        >,
+    ) -> ConnectOutcome {
+        loop {
+            let select_result = futures::future::select_all(connection_join_handles).await;
+            let task_result = select_result.0;
+            let futures_left = select_result.2;
+            if task_result.is_err() {
+                return ConnectOutcome::ConnectionLost;
+            }
+            let res = task_result.unwrap();
+            match res {
+                Ok(_) => {
+                    return ConnectOutcome::SystemReconnect;
+                }
+                Err(err) => {
+                    match err {
+                        ConnectionManagerError::NonRecoverableError { error } => {
+                            error!(
+                                "Restarting event listener {} because of NonRecoverableError: {}",
+                                self.node.ip_address.to_string(),
+                                error
+                            );
+                            EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                            return ConnectOutcome::ConnectionLost;
+                        }
+                        ConnectionManagerError::InitialConnectionError { error } => {
+                            //No futures_left means no more filters active, we need to restart the whole listener
+                            if futures_left.is_empty() {
+                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
+                                EventListenerStatus::Reconnecting
+                                    .log_status_for_event_listener(self);
+                                return ConnectOutcome::ConnectionLost;
+                            }
+                        }
+                    }
+                }
+            }
+            connection_join_handles = futures_left
+        }
+    }
+
+    async fn build_connections(
+        &mut self,
+        last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
+        is_empty_database: bool,
+        last_seen_event_id_sender: Sender<(Filter, u32)>,
+    ) -> Result<HashMap<Filter, ConnectionManager>, Error> {
+        let filters = filters_from_version(self.node_build_version);
+        let mut connections = HashMap::new();
+        let maybe_tasks =
+            (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
+        let guard = last_event_id_for_filter.lock().await;
+        for filter in filters {
+            let mut start_from_event_id = guard.get(&filter).copied();
+            if is_empty_database && start_from_event_id.is_none() {
+                start_from_event_id = Some(0);
+            }
+            let connection = self
+                .build_connection(
+                    maybe_tasks.clone(),
+                    start_from_event_id,
+                    filter.clone(),
+                    last_seen_event_id_sender.clone(),
+                )
+                .await?;
+            connections.insert(filter, connection);
+        }
+        drop(guard);
+        Ok(connections)
     }
 
     fn status_endpoint(&self) -> Result<Url, Error> {
@@ -298,7 +336,7 @@ impl EventListener {
     }
 
     // Fetch the build version by requesting the status from the node's rest server.
-    async fn fetch_build_version_from_status(&mut self) -> Result<ProtocolVersion, Error> {
+    async fn fetch_build_version_from_status(&self) -> Result<ProtocolVersion, Error> {
         debug!(
             "Fetching build version for {}",
             self.status_endpoint().unwrap()
@@ -352,6 +390,47 @@ impl EventListener {
         };
         Ok(builder.build())
     }
+}
+
+fn start_connections(
+    connections: HashMap<Filter, ConnectionManager>,
+) -> Vec<tokio::task::JoinHandle<Result<(), ConnectionManagerError>>> {
+    connections
+        .into_iter()
+        .map(|(filter, mut connection)| {
+            debug!("Connecting filter... {}", filter);
+            tokio::spawn(async move {
+                let res = connection.start_handling().await;
+                match res {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        error!("Error on start_handling: {}", e);
+                        Err(e)
+                    }
+                }
+            })
+        })
+        .collect()
+}
+
+fn start_last_event_id_registry(
+    mut last_seen_event_id_receiver: Receiver<(Filter, u32)>,
+    node_address: String,
+    sse_port: u16,
+) -> Arc<Mutex<HashMap<Filter, u32>>> {
+    let last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>> =
+        Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
+    let last_event_id_for_filter_for_thread = last_event_id_for_filter.clone();
+    tokio::spawn(async move {
+        while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
+            EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
+            let last_event_id_for_filter_clone = last_event_id_for_filter_for_thread.clone();
+            let mut guard = last_event_id_for_filter_clone.lock().await;
+            guard.insert(filter, id);
+            drop(guard);
+        }
+    });
+    last_event_id_for_filter
 }
 
 fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {

@@ -25,6 +25,7 @@ use crate::{
         testing_config::{prepare_config, TestingConfig},
     },
     types::{
+        config::Config,
         database::DatabaseWriter,
         sse_events::{BlockAdded, Fault},
     },
@@ -68,7 +69,7 @@ async fn given_sidecar_when_only_node_shuts_down_then_shut_down() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    let sidecar_join = start_sidecar(testing_config).await;
+    let sidecar_join = start_sidecar(testing_config.inner()).await;
     let (_, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -99,7 +100,7 @@ async fn should_allow_client_connection_to_sse() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -128,7 +129,7 @@ async fn should_respond_to_rest_query() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (_, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -164,7 +165,7 @@ async fn should_allow_partial_connection_on_one_filter() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -207,7 +208,7 @@ async fn should_fail_to_reconnect() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
@@ -254,7 +255,7 @@ async fn should_reconnect() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
@@ -297,7 +298,7 @@ async fn shutdown_should_be_passed_through() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -328,7 +329,7 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -364,7 +365,7 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/sidecar", event_stream_server_port).await;
     stop_nodes_and_wait(vec![&mut node_mock]).await;
@@ -401,7 +402,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -443,7 +444,7 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
@@ -473,7 +474,7 @@ async fn sidecar_should_connect_to_multiple_nodes() {
             (sse_port_2, rest_port_2),
             (sse_port_3, rest_port_3),
         ]);
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(4, receiver, Duration::from_secs(120)).await;
@@ -509,7 +510,7 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
             (sse_port_1, rest_port_1),
             (sse_port_2, rest_port_2),
         ]);
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -543,7 +544,7 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
             (sse_port_1, rest_port_1),
             (sse_port_2, rest_port_2),
         ]);
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -575,7 +576,7 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
             (sse_port_2, rest_port_2),
             (8888, 9999), //Ports which should be not occupied
         ]);
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -608,7 +609,7 @@ async fn partial_connection_test(allow_partial_connection: bool) -> Vec<EventTyp
     start_nodes_and_wait(vec![&mut node_mock]).await;
 
     // Run the Sidecar in another task with the prepared config.
-    start_sidecar(testing_config).await;
+    start_sidecar(testing_config.inner()).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let _ = wait_for_n_messages(1, receiver, Duration::from_secs(60)).await;
@@ -678,10 +679,8 @@ pub fn build_test_config_with_retries(
     )
 }
 
-pub async fn start_sidecar(
-    testing_config: TestingConfig,
-) -> tokio::task::JoinHandle<Result<(), Error>> {
-    tokio::spawn(async move { run(testing_config.inner()).await }) // starting event sidecar
+pub async fn start_sidecar(config: Config) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::spawn(async move { run(config).await }) // starting event sidecar
 }
 
 pub async fn poll_events<E, S>(mut stream: S, sender: mpsc::Sender<()>) -> Vec<String>

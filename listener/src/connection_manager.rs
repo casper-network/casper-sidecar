@@ -262,44 +262,55 @@ impl ConnectionManager {
                 let payload_size = event.data.len();
                 self.observe_bytes(payload_size);
                 if event.data.contains("ApiVersion") {
-                    match deserialize(&event.data) {
-                        //at this point we
-                        // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
-                        Ok((SseData::ApiVersion(semver), _)) => {
-                            let sse_event = SseEvent::new(
-                                0,
-                                SseData::ApiVersion(semver),
-                                self.bind_address.clone(),
-                                None,
-                                self.filter.clone(),
-                            );
-                            self.sse_event_sender.send(sse_event).await.map_err(|_| {
-                                count_error(API_VERSION_SENDING_FAILED);
-                                non_recoverable_error(Error::msg(
-                                "Error when trying to send message in ConnectionManager#handle_event",
-                            ))
-                        })?
-                        }
-                        Ok(_sse_data) => {
-                            count_error(API_VERSION_EXPECTED);
-                            return Err(non_recoverable_error(Error::msg(
-                                "When trying to deserialize ApiVersion got other type of message",
-                            )));
-                        }
-                        Err(x) => {
-                            count_error(API_VERSION_DESERIALIZATION_FAILED);
-                            return Err(non_recoverable_error(Error::msg(format!(
-                            "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
-                            x, event.data
-                        ))));
-                        }
-                    }
-                    Ok(receiver)
+                    self.try_handle_api_version_message(&event, receiver).await
                 } else {
                     Err(expected_first_message_to_be_api_version(event.data))
                 }
             }
         }
+    }
+
+    async fn try_handle_api_version_message<E>(
+        &mut self,
+        event: &Event,
+        receiver: Receiver<Result<Event, E>>,
+    ) -> Result<Receiver<Result<Event, E>>, ConnectionManagerError>
+    where
+        E: Debug,
+    {
+        match deserialize(&event.data) {
+            //at this point we
+            // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
+            Ok((SseData::ApiVersion(semver), _)) => {
+                let sse_event = SseEvent::new(
+                    0,
+                    SseData::ApiVersion(semver),
+                    self.bind_address.clone(),
+                    None,
+                    self.filter.clone(),
+                );
+                self.sse_event_sender.send(sse_event).await.map_err(|_| {
+                    count_error(API_VERSION_SENDING_FAILED);
+                    non_recoverable_error(Error::msg(
+                        "Error when trying to send message in ConnectionManager#handle_event",
+                    ))
+                })?
+            }
+            Ok(_sse_data) => {
+                count_error(API_VERSION_EXPECTED);
+                return Err(non_recoverable_error(Error::msg(
+                    "When trying to deserialize ApiVersion got other type of message",
+                )));
+            }
+            Err(x) => {
+                count_error(API_VERSION_DESERIALIZATION_FAILED);
+                return Err(non_recoverable_error(Error::msg(format!(
+                    "Error when trying to deserialize ApiVersion {}. Raw data of event: {}",
+                    x, event.data
+                ))));
+            }
+        }
+        Ok(receiver)
     }
 
     fn observe_bytes(&self, payload_size: usize) {

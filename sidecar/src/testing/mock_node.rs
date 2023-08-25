@@ -20,16 +20,13 @@ pub mod tests {
     }
 
     impl MockNodeBuilder {
-        pub fn example_1_0_0_node(
-            node_port_for_sse_connection: u16,
-            node_port_for_rest_connection: u16,
-        ) -> MockNode {
+        pub fn example_1_0_0_node() -> MockNode {
             MockNodeBuilder {
                 version: "1.0.0".to_string(),
                 data_of_node: example_data_1_0_0(),
                 cache_of_node: None,
-                sse_port: Some(node_port_for_sse_connection),
-                rest_port: Some(node_port_for_rest_connection),
+                sse_port: None,
+                rest_port: None,
             }
             .build()
         }
@@ -81,6 +78,15 @@ pub mod tests {
         pub fn get_rest_port(&self) -> u16 {
             self.rest_port
         }
+
+        pub fn set_sse_port(&mut self, port: u16) {
+            self.sse_port = port
+        }
+
+        pub fn set_rest_port(&mut self, port: u16) {
+            self.rest_port = port
+        }
+
         fn new(
             version: String,
             data_of_node: EventsWithIds,

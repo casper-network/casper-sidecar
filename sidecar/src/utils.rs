@@ -1,5 +1,9 @@
 #[cfg(test)]
+use crate::integration_tests::{build_test_config, start_sidecar};
+#[cfg(test)]
 use crate::testing::mock_node::tests::MockNode;
+#[cfg(test)]
+use crate::testing::testing_config::TestingConfig;
 #[cfg(test)]
 use anyhow::Error;
 #[cfg(test)]
@@ -9,6 +13,8 @@ use std::{
     io,
     net::{SocketAddr, ToSocketAddrs},
 };
+#[cfg(test)]
+use tempfile::TempDir;
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
 #[cfg(test)]
@@ -165,4 +171,35 @@ pub fn root_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp:
 {
     warp::path::end()
         .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
+}
+
+#[cfg(test)]
+pub struct MockNodeTestProperties {
+    pub testing_config: TestingConfig,
+    pub temp_storage_dir: TempDir,
+    pub node_port_for_sse_connection: u16,
+    pub node_port_for_rest_connection: u16,
+    pub event_stream_server_port: u16,
+}
+
+#[cfg(test)]
+pub async fn prepare_one_node_and_start(node_mock: &mut MockNode) -> MockNodeTestProperties {
+    let (
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    node_mock.set_sse_port(node_port_for_sse_connection);
+    node_mock.set_rest_port(node_port_for_rest_connection);
+    start_nodes_and_wait(vec![node_mock]).await;
+    start_sidecar(testing_config.inner()).await;
+    MockNodeTestProperties {
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    }
 }

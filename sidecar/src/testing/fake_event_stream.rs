@@ -79,134 +79,191 @@ impl Display for Scenario {
 }
 
 pub(crate) async fn spin_up_fake_event_stream(
-    test_rng: &'static mut TestRng,
+    test_rng: TestRng,
     ess_config: EssConfig,
     scenario: Scenario,
-) -> &'static mut TestRng {
-    let cloned_address = ess_config.address.clone();
-    let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
-    let log_details = format!("Fake Event Stream(:{}) :: Scenario: {}", port, scenario);
-    println!("{} :: Started", log_details);
-
+) -> TestRng {
     let start = Instant::now();
-
-    let temp_dir = TempDir::new().expect("Error creating temporary directory");
-
-    let mut event_stream_server =
-        EventStreamServer::new(ess_config.clone(), temp_dir.path().to_path_buf())
-            .expect("Error spinning up Event Stream Server");
-
-    let (events_sender, mut events_receiver) = mpsc_channel(500);
-
+    let (event_stream_server, log_details) = build_event_stream_server(ess_config, &scenario);
+    let (events_sender, events_receiver) = mpsc_channel(500);
     let returned_test_rng = match scenario {
         Scenario::Realistic(settings) => {
-            let scenario_task = tokio::spawn(async move {
-                realistic_event_streaming(test_rng, events_sender.clone(), settings.initial_phase)
-                    .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    events_sender
-                        .send(SseData::Shutdown)
-                        .await
-                        .expect("Scenario::Realistic failed sending SseData::Shutdown");
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    realistic_event_streaming(test_rng, events_sender, final_phase).await;
-                }
-                test_rng
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
-                }
-            });
-
-            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
-            test_rng.expect("Should have returned TestRng for re-use")
+            handle_realistic_scenario(
+                test_rng,
+                events_sender,
+                events_receiver,
+                event_stream_server,
+                settings,
+            )
+            .await
         }
         Scenario::LoadTestingStep(settings, frequency) => {
-            let scenario_task = tokio::spawn(async move {
-                load_testing_step(
-                    test_rng,
-                    events_sender.clone(),
-                    settings.initial_phase,
-                    frequency,
-                )
-                .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    events_sender
-                        .send(SseData::Shutdown)
-                        .await
-                        .expect("Scenario::LoadTestingStep failed sending SseData::Shutdown");
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    load_testing_step(test_rng, events_sender, final_phase, frequency).await;
-                }
-                test_rng
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
-                }
-            });
-
-            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
-            test_rng.expect("Should have returned TestRng for re-use")
+            do_load_testing_step(
+                test_rng,
+                events_sender,
+                events_receiver,
+                event_stream_server,
+                settings,
+                frequency,
+            )
+            .await
         }
         Scenario::LoadTestingDeploy(settings, num_in_burst) => {
-            let scenario_task = tokio::spawn(async move {
-                load_testing_deploy(
-                    test_rng,
-                    events_sender.clone(),
-                    settings.initial_phase,
-                    num_in_burst,
-                )
-                .await;
-
-                if let Some(Restart {
-                    delay_before_restart,
-                    final_phase,
-                }) = settings.restart
-                {
-                    events_sender
-                        .send(SseData::Shutdown)
-                        .await
-                        .expect("Scenario::LoadTestingDeploy failed sending shutdown message!");
-
-                    tokio::time::sleep(delay_before_restart).await;
-                    load_testing_deploy(test_rng, events_sender, final_phase, num_in_burst).await;
-                }
-                test_rng
-            });
-
-            let broadcasting_task = tokio::spawn(async move {
-                while let Some(event) = events_receiver.recv().await {
-                    event_stream_server.broadcast(event, Some(SseFilter::Main), None);
-                }
-            });
-
-            let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
-            test_rng.expect("Should have returned TestRng for re-use")
+            do_load_testing_deploy(
+                test_rng,
+                events_sender,
+                events_receiver,
+                event_stream_server,
+                settings,
+                num_in_burst,
+            )
+            .await
         }
     };
+    log_test_end(log_details, start);
+    returned_test_rng
+}
 
+fn log_test_end(log_details: String, start: Instant) {
     println!(
         "{} :: Completed ({}s)",
         log_details,
         start.elapsed().as_secs()
     );
-    returned_test_rng
+}
+
+fn build_event_stream_server(
+    ess_config: EssConfig,
+    scenario: &Scenario,
+) -> (EventStreamServer, String) {
+    let cloned_address = ess_config.address.clone();
+    let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
+    let log_details = format!("Fake Event Stream(:{}) :: Scenario: {}", port, scenario);
+    println!("{} :: Started", log_details);
+    let temp_dir = TempDir::new().expect("Error creating temporary directory");
+
+    let event_stream_server = EventStreamServer::new(ess_config, temp_dir.path().to_path_buf())
+        .expect("Error spinning up Event Stream Server");
+    (event_stream_server, log_details)
+}
+
+async fn do_load_testing_deploy(
+    mut test_rng: TestRng,
+    events_sender: Sender<SseData>,
+    mut events_receiver: Receiver<SseData>,
+    mut event_stream_server: EventStreamServer,
+    settings: GenericScenarioSettings,
+    num_in_burst: u64,
+) -> TestRng {
+    let scenario_task = tokio::spawn(async move {
+        load_testing_deploy(
+            &mut test_rng,
+            events_sender.clone(),
+            settings.initial_phase,
+            num_in_burst,
+        )
+        .await;
+
+        if let Some(Restart {
+            delay_before_restart,
+            final_phase,
+        }) = settings.restart
+        {
+            events_sender
+                .send(SseData::Shutdown)
+                .await
+                .expect("Scenario::LoadTestingDeploy failed sending shutdown message!");
+
+            tokio::time::sleep(delay_before_restart).await;
+            load_testing_deploy(&mut test_rng, events_sender, final_phase, num_in_burst).await;
+        }
+        test_rng
+    });
+
+    let broadcasting_task = tokio::spawn(async move {
+        while let Some(event) = events_receiver.recv().await {
+            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+        }
+    });
+
+    let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+    test_rng.expect("Should have returned TestRng for re-use")
+}
+
+async fn do_load_testing_step(
+    mut test_rng: TestRng,
+    events_sender: Sender<SseData>,
+    mut events_receiver: Receiver<SseData>,
+    mut event_stream_server: EventStreamServer,
+    settings: GenericScenarioSettings,
+    frequency: u8,
+) -> TestRng {
+    let scenario_task = tokio::spawn(async move {
+        load_testing_step(
+            &mut test_rng,
+            events_sender.clone(),
+            settings.initial_phase,
+            frequency,
+        )
+        .await;
+
+        if let Some(Restart {
+            delay_before_restart,
+            final_phase,
+        }) = settings.restart
+        {
+            events_sender
+                .send(SseData::Shutdown)
+                .await
+                .expect("Scenario::LoadTestingStep failed sending SseData::Shutdown");
+
+            tokio::time::sleep(delay_before_restart).await;
+            load_testing_step(&mut test_rng, events_sender, final_phase, frequency).await;
+        }
+        test_rng
+    });
+    let broadcasting_task = tokio::spawn(async move {
+        while let Some(event) = events_receiver.recv().await {
+            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+        }
+    });
+    let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+    test_rng.expect("Should have returned TestRng for re-use")
+}
+
+async fn handle_realistic_scenario(
+    mut test_rng: TestRng,
+    events_sender: Sender<SseData>,
+    mut events_receiver: Receiver<SseData>,
+    mut event_stream_server: EventStreamServer,
+    settings: GenericScenarioSettings,
+) -> TestRng {
+    let scenario_task = tokio::spawn(async move {
+        realistic_event_streaming(&mut test_rng, events_sender.clone(), settings.initial_phase)
+            .await;
+
+        if let Some(Restart {
+            delay_before_restart,
+            final_phase,
+        }) = settings.restart
+        {
+            events_sender
+                .send(SseData::Shutdown)
+                .await
+                .expect("Scenario::Realistic failed sending SseData::Shutdown");
+
+            tokio::time::sleep(delay_before_restart).await;
+            realistic_event_streaming(&mut test_rng, events_sender, final_phase).await;
+        }
+        test_rng
+    });
+    let broadcasting_task = tokio::spawn(async move {
+        while let Some(event) = events_receiver.recv().await {
+            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+        }
+    });
+    let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+    test_rng.expect("Should have returned TestRng for re-use")
 }
 
 fn plus_twenty_percent(base_value: u64) -> u64 {
@@ -227,44 +284,82 @@ async fn realistic_event_streaming(
         }
     };
 
+    let test_data = prepare_data(test_rng, loops_in_duration);
+    let interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
+    events_sender
+        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .await
+        .unwrap();
+    do_stream(interval, bound, start, events_sender, test_data).await;
+}
+
+type RealisticScenarioData = (
+    Vec<SseData>,
+    Vec<(SseData, casper_event_types::Deploy)>,
+    Vec<SseData>,
+    Vec<SseData>,
+    Vec<SseData>,
+    Vec<SseData>,
+    Vec<SseData>,
+);
+
+fn prepare_data(test_rng: &mut TestRng, loops_in_duration: u64) -> RealisticScenarioData {
     let finality_signatures_per_loop = NUMBER_OF_VALIDATORS as u64;
     let total_finality_signature_events = finality_signatures_per_loop * loops_in_duration;
     let deploy_events_per_loop = NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
     let total_deploy_events = deploy_events_per_loop * loops_in_duration;
     let total_block_added_events = loops_in_duration;
     let total_step_events = loops_in_duration / BLOCKS_IN_ERA;
-
-    let mut block_added_events = iter::repeat_with(|| SseData::random_block_added(test_rng))
+    let block_added_events = iter::repeat_with(|| SseData::random_block_added(test_rng))
         .take(plus_twenty_percent(total_block_added_events) as usize)
         .collect_vec();
-    let mut deploy_accepted_events =
-        iter::repeat_with(|| SseData::random_deploy_accepted(test_rng))
-            .take(plus_twenty_percent(total_deploy_events) as usize)
-            .collect_vec();
-    let mut deploy_expired_events = iter::repeat_with(|| SseData::random_deploy_expired(test_rng))
+    let deploy_accepted_events = iter::repeat_with(|| SseData::random_deploy_accepted(test_rng))
+        .take(plus_twenty_percent(total_deploy_events) as usize)
+        .collect_vec();
+    let deploy_expired_events = iter::repeat_with(|| SseData::random_deploy_expired(test_rng))
         .take((loops_in_duration / 2 + 1) as usize)
         .collect_vec();
-    let mut deploy_processed_events =
-        iter::repeat_with(|| SseData::random_deploy_processed(test_rng))
-            .take(plus_twenty_percent(total_deploy_events) as usize)
-            .collect_vec();
-    let mut fault_events = iter::repeat_with(|| SseData::random_fault(test_rng))
+    let deploy_processed_events = iter::repeat_with(|| SseData::random_deploy_processed(test_rng))
+        .take(plus_twenty_percent(total_deploy_events) as usize)
+        .collect_vec();
+    let fault_events = iter::repeat_with(|| SseData::random_fault(test_rng))
         .take((loops_in_duration / 2 + 1) as usize)
         .collect_vec();
-    let mut finality_signature_events =
+    let finality_signature_events =
         iter::repeat_with(|| SseData::random_finality_signature(test_rng))
             .take(plus_twenty_percent(total_finality_signature_events) as usize)
             .collect_vec();
-    let mut step_events = iter::repeat_with(|| SseData::random_step(test_rng))
+    let step_events = iter::repeat_with(|| SseData::random_step(test_rng))
         .take(plus_twenty_percent(total_step_events) as usize)
         .collect_vec();
+    (
+        block_added_events,
+        deploy_accepted_events,
+        deploy_expired_events,
+        deploy_processed_events,
+        fault_events,
+        finality_signature_events,
+        step_events,
+    )
+}
 
-    let mut interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
-
-    events_sender
-        .send(SseData::ApiVersion(API_VERSION_1_4_0))
-        .await
-        .unwrap();
+#[allow(clippy::too_many_lines)]
+async fn do_stream(
+    mut interval: tokio::time::Interval,
+    bound: Bound,
+    start: Instant,
+    events_sender: Sender<SseData>,
+    data: RealisticScenarioData,
+) {
+    let (
+        mut block_added_events,
+        mut deploy_accepted_events,
+        mut deploy_expired_events,
+        mut deploy_processed_events,
+        mut fault_events,
+        mut finality_signature_events,
+        mut step_events,
+    ) = data;
     let mut era_counter: u16 = 0;
     'outer: loop {
         for _ in 0..BLOCKS_IN_ERA {
@@ -276,38 +371,15 @@ async fn realistic_event_streaming(
                     }
                 }
             }
-
-            // Prior to each BlockAdded emit FinalitySignatures
-            for _ in 0..NUMBER_OF_VALIDATORS {
-                events_sender
-                    .send(finality_signature_events.pop().unwrap())
-                    .await
-                    .expect("Failed sending finality_signature_event");
-            }
-
-            // Emit DeployProcessed events for the next BlockAdded
-            for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                events_sender
-                    .send(deploy_processed_events.pop().unwrap())
-                    .await
-                    .expect("Failed sending deploy_processed_events");
-            }
-
-            // Emit the BlockAdded
-            events_sender
-                .send(block_added_events.pop().unwrap())
-                .await
-                .expect("Failed sending block_added_event");
-
-            // Emit DeployAccepted Events
-            for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
-                events_sender
-                    .send(deploy_accepted_events.pop().unwrap().0)
-                    .await
-                    .expect("Failed sending deploy_accepted_event");
-            }
+            emit_events(
+                &events_sender,
+                &mut finality_signature_events,
+                &mut deploy_processed_events,
+                &mut block_added_events,
+                &mut deploy_accepted_events,
+            )
+            .await;
         }
-
         if era_counter % 2 == 0 {
             events_sender
                 .send(deploy_expired_events.pop().unwrap())
@@ -319,14 +391,74 @@ async fn realistic_event_streaming(
                 .await
                 .expect("Failed sending fault_event");
         }
-
-        // Then a Step
-        events_sender
-            .send(step_events.pop().unwrap())
-            .await
-            .expect("Failed sending step_event");
-
+        emit_step(&events_sender, &mut step_events).await;
         era_counter += 1;
+    }
+}
+
+async fn emit_events(
+    events_sender: &Sender<SseData>,
+    finality_signature_events: &mut Vec<SseData>,
+    deploy_processed_events: &mut Vec<SseData>,
+    block_added_events: &mut Vec<SseData>,
+    deploy_accepted_events: &mut Vec<(SseData, casper_event_types::Deploy)>,
+) {
+    emit_sig_events(events_sender, finality_signature_events).await;
+    emit_deploy_processed_events(events_sender, deploy_processed_events).await;
+    emit_block_added_events(events_sender, block_added_events).await;
+    emit_deploy_accepted_events(events_sender, deploy_accepted_events).await;
+}
+
+async fn emit_block_added_events(
+    events_sender: &Sender<SseData>,
+    block_added_events: &mut Vec<SseData>,
+) {
+    events_sender
+        .send(block_added_events.pop().unwrap())
+        .await
+        .expect("Failed sending block_added_event");
+}
+
+async fn emit_deploy_accepted_events(
+    events_sender: &Sender<SseData>,
+    deploy_accepted_events: &mut Vec<(SseData, casper_event_types::Deploy)>,
+) {
+    for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
+        events_sender
+            .send(deploy_accepted_events.pop().unwrap().0)
+            .await
+            .expect("Failed sending deploy_accepted_event");
+    }
+}
+
+async fn emit_step(events_sender: &Sender<SseData>, step_events: &mut Vec<SseData>) {
+    events_sender
+        .send(step_events.pop().unwrap())
+        .await
+        .expect("Failed sending step_event");
+}
+
+async fn emit_deploy_processed_events(
+    events_sender: &Sender<SseData>,
+    deploy_processed_events: &mut Vec<SseData>,
+) {
+    for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
+        events_sender
+            .send(deploy_processed_events.pop().unwrap())
+            .await
+            .expect("Failed sending deploy_processed_events");
+    }
+}
+
+async fn emit_sig_events(
+    events_sender: &Sender<SseData>,
+    finality_signature_events: &mut Vec<SseData>,
+) {
+    for _ in 0..NUMBER_OF_VALIDATORS {
+        events_sender
+            .send(finality_signature_events.pop().unwrap())
+            .await
+            .expect("Failed sending finality_signature_event");
     }
 }
 

@@ -69,33 +69,20 @@ pub(crate) struct EventStreamServer {
 
 impl EventStreamServer {
     pub(crate) fn new(config: Config, storage_path: PathBuf) -> Result<Self, ListeningError> {
-        let required_address = resolve_address(&config.address).map_err(|error| {
-            warn!(
-                %error,
-                address=%config.address,
-                "failed to start event stream server, cannot parse address"
-            );
-            ListeningError::ResolveAddress(error)
-        })?;
-
+        let required_address = resolve_address_and_retype(&config.address)?;
         let event_indexer = EventIndexer::new(storage_path);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
-        let broadcast_channel_size = config.event_stream_buffer_length
-            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
-            / 100;
         let ChannelsAndFilter {
             event_broadcaster,
             new_subscriber_info_receiver,
             sse_filter,
         } = ChannelsAndFilter::new(
-            broadcast_channel_size as usize,
+            get_broadcast_channel_size(&config),
             config.max_concurrent_subscribers,
         );
-
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-
         let (listening_address, server_with_shutdown) =
             warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
                 .try_bind_with_graceful_shutdown(required_address, async {
@@ -115,7 +102,6 @@ impl EventStreamServer {
             event_broadcaster,
             new_subscriber_info_receiver,
         ));
-
         Ok(EventStreamServer {
             sse_data_sender,
             event_indexer,
@@ -138,4 +124,22 @@ impl EventStreamServer {
             .sse_data_sender
             .send((event_index, sse_data, inbound_filter, maybe_json_data));
     }
+}
+
+fn get_broadcast_channel_size(config: &Config) -> usize {
+    let broadcast_channel_size = config.event_stream_buffer_length
+        * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
+        / 100;
+    broadcast_channel_size as usize
+}
+
+fn resolve_address_and_retype(address: &String) -> Result<SocketAddr, ListeningError> {
+    resolve_address(address).map_err(|error| {
+        warn!(
+            %error,
+            address=%address,
+            "failed to start event stream server, cannot parse address"
+        );
+        ListeningError::ResolveAddress(error)
+    })
 }

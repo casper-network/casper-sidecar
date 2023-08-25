@@ -15,6 +15,13 @@ use casper_types::{
 use utoipa::ToSchema;
 
 #[cfg(feature = "sse-data-testing")]
+macro_rules! bx {
+    ($e:expr) => {
+        Box::new($e)
+    };
+}
+
+#[cfg(feature = "sse-data-testing")]
 const TAG_LENGTH: usize = 1;
 #[cfg(feature = "sse-data-testing")]
 const MODULE_BYTES_TAG: u8 = 0;
@@ -98,137 +105,167 @@ pub enum ExecutableDeployItem {
 }
 
 #[cfg(feature = "sse-data-testing")]
-impl ToBytes for ExecutableDeployItem {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
+impl ExecutableDeployItem {
+    fn fields_serialized_length(&self) -> usize {
+        let components: Vec<Box<dyn ToBytes>> = match self {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                buffer.insert(0, MODULE_BYTES_TAG);
-                buffer.extend(module_bytes.to_bytes()?);
-                buffer.extend(args.to_bytes()?);
+                vec![bx!(module_bytes), bx!(args)]
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash,
                 entry_point,
                 args,
-            } => {
-                buffer.insert(0, STORED_CONTRACT_BY_HASH_TAG);
-                buffer.extend(hash.to_bytes()?);
-                buffer.extend(entry_point.to_bytes()?);
-                buffer.extend(args.to_bytes()?)
-            }
+            } => vec![bx!(hash), bx!(entry_point), bx!(args)],
             ExecutableDeployItem::StoredContractByName {
                 name,
                 entry_point,
                 args,
-            } => {
-                buffer.insert(0, STORED_CONTRACT_BY_NAME_TAG);
-                buffer.extend(name.to_bytes()?);
-                buffer.extend(entry_point.to_bytes()?);
-                buffer.extend(args.to_bytes()?)
-            }
+            } => vec![bx!(name), bx!(entry_point), bx!(args)],
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
                 version,
                 entry_point,
                 args,
-            } => {
-                buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_HASH_TAG);
-                buffer.extend(hash.to_bytes()?);
-                buffer.extend(version.to_bytes()?);
-                buffer.extend(entry_point.to_bytes()?);
-                buffer.extend(args.to_bytes()?)
-            }
+            } => vec![bx!(hash), bx!(version), bx!(entry_point), bx!(args)],
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
                 version,
                 entry_point,
                 args,
-            } => {
-                buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_NAME_TAG);
-                buffer.extend(name.to_bytes()?);
-                buffer.extend(version.to_bytes()?);
-                buffer.extend(entry_point.to_bytes()?);
-                buffer.extend(args.to_bytes()?)
+            } => vec![bx!(name), bx!(version), bx!(entry_point), bx!(args)],
+            ExecutableDeployItem::Transfer { args } => vec![bx!(args)],
+        };
+        components
+            .into_iter()
+            .map(|to_bytes| to_bytes.serialized_length())
+            .sum()
+    }
+}
+
+#[cfg(feature = "sse-data-testing")]
+impl ToBytes for ExecutableDeployItem {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
+                write_module_bytes(&mut buffer, module_bytes, args)?
             }
-            ExecutableDeployItem::Transfer { args } => {
-                buffer.insert(0, TRANSFER_TAG);
-                buffer.extend(args.to_bytes()?)
-            }
+            ExecutableDeployItem::StoredContractByHash {
+                hash,
+                entry_point,
+                args,
+            } => write_stored_contract(&mut buffer, hash, entry_point, args)?,
+            ExecutableDeployItem::StoredContractByName {
+                name,
+                entry_point,
+                args,
+            } => write_stored_contract_by_name(&mut buffer, name, entry_point, args)?,
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash,
+                version,
+                entry_point,
+                args,
+            } => write_versioned_contract_by_hash(&mut buffer, hash, version, entry_point, args)?,
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name,
+                version,
+                entry_point,
+                args,
+            } => write_versioned_contract_by_name(&mut buffer, name, version, entry_point, args)?,
+            ExecutableDeployItem::Transfer { args } => write_transfer(&mut buffer, args)?,
         }
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        TAG_LENGTH
-            + match self {
-                ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                    module_bytes.serialized_length() + args.serialized_length()
-                }
-                ExecutableDeployItem::StoredContractByHash {
-                    hash,
-                    entry_point,
-                    args,
-                } => {
-                    hash.serialized_length()
-                        + entry_point.serialized_length()
-                        + args.serialized_length()
-                }
-                ExecutableDeployItem::StoredContractByName {
-                    name,
-                    entry_point,
-                    args,
-                } => {
-                    name.serialized_length()
-                        + entry_point.serialized_length()
-                        + args.serialized_length()
-                }
-                ExecutableDeployItem::StoredVersionedContractByHash {
-                    hash,
-                    version,
-                    entry_point,
-                    args,
-                } => {
-                    hash.serialized_length()
-                        + version.serialized_length()
-                        + entry_point.serialized_length()
-                        + args.serialized_length()
-                }
-                ExecutableDeployItem::StoredVersionedContractByName {
-                    name,
-                    version,
-                    entry_point,
-                    args,
-                } => {
-                    name.serialized_length()
-                        + version.serialized_length()
-                        + entry_point.serialized_length()
-                        + args.serialized_length()
-                }
-                ExecutableDeployItem::Transfer { args } => args.serialized_length(),
-            }
+        TAG_LENGTH + self.fields_serialized_length()
     }
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_transfer(buffer: &mut Vec<u8>, args: &RuntimeArgs) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, TRANSFER_TAG);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_versioned_contract_by_name(
+    buffer: &mut Vec<u8>,
+    name: &String,
+    version: &Option<u32>,
+    entry_point: &String,
+    args: &RuntimeArgs,
+) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_NAME_TAG);
+    buffer.extend(name.to_bytes()?);
+    buffer.extend(version.to_bytes()?);
+    buffer.extend(entry_point.to_bytes()?);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_versioned_contract_by_hash(
+    buffer: &mut Vec<u8>,
+    hash: &ContractPackageHash,
+    version: &Option<u32>,
+    entry_point: &String,
+    args: &RuntimeArgs,
+) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_HASH_TAG);
+    buffer.extend(hash.to_bytes()?);
+    buffer.extend(version.to_bytes()?);
+    buffer.extend(entry_point.to_bytes()?);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_stored_contract_by_name(
+    buffer: &mut Vec<u8>,
+    name: &String,
+    entry_point: &String,
+    args: &RuntimeArgs,
+) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, STORED_CONTRACT_BY_NAME_TAG);
+    buffer.extend(name.to_bytes()?);
+    buffer.extend(entry_point.to_bytes()?);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_stored_contract(
+    buffer: &mut Vec<u8>,
+    hash: &ContractHash,
+    entry_point: &String,
+    args: &RuntimeArgs,
+) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, STORED_CONTRACT_BY_HASH_TAG);
+    buffer.extend(hash.to_bytes()?);
+    buffer.extend(entry_point.to_bytes()?);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn write_module_bytes(
+    buffer: &mut Vec<u8>,
+    module_bytes: &Bytes,
+    args: &RuntimeArgs,
+) -> Result<(), bytesrepr::Error> {
+    buffer.insert(0, MODULE_BYTES_TAG);
+    buffer.extend(module_bytes.to_bytes()?);
+    buffer.extend(args.to_bytes()?);
+    Ok(())
 }
 
 #[cfg(feature = "sse-data-testing")]
 impl Distribution<ExecutableDeployItem> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutableDeployItem {
-        fn random_bytes<R: Rng + ?Sized>(rng: &mut R) -> Vec<u8> {
-            let mut bytes = vec![0u8; rng.gen_range(0..100)];
-            rng.fill_bytes(bytes.as_mut());
-            bytes
-        }
-
-        fn random_string<R: Rng + ?Sized>(rng: &mut R) -> String {
-            rng.sample_iter(&Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect()
-        }
-
         let mut args = RuntimeArgs::new();
         let _ = args.insert(random_string(rng), Bytes::from(random_bytes(rng)));
-
         match rng.gen_range(0..5) {
             0 => ExecutableDeployItem::ModuleBytes {
                 module_bytes: random_bytes(rng).into(),
@@ -256,18 +293,36 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 entry_point: random_string(rng),
                 args,
             },
-            5 => {
-                let amount = rng.gen_range(MAX_PAYMENT_AMOUNT..1_000_000_000_000_000);
-                let mut transfer_args = RuntimeArgs::new();
-                transfer_args.insert_cl_value(
-                    ARG_AMOUNT,
-                    CLValue::from_t(U512::from(amount)).expect("should get CLValue from U512"),
-                );
-                ExecutableDeployItem::Transfer {
-                    args: transfer_args,
-                }
-            }
+            5 => random_transfer(rng),
             _ => unreachable!(),
         }
+    }
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn random_string<R: Rng + ?Sized>(rng: &mut R) -> String {
+    rng.sample_iter(&Alphanumeric)
+        .take(20)
+        .map(char::from)
+        .collect()
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn random_bytes<R: Rng + ?Sized>(rng: &mut R) -> Vec<u8> {
+    let mut bytes = vec![0u8; rng.gen_range(0..100)];
+    rng.fill_bytes(bytes.as_mut());
+    bytes
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn random_transfer<R: Rng + ?Sized>(rng: &mut R) -> ExecutableDeployItem {
+    let amount = rng.gen_range(MAX_PAYMENT_AMOUNT..1_000_000_000_000_000);
+    let mut transfer_args = RuntimeArgs::new();
+    transfer_args.insert_cl_value(
+        ARG_AMOUNT,
+        CLValue::from_t(U512::from(amount)).expect("should get CLValue from U512"),
+    );
+    ExecutableDeployItem::Transfer {
+        args: transfer_args,
     }
 }

@@ -32,14 +32,47 @@ pub(crate) mod tests {
     struct Nope;
     impl warp::reject::Reject for Nope {}
 
+    type ShutdownCallbacks = Arc<Mutex<Vec<broadcast::Sender<Option<(Option<String>, String)>>>>>;
+
     impl SimpleSseServer {
         pub async fn serve(&self, port: u16) -> (Sender<()>, Receiver<()>) {
             let (shutdown_tx, mut shutdown_rx) = channel(10);
             let (after_shutdown_tx, after_shutdown_rx) = channel(10);
-            let v = Vec::from_iter(self.routes.iter());
             let shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>> =
                 Arc::new(Mutex::new(Vec::new()));
-            let mut routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = v
+            let mut routes = self.build_filter(shutdown_broadcasts.clone());
+            let first = routes.pop().expect("get first route");
+            let api = routes
+                .into_iter()
+                .fold(first, |e, r| e.or(r).unify().boxed());
+            let server_thread = tokio::spawn(async move {
+                let server = warp::serve(api)
+                    .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
+                        let _ = shutdown_rx.recv().await;
+                        let guard = shutdown_broadcasts.lock().await;
+                        for sender in guard.iter() {
+                            let _ = sender.send(None);
+                        }
+                        drop(guard);
+                    })
+                    .1;
+                server.await;
+                let _ = after_shutdown_tx.send(()).await;
+            });
+            tokio::spawn(async move {
+                let result = server_thread.await;
+                if result.is_err() {
+                    println!("simple_sse_server: {:?}", result);
+                }
+            });
+            (shutdown_tx, after_shutdown_rx)
+        }
+
+        fn build_filter(
+            &self,
+            shutdown_broadcasts: ShutdownCallbacks,
+        ) -> Vec<BoxedFilter<(Box<dyn Reply>,)>> {
+            let routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = Vec::from_iter(self.routes.iter())
                 .into_iter()
                 .map(|(key, value)| {
                     let base_filter = key
@@ -69,31 +102,7 @@ pub(crate) mod tests {
                         .boxed()
                 })
                 .collect();
-            let first = routes.pop().expect("get first route");
-            let api = routes
-                .into_iter()
-                .fold(first, |e, r| e.or(r).unify().boxed());
-            let server_thread = tokio::spawn(async move {
-                let server = warp::serve(api)
-                    .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                        let _ = shutdown_rx.recv().await;
-                        let guard = shutdown_broadcasts.lock().await;
-                        for sender in guard.iter() {
-                            let _ = sender.send(None);
-                        }
-                        drop(guard);
-                    })
-                    .1;
-                server.await;
-                let _ = after_shutdown_tx.send(()).await;
-            });
-            tokio::spawn(async move {
-                let result = server_thread.await;
-                if result.is_err() {
-                    println!("simple_sse_server: {:?}", result);
-                }
-            });
-            (shutdown_tx, after_shutdown_rx)
+            routes
         }
     }
 

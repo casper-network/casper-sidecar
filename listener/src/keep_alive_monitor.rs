@@ -6,6 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
+use tokio_stream::Stream;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace};
 use url::Url;
@@ -110,43 +111,20 @@ impl KeepAliveMonitor {
 
     fn spawn_last_seen_updater_thread(
         &self,
-        arc_for_updater: Arc<Mutex<Option<Instant>>>,
-        bind_address_for_updater: Url,
+        arc: Arc<Mutex<Option<Instant>>>,
+        bind_address: Url,
         connection_timeout: Duration,
         cancellation_token: CancellationToken,
     ) {
         tokio::spawn(async move {
-            let arc = arc_for_updater;
-            let bind_address = bind_address_for_updater;
-            let client_builder = Client::builder().connect_timeout(connection_timeout);
-            let client = match client_builder.build() {
-                Ok(client) => client,
-                Err(err) => {
-                    let error_message = format!(
-                        "Couldn't create client in KeepAliveMonitor for address {}. Error {}",
-                        bind_address.clone(),
-                        err
-                    );
-                    error!(error_message);
-                    //If we can't connect - force the connection to restart
-                    cancellation_token.cancel();
-                    return;
-                }
+            let client = match build_client(connection_timeout, &bind_address, &cancellation_token)
+            {
+                Some(value) => value,
+                None => return,
             };
-            let response_res = client.get(bind_address.clone()).send().await;
-            let mut stream = match response_res {
-                Ok(response) => response.bytes_stream(),
-                Err(err) => {
-                    let error_message = format!(
-                        "Couldn't get response in KeepAliveMonitor for address {}. Error {}",
-                        bind_address.clone(),
-                        err
-                    );
-                    error!(error_message);
-                    //If we can't connect - force the connection to restart
-                    cancellation_token.cancel();
-                    return;
-                }
+            let mut stream = match get_response(client, &bind_address, &cancellation_token).await {
+                Some(value) => value,
+                None => return,
             };
             while let Some(event) = stream.next().await {
                 match event {
@@ -165,6 +143,50 @@ impl KeepAliveMonitor {
                 }
             }
         });
+    }
+}
+
+async fn get_response(
+    client: Client,
+    bind_address: &Url,
+    cancellation_token: &CancellationToken,
+) -> Option<impl Stream<Item = Result<bytes::Bytes, reqwest::Error>>> {
+    let response_res = client.get(bind_address.clone()).send().await;
+    match response_res {
+        Ok(response) => Some(response.bytes_stream()),
+        Err(err) => {
+            let error_message = format!(
+                "Couldn't get response in KeepAliveMonitor for address {}. Error {}",
+                bind_address.clone(),
+                err
+            );
+            error!(error_message);
+            //If we can't connect - force the connection to restart
+            cancellation_token.cancel();
+            None
+        }
+    }
+}
+
+fn build_client(
+    connection_timeout: Duration,
+    bind_address: &Url,
+    cancellation_token: &CancellationToken,
+) -> Option<Client> {
+    let client_builder = Client::builder().connect_timeout(connection_timeout);
+    match client_builder.build() {
+        Ok(client) => Some(client),
+        Err(err) => {
+            let error_message = format!(
+                "Couldn't create client in KeepAliveMonitor for address {}. Error {}",
+                bind_address.clone(),
+                err
+            );
+            error!(error_message);
+            //If we can't connect - force the connection to restart
+            cancellation_token.cancel();
+            None
+        }
     }
 }
 

@@ -17,6 +17,7 @@ pub enum EventLog {
     EmittedTimestamp,
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn create_table_stmt() -> TableCreateStatement {
     Table::create()
         .table(EventLog::Table)

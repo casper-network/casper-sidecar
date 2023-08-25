@@ -72,6 +72,15 @@ const SIGNATURES_FILTER: [EventFilter; 2] =
 const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
+type UrlProps = (&'static [EventFilter], &'static Endpoint, Option<u32>);
+
+#[cfg(test)]
+// The number of events in the initial stream, excluding the very first `ApiVersion` one.
+const NUM_INITIAL_EVENTS: usize = 10;
+#[cfg(test)]
+// The number of events in the ongoing stream, including any duplicated from the initial
+// stream.
+const NUM_ONGOING_EVENTS: usize = 20;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -126,7 +135,7 @@ pub(super) enum BroadcastChannelMessage {
     Shutdown,
 }
 
-fn event_to_warp_event(event: &ServerSentEvent) -> Result<warp::sse::Event, serde_json::Error> {
+fn event_to_warp_event(event: &ServerSentEvent) -> warp::sse::Event {
     let maybe_value = event
         .json_data
         .as_ref()
@@ -135,6 +144,10 @@ fn event_to_warp_event(event: &ServerSentEvent) -> Result<warp::sse::Event, serd
         Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
         None => WarpServerSentEvent::default().json_data(&event.data),
     }
+    .unwrap_or_else(|error| {
+        warn!(%error, ?event, "failed to jsonify sse event");
+        WarpServerSentEvent::default()
+    })
 }
 
 /// Passed to the server whenever a new client subscribes.
@@ -155,14 +168,83 @@ async fn filter_map_server_sent_event(
     if !event.data.should_include(event_filter) {
         return None;
     }
+    let id = match determine_id(event) {
+        Some(id) => id,
+        None => return None,
+    };
 
-    let id = match event.id {
+    match &event.data {
+        &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
+            let warp_event = event_to_warp_event(event);
+            Some(Ok(warp_event))
+        }
+        &SseData::BlockAdded { .. }
+        | &SseData::DeployProcessed { .. }
+        | &SseData::DeployExpired { .. }
+        | &SseData::Fault { .. }
+        | &SseData::Step { .. }
+        | &SseData::FinalitySignature(_) => {
+            let warp_event = event_to_warp_event(event).id(id);
+            Some(Ok(warp_event))
+        }
+        SseData::DeployAccepted { deploy } => handle_deploy_accepted(event, deploy, &id),
+        &SseData::Shutdown => {
+            if should_send_shutdown(event, stream_filter) {
+                build_event_for_outbound(event, id)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bool {
+    match (&event.inbound_filter, stream_filter) {
+        (None, Endpoint::Sidecar) => true,
+        (None, _) => false,
+        (Some(SseFilter::Main), Endpoint::Events) => true, //If this filter handles the `/events` endpoint
+        // then it should also propagate from inbounds `/events/main`
+        (Some(SseFilter::Events), Endpoint::Main) => true, //If we are connected to a legacy node
+        // and the client is listening to /events/main we want to get shutdown from that
+        (Some(a), b) if b.is_corresponding_to(a) => true,
+        _ => false,
+    }
+}
+
+fn handle_deploy_accepted(
+    event: &ServerSentEvent,
+    deploy: &Arc<Deploy>,
+    id: &String,
+) -> Option<Result<WarpServerSentEvent, RecvError>> {
+    let maybe_value = event
+        .json_data
+        .as_ref()
+        .map(|el| serde_json::from_str::<Value>(el).unwrap());
+    let warp_event = match maybe_value {
+        Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
+        None => {
+            let deploy_accepted = &DeployAccepted {
+                deploy_accepted: deploy.clone(),
+            };
+            WarpServerSentEvent::default().json_data(deploy_accepted)
+        }
+    }
+    .unwrap_or_else(|error| {
+        warn!(%error, ?event, "failed to jsonify sse event");
+        WarpServerSentEvent::default()
+    })
+    .id(id);
+    Some(Ok(warp_event))
+}
+
+fn determine_id(event: &ServerSentEvent) -> Option<String> {
+    match event.id {
         Some(id) => {
             if matches!(&event.data, &SseData::ApiVersion { .. }) {
                 error!("ApiVersion should have no event ID");
                 return None;
             }
-            id.to_string()
+            Some(id.to_string())
         }
         None => {
             if !matches!(
@@ -172,72 +254,7 @@ async fn filter_map_server_sent_event(
                 error!("only ApiVersion and SidecarVersion may have no event ID");
                 return None;
             }
-            String::new()
-        }
-    };
-
-    match &event.data {
-        &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
-            let warp_event = event_to_warp_event(event).unwrap_or_else(|error| {
-                warn!(%error, ?event, "failed to jsonify sse event");
-                WarpServerSentEvent::default()
-            });
-            Some(Ok(warp_event))
-        }
-
-        &SseData::BlockAdded { .. }
-        | &SseData::DeployProcessed { .. }
-        | &SseData::DeployExpired { .. }
-        | &SseData::Fault { .. }
-        | &SseData::Step { .. }
-        | &SseData::FinalitySignature(_) => {
-            let warp_event = event_to_warp_event(event)
-                .unwrap_or_else(|error| {
-                    warn!(%error, ?event, "failed to jsonify sse event");
-                    WarpServerSentEvent::default()
-                })
-                .id(id);
-            Some(Ok(warp_event))
-        }
-
-        SseData::DeployAccepted { deploy } => {
-            let maybe_value = event
-                .json_data
-                .as_ref()
-                .map(|el| serde_json::from_str::<Value>(el).unwrap());
-            let warp_event = match maybe_value {
-                Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
-                None => {
-                    let deploy_accepted = &DeployAccepted {
-                        deploy_accepted: deploy.clone(),
-                    };
-                    WarpServerSentEvent::default().json_data(deploy_accepted)
-                }
-            }
-            .unwrap_or_else(|error| {
-                warn!(%error, ?event, "failed to jsonify sse event");
-                WarpServerSentEvent::default()
-            })
-            .id(id);
-            Some(Ok(warp_event))
-        }
-        &SseData::Shutdown => {
-            let should_send_shutdown = match (&event.inbound_filter, stream_filter) {
-                (None, Endpoint::Sidecar) => true,
-                (None, _) => false,
-                (Some(SseFilter::Main), Endpoint::Events) => true, //If this filter handles the `/events` endpoint
-                // then it should also propagate from inbounds `/events/main`
-                (Some(SseFilter::Events), Endpoint::Main) => true, //If we are connected to a legacy node
-                // and the client is listening to /events/main we want to get shutdown from that
-                (Some(a), b) if b.is_corresponding_to(a) => true,
-                _ => false,
-            };
-
-            if should_send_shutdown {
-                build_event_for_outbound(event, id)
-            } else {
-                None
-            }
+            Some(String::new())
         }
     }
 }
@@ -343,48 +360,21 @@ pub(super) struct ChannelsAndFilter {
 }
 
 fn serve_sse_response_handler(
-    path_param: Option<String>,
+    maybe_path_param: Option<String>,
     query: HashMap<String, String>,
     cloned_broadcaster: tokio::sync::broadcast::Sender<BroadcastChannelMessage>,
     max_concurrent_subscribers: u32,
     new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
 ) -> http::Response<Body> {
-    // If we already have the maximum number of subscribers, reject this new one.
-    if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
-        info!(
-            %max_concurrent_subscribers,
-            "event stream server has max subscribers: rejecting new one"
-        );
-        return create_503();
+    if let Some(value) = validate(&cloned_broadcaster, max_concurrent_subscribers) {
+        return value;
     }
-
-    // If `path_param` is not a valid string, return a 404.
-    let event_filter = match get_filter(
-        path_param
-            .clone()
-            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
-            .as_str(),
-    ) {
-        Some(filter) => filter,
-        None => return create_404(),
-    };
-
-    let stream_filter = match path_to_filter(
-        path_param
-            .unwrap_or_else(|| SSE_API_ROOT_PATH.to_string())
-            .as_str(),
-    ) {
-        Some(filter) => filter,
-        None => return create_404(),
-    };
-
-    let start_from = match parse_query(query) {
-        Ok(maybe_id) => maybe_id,
+    let (event_filter, stream_filter, start_from) = match parse_url_props(maybe_path_param, query) {
+        Ok(value) => value,
         Err(error_response) => return error_response,
     };
 
-    // Create a channel for the client's handler to receive the stream of initial
-    // events.
+    // Create a channel for the client's handler to receive the stream of initial events.
     let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
 
     // Supply the server with the sender part of the channel along with the client's
@@ -400,8 +390,7 @@ fn serve_sse_response_handler(
         error!("failed to send new subscriber info");
     }
 
-    // Create a channel for the client's handler to receive the stream of ongoing
-    // events.
+    // Create a channel for the client's handler to receive the stream of ongoing events.
     let ongoing_events_receiver = cloned_broadcaster.subscribe();
 
     sse::reply(sse::keep_alive().stream(stream_to_client(
@@ -412,6 +401,42 @@ fn serve_sse_response_handler(
     )))
     .into_response()
 }
+
+fn parse_url_props(
+    maybe_path_param: Option<String>,
+    query: HashMap<String, String>,
+) -> Result<UrlProps, http::Response<Body>> {
+    let path_param = maybe_path_param.unwrap_or_else(|| SSE_API_ROOT_PATH.to_string());
+    let event_filter = match get_filter(path_param.as_str()) {
+        Some(filter) => filter,
+        None => return Err(create_404()),
+    };
+    let stream_filter = match path_to_filter(path_param.as_str()) {
+        Some(filter) => filter,
+        None => return Err(create_404()),
+    };
+    let start_from = match parse_query(query) {
+        Ok(maybe_id) => maybe_id,
+        Err(error_response) => return Err(error_response),
+    };
+    Ok((event_filter, stream_filter, start_from))
+}
+
+fn validate(
+    cloned_broadcaster: &broadcast::Sender<BroadcastChannelMessage>,
+    max_concurrent_subscribers: u32,
+) -> Option<http::Response<Body>> {
+    // If we already have the maximum number of subscribers, reject this new one.
+    if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+        info!(
+            %max_concurrent_subscribers,
+            "event stream server has max subscribers: rejecting new one"
+        );
+        return Some(create_503());
+    }
+    None
+}
+
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
@@ -468,6 +493,7 @@ impl ChannelsAndFilter {
 ///
 /// It also takes an `EventFilter` which causes events to which the client didn't subscribe to be
 /// skipped.
+#[allow(clippy::too_many_lines)]
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
@@ -477,7 +503,6 @@ fn stream_to_client(
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
     let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
     let cloned_initial_ids = Arc::clone(&initial_stream_ids);
-
     // Map the events arriving after the initial stream to the correct error type, filtering out any
     // that have already been sent in the initial stream.
     let ongoing_stream = BroadcastStream::new(ongoing_events)
@@ -559,6 +584,7 @@ mod tests {
 
     /// This test checks that events with correct IDs (i.e. all types have an ID except for
     /// `ApiVersion`) are filtered properly.
+    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn should_filter_events_with_valid_ids() {
         let mut rng = TestRng::new();
@@ -664,6 +690,7 @@ mod tests {
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
     /// `ApiVersion`) are filtered out.
+    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn should_filter_events_with_invalid_ids() {
         let mut rng = TestRng::new();
@@ -743,74 +770,8 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn should_filter_duplicate_events(path_filter: &str) {
-        // Returns `count` random SSE events, all of a single variant defined by `path_filter`.  The
-        // events will have sequential IDs starting from `start_id`, and if the path filter
-        // indicates the events should be deploy-accepted ones, the corresponding random deploys
-        // will be inserted into `deploys`.
-        fn make_random_events(
-            rng: &mut TestRng,
-            start_id: Id,
-            count: usize,
-            path_filter: &str,
-            deploys: &mut HashMap<DeployHash, Deploy>,
-        ) -> Vec<ServerSentEvent> {
-            (start_id..(start_id + count as u32))
-                .map(|id| {
-                    let data = match path_filter {
-                        SSE_API_MAIN_PATH => SseData::random_block_added(rng),
-                        SSE_API_DEPLOYS_PATH => {
-                            let (event, deploy) = SseData::random_deploy_accepted(rng);
-                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
-                            event
-                        }
-                        SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
-                        _ => unreachable!(),
-                    };
-                    ServerSentEvent {
-                        id: Some(id),
-                        data,
-                        json_data: None,
-                        inbound_filter: None,
-                    }
-                })
-                .collect()
-        }
-
-        // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
-        // duplicates taken from the end of the initial stream.  Allows for the full initial stream
-        // to be duplicated except for its first event (the `ApiVersion` one) which has no ID.
-        fn make_ongoing_events(
-            rng: &mut TestRng,
-            duplicate_count: usize,
-            initial_events: &[ServerSentEvent],
-            path_filter: &str,
-            deploys: &mut HashMap<DeployHash, Deploy>,
-        ) -> Vec<ServerSentEvent> {
-            assert!(duplicate_count < initial_events.len());
-            let initial_skip_count = initial_events.len() - duplicate_count;
-            let unique_start_id = initial_events.len() as Id - 1;
-            let unique_count = NUM_ONGOING_EVENTS - duplicate_count;
-            initial_events
-                .iter()
-                .skip(initial_skip_count)
-                .cloned()
-                .chain(make_random_events(
-                    rng,
-                    unique_start_id,
-                    unique_count,
-                    path_filter,
-                    deploys,
-                ))
-                .collect()
-        }
-
-        // The number of events in the initial stream, excluding the very first `ApiVersion` one.
-        const NUM_INITIAL_EVENTS: usize = 10;
-        // The number of events in the ongoing stream, including any duplicated from the initial
-        // stream.
-        const NUM_ONGOING_EVENTS: usize = 20;
-
         let mut rng = TestRng::new();
 
         let mut deploys = HashMap::new();
@@ -927,5 +888,66 @@ mod tests {
     #[tokio::test]
     async fn should_filter_duplicate_signature_events() {
         should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
+    }
+
+    // Returns `count` random SSE events, all of a single variant defined by `path_filter`.  The
+    // events will have sequential IDs starting from `start_id`, and if the path filter
+    // indicates the events should be deploy-accepted ones, the corresponding random deploys
+    // will be inserted into `deploys`.
+    fn make_random_events(
+        rng: &mut TestRng,
+        start_id: Id,
+        count: usize,
+        path_filter: &str,
+        deploys: &mut HashMap<DeployHash, Deploy>,
+    ) -> Vec<ServerSentEvent> {
+        (start_id..(start_id + count as u32))
+            .map(|id| {
+                let data = match path_filter {
+                    SSE_API_MAIN_PATH => SseData::random_block_added(rng),
+                    SSE_API_DEPLOYS_PATH => {
+                        let (event, deploy) = SseData::random_deploy_accepted(rng);
+                        assert!(deploys.insert(*deploy.hash(), deploy).is_none());
+                        event
+                    }
+                    SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
+                    _ => unreachable!(),
+                };
+                ServerSentEvent {
+                    id: Some(id),
+                    data,
+                    json_data: None,
+                    inbound_filter: None,
+                }
+            })
+            .collect()
+    }
+
+    // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
+    // duplicates taken from the end of the initial stream.  Allows for the full initial stream
+    // to be duplicated except for its first event (the `ApiVersion` one) which has no ID.
+    fn make_ongoing_events(
+        rng: &mut TestRng,
+        duplicate_count: usize,
+        initial_events: &[ServerSentEvent],
+        path_filter: &str,
+        deploys: &mut HashMap<DeployHash, Deploy>,
+    ) -> Vec<ServerSentEvent> {
+        assert!(duplicate_count < initial_events.len());
+        let initial_skip_count = initial_events.len() - duplicate_count;
+        let unique_start_id = initial_events.len() as Id - 1;
+        let unique_count = NUM_ONGOING_EVENTS - duplicate_count;
+        initial_events
+            .iter()
+            .skip(initial_skip_count)
+            .cloned()
+            .chain(make_random_events(
+                rng,
+                unique_start_id,
+                unique_count,
+                path_filter,
+                deploys,
+            ))
+            .collect()
     }
 }

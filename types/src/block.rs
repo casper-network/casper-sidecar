@@ -210,8 +210,6 @@ impl Block {
     }
 
     pub fn random(rng: &mut TestRng) -> Self {
-        const BLOCK_REWARD: u64 = 1_000_000_000_000;
-
         // Create the block body.
         let proposer = PublicKey::random(rng);
         let deploy_count = rng.gen_range(0..11);
@@ -227,63 +225,8 @@ impl Block {
             deploy_hashes,
             transfer_hashes,
         };
-
         // Create the block header.
-        let parent_hash = BlockHash(Digest::random(rng));
-        let state_root_hash = Digest::random(rng);
-        let serialized_body = body
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        let body_hash = Digest::hash(serialized_body);
-        let random_bit = rng.gen();
-        let accumulated_seed = Digest::random(rng);
-        let is_switch = rng.gen_bool(0.1);
-        let era_end = if is_switch {
-            let equivocators_count = rng.gen_range(0..5);
-            let rewards_count = rng.gen_range(0..5);
-            let inactive_count = rng.gen_range(0..5);
-            let era_report = EraReport {
-                equivocators: iter::repeat_with(|| PublicKey::random(rng))
-                    .take(equivocators_count)
-                    .collect(),
-                rewards: iter::repeat_with(|| {
-                    let public_key = PublicKey::random(rng);
-                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
-                    (public_key, reward)
-                })
-                .take(rewards_count)
-                .collect(),
-                inactive_validators: iter::repeat_with(|| PublicKey::random(rng))
-                    .take(inactive_count)
-                    .collect(),
-            };
-            let validator_count = rng.gen_range(0..11);
-            let next_era_validator_weights =
-                iter::repeat_with(|| (PublicKey::random(rng), rng.gen()))
-                    .take(validator_count)
-                    .collect();
-            Some(EraEnd {
-                era_report,
-                next_era_validator_weights,
-            })
-        } else {
-            None
-        };
-        let timestamp = Timestamp::now();
-        let era = rng.gen_range(1..6);
-        let height = era * 10 + rng.gen_range(0..10);
-        let header = BlockHeader {
-            parent_hash,
-            state_root_hash,
-            body_hash,
-            random_bit,
-            accumulated_seed,
-            era_end,
-            timestamp,
-            era_id: EraId::new(era),
-            height,
-            protocol_version: ProtocolVersion::V1_0_0,
-        };
+        let header = random_block_header(rng, &body);
 
         // Create the block hash.
         let serialized_header = header
@@ -292,6 +235,70 @@ impl Block {
         let hash = BlockHash(Digest::hash(serialized_header));
 
         Block { hash, header, body }
+    }
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn random_block_header(rng: &mut TestRng, body: &BlockBody) -> BlockHeader {
+    let parent_hash = BlockHash(Digest::random(rng));
+    let state_root_hash = Digest::random(rng);
+    let serialized_body = body
+        .to_bytes()
+        .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+    let body_hash = Digest::hash(serialized_body);
+    let random_bit = rng.gen();
+    let accumulated_seed = Digest::random(rng);
+    let is_switch = rng.gen_bool(0.1);
+    let era_end = if is_switch {
+        Some(random_era_end(rng))
+    } else {
+        None
+    };
+    let timestamp = Timestamp::now();
+    let era = rng.gen_range(1..6);
+    let height = era * 10 + rng.gen_range(0..10);
+    BlockHeader {
+        parent_hash,
+        state_root_hash,
+        body_hash,
+        random_bit,
+        accumulated_seed,
+        era_end,
+        timestamp,
+        era_id: EraId::new(era),
+        height,
+        protocol_version: ProtocolVersion::V1_0_0,
+    }
+}
+
+#[cfg(feature = "sse-data-testing")]
+fn random_era_end(rng: &mut TestRng) -> EraEnd {
+    const BLOCK_REWARD: u64 = 1_000_000_000_000;
+    let equivocators_count = rng.gen_range(0..5);
+    let rewards_count = rng.gen_range(0..5);
+    let inactive_count = rng.gen_range(0..5);
+    let era_report = EraReport {
+        equivocators: iter::repeat_with(|| PublicKey::random(rng))
+            .take(equivocators_count)
+            .collect(),
+        rewards: iter::repeat_with(|| {
+            let public_key = PublicKey::random(rng);
+            let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+            (public_key, reward)
+        })
+        .take(rewards_count)
+        .collect(),
+        inactive_validators: iter::repeat_with(|| PublicKey::random(rng))
+            .take(inactive_count)
+            .collect(),
+    };
+    let validator_count = rng.gen_range(0..11);
+    let next_era_validator_weights = iter::repeat_with(|| (PublicKey::random(rng), rng.gen()))
+        .take(validator_count)
+        .collect();
+    EraEnd {
+        era_report,
+        next_era_validator_weights,
     }
 }
 

@@ -206,3 +206,94 @@ impl StreamConnector for MockSseConnection {
         Ok(rx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::sse_connector::{MockSseConnection, SseConnection, StreamConnector};
+    use eventsource_stream::Event;
+    use futures_util::stream::iter;
+    use std::{convert::Infallible, time::Duration};
+    use url::Url;
+    use warp::{sse::Event as SseEvent, Filter};
+
+    #[tokio::test]
+    async fn given_sse_connection_should_read_data() {
+        let sse_port = portpicker::pick_unused_port().unwrap();
+        spin_up_test_sse_endpoint(sse_port).await;
+        let mut connection = SseConnection {
+            max_attempts: 5,
+            delay_between_attempts: Duration::from_secs(2),
+            connection_timeout: Duration::from_secs(10),
+            channel_buffer_size: 50,
+            bind_address: Url::parse(
+                format!("http://localhost:{}/notifications", sse_port).as_str(),
+            )
+            .unwrap(),
+        };
+
+        let data = fetch_data(&mut connection).await;
+        assert_eq!(data, vec!["msg 1", "msg 2", "msg 3"])
+    }
+
+    #[tokio::test]
+    async fn given_sse_connection_when_connecting_to_nonexisting_should_fail() {
+        let sse_port = portpicker::pick_unused_port().unwrap();
+        let mut connection = SseConnection {
+            max_attempts: 5,
+            delay_between_attempts: Duration::from_secs(2),
+            connection_timeout: Duration::from_secs(10),
+            channel_buffer_size: 50,
+            bind_address: Url::parse(
+                format!("http://localhost:{}/notifications", sse_port).as_str(),
+            )
+            .unwrap(),
+        };
+        let res = connection.connect(None).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn given_mock_sse_connection_should_read_data() {
+        let data1 = Event {
+            data: "data 1".to_string(),
+            ..Default::default()
+        };
+        let data2 = Event {
+            data: "data 2".to_string(),
+            ..Default::default()
+        };
+        let mut connection = MockSseConnection {
+            data: vec![data1, data2],
+            failure_on_connection: None,
+            failure_on_message: None,
+        };
+
+        let data = fetch_data(&mut connection).await;
+        assert_eq!(data, vec!["data 1", "data 2"])
+    }
+
+    async fn fetch_data(connection: &mut dyn StreamConnector) -> Vec<String> {
+        let mut data = vec![];
+        if let Ok(mut receiver) = connection.connect(None).await {
+            while let Some(event_res) = receiver.recv().await {
+                let event = event_res.unwrap();
+                data.push(event.data);
+            }
+        }
+        data
+    }
+
+    async fn spin_up_test_sse_endpoint(sse_port: u16) {
+        fn sse_events() -> impl futures_util::Stream<Item = Result<SseEvent, Infallible>> {
+            iter(vec![
+                Ok(SseEvent::default().data("msg 1")),
+                Ok(SseEvent::default().data("msg 2")),
+                Ok(SseEvent::default().data("msg 3")),
+            ])
+        }
+        let routes = warp::path("notifications")
+            .and(warp::get())
+            .map(|| warp::sse::reply(warp::sse::keep_alive().stream(sse_events())));
+        tokio::spawn(async move { warp::serve(routes).run(([127, 0, 0, 1], sse_port)).await });
+    }
+}
