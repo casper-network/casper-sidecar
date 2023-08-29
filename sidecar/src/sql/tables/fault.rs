@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -15,17 +15,23 @@ enum Fault {
     EventLogId,
 }
 
-pub fn create_table_stmt() -> TableCreateStatement {
+pub fn create_table_stmt(db_supports_unsigned: bool) -> TableCreateStatement {
+    let mut binding = ColumnDef::new(Fault::Era);
+    let mut era_col_definition = binding.not_null();
+    if db_supports_unsigned {
+        era_col_definition = era_col_definition.big_unsigned();
+    } else {
+        era_col_definition = era_col_definition.decimal_len(20, 0);
+    }
     Table::create()
         .table(Fault::Table)
         .if_not_exists()
-        .col(ColumnDef::new(Fault::Era).big_unsigned().not_null())
+        .col(era_col_definition)
         .col(ColumnDef::new(Fault::PublicKey).string().not_null())
-        .col(ColumnDef::new(Fault::Raw).blob(BlobSize::Tiny).not_null())
+        .col(ColumnDef::new(Fault::Raw).text().not_null())
         .col(ColumnDef::new(Fault::EventLogId).big_unsigned().not_null())
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_Fault")
                 .col(Fault::Era)
@@ -46,7 +52,7 @@ pub fn create_insert_stmt(
     era: u64,
     public_key: String,
     raw: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Fault::Table)

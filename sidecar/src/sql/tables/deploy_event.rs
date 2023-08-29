@@ -24,7 +24,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(DeployEvent::DeployHash).string().not_null())
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_DeployEvent")
                 .col(DeployEvent::DeployHash)
@@ -41,7 +40,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_insert_stmt(event_log_id: u32, deploy_hash: String) -> SqResult<InsertStatement> {
+pub fn create_insert_stmt(event_log_id: u64, deploy_hash: String) -> SqResult<InsertStatement> {
     let insert_stmt = Query::insert()
         .into_table(DeployEvent::Table)
         .columns([DeployEvent::EventLogId, DeployEvent::DeployHash])

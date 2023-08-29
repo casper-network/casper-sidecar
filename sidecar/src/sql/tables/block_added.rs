@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -26,11 +26,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .unique_key(),
         )
         .col(ColumnDef::new(BlockAdded::BlockHash).string().not_null())
-        .col(
-            ColumnDef::new(BlockAdded::Raw)
-                .blob(BlobSize::Tiny)
-                .not_null(),
-        )
+        .col(ColumnDef::new(BlockAdded::Raw).text().not_null())
         .col(
             ColumnDef::new(BlockAdded::EventLogId)
                 .big_unsigned()
@@ -38,7 +34,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         )
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_BlockAdded")
                 .col(BlockAdded::BlockHash)
@@ -59,7 +54,7 @@ pub fn create_insert_stmt(
     height: u64,
     block_hash: String,
     raw: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(BlockAdded::Table)
@@ -95,9 +90,13 @@ pub fn create_get_by_height_stmt(height: u64) -> SelectStatement {
 }
 
 pub fn create_get_latest_stmt() -> SelectStatement {
+    let select_max = Query::select()
+        .expr(Expr::col(BlockAdded::Height).max())
+        .from(BlockAdded::Table)
+        .to_owned();
     Query::select()
         .column(BlockAdded::Raw)
         .from(BlockAdded::Table)
-        .expr(Expr::col(BlockAdded::Height).max())
+        .and_where(Expr::col(BlockAdded::Height).in_subquery(select_max))
         .to_owned()
 }

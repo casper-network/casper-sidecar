@@ -1,8 +1,8 @@
+use crate::database::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use crate::types::database::{
     DatabaseReader, DatabaseWriteError, Migration, MigrationScriptExecutor, StatementWrapper,
     TransactionWrapper,
 };
-use crate::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use async_trait::async_trait;
 use itertools::Itertools;
 use sqlx::{Executor, Row};
@@ -239,7 +239,7 @@ async fn should_store_failed_version_if_script_fails() {
 fn build_ok_migration(version: u32) -> Migration {
     Migration {
         version: Some(version),
-        statement_producers: || {
+        statement_producers: |_| {
             Ok(vec![
                 StatementWrapper::Raw(create_table_stmt("x")),
                 StatementWrapper::Raw(String::from("INSERT INTO x VALUES(10), (20), (30), (40);")),
@@ -252,7 +252,7 @@ fn build_ok_migration(version: u32) -> Migration {
 fn build_update_migration(version: u32) -> Migration {
     Migration {
         version: Some(version),
-        statement_producers: || {
+        statement_producers: |_| {
             Ok(vec![StatementWrapper::Raw(String::from(
                 "UPDATE x SET a = 555;",
             ))])
@@ -264,7 +264,7 @@ fn build_update_migration(version: u32) -> Migration {
 fn build_no_version_migration() -> Migration {
     Migration {
         version: None,
-        statement_producers: || {
+        statement_producers: |_| {
             Ok(vec![
                 StatementWrapper::Raw(create_table_stmt("x")),
                 StatementWrapper::Raw(String::from("INSERT INTO x VALUES(10), (20), (30), (40);")),
@@ -277,7 +277,7 @@ fn build_no_version_migration() -> Migration {
 fn build_different_ok_migration(version: u32) -> Migration {
     Migration {
         version: Some(version),
-        statement_producers: || {
+        statement_producers: |_| {
             Ok(vec![
                 StatementWrapper::Raw(create_table_stmt("y")),
                 StatementWrapper::Raw(String::from("INSERT INTO y VALUES(7), (5), (125);")),
@@ -294,7 +294,7 @@ fn build_migration_with_script(version: u32) -> Migration {
     };
     Migration {
         version: Some(version),
-        statement_producers: || Ok(vec![StatementWrapper::Raw(create_table_stmt("y"))]),
+        statement_producers: |_| Ok(vec![StatementWrapper::Raw(create_table_stmt("y"))]),
         script_executor: Some(Arc::new(script)),
     }
 }
@@ -303,7 +303,7 @@ fn build_migration_with_failing_script(version: u32) -> Migration {
     let script = FailingScript {};
     Migration {
         version: Some(version),
-        statement_producers: || Ok(vec![StatementWrapper::Raw(create_table_stmt("y"))]),
+        statement_producers: |_| Ok(vec![StatementWrapper::Raw(create_table_stmt("y"))]),
         script_executor: Some(Arc::new(script)),
     }
 }
@@ -315,7 +315,7 @@ fn create_table_stmt(table_name: &str) -> String {
 fn build_failed_migration(version: u32) -> Migration {
     Migration {
         version: Some(version),
-        statement_producers: || {
+        statement_producers: |_| {
             Ok(vec![
                 StatementWrapper::Raw(String::from("CREATE TABLE abcdef(a int);")),
                 StatementWrapper::Raw(String::from("CREATE TAB();")),

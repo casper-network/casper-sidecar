@@ -1,10 +1,11 @@
-mod errors;
 mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
+#[cfg(test)]
+use crate::types::config::StorageConfig;
 use crate::{
-    migration_manager::MigrationManager,
+    database::migration_manager::MigrationManager,
     sql::tables,
     types::{config::SqliteConfig, database::DatabaseWriteError},
 };
@@ -50,8 +51,7 @@ impl SqliteDatabase {
                                 WAL_AUTOCHECKPOINT_KEY,
                                 config.wal_autocheckpointing_interval.to_string(),
                             )
-                            .disable_statement_logging()
-                            .to_owned(),
+                            .disable_statement_logging(),
                     );
 
                 let sqlite_db = SqliteDatabase {
@@ -62,6 +62,19 @@ impl SqliteDatabase {
 
                 Ok(sqlite_db)
             }
+        }
+    }
+
+    #[cfg(test)]
+    pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
+        match storage_config {
+            StorageConfig::SqliteDbConfig {
+                storage_path,
+                sqlite_config,
+            } => SqliteDatabase::new(Path::new(storage_path), sqlite_config.clone()).await,
+            StorageConfig::PostgreSqlDbConfig { .. } => Err(Error::msg(
+                "can't build Sqlite database from postgres config",
+            )),
         }
     }
 
@@ -112,8 +125,7 @@ impl SqliteDatabase {
                 SqliteConnectOptions::from_str(":memory:")?
                     .create_if_missing(true)
                     .journal_mode(SqliteJournalMode::Wal)
-                    .disable_statement_logging()
-                    .to_owned(),
+                    .disable_statement_logging(),
             );
 
         let sqlite_db = SqliteDatabase {

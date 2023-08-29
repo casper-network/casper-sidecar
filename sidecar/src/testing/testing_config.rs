@@ -58,7 +58,7 @@ impl TestingConfig {
     /// Specify where test storage (database, sse cache) should be located.
     /// By default it is set to `/target/test_storage` however it is recommended to overwrite this with a `TempDir` path for testing purposes.
     pub(crate) fn set_storage_path(&mut self, path: String) {
-        self.config.storage.storage_path = path;
+        self.config.storage.set_storage_path(path);
     }
 
     pub(crate) fn add_connection(

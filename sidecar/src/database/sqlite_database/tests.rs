@@ -1,5 +1,5 @@
 use rand::Rng;
-use sea_query::{Expr, Query, SqliteQueryBuilder};
+use sea_query::{Asterisk, Expr, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
@@ -14,12 +14,16 @@ use crate::{
 };
 
 const MAX_CONNECTIONS: u32 = 100;
+#[cfg(test)]
+async fn build_database() -> SqliteDatabase {
+    SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory")
+}
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_u32max_id() {
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key")
         .expect("Error creating event_log insert SQL")
@@ -46,9 +50,7 @@ async fn should_save_and_retrieve_a_u32max_id() {
 async fn should_save_and_retrieve_block_added() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let block_added = BlockAdded::random(&mut test_rng);
 
     sqlite_db
@@ -76,9 +78,7 @@ async fn should_save_and_retrieve_block_added() {
 async fn should_save_and_retrieve_deploy_accepted() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -96,9 +96,7 @@ async fn should_save_and_retrieve_deploy_accepted() {
 async fn should_save_and_retrieve_deploy_processed() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
     sqlite_db
@@ -116,9 +114,7 @@ async fn should_save_and_retrieve_deploy_processed() {
 async fn should_save_and_retrieve_deploy_expired() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
     sqlite_db
@@ -136,9 +132,7 @@ async fn should_save_and_retrieve_deploy_expired() {
 async fn should_retrieve_deploy_aggregate_of_accepted() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     sqlite_db
@@ -156,9 +150,7 @@ async fn should_retrieve_deploy_aggregate_of_accepted() {
 async fn should_retrieve_deploy_aggregate_of_processed() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_processed =
         DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
@@ -183,9 +175,7 @@ async fn should_retrieve_deploy_aggregate_of_processed() {
 async fn should_retrieve_deploy_aggregate_of_expired() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
@@ -209,9 +199,7 @@ async fn should_retrieve_deploy_aggregate_of_expired() {
 async fn should_save_and_retrieve_fault() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let fault = Fault::random(&mut test_rng);
 
     sqlite_db
@@ -234,9 +222,7 @@ async fn should_save_and_retrieve_fault() {
 async fn should_save_and_retrieve_fault_with_a_u64max() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let mut fault = Fault::random(&mut test_rng);
     fault.era_id = EraId::new(u64::MAX);
 
@@ -264,9 +250,7 @@ async fn should_save_and_retrieve_fault_with_a_u64max() {
 async fn should_save_and_retrieve_finality_signature() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
     sqlite_db
@@ -284,9 +268,7 @@ async fn should_save_and_retrieve_finality_signature() {
 async fn should_save_and_retrieve_step() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let step = Step::random(&mut test_rng);
 
     sqlite_db
@@ -304,9 +286,7 @@ async fn should_save_and_retrieve_step() {
 async fn should_save_and_retrieve_a_step_with_u64_max_era() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let mut step = Step::random(&mut test_rng);
     step.era_id = EraId::new(u64::MAX);
 
@@ -329,9 +309,7 @@ async fn should_disallow_duplicate_event_id_from_source() {
 
     let event_id = test_rng.gen::<u32>();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let block_added = BlockAdded::random(&mut test_rng);
 
@@ -353,9 +331,7 @@ async fn should_disallow_duplicate_event_id_from_source() {
 async fn should_disallow_insert_of_existing_block_added() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let block_added = BlockAdded::random(&mut test_rng);
 
@@ -381,9 +357,7 @@ async fn should_disallow_insert_of_existing_block_added() {
 async fn should_disallow_insert_of_existing_deploy_accepted() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
@@ -409,9 +383,7 @@ async fn should_disallow_insert_of_existing_deploy_accepted() {
 async fn should_disallow_insert_of_existing_deploy_expired() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
@@ -437,9 +409,7 @@ async fn should_disallow_insert_of_existing_deploy_expired() {
 async fn should_disallow_insert_of_existing_deploy_processed() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
@@ -465,9 +435,7 @@ async fn should_disallow_insert_of_existing_deploy_processed() {
 async fn should_disallow_insert_of_existing_fault() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let fault = Fault::random(&mut test_rng);
 
@@ -493,9 +461,7 @@ async fn should_disallow_insert_of_existing_fault() {
 async fn should_disallow_insert_of_existing_finality_signature() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
@@ -521,12 +487,9 @@ async fn should_disallow_insert_of_existing_finality_signature() {
 async fn should_disallow_insert_of_existing_step() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let step = Step::random(&mut test_rng);
-
     assert!(sqlite_db
         .save_step(step.clone(), 1, "127.0.0.1".to_string())
         .await
@@ -549,9 +512,7 @@ async fn should_disallow_insert_of_existing_step() {
 async fn should_save_block_added_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let block_added = BlockAdded::random(&mut test_rng);
 
@@ -579,9 +540,7 @@ async fn should_save_block_added_with_correct_event_type_id() {
 async fn should_save_deploy_accepted_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
@@ -609,9 +568,7 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
 async fn should_save_deploy_processed_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
@@ -639,9 +596,7 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
 async fn should_save_deploy_expired_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
@@ -669,9 +624,7 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
 async fn should_save_fault_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let fault = Fault::random(&mut test_rng);
 
@@ -699,9 +652,7 @@ async fn should_save_fault_with_correct_event_type_id() {
 async fn should_save_finality_signature_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
@@ -729,9 +680,7 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
 async fn should_save_step_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     let step = Step::random(&mut test_rng);
 
@@ -757,13 +706,11 @@ async fn should_save_step_with_correct_event_type_id() {
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_shutdown() {
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
 
     let sql = Query::select()
-        .expr(Expr::asterisk())
+        .expr(Expr::col(Asterisk))
         .from(tables::shutdown::Shutdown::Table)
         .to_string(SqliteQueryBuilder);
     let row = sqlite_db.fetch_one(&sql).await;
@@ -776,9 +723,7 @@ async fn should_save_and_retrieve_a_shutdown() {
 
 #[tokio::test]
 async fn get_number_of_events_should_return_0() {
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
 
     assert_eq!(sqlite_db.get_number_of_events().await.unwrap(), 0);
 }
@@ -786,9 +731,7 @@ async fn get_number_of_events_should_return_0() {
 #[tokio::test]
 async fn get_number_of_events_should_return_1_when_event_stored() {
     let mut test_rng = TestRng::new();
-    let sqlite_db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
-        .await
-        .expect("Error opening database in memory");
+    let sqlite_db = build_database().await;
     let fault = Fault::random(&mut test_rng);
 
     assert!(sqlite_db

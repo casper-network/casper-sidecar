@@ -5,17 +5,16 @@
 extern crate core;
 mod admin_server;
 mod api_version_manager;
+mod database;
 mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
 mod integration_tests_version_switch;
-mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
 pub mod rest_server;
 mod sql;
-mod sqlite_database;
 #[cfg(test)]
 pub(crate) mod testing;
 mod types;
@@ -30,9 +29,9 @@ use std::{
 
 use crate::{
     admin_server::run_server as start_admin_server,
+    database::sqlite_database::SqliteDatabase,
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
-    sqlite_database::SqliteDatabase,
     types::{
         config::{read_config, Config},
         database::{DatabaseWriteError, DatabaseWriter},
@@ -50,6 +49,7 @@ use casper_event_types::{
     Filter,
 };
 use clap::Parser;
+use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 #[cfg(not(target_env = "msvc"))]
@@ -60,7 +60,10 @@ use tokio::{
     time::sleep,
 };
 use tracing::{debug, info, trace, warn};
-use types::database::DatabaseReader;
+use types::{
+    config::StorageConfig,
+    database::{Database, DatabaseReader},
+};
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -94,22 +97,22 @@ async fn main() -> Result<(), Error> {
 async fn run(config: Config) -> Result<(), Error> {
     validate_config(&config)?;
     let (event_listeners, sse_data_receivers) = build_event_listeners(&config)?;
-    let sqlite_database = build_database(&config).await?;
-    let rest_server_handle = build_and_start_rest_server(&config, sqlite_database.clone());
     let admin_server_handle = build_and_start_admin_server(&config);
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
-    let is_empty_database = check_if_database_is_empty(sqlite_database.clone()).await?;
 
+    let database = build_database(&config.storage).await?;
+    let rest_server_handle = build_and_start_rest_server(&config, database.clone());
+    let is_empty_database = check_if_database_is_empty(database.clone()).await?;
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
         connection_configs,
         event_listeners,
         sse_data_receivers,
-        sqlite_database.clone(),
+        database.clone(),
         outbound_sse_data_sender.clone(),
         is_empty_database,
     );
@@ -129,7 +132,7 @@ fn start_event_broadcasting(
     config: &Config,
     mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>, Option<String>)>,
 ) -> JoinHandle<Result<(), Error>> {
-    let storage_path = config.storage.storage_path.clone();
+    let storage_path = config.storage.get_storage_path();
     let event_stream_server_port = config.event_stream_server.port;
     let buffer_length = config.event_stream_server.event_stream_buffer_length;
     let max_concurrent_subscribers = config.event_stream_server.max_concurrent_subscribers;
@@ -157,7 +160,7 @@ fn start_sse_processors(
     connection_configs: Vec<types::config::Connection>,
     event_listeners: Vec<EventListener>,
     sse_data_receivers: Vec<Receiver<SseEvent>>,
-    sqlite_database: SqliteDatabase,
+    database: Database,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     is_empty_database: bool,
 ) -> JoinHandle<Result<(), Error>> {
@@ -170,16 +173,26 @@ fn start_sse_processors(
             .zip(connection_configs)
             .zip(sse_data_receivers)
         {
-            let join_handle = tokio::spawn(sse_processor(
-                event_listener,
-                sse_data_receiver,
-                outbound_sse_data_sender.clone(),
-                sqlite_database.clone(),
-                connection_config.enable_logging,
-                is_empty_database,
-                api_version_manager.clone(),
-            ));
-
+            let join_handle = match database.clone() {
+                Database::SqliteDatabaseWrapper(db) => tokio::spawn(sse_processor(
+                    event_listener,
+                    sse_data_receiver,
+                    outbound_sse_data_sender.clone(),
+                    db.clone(),
+                    connection_config.enable_logging,
+                    is_empty_database,
+                    api_version_manager.clone(),
+                )),
+                Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
+                    event_listener,
+                    sse_data_receiver,
+                    outbound_sse_data_sender.clone(),
+                    db.clone(),
+                    connection_config.enable_logging,
+                    is_empty_database,
+                    api_version_manager.clone(),
+                )),
+            };
             join_handles.push(join_handle);
         }
 
@@ -201,12 +214,19 @@ fn start_sse_processors(
 
 fn build_and_start_rest_server(
     config: &Config,
-    sqlite_database: SqliteDatabase,
+    database: Database,
 ) -> JoinHandle<Result<(), Error>> {
-    tokio::spawn(start_rest_server(
-        config.rest_server.clone(),
-        sqlite_database,
-    ))
+    let rest_server_config = config.rest_server.clone();
+    tokio::spawn(async move {
+        match database {
+            Database::SqliteDatabaseWrapper(db) => {
+                start_rest_server(rest_server_config, db.clone()).await
+            }
+            Database::PostgreSqlDatabaseWrapper(db) => {
+                start_rest_server(rest_server_config, db.clone()).await
+            }
+        }
+    })
 }
 
 fn build_and_start_admin_server(config: &Config) -> JoinHandle<Result<(), Error>> {
@@ -220,13 +240,25 @@ fn build_and_start_admin_server(config: &Config) -> JoinHandle<Result<(), Error>
     })
 }
 
-async fn build_database(config: &Config) -> Result<SqliteDatabase, Error> {
-    let path_to_database_dir = Path::new(&config.storage.storage_path);
-    let sqlite_database =
-        SqliteDatabase::new(path_to_database_dir, config.storage.sqlite_config.clone())
-            .await
-            .context("Error instantiating database")?;
-    Ok(sqlite_database)
+async fn build_database(config: &StorageConfig) -> Result<Database, Error> {
+    match config {
+        StorageConfig::SqliteDbConfig {
+            storage_path,
+            sqlite_config,
+        } => {
+            let path_to_database_dir = Path::new(storage_path);
+            let sqlite_database = SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
+                .await
+                .context("Error instantiating database")?;
+            Ok(Database::SqliteDatabaseWrapper(sqlite_database))
+        }
+        StorageConfig::PostgreSqlDbConfig {
+            postgresql_config, ..
+        } => {
+            let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone()).await?;
+            Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
+        }
+    }
 }
 
 fn build_event_listeners(
@@ -296,7 +328,7 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
 async fn handle_database_save_result<F>(
     entity_name: &str,
     entity_identifier: &str,
-    res: Result<usize, DatabaseWriteError>,
+    res: Result<u64, DatabaseWriteError>,
     outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
     inbound_filter: Filter,
     json_data: Option<String>,
@@ -342,9 +374,9 @@ async fn handle_database_save_result<F>(
 /// Returns false if the handling indicated that no other messages should be processed.
 /// Returns true otherwise.
 #[allow(clippy::too_many_lines)]
-async fn handle_single_event(
+async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
-    sqlite_database: SqliteDatabase,
+    database: Db,
     enable_event_logging: bool,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     api_version_manager: GuardedApiVersionManager,
@@ -378,7 +410,7 @@ async fn handle_single_event(
                 debug!("Block Added: {}", hex_block_hash);
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_block_added(
                     BlockAdded::new(block_hash, block.clone()),
                     sse_event.id,
@@ -404,7 +436,7 @@ async fn handle_single_event(
             }
             let deploy_accepted = DeployAccepted::new(deploy.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_accepted(deploy_accepted, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
@@ -425,7 +457,7 @@ async fn handle_single_event(
                 debug!("Deploy Expired: {}", hex_deploy_hash);
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_expired(
                     DeployExpired::new(deploy_hash),
                     sse_event.id,
@@ -467,7 +499,7 @@ async fn handle_single_event(
                 execution_result.clone(),
             );
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_processed(
                     deploy_processed.clone(),
                     sse_event.id,
@@ -502,7 +534,7 @@ async fn handle_single_event(
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_fault(fault.clone(), sse_event.id, sse_event.source.to_string())
                 .await;
 
@@ -531,7 +563,7 @@ async fn handle_single_event(
             }
             let finality_signature = FinalitySignature::new(fs.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_finality_signature(
                     finality_signature.clone(),
                     sse_event.id,
@@ -558,7 +590,7 @@ async fn handle_single_event(
                 info!("Step at era: {}", era_id.value());
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_step(step, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
@@ -575,15 +607,13 @@ async fn handle_single_event(
             )
             .await;
         }
-        SseData::Shutdown => {
-            handle_shutdown(sse_event, sqlite_database, outbound_sse_data_sender).await
-        }
+        SseData::Shutdown => handle_shutdown(sse_event, database, outbound_sse_data_sender).await,
     }
 }
 
-async fn handle_shutdown(
+async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
-    sqlite_database: SqliteDatabase,
+    sqlite_database: Db,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
 ) {
     warn!("Node ({}) is unavailable", sse_event.source.to_string());
@@ -642,11 +672,11 @@ async fn handle_api_version(
     }
 }
 
-async fn sse_processor(
+async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     mut sse_event_listener: EventListener,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
-    sqlite_database: SqliteDatabase,
+    database: Db,
     enable_event_logging: bool,
     is_empty_database: bool,
     api_version_manager: GuardedApiVersionManager,
@@ -660,7 +690,7 @@ async fn sse_processor(
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
-            sqlite_database.clone(),
+            database.clone(),
             enable_event_logging,
             outbound_sse_data_sender.clone(),
             api_version_manager.clone(),
@@ -669,8 +699,9 @@ async fn sse_processor(
     }
 }
 
-async fn check_if_database_is_empty(db: SqliteDatabase) -> Result<bool, Error> {
-    db.get_number_of_events()
+async fn check_if_database_is_empty(database: Database) -> Result<bool, Error> {
+    database
+        .get_number_of_events()
         .await
         .map(|i| i == 0)
         .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))

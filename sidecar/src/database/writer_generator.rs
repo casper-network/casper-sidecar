@@ -1,5 +1,16 @@
-use super::SqliteDatabase;
-use crate::{
+#[macro_export]
+macro_rules! database_writer_implementation {
+    ($extended_type:ty,
+        $database_type:ty,
+        $query_result_type:ty,
+        $query_materializer_expr:expr,
+        $database_specific_configuration: expr) => {
+use anyhow::Context;
+use async_trait::async_trait;
+use casper_types::AsymmetricType;
+use itertools::Itertools;
+use tokio::sync::Mutex;
+use $crate::{
     sql::{tables, tables::event_type::EventTypeId},
     types::{
         database::{
@@ -8,45 +19,47 @@ use crate::{
         sse_events::*,
     },
 };
-use anyhow::Context;
-use async_trait::async_trait;
-use casper_types::AsymmetricType;
-use itertools::Itertools;
-use sea_query::SqliteQueryBuilder;
-#[cfg(test)]
-use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Executor, Row, Sqlite, Transaction};
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Mutex;
+use sqlx::{Executor, Row, Transaction};
+
+#[derive(Debug)]
+struct TransactionWrapperType<'a> {
+    transaction_mutex: Arc<Mutex<Transaction<'a, $database_type>>>,
+}
 
 #[async_trait]
-impl DatabaseWriter for SqliteDatabase {
+impl TransactionWrapper for TransactionWrapperType<'_> {
+    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+        let mut lock = self.transaction_mutex.lock().await;
+        lock.execute(sql)
+            .await
+            .map(|_| ())
+            .map_err(DatabaseWriteError::from)
+    }
+}
+
+#[async_trait]
+impl DatabaseWriter for $extended_type {
     async fn save_block_added(
         &self,
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&block_added)?;
         let encoded_hash = block_added.hex_encoded_hash();
-
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::BlockAdded as u8,
-            &event_source_address,
-            event_id,
-            &encoded_hash,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::BlockAdded as u8,
+                &event_source_address,
+                event_id,
+                &encoded_hash,
+                &mut transaction,
+            )
+            .await?;
 
         let insert_stmt = tables::block_added::create_insert_stmt(
             block_added.get_height(),
@@ -54,9 +67,9 @@ impl DatabaseWriter for SqliteDatabase {
             json,
             event_log_id,
         )?
-        .to_string(SqliteQueryBuilder);
+        .to_string($query_materializer_expr);
 
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -68,34 +81,29 @@ impl DatabaseWriter for SqliteDatabase {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_accepted)?;
         let encoded_hash = deploy_accepted.hex_encoded_hash();
 
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::DeployAccepted as u8,
-            &event_source_address,
-            event_id,
-            &encoded_hash,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::DeployAccepted as u8,
+                &event_source_address,
+                event_id,
+                &encoded_hash,
+                &mut transaction,
+            )
+            .await?;
 
         let batched_insert_stmts = vec![
             tables::deploy_accepted::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
             tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
         ]
         .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -107,34 +115,28 @@ impl DatabaseWriter for SqliteDatabase {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_processed)?;
         let encoded_hash = deploy_processed.hex_encoded_hash();
-
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::DeployProcessed as u8,
-            &event_source_address,
-            event_id,
-            &encoded_hash,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::DeployProcessed as u8,
+                &event_source_address,
+                event_id,
+                &encoded_hash,
+                &mut transaction,
+            )
+            .await?;
 
         let batched_insert_stmts = vec![
             tables::deploy_processed::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
             tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
         ]
         .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -146,34 +148,28 @@ impl DatabaseWriter for SqliteDatabase {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_expired)?;
         let encoded_hash = deploy_expired.hex_encoded_hash();
-
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::DeployExpired as u8,
-            &event_source_address,
-            event_id,
-            &encoded_hash,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::DeployExpired as u8,
+                &event_source_address,
+                event_id,
+                &encoded_hash,
+                &mut transaction,
+            )
+            .await?;
 
         let batched_insert_stmts = vec![
             tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id, json)?,
             tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
         ]
         .iter()
-        .map(|stmt| stmt.to_string(SqliteQueryBuilder))
+        .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_sqlite_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -185,33 +181,25 @@ impl DatabaseWriter for SqliteDatabase {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&fault)?;
         let era_id = fault.era_id.value();
         let public_key = fault.public_key.to_hex();
-
         let event_key = format!("{era_id} {public_key}");
-
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::Fault as u8,
-            &event_source_address,
-            event_id,
-            &event_key,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::Fault as u8,
+                &event_source_address,
+                event_id,
+                &event_key,
+                &mut transaction,
+            )
+            .await?;
 
         let insert_stmt =
             tables::fault::create_insert_stmt(era_id, public_key, json, event_log_id)?
-                .to_string(SqliteQueryBuilder);
-
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+                .to_string($query_materializer_expr);
+        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -223,27 +211,21 @@ impl DatabaseWriter for SqliteDatabase {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&finality_signature)?;
         let block_hash = finality_signature.hex_encoded_block_hash();
         let public_key = finality_signature.hex_encoded_public_key();
-
         let event_key = format!("{block_hash} {public_key}");
 
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::FinalitySignature as u8,
-            &event_source_address,
-            event_id,
-            &event_key,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::FinalitySignature as u8,
+                &event_source_address,
+                event_id,
+                &event_key,
+                &mut transaction,
+            )
+            .await?;
 
         let insert_stmt = tables::finality_signature::create_insert_stmt(
             block_hash,
@@ -251,9 +233,9 @@ impl DatabaseWriter for SqliteDatabase {
             json,
             event_log_id,
         )?
-        .to_string(SqliteQueryBuilder);
+        .to_string($query_materializer_expr);
 
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -265,29 +247,24 @@ impl DatabaseWriter for SqliteDatabase {
         step: Step,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&step)?;
         let era_id = step.era_id.value();
 
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::Step as u8,
-            &event_source_address,
-            event_id,
-            &era_id.to_string(),
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::Step as u8,
+                &event_source_address,
+                event_id,
+                &era_id.to_string(),
+                &mut transaction,
+            )
+            .await?;
 
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
-            .to_string(SqliteQueryBuilder);
+            .to_string($query_materializer_expr);
 
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -298,7 +275,7 @@ impl DatabaseWriter for SqliteDatabase {
         &self,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut transaction = self.get_transaction().await?;
         let unix_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -306,23 +283,18 @@ impl DatabaseWriter for SqliteDatabase {
             .as_secs();
         let event_key = format!("{}-{}", event_source_address, unix_timestamp);
 
-        let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
-            EventTypeId::Shutdown as u8,
-            &event_source_address,
-            event_id,
-            &event_key,
-        )?
-        .to_string(SqliteQueryBuilder);
-
-        let event_log_id = transaction
-            .fetch_one(insert_to_event_log_stmt.as_str())
-            .await?
-            .try_get::<u32, usize>(0)
-            .context("Error parsing event_log_id from row")?;
+        let event_log_id = save_event_log(
+                EventTypeId::Shutdown as u8,
+                &event_source_address,
+                event_id,
+                &event_key,
+                &mut transaction,
+            )
+            .await?;
 
         let insert_stmt = tables::shutdown::create_insert_stmt(event_source_address, event_log_id)?
-            .to_string(SqliteQueryBuilder);
-        let res = handle_sqlite_result(transaction.execute(insert_stmt.as_str()).await);
+            .to_string($query_materializer_expr);
+        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -335,12 +307,12 @@ impl DatabaseWriter for SqliteDatabase {
         let transaction_shared = Arc::new(Mutex::new(transaction));
         let maybe_version = migration.get_version();
         let res = {
-            let wrapper = SqliteTransactionWrapper {
+            let wrapper = TransactionWrapperType {
                 transaction_mutex: transaction_shared.clone(),
             };
             let wrapper_arc = Arc::new(wrapper);
             let sql = {
-                let sqls = materialize_statements(migration.get_migrations()?);
+                let sqls = materialize_statements(migration.get_migrations($database_specific_configuration)?);
                 sqls.iter().join(";")
             };
             match wrapper_arc.clone().execute(sql.as_str()).await {
@@ -366,49 +338,49 @@ impl DatabaseWriter for SqliteDatabase {
     }
 }
 
-#[derive(Debug)]
-struct SqliteTransactionWrapper<'a> {
-    transaction_mutex: Arc<Mutex<Transaction<'a, Sqlite>>>,
-}
-
-#[async_trait]
-impl TransactionWrapper for SqliteTransactionWrapper<'_> {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
-        let mut lock = self.transaction_mutex.lock().await;
-        lock.execute(sql)
-            .await
-            .map(|_| ())
-            .map_err(DatabaseWriteError::from)
-    }
-}
-
 fn materialize_statements(wrappers: Vec<StatementWrapper>) -> Vec<String> {
     wrappers
         .iter()
         .map(|wrapper| match wrapper {
             StatementWrapper::TableCreateStatement(statement) => {
-                statement.to_string(SqliteQueryBuilder)
+                statement.to_string($query_materializer_expr)
             }
-            StatementWrapper::InsertStatement(statement) => statement.to_string(SqliteQueryBuilder),
+            StatementWrapper::InsertStatement(statement) => statement.to_string($query_materializer_expr),
             StatementWrapper::Raw(sql) => sql.to_string(),
         })
         .collect()
 }
 
-#[cfg(test)]
-impl SqliteDatabase {
-    pub(super) async fn fetch_one(&self, sql: &str) -> SqliteRow {
-        self.connection_pool
-            .fetch_one(sql)
-            .await
-            .expect("Error executing provided SQL")
-    }
+fn handle_result(
+    result: Result<$query_result_type, sqlx::Error>,
+) -> Result<u64, DatabaseWriteError> {
+    result
+        .map(|ok_query_result| ok_query_result.rows_affected())
+        .map_err(std::convert::From::from)
 }
 
-fn handle_sqlite_result(
-    result: Result<SqliteQueryResult, sqlx::Error>,
-) -> Result<usize, DatabaseWriteError> {
-    result
-        .map(|ok_query_result| ok_query_result.rows_affected() as usize)
-        .map_err(std::convert::From::from)
+async fn save_event_log(
+    event_type_id: u8,
+    event_source_address: &str,
+    event_id: u32,
+    event_key: &str,
+    transaction: &mut Transaction<'_, $database_type>,
+) -> Result<u64, DatabaseWriteError> {
+    let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
+        event_type_id,
+        event_source_address,
+        event_id,
+        event_key,
+    )?
+    .to_string($query_materializer_expr);
+    let event_log_id = transaction
+        .fetch_one(insert_to_event_log_stmt.as_str())
+        .await?
+        .try_get::<i64, usize>(0)
+        .context("save_block_added: Error parsing event_log_id from row")?
+        as u64;
+    Ok(event_log_id)
+}
+
+    }
 }

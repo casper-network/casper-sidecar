@@ -36,7 +36,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         )
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_Shutdown")
                 .col(Shutdown::EventSourceAddress)
@@ -55,7 +54,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
 
 pub fn create_insert_stmt(
     event_source_address: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Shutdown::Table)
@@ -67,7 +66,7 @@ pub fn create_insert_stmt(
 #[test]
 fn create_table_stmt_should_produce_create_table_sql() {
     use sea_query::SqliteQueryBuilder;
-    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Shutdown\" ( \"event_source_address\" text NOT NULL, \"shutdown_timestamp\" text NOT NULL DEFAULT CURRENT_TIMESTAMP, \"event_log_id\" integer NOT NULL, CONSTRAINT \"PDX_Shutdown\"PRIMARY KEY (\"event_source_address\", \"shutdown_timestamp\"), FOREIGN KEY (\"event_log_id\") REFERENCES \"event_log\" (\"event_log_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
+    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Shutdown\" ( \"event_source_address\" text NOT NULL, \"shutdown_timestamp\" text NOT NULL DEFAULT CURRENT_TIMESTAMP, \"event_log_id\" bigint NOT NULL, CONSTRAINT \"PDX_Shutdown\" PRIMARY KEY (\"event_source_address\", \"shutdown_timestamp\"), FOREIGN KEY (\"event_log_id\") REFERENCES \"event_log\" (\"event_log_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
 
     let got_sql = create_table_stmt().to_string(SqliteQueryBuilder);
 
