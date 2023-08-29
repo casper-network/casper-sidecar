@@ -24,7 +24,7 @@ use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
     task::{self, JoinHandle},
-    time,
+    time::{self, timeout},
 };
 use tracing::debug;
 
@@ -42,6 +42,8 @@ const BUFFER_LENGTH: u32 = EVENT_COUNT / 2;
 const MAX_TEST_TIME: Duration = Duration::from_secs(4);
 /// The duration of the sleep called between each event being sent by the server.
 const DELAY_BETWEEN_EVENTS: Duration = Duration::from_millis(1);
+
+type FilterLambda = Box<dyn Fn(u128, &SseData) -> Option<ReceivedEvent>>;
 
 /// A helper to allow the synchronization of a single client joining the SSE server.
 ///
@@ -125,9 +127,13 @@ impl ServerBehavior {
         for client_behavior in &self.clients {
             if client_behavior.join_before_event == id {
                 debug!("server waiting before event {}", id);
-                client_behavior.barrier.wait().await;
+                timeout(Duration::from_secs(60), client_behavior.barrier.wait())
+                    .await
+                    .unwrap();
                 debug!("server waiting for client to connect before event {}", id);
-                client_behavior.barrier.wait().await;
+                timeout(Duration::from_secs(60), client_behavior.barrier.wait())
+                    .await
+                    .unwrap();
                 debug!("server finished waiting before event {}", id);
             }
         }
@@ -239,6 +245,7 @@ impl TestFixture {
     ///
     /// The server runs until `TestFixture::stop_server()` is called, or the `TestFixture` is
     /// dropped.
+    #[allow(clippy::too_many_lines)]
     async fn run_server(&mut self, server_behavior: ServerBehavior) -> SocketAddr {
         if self.server_join_handle.is_some() {
             panic!("one `TestFixture` can only run one server at a time");
@@ -344,30 +351,11 @@ impl TestFixture {
             from as u128
         };
 
-        let id_filter = |id: u128, event: &SseData| -> Option<ReceivedEvent> {
-            if id < from {
-                return None;
-            }
-
-            let data = match event {
-                SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                    deploy_accepted: deploy.clone(),
-                })
-                .unwrap(),
-                _ => serde_json::to_string(event).unwrap(),
-            };
-
-            Some(ReceivedEvent {
-                id: Some(id as Id),
-                data,
-            })
-        };
-
         let api_version_event = ReceivedEvent {
             id: None,
             data: serde_json::to_string(&SseData::ApiVersion(self.protocol_version)).unwrap(),
         };
-
+        let id_filter = build_id_filter(from);
         let filter = sse_server::get_filter(final_path_element).unwrap();
         let events: Vec<ReceivedEvent> = iter::once(api_version_event)
             .chain(
@@ -458,12 +446,52 @@ async fn subscribe(
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     debug!("{} waiting before connecting via {}", client_id, url);
-    barrier.wait().await;
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
     let response = reqwest::get(url).await?;
     debug!("{} waiting after connecting", client_id);
-    barrier.wait().await;
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
     debug!("{} finished waiting", client_id);
     handle_response(response, final_event_id, client_id).await
+}
+
+// Similar to the `subscribe()` function, except this has a long pause at the start and short
+// pauses after each read.
+//
+// The objective is to create backpressure by filling the client's receive buffer, then filling
+// the server's send buffer, which in turn causes the server's internal broadcast channel to
+// deem that client as lagging.
+async fn subscribe_slow(
+    url: &str,
+    barrier: Arc<Barrier>,
+    client_id: &str,
+) -> Result<(), reqwest::Error> {
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
+    let response = reqwest::get(url).await.unwrap();
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
+
+    time::sleep(Duration::from_secs(5)).await;
+
+    let mut stream = response.bytes_stream();
+    let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
+    while let Some(item) = stream.next().await {
+        // The function is expected to exit here with an `UnexpectedEof` error.
+        let bytes = item?;
+        let chunk = str::from_utf8(bytes.as_ref()).unwrap();
+        if chunk.lines().any(|line| line == ":") {
+            debug!("{} received keepalive: exiting", client_id);
+            break;
+        }
+        time::sleep(pause_between_events).await;
+    }
+    Ok(())
 }
 
 /// Runs a client, consuming all SSE events until the server has emitted the event with ID
@@ -791,41 +819,9 @@ async fn server_exit_should_gracefully_shut_down_stream() {
 
 /// Checks that clients which don't consume the events in a timely manner are forcibly disconnected
 /// by the server.
+#[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn lagging_clients_should_be_disconnected() {
-    // Similar to the `subscribe()` function, except this has a long pause at the start and short
-    // pauses after each read.
-    //
-    // The objective is to create backpressure by filling the client's receive buffer, then filling
-    // the server's send buffer, which in turn causes the server's internal broadcast channel to
-    // deem that client as lagging.
-    async fn subscribe_slow(
-        url: &str,
-        barrier: Arc<Barrier>,
-        client_id: &str,
-    ) -> Result<(), reqwest::Error> {
-        barrier.wait().await;
-        let response = reqwest::get(url).await.unwrap();
-        barrier.wait().await;
-
-        time::sleep(Duration::from_secs(5)).await;
-
-        let mut stream = response.bytes_stream();
-        let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
-        while let Some(item) = stream.next().await {
-            // The function is expected to exit here with an `UnexpectedEof` error.
-            let bytes = item?;
-            let chunk = str::from_utf8(bytes.as_ref()).unwrap();
-            if chunk.lines().any(|line| line == ":") {
-                debug!("{} received keepalive: exiting", client_id);
-                break;
-            }
-            time::sleep(pause_between_events).await;
-        }
-
-        Ok(())
-    }
-
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -849,7 +845,6 @@ async fn lagging_clients_should_be_disconnected() {
         subscribe_slow(&url_sigs, barrier_sigs, "client 3"),
     );
     fixture.stop_server().await;
-
     // Ensure both slow clients' streams terminated with an `UnexpectedEof` error.
     let check_error = |result: Result<(), reqwest::Error>| {
         let kind = result
@@ -879,7 +874,7 @@ async fn should_handle_bad_url_path() {
     let server_address = fixture.run_server(ServerBehavior::new()).await;
 
     #[rustfmt::skip]
-        let urls = [
+    let urls = [
         format!("http://{}", server_address),
         format!("http://{}?{}=0", server_address, QUERY_FIELD),
         format!("http://{}/bad", server_address),
@@ -919,18 +914,25 @@ async fn should_handle_bad_url_path() {
     fixture.stop_server().await;
 }
 
+async fn start_query_url_test() -> (TestFixture, SocketAddr) {
+    let mut rng = TestRng::new();
+    let mut fixture = TestFixture::new(&mut rng);
+    let server_address = fixture.run_server(ServerBehavior::new()).await;
+    (fixture, server_address)
+}
+
+fn build_urls(server_address: SocketAddr) -> (String, String, String) {
+    let main_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, MAIN_PATH);
+    let deploys_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, DEPLOYS_PATH);
+    let sigs_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, SIGS_PATH);
+    (main_url, deploys_url, sigs_url)
+}
 /// Checks that clients using the correct <IP:Port/path> but wrong query get a helpful error
 /// response.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_handle_bad_url_query() {
-    let mut rng = TestRng::new();
-    let mut fixture = TestFixture::new(&mut rng);
-
-    let server_address = fixture.run_server(ServerBehavior::new()).await;
-
-    let main_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, MAIN_PATH);
-    let deploys_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, DEPLOYS_PATH);
-    let sigs_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, SIGS_PATH);
+    let (mut fixture, server_address) = start_query_url_test().await;
+    let (main_url, deploys_url, sigs_url) = build_urls(server_address);
     let urls = [
         format!("{}?not-a-kv-pair", main_url),
         format!("{}?not-a-kv-pair", deploys_url),
@@ -948,7 +950,6 @@ async fn should_handle_bad_url_query() {
         format!("{}?{}=0&extra=1", deploys_url, QUERY_FIELD),
         format!("{}?{}=0&extra=1", sigs_url, QUERY_FIELD),
     ];
-
     let expected_body = format!(
         "invalid query: expected single field '{}=<EVENT ID>'",
         QUERY_FIELD
@@ -968,7 +969,6 @@ async fn should_handle_bad_url_query() {
             url
         );
     }
-
     fixture.stop_server().await;
 }
 
@@ -1097,6 +1097,7 @@ async fn should_handle_wrapping_past_max_event_id_for_signatures() {
 
 /// Checks that a server rejects new clients with an HTTP 503 when it already has the specified
 /// limit of connected clients.
+#[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_limit_concurrent_subscribers() {
     let mut rng = TestRng::new();
@@ -1175,4 +1176,25 @@ async fn should_limit_concurrent_subscribers() {
     assert_eq!(received_events_sigs.unwrap(), expected_sigs_events);
 
     fixture.stop_server().await;
+}
+
+fn build_id_filter(from: u128) -> FilterLambda {
+    Box::new(move |id: u128, event: &SseData| -> Option<ReceivedEvent> {
+        if id < from {
+            return None;
+        }
+
+        let data = match event {
+            SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
+                deploy_accepted: deploy.clone(),
+            })
+            .unwrap(),
+            _ => serde_json::to_string(event).unwrap(),
+        };
+
+        Some(ReceivedEvent {
+            id: Some(id as Id),
+            data,
+        })
+    })
 }

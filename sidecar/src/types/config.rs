@@ -78,42 +78,9 @@ mod tests {
             inbound_channel_size: None,
             outbound_channel_size: None,
             connections: vec![
-                Connection {
-                    ip_address: "127.0.0.1".to_string(),
-                    sse_port: 18101,
-                    rest_port: 14101,
-                    max_attempts: 10,
-                    delay_between_retries_in_seconds: 5,
-                    allow_partial_connection: false,
-                    enable_logging: true,
-                    connection_timeout_in_seconds: None,
-                    sleep_between_keep_alive_checks_in_seconds: None,
-                    no_message_timeout_in_seconds: None,
-                },
-                Connection {
-                    ip_address: "127.0.0.1".to_string(),
-                    sse_port: 18102,
-                    rest_port: 14102,
-                    max_attempts: 10,
-                    delay_between_retries_in_seconds: 5,
-                    allow_partial_connection: false,
-                    enable_logging: false,
-                    connection_timeout_in_seconds: None,
-                    sleep_between_keep_alive_checks_in_seconds: None,
-                    no_message_timeout_in_seconds: None,
-                },
-                Connection {
-                    ip_address: "127.0.0.1".to_string(),
-                    sse_port: 18103,
-                    rest_port: 14103,
-                    max_attempts: 10,
-                    delay_between_retries_in_seconds: 5,
-                    allow_partial_connection: false,
-                    enable_logging: false,
-                    connection_timeout_in_seconds: Some(3),
-                    sleep_between_keep_alive_checks_in_seconds: None,
-                    no_message_timeout_in_seconds: None,
-                },
+                Connection::example_connection_1(),
+                Connection::example_connection_2(),
+                Connection::example_connection_3(),
             ],
             storage: StorageConfig {
                 storage_path: "./target/storage".to_string(),
@@ -123,16 +90,8 @@ mod tests {
                     wal_autocheckpointing_interval: 1000,
                 },
             },
-            rest_server: RestServerConfig {
-                port: 18888,
-                max_concurrent_requests: 50,
-                max_requests_per_second: 50,
-            },
-            event_stream_server: EventStreamServerConfig {
-                port: 19999,
-                max_concurrent_subscribers: 100,
-                event_stream_buffer_length: 5000,
-            },
+            rest_server: build_rest_server_config(),
+            event_stream_server: EventStreamServerConfig::default(),
             admin_server: None,
         };
 
@@ -167,16 +126,8 @@ mod tests {
                     wal_autocheckpointing_interval: 1000,
                 },
             },
-            rest_server: RestServerConfig {
-                port: 18888,
-                max_concurrent_requests: 50,
-                max_requests_per_second: 50,
-            },
-            event_stream_server: EventStreamServerConfig {
-                port: 19999,
-                max_concurrent_subscribers: 100,
-                event_stream_buffer_length: 5000,
-            },
+            rest_server: build_rest_server_config(),
+            event_stream_server: EventStreamServerConfig::default(),
             admin_server: Some(AdminServerConfig {
                 port: 18887,
                 max_concurrent_requests: 1,
@@ -188,6 +139,61 @@ mod tests {
             .expect("Error parsing EXAMPLE_NODE_CONFIG.toml");
 
         assert_eq!(parsed_config, expected_config);
+    }
+
+    fn build_rest_server_config() -> RestServerConfig {
+        RestServerConfig {
+            port: 18888,
+            max_concurrent_requests: 50,
+            max_requests_per_second: 50,
+        }
+    }
+
+    impl Connection {
+        pub fn example_connection_1() -> Connection {
+            Connection {
+                ip_address: "127.0.0.1".to_string(),
+                sse_port: 18101,
+                rest_port: 14101,
+                max_attempts: 10,
+                delay_between_retries_in_seconds: 5,
+                allow_partial_connection: false,
+                enable_logging: true,
+                connection_timeout_in_seconds: None,
+                sleep_between_keep_alive_checks_in_seconds: None,
+                no_message_timeout_in_seconds: None,
+            }
+        }
+
+        pub fn example_connection_2() -> Connection {
+            Connection {
+                ip_address: "127.0.0.1".to_string(),
+                sse_port: 18102,
+                rest_port: 14102,
+                max_attempts: 10,
+                delay_between_retries_in_seconds: 5,
+                allow_partial_connection: false,
+                enable_logging: false,
+                connection_timeout_in_seconds: None,
+                sleep_between_keep_alive_checks_in_seconds: None,
+                no_message_timeout_in_seconds: None,
+            }
+        }
+
+        pub fn example_connection_3() -> Connection {
+            Connection {
+                ip_address: "127.0.0.1".to_string(),
+                sse_port: 18103,
+                rest_port: 14103,
+                max_attempts: 10,
+                delay_between_retries_in_seconds: 5,
+                allow_partial_connection: false,
+                enable_logging: false,
+                connection_timeout_in_seconds: Some(3),
+                sleep_between_keep_alive_checks_in_seconds: None,
+                no_message_timeout_in_seconds: None,
+            }
+        }
     }
 
     impl Default for Connection {

@@ -41,10 +41,7 @@ impl EventIndexer {
                 }
             }
         }
-
         let index = EventIndex::from_le_bytes(bytes);
-        debug!(%index, "initialized sse index");
-
         EventIndexer {
             index,
             persistent_cache,

@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use schemars::{
     schema::{InstanceType, SchemaObject, SubschemaValidation},
     visit::{visit_schema_object, Visitor},
@@ -33,47 +35,63 @@ impl Visitor for SchemaTransformationVisitor {
     }
 
     fn visit_schema_object(&mut self, schema: &mut SchemaObject) {
-        if let Some(r) = &schema.reference {
-            // Schemars produces RootSchemas with "\"$ref\": \"#/definitions/(...)\"". Utoipas open api
-            // endpoint schema expects reference definitions as "\"$ref\": \"#/components/schemas/(...)\""
-            let utoipa_reference = r.replace("#/definitions", "#/components/schemas");
-            schema.reference = Some(utoipa_reference);
+        rename_refs(schema);
+        replace_null_and_multi_type(schema);
+        if let ControlFlow::Break(_) = self.handle_skip_additional_properties(schema) {
+            return;
         }
-        //The following code does two things:
-        // * utoipa doesn't support "type": "null" -> we need to get rid of that
-        // * utoipa doesn't support "type": [] -> we need to destructure it to a "one_of" requirement
-        let instance_type = schema.instance_type.clone();
-        if schema.instance_type.is_some() {
-            let instance_or_object = instance_type.unwrap();
-            match instance_or_object {
-                schemars::schema::SingleOrVec::Single(_) if schema.has_type(InstanceType::Null) => {
-                    force_schema_into_opean_api_nullable(schema);
-                }
-                schemars::schema::SingleOrVec::Single(_) => {
-                    //type here is not null, we don't need to do anything to it
-                }
-                schemars::schema::SingleOrVec::Vec(types) => {
-                    //OpenApi schemas don't support multiple types definitions, we need to change it to a collection of "anyOf"
-                    let mut new_schema = SchemaObject::default();
-                    let mut subschema_validation = SubschemaValidation::default();
-                    let mut vals: Vec<schemars::schema::Schema> = vec![];
-                    for t in types.iter() {
-                        let mut single_type_schema = schema.clone();
-                        if *t == InstanceType::Null {
-                            force_schema_into_opean_api_nullable(&mut single_type_schema);
-                        } else {
-                            single_type_schema.instance_type =
-                                Some(schemars::schema::SingleOrVec::Single(Box::new(*t)))
-                        }
-                        vals.push(schemars::schema::Schema::Object(single_type_schema));
+        visit_schema_object(self, schema);
+    }
+}
+
+fn replace_null_and_multi_type(schema: &mut SchemaObject) {
+    //The following code does two things:
+    // * utoipa doesn't support "type": "null" -> we need to get rid of that
+    // * utoipa doesn't support "type": [] -> we need to destructure it to a "one_of" requirement
+    let instance_type = schema.instance_type.clone();
+    if schema.instance_type.is_some() {
+        let instance_or_object = instance_type.unwrap();
+        match instance_or_object {
+            schemars::schema::SingleOrVec::Single(_) if schema.has_type(InstanceType::Null) => {
+                force_schema_into_opean_api_nullable(schema);
+            }
+            schemars::schema::SingleOrVec::Single(_) => {
+                //type here is not null, we don't need to do anything to it
+            }
+            schemars::schema::SingleOrVec::Vec(types) => {
+                //OpenApi schemas don't support multiple types definitions, we need to change it to a collection of "anyOf"
+                let mut new_schema = SchemaObject::default();
+                let mut subschema_validation = SubschemaValidation::default();
+                let mut vals: Vec<schemars::schema::Schema> = vec![];
+                for t in types.iter() {
+                    let mut single_type_schema = schema.clone();
+                    if *t == InstanceType::Null {
+                        force_schema_into_opean_api_nullable(&mut single_type_schema);
+                    } else {
+                        single_type_schema.instance_type =
+                            Some(schemars::schema::SingleOrVec::Single(Box::new(*t)))
                     }
-                    subschema_validation.any_of = Some(vals);
-                    *new_schema.subschemas() = subschema_validation;
-                    *schema = new_schema;
+                    vals.push(schemars::schema::Schema::Object(single_type_schema));
                 }
+                subschema_validation.any_of = Some(vals);
+                *new_schema.subschemas() = subschema_validation;
+                *schema = new_schema;
             }
         }
+    }
+}
 
+fn rename_refs(schema: &mut SchemaObject) {
+    if let Some(r) = &schema.reference {
+        // Schemars produces RootSchemas with "\"$ref\": \"#/definitions/(...)\"". Utoipas open api
+        // endpoint schema expects reference definitions as "\"$ref\": \"#/components/schemas/(...)\""
+        let utoipa_reference = r.replace("#/definitions", "#/components/schemas");
+        schema.reference = Some(utoipa_reference);
+    }
+}
+
+impl SchemaTransformationVisitor {
+    fn handle_skip_additional_properties(&mut self, schema: &mut SchemaObject) -> ControlFlow<()> {
         if self.skip_additional_properties {
             // We need to make sure that the `additionalProperties` property doesn't get changed into a SchemaObject
             if let Some(obj) = &mut schema.object {
@@ -82,12 +100,12 @@ impl Visitor for SchemaTransformationVisitor {
                         let additional_properties = obj.additional_properties.take();
                         visit_schema_object(self, schema);
                         schema.object().additional_properties = additional_properties;
-                        return;
+                        return ControlFlow::Break(());
                     }
                 }
             }
         }
-        visit_schema_object(self, schema);
+        ControlFlow::Continue(())
     }
 }
 

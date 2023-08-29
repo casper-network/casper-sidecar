@@ -32,6 +32,7 @@ impl reject::Reject for StorageError {}
 /// - Database-related errors
 /// - Invalid request path errors
 /// - Invalid parameters in the request query
+#[allow(clippy::too_many_lines)]
 pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;

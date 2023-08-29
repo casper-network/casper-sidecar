@@ -69,16 +69,33 @@ pub enum SseData {
     Shutdown,
 }
 
+fn build_block_added(block_hash: BlockHash, block: Box<Block>) -> sse_data::SseData {
+    let json_block = JsonBlock::new_unsigned(*block);
+    sse_data::SseData::BlockAdded {
+        block_hash,
+        block: Box::new(json_block),
+    }
+}
+
+fn build_fault(era_id: EraId, public_key: PublicKey, timestamp: Timestamp) -> sse_data::SseData {
+    sse_data::SseData::Fault {
+        era_id,
+        public_key,
+        timestamp,
+    }
+}
+
+fn build_step(era_id: EraId, execution_effect: Box<RawValue>) -> sse_data::SseData {
+    sse_data::SseData::Step {
+        era_id,
+        execution_effect,
+    }
+}
+
 impl From<SseData> for sse_data::SseData {
     fn from(v1_0_0_data: SseData) -> sse_data::SseData {
         match v1_0_0_data {
-            SseData::BlockAdded { block_hash, block } => {
-                let json_block = JsonBlock::new_unsigned(*block);
-                sse_data::SseData::BlockAdded {
-                    block_hash,
-                    block: Box::new(json_block),
-                }
-            }
+            SseData::BlockAdded { block_hash, block } => build_block_added(block_hash, block),
             SseData::ApiVersion(version) => sse_data::SseData::ApiVersion(version),
             SseData::DeployAccepted { deploy } => sse_data::SseData::DeployAccepted { deploy },
             SseData::DeployProcessed {
@@ -105,21 +122,14 @@ impl From<SseData> for sse_data::SseData {
                 era_id,
                 public_key,
                 timestamp,
-            } => sse_data::SseData::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            },
+            } => build_fault(era_id, public_key, timestamp),
             SseData::FinalitySignature(finality_signature) => {
                 sse_data::SseData::FinalitySignature(finality_signature)
             }
             SseData::Step {
                 era_id,
                 execution_effect,
-            } => sse_data::SseData::Step {
-                era_id,
-                execution_effect,
-            },
+            } => build_step(era_id, execution_effect),
             SseData::Shutdown => sse_data::SseData::Shutdown,
         }
     }
@@ -137,5 +147,9 @@ pub mod test_support {
         let raw_shutdown = "\"Shutdown\"".to_string();
         let _ = super::deserialize(&raw_shutdown).expect("malformed raw json"); // deserializing to make sure that the raw json string is in correct form
         raw_shutdown
+    }
+
+    pub fn example_api_version() -> String {
+        "{\"ApiVersion\":\"1.0.0\"}".to_string()
     }
 }

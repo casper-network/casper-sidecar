@@ -1,5 +1,9 @@
 #[cfg(test)]
+use crate::integration_tests::{build_test_config, start_sidecar};
+#[cfg(test)]
 use crate::testing::mock_node::tests::MockNode;
+#[cfg(test)]
+use crate::testing::testing_config::TestingConfig;
 #[cfg(test)]
 use anyhow::Error;
 #[cfg(test)]
@@ -10,9 +14,9 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
 };
 #[cfg(test)]
-use tokio::sync::mpsc::Receiver;
+use tempfile::TempDir;
 #[cfg(test)]
-use tokio::time::error::Elapsed;
+use tokio::sync::mpsc::Receiver;
 #[cfg(test)]
 use tokio::time::timeout;
 
@@ -108,26 +112,29 @@ pub(crate) fn display_duration(duration: Duration) -> String {
 
 #[cfg(test)]
 /// Forces a stop on the given nodes and waits until all starts finish. Will timeout if the nodes can't start in 3 minutes.
-pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
     let mut futures = vec![];
     for node in nodes {
         futures.push(node.start());
     }
-    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+    timeout(Duration::from_secs(180), futures::future::join_all(futures))
+        .await
+        .unwrap()
 }
 
 #[cfg(test)]
 /// wait_for_n_messages waits at most the `timeout_after` for observing `n` messages received on the `receiver`
-/// It's worth to note that using this function with receivers returned by `fetch_data_from_endpoint` should take into account
-/// that `fetch_data_from_endpoint` doesn't pass ApiVersion to receiver
+/// If the receiver returns a None the function will finish early
 pub(crate) async fn wait_for_n_messages<T: Send + Sync + 'static>(
     n: usize,
     mut receiver: Receiver<T>,
     timeout_after: Duration,
-) -> Result<Receiver<T>, Error> {
+) -> Receiver<T> {
     let join_handle = tokio::spawn(async move {
         for _ in 0..n {
-            receiver.recv().await.unwrap();
+            if receiver.recv().await.is_none() {
+                break;
+            }
         }
         receiver
     });
@@ -135,16 +142,19 @@ pub(crate) async fn wait_for_n_messages<T: Send + Sync + 'static>(
         Ok(res) => res.map_err(|err| Error::msg(format!("Failed to wait for receiver, {}", err))),
         Err(_) => Err(Error::msg("Waiting for messages timed out")),
     }
+    .unwrap()
 }
 
 #[cfg(test)]
 /// Forces a stop on the given nodes and waits until the stop happens. Will timeout if the nodes can't stop in 3 minutes.
-pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Result<Vec<()>, Elapsed> {
+pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
     let mut futures = vec![];
     for node in nodes {
         futures.push(node.stop());
     }
-    timeout(Duration::from_secs(180), futures::future::join_all(futures)).await
+    timeout(Duration::from_secs(180), futures::future::join_all(futures))
+        .await
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -161,4 +171,35 @@ pub fn root_filter() -> impl Filter<Extract = (impl warp::Reply,), Error = warp:
 {
     warp::path::end()
         .and_then(|| async { Err::<String, warp::Rejection>(warp::reject::custom(InvalidPath)) })
+}
+
+#[cfg(test)]
+pub struct MockNodeTestProperties {
+    pub testing_config: TestingConfig,
+    pub temp_storage_dir: TempDir,
+    pub node_port_for_sse_connection: u16,
+    pub node_port_for_rest_connection: u16,
+    pub event_stream_server_port: u16,
+}
+
+#[cfg(test)]
+pub async fn prepare_one_node_and_start(node_mock: &mut MockNode) -> MockNodeTestProperties {
+    let (
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    node_mock.set_sse_port(node_port_for_sse_connection);
+    node_mock.set_rest_port(node_port_for_rest_connection);
+    start_nodes_and_wait(vec![node_mock]).await;
+    start_sidecar(testing_config.inner()).await;
+    MockNodeTestProperties {
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    }
 }

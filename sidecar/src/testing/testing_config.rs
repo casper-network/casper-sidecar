@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
-
+#[cfg(test)]
 use portpicker::Port;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 use crate::types::config::{Config, Connection};

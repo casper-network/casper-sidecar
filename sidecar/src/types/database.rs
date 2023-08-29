@@ -340,45 +340,7 @@ impl Migration {
                     tables::event_type::create_initialise_stmt().map_err(|err| {
                         Error::msg(format!("Error building create_initialise_stmt: {:?}", err))
                     })?;
-                let init_stmt = StatementWrapper::InsertStatement(insert_types_stmt);
-                Ok(vec![
-                    // Synthetic tables
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::event_type::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::event_log::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::deploy_event::create_table_stmt(),
-                    )),
-                    // Raw Event tables
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::block_added::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::deploy_accepted::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::deploy_processed::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::deploy_expired::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::fault::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::finality_signature::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::step::create_table_stmt(),
-                    )),
-                    StatementWrapper::TableCreateStatement(Box::new(
-                        tables::shutdown::create_table_stmt(),
-                    )),
-                    init_stmt,
-                ])
+                Ok(migration_1_ddl_statements(insert_types_stmt))
             },
             script_executor: None,
         }
@@ -391,4 +353,34 @@ impl Migration {
     pub fn get_migrations(&self) -> Result<Vec<StatementWrapper>, Error> {
         (self.statement_producers)()
     }
+}
+
+fn migration_1_ddl_statements(
+    insert_types_stmt: sea_query::InsertStatement,
+) -> Vec<StatementWrapper> {
+    let init_stmt = StatementWrapper::InsertStatement(insert_types_stmt);
+    vec![
+        // Synthetic tables
+        StatementWrapper::TableCreateStatement(Box::new(tables::event_type::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::deploy_event::create_table_stmt())),
+        // Raw Event tables
+        StatementWrapper::TableCreateStatement(Box::new(tables::block_added::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::deploy_accepted::create_table_stmt(),
+        )),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::deploy_processed::create_table_stmt(),
+        )),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::deploy_expired::create_table_stmt(),
+        )),
+        StatementWrapper::TableCreateStatement(Box::new(tables::fault::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::finality_signature::create_table_stmt(),
+        )),
+        StatementWrapper::TableCreateStatement(Box::new(tables::step::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::shutdown::create_table_stmt())),
+        init_stmt,
+    ]
 }

@@ -209,8 +209,9 @@ fn highlight_slow_latency(latency: &u128) -> String {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn performance_check(scenario: Scenario, duration: Duration, acceptable_latency: Duration) {
-    let test_rng = Box::leak(Box::new(TestRng::new()));
+    let test_rng = TestRng::new();
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);

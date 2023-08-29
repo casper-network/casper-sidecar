@@ -9,7 +9,6 @@ pub(crate) mod tests {
     use tokio::sync::broadcast::{self};
     use tokio::sync::mpsc::{channel, Receiver, Sender};
     use tokio::sync::Mutex;
-    use tokio_util::sync::CancellationToken;
     use warp::filters::BoxedFilter;
     use warp::{path, sse::Event, Filter, Rejection, Reply};
 
@@ -27,52 +26,21 @@ pub(crate) mod tests {
 
     pub(crate) struct SimpleSseServer {
         pub routes: HashMap<Vec<String>, CacheAndData>,
-        pub sse_initial_latch: CancellationToken,
     }
 
     #[derive(Debug)]
     struct Nope;
     impl warp::reject::Reject for Nope {}
 
+    type ShutdownCallbacks = Arc<Mutex<Vec<broadcast::Sender<Option<(Option<String>, String)>>>>>;
+
     impl SimpleSseServer {
         pub async fn serve(&self, port: u16) -> (Sender<()>, Receiver<()>) {
             let (shutdown_tx, mut shutdown_rx) = channel(10);
             let (after_shutdown_tx, after_shutdown_rx) = channel(10);
-            let v = Vec::from_iter(self.routes.iter());
             let shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>> =
                 Arc::new(Mutex::new(Vec::new()));
-            let mut routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = v
-                .into_iter()
-                .map(|(key, value)| {
-                    let base_filter = key
-                        .iter()
-                        .fold(warp::get().boxed(), |route, part| {
-                            route.and(warp::path(part.clone())).boxed()
-                        })
-                        .and(path::end())
-                        .boxed();
-                    let data = value.clone();
-                    base_filter
-                        .and(with_data(data))
-                        .and(warp::query())
-                        .and(with_shutdown_broadcasts(shutdown_broadcasts.clone()))
-                        .and(with_initial_latch(self.sse_initial_latch.clone()))
-                        .and_then(
-                            |data,
-                             query,
-                             shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>>,
-                             sse_initial_latch: CancellationToken| async move {
-                                let (sender, _) = tokio::sync::broadcast::channel(100);
-                                let mut guard = shutdown_broadcasts.lock().await;
-                                guard.push(sender.clone());
-                                drop(guard);
-                                do_handle(data, sender.clone(), sse_initial_latch.clone(), query)
-                                    .await
-                            },
-                        )
-                        .boxed()
-                })
-                .collect();
+            let mut routes = self.build_filter(shutdown_broadcasts.clone());
             let first = routes.pop().expect("get first route");
             let api = routes
                 .into_iter()
@@ -99,15 +67,50 @@ pub(crate) mod tests {
             });
             (shutdown_tx, after_shutdown_rx)
         }
+
+        fn build_filter(
+            &self,
+            shutdown_broadcasts: ShutdownCallbacks,
+        ) -> Vec<BoxedFilter<(Box<dyn Reply>,)>> {
+            let routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = Vec::from_iter(self.routes.iter())
+                .into_iter()
+                .map(|(key, value)| {
+                    let base_filter = key
+                        .iter()
+                        .fold(warp::get().boxed(), |route, part| {
+                            route.and(warp::path(part.clone())).boxed()
+                        })
+                        .and(path::end())
+                        .boxed();
+                    let data = value.clone();
+                    base_filter
+                        .and(with_data(data))
+                        .and(warp::query())
+                        .and(with_shutdown_broadcasts(shutdown_broadcasts.clone()))
+                        .and_then(
+                            |data,
+                             query,
+                             shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>>| async move {
+                                let (sender, _) = tokio::sync::broadcast::channel(100);
+                                let mut guard = shutdown_broadcasts.lock().await;
+                                guard.push(sender.clone());
+                                drop(guard);
+                                do_handle(data, sender.clone(), query)
+                                    .await
+                            },
+                        )
+                        .boxed()
+                })
+                .collect();
+            routes
+        }
     }
 
     fn build_stream(
         mut broadcast_receiver: BroadcastReceiver,
-        sse_initial_latch: CancellationToken,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         stream! {
             while let Ok(z) = broadcast_receiver.recv().await {
-                sse_initial_latch.cancelled().await;
                 match z {
                     Some(event_data) => {
                         let mut event = Event::default().data(event_data.1);
@@ -125,15 +128,13 @@ pub(crate) mod tests {
     async fn do_handle(
         mut cache_and_data: CacheAndData,
         sender: BroadcastSender,
-        sse_initial_latch: CancellationToken,
         query: HashMap<String, String>,
     ) -> Result<Box<dyn Reply>, Rejection> {
         let maybe_start_from = query
             .get("start_from")
             .and_then(|id_str| id_str.parse::<u32>().ok());
-        let reply = warp::sse::reply(
-            warp::sse::keep_alive().stream(build_stream(sender.subscribe(), sse_initial_latch)),
-        );
+        let reply =
+            warp::sse::reply(warp::sse::keep_alive().stream(build_stream(sender.subscribe())));
         let mut effective_data = Vec::new();
         if let Some(start_from) = maybe_start_from {
             let mut filtered: EventsWithIds = cache_and_data
@@ -167,11 +168,6 @@ pub(crate) mod tests {
         x: Arc<Mutex<Vec<BroadcastSender>>>,
     ) -> impl Filter<Extract = (Arc<Mutex<Vec<BroadcastSender>>>,), Error = Infallible> + Clone
     {
-        warp::any().map(move || x.clone())
-    }
-    fn with_initial_latch(
-        x: CancellationToken,
-    ) -> impl Filter<Extract = (CancellationToken,), Error = Infallible> + Clone {
         warp::any().map(move || x.clone())
     }
 }
