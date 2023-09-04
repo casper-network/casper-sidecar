@@ -1,10 +1,9 @@
-mod errors;
 mod reader;
 #[cfg(test)]
 mod tests;
 mod writer;
+use super::migration_manager::MigrationManager;
 use crate::{
-    migration_manager::MigrationManager,
     sql::tables,
     types::{config::SqliteConfig, database::DatabaseWriteError},
 };
@@ -50,8 +49,7 @@ impl SqliteDatabase {
                                 WAL_AUTOCHECKPOINT_KEY,
                                 config.wal_autocheckpointing_interval.to_string(),
                             )
-                            .disable_statement_logging()
-                            .to_owned(),
+                            .disable_statement_logging(),
                     );
 
                 let sqlite_db = SqliteDatabase {
@@ -112,8 +110,7 @@ impl SqliteDatabase {
                 SqliteConnectOptions::from_str(":memory:")?
                     .create_if_missing(true)
                     .journal_mode(SqliteJournalMode::Wal)
-                    .disable_statement_logging()
-                    .to_owned(),
+                    .disable_statement_logging(),
             );
 
         let sqlite_db = SqliteDatabase {

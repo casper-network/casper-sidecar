@@ -24,7 +24,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .col(ColumnDef::new(DeployEvent::DeployHash).string().not_null())
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_DeployEvent")
                 .col(DeployEvent::DeployHash)

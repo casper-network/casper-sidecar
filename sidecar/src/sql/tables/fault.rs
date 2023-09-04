@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -21,11 +21,10 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .if_not_exists()
         .col(ColumnDef::new(Fault::Era).big_unsigned().not_null())
         .col(ColumnDef::new(Fault::PublicKey).string().not_null())
-        .col(ColumnDef::new(Fault::Raw).blob(BlobSize::Tiny).not_null())
+        .col(ColumnDef::new(Fault::Raw).text().not_null())
         .col(ColumnDef::new(Fault::EventLogId).big_unsigned().not_null())
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_Fault")
                 .col(Fault::Era)

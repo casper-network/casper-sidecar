@@ -5,17 +5,16 @@
 extern crate core;
 mod admin_server;
 mod api_version_manager;
+mod database;
 mod event_stream_server;
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
 mod integration_tests_version_switch;
-mod migration_manager;
 #[cfg(test)]
 mod performance_tests;
 pub mod rest_server;
 mod sql;
-mod sqlite_database;
 #[cfg(test)]
 pub(crate) mod testing;
 mod types;
@@ -30,9 +29,9 @@ use std::{
 
 use crate::{
     admin_server::run_server as start_admin_server,
+    database::sqlite_database::SqliteDatabase,
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
-    sqlite_database::SqliteDatabase,
     types::{
         config::{read_config, Config},
         database::{DatabaseWriteError, DatabaseWriter},
@@ -342,9 +341,9 @@ async fn handle_database_save_result<F>(
 /// Returns false if the handling indicated that no other messages should be processed.
 /// Returns true otherwise.
 #[allow(clippy::too_many_lines)]
-async fn handle_single_event(
+async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
-    sqlite_database: SqliteDatabase,
+    database: Db,
     enable_event_logging: bool,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     api_version_manager: GuardedApiVersionManager,
@@ -378,7 +377,7 @@ async fn handle_single_event(
                 debug!("Block Added: {}", hex_block_hash);
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_block_added(
                     BlockAdded::new(block_hash, block.clone()),
                     sse_event.id,
@@ -404,7 +403,7 @@ async fn handle_single_event(
             }
             let deploy_accepted = DeployAccepted::new(deploy.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_accepted(deploy_accepted, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
@@ -425,7 +424,7 @@ async fn handle_single_event(
                 debug!("Deploy Expired: {}", hex_deploy_hash);
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_expired(
                     DeployExpired::new(deploy_hash),
                     sse_event.id,
@@ -467,7 +466,7 @@ async fn handle_single_event(
                 execution_result.clone(),
             );
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_deploy_processed(
                     deploy_processed.clone(),
                     sse_event.id,
@@ -502,7 +501,7 @@ async fn handle_single_event(
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_fault(fault.clone(), sse_event.id, sse_event.source.to_string())
                 .await;
 
@@ -531,7 +530,7 @@ async fn handle_single_event(
             }
             let finality_signature = FinalitySignature::new(fs.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_finality_signature(
                     finality_signature.clone(),
                     sse_event.id,
@@ -558,7 +557,7 @@ async fn handle_single_event(
                 info!("Step at era: {}", era_id.value());
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
-            let res = sqlite_database
+            let res = database
                 .save_step(step, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
@@ -575,19 +574,17 @@ async fn handle_single_event(
             )
             .await;
         }
-        SseData::Shutdown => {
-            handle_shutdown(sse_event, sqlite_database, outbound_sse_data_sender).await
-        }
+        SseData::Shutdown => handle_shutdown(sse_event, database, outbound_sse_data_sender).await,
     }
 }
 
-async fn handle_shutdown(
+async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
-    sqlite_database: SqliteDatabase,
+    database: Db,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
 ) {
     warn!("Node ({}) is unavailable", sse_event.source.to_string());
-    let res = sqlite_database
+    let res = database
         .save_shutdown(sse_event.id, sse_event.source.to_string())
         .await;
     match res {
@@ -642,11 +639,11 @@ async fn handle_api_version(
     }
 }
 
-async fn sse_processor(
+async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     mut sse_event_listener: EventListener,
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
-    sqlite_database: SqliteDatabase,
+    database: Db,
     enable_event_logging: bool,
     is_empty_database: bool,
     api_version_manager: GuardedApiVersionManager,
@@ -660,7 +657,7 @@ async fn sse_processor(
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
-            sqlite_database.clone(),
+            database.clone(),
             enable_event_logging,
             outbound_sse_data_sender.clone(),
             api_version_manager.clone(),
