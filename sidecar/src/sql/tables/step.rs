@@ -14,11 +14,18 @@ enum Step {
     EventLogId,
 }
 
-pub fn create_table_stmt() -> TableCreateStatement {
+pub fn create_table_stmt(db_supports_unsigned: bool) -> TableCreateStatement {
+    let mut binding = ColumnDef::new(Step::Era);
+    let mut era_col_definition = binding.not_null();
+    if db_supports_unsigned {
+        era_col_definition = era_col_definition.big_unsigned();
+    } else {
+        era_col_definition = era_col_definition.decimal_len(20, 0);
+    }
     Table::create()
         .table(Step::Table)
         .if_not_exists()
-        .col(ColumnDef::new(Step::Era).big_unsigned().not_null())
+        .col(era_col_definition)
         .col(ColumnDef::new(Step::Raw).text().not_null())
         .col(ColumnDef::new(Step::EventLogId).big_unsigned().not_null())
         .index(Index::create().primary().name("PDX_Step").col(Step::Era))
@@ -33,7 +40,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
         .to_owned()
 }
 
-pub fn create_insert_stmt(era: u64, raw: String, event_log_id: u32) -> SqResult<InsertStatement> {
+pub fn create_insert_stmt(era: u64, raw: String, event_log_id: u64) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Step::Table)
         .columns([Step::Era, Step::Raw, Step::EventLogId])

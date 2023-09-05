@@ -34,10 +34,28 @@ pub struct Connection {
     pub no_message_timeout_in_seconds: Option<usize>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct StorageConfig {
-    pub storage_path: String,
-    pub sqlite_config: SqliteConfig,
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum StorageConfig {
+    SqliteDbConfig {
+        storage_path: String,
+        sqlite_config: SqliteConfig,
+    },
+}
+
+impl StorageConfig {
+    #[cfg(test)]
+    pub(crate) fn set_storage_path(&mut self, path: String) {
+        match self {
+            StorageConfig::SqliteDbConfig { storage_path, .. } => *storage_path = path,
+        }
+    }
+
+    pub fn get_storage_path(&self) -> String {
+        match self {
+            StorageConfig::SqliteDbConfig { storage_path, .. } => storage_path.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -47,6 +65,15 @@ pub struct SqliteConfig {
     pub wal_autocheckpointing_interval: u16,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct PostgresqlConfig {
+    pub host: String,
+    pub database_name: String,
+    pub database_username: String,
+    pub database_password: String,
+    pub max_connections_in_pool: u32,
+    pub port: Option<u16>,
+}
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct RestServerConfig {
     pub port: u16,
@@ -82,7 +109,7 @@ mod tests {
                 Connection::example_connection_2(),
                 Connection::example_connection_3(),
             ],
-            storage: StorageConfig {
+            storage: StorageConfig::SqliteDbConfig {
                 storage_path: "./target/storage".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
@@ -118,7 +145,7 @@ mod tests {
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
             }],
-            storage: StorageConfig {
+            storage: StorageConfig::SqliteDbConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
@@ -215,7 +242,7 @@ mod tests {
 
     impl Default for StorageConfig {
         fn default() -> Self {
-            Self {
+            StorageConfig::SqliteDbConfig {
                 storage_path: "/target/test_storage".to_string(),
                 sqlite_config: SqliteConfig::default(),
             }

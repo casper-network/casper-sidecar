@@ -49,7 +49,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
 pub fn create_insert_stmt(
     deploy_hash: String,
     raw: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(DeployProcessed::Table)

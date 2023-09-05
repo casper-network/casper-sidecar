@@ -54,7 +54,7 @@ pub fn create_insert_stmt(
     height: u64,
     block_hash: String,
     raw: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(BlockAdded::Table)
@@ -90,9 +90,13 @@ pub fn create_get_by_height_stmt(height: u64) -> SelectStatement {
 }
 
 pub fn create_get_latest_stmt() -> SelectStatement {
+    let select_max = Query::select()
+        .expr(Expr::col(BlockAdded::Height).max())
+        .from(BlockAdded::Table)
+        .to_owned();
     Query::select()
         .column(BlockAdded::Raw)
         .from(BlockAdded::Table)
-        .expr(Expr::col(BlockAdded::Height).max())
+        .and_where(Expr::col(BlockAdded::Height).in_subquery(select_max))
         .to_owned()
 }

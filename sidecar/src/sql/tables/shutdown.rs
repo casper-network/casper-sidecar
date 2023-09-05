@@ -54,7 +54,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
 
 pub fn create_insert_stmt(
     event_source_address: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(Shutdown::Table)

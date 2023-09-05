@@ -3,6 +3,8 @@ mod reader;
 mod tests;
 mod writer;
 use super::migration_manager::MigrationManager;
+#[cfg(test)]
+use crate::types::config::StorageConfig;
 use crate::{
     sql::tables,
     types::{config::SqliteConfig, database::DatabaseWriteError},
@@ -91,6 +93,16 @@ impl SqliteDatabase {
 
     async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
         self.connection_pool.begin().await
+    }
+
+    #[cfg(test)]
+    pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
+        match storage_config {
+            StorageConfig::SqliteDbConfig {
+                storage_path,
+                sqlite_config,
+            } => SqliteDatabase::new(Path::new(storage_path), sqlite_config.clone()).await,
+        }
     }
 
     #[cfg(test)]

@@ -8,7 +8,7 @@ use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
 use http::StatusCode;
-use std::{fmt::Debug, path::Path, time::Duration};
+use std::{fmt::Debug, time::Duration};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::mpsc;
 
@@ -425,12 +425,9 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
         event_stream_server_port,
     ) = build_test_config();
     //Prepopulating database
-    let sqlite_database = SqliteDatabase::new(
-        Path::new(&testing_config.config.storage.storage_path),
-        testing_config.config.storage.sqlite_config.clone(),
-    )
-    .await
-    .expect("database should start");
+    let sqlite_database = SqliteDatabase::new_from_config(&testing_config.config.storage)
+        .await
+        .expect("database should start");
     sqlite_database
         .save_fault(Fault::random(&mut rng), 0, "127.0.0.1".to_string())
         .await

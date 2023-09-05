@@ -18,17 +18,18 @@ pub enum EventLog {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn create_table_stmt() -> TableCreateStatement {
+pub fn create_table_stmt(is_big_integer_id: bool) -> TableCreateStatement {
+    let mut binding = ColumnDef::new(EventLog::EventLogId);
+    let mut event_log_id_col_definition = binding.auto_increment().not_null().primary_key();
+    if is_big_integer_id {
+        event_log_id_col_definition = event_log_id_col_definition.big_integer();
+    } else {
+        event_log_id_col_definition = event_log_id_col_definition.integer();
+    }
     Table::create()
         .table(EventLog::Table)
         .if_not_exists()
-        .col(
-            ColumnDef::new(EventLog::EventLogId)
-                .integer()
-                .auto_increment()
-                .not_null()
-                .primary_key(),
-        )
+        .col(event_log_id_col_definition)
         .col(
             ColumnDef::new(EventLog::EventTypeId)
                 .tiny_unsigned()
@@ -39,7 +40,9 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .string()
                 .not_null(),
         )
-        .col(ColumnDef::new(EventLog::EventId).unsigned().not_null())
+        //EventId is big_integer to accomodate postgresql -> in postgres there is no notion of unsigned columns, so we need to extend
+        // the data type to fit u32::MAX
+        .col(ColumnDef::new(EventLog::EventId).big_integer().not_null())
         .col(ColumnDef::new(EventLog::EventKey).string().not_null())
         .col(
             ColumnDef::new(EventLog::InsertedTimestamp)

@@ -1,4 +1,5 @@
 use crate::{
+    database::{sqlite_database::SqliteDatabase, types::DDLConfiguration},
     sql::tables,
     types::sse_events::{
         BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
@@ -10,6 +11,19 @@ use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
+
+#[derive(Clone)]
+pub enum Database {
+    SqliteDatabaseWrapper(SqliteDatabase),
+}
+
+impl Database {
+    pub async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
+        match self {
+            Database::SqliteDatabaseWrapper(db) => db.get_number_of_events().await,
+        }
+    }
+}
 
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
@@ -153,6 +167,17 @@ impl From<sqlx::Error> for DatabaseWriteError {
         if let Some(db_err) = sqlx_err.as_database_error() {
             if let Some(code) = db_err.code() {
                 match code.as_ref() {
+                    "23505" => {
+                        //"23505" is postgresql unique constraint violation violation
+                        let table = db_err
+                            .table()
+                            .map(|table_name| table_name.to_string())
+                            .unwrap_or(db_err.message().to_string());
+                        return Self::UniqueConstraint(UniqueConstraintError {
+                            table,
+                            error: sqlx_err,
+                        });
+                    }
                     "1555" | "2067" => {
                         // The message looks something like this:
                         // UNIQUE constraint failed: DeployProcessed.deploy_hash
@@ -309,7 +334,7 @@ pub struct Migration {
     /// that creates migrations table. No other migration should have version None.
     pub version: Option<u32>,
     /// A function producing sql statement wrappers that are necessary for the migration to be complete
-    pub statement_producers: fn() -> Result<Vec<StatementWrapper>, Error>,
+    pub statement_producers: fn(DDLConfiguration) -> Result<Vec<StatementWrapper>, Error>,
     /// Some migrations might required to run arbitrary code (this is so we don't have to rely on
     /// DB-specific scripting SQL extensions). To achieve that a migration should have script_executor
     pub script_executor: Option<Arc<dyn MigrationScriptExecutor>>,
@@ -323,7 +348,7 @@ impl Migration {
     pub fn initial() -> Migration {
         Migration {
             version: None,
-            statement_producers: || {
+            statement_producers: |_| {
                 Ok(vec![StatementWrapper::TableCreateStatement(Box::new(
                     tables::migration::create_table_stmt(),
                 ))])
@@ -335,12 +360,12 @@ impl Migration {
     pub fn migration_1() -> Migration {
         Migration {
             version: Some(1),
-            statement_producers: || {
+            statement_producers: |config: DDLConfiguration| {
                 let insert_types_stmt =
                     tables::event_type::create_initialise_stmt().map_err(|err| {
                         Error::msg(format!("Error building create_initialise_stmt: {:?}", err))
                     })?;
-                Ok(migration_1_ddl_statements(insert_types_stmt))
+                Ok(migration_1_ddl_statements(config, insert_types_stmt))
             },
             script_executor: None,
         }
@@ -350,19 +375,25 @@ impl Migration {
         self.version
     }
 
-    pub fn get_migrations(&self) -> Result<Vec<StatementWrapper>, Error> {
-        (self.statement_producers)()
+    pub fn get_migrations(
+        &self,
+        database_specific_configuration: DDLConfiguration,
+    ) -> Result<Vec<StatementWrapper>, Error> {
+        (self.statement_producers)(database_specific_configuration)
     }
 }
 
 fn migration_1_ddl_statements(
+    config: DDLConfiguration,
     insert_types_stmt: sea_query::InsertStatement,
 ) -> Vec<StatementWrapper> {
     let init_stmt = StatementWrapper::InsertStatement(insert_types_stmt);
     vec![
         // Synthetic tables
         StatementWrapper::TableCreateStatement(Box::new(tables::event_type::create_table_stmt())),
-        StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt(
+            config.is_big_integer_id,
+        ))),
         StatementWrapper::TableCreateStatement(Box::new(tables::deploy_event::create_table_stmt())),
         // Raw Event tables
         StatementWrapper::TableCreateStatement(Box::new(tables::block_added::create_table_stmt())),
@@ -375,11 +406,15 @@ fn migration_1_ddl_statements(
         StatementWrapper::TableCreateStatement(Box::new(
             tables::deploy_expired::create_table_stmt(),
         )),
-        StatementWrapper::TableCreateStatement(Box::new(tables::fault::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::fault::create_table_stmt(
+            config.db_supports_unsigned,
+        ))),
         StatementWrapper::TableCreateStatement(Box::new(
             tables::finality_signature::create_table_stmt(),
         )),
-        StatementWrapper::TableCreateStatement(Box::new(tables::step::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(tables::step::create_table_stmt(
+            config.db_supports_unsigned,
+        ))),
         StatementWrapper::TableCreateStatement(Box::new(tables::shutdown::create_table_stmt())),
         init_stmt,
     ]
