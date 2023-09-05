@@ -47,7 +47,7 @@ pub fn create_insert_stmt(version: u32, is_success: bool) -> SqResult<InsertStat
 
 #[test]
 fn create_table_stmt_sql() {
-    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Migration\" ( \"version\" integer NOT NULL, \"is_success\" integer NOT NULL, CONSTRAINT \"PDX_Migration\"PRIMARY KEY (\"version\") )";
+    let expected_sql = "CREATE TABLE IF NOT EXISTS \"Migration\" ( \"version\" integer NOT NULL, \"is_success\" boolean NOT NULL, CONSTRAINT \"PDX_Migration\" PRIMARY KEY (\"version\") )";
 
     let got_sql = create_table_stmt().to_string(SqliteQueryBuilder);
 

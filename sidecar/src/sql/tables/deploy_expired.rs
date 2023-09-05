@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -23,11 +23,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .string()
                 .not_null(),
         )
-        .col(
-            ColumnDef::new(DeployExpired::Raw)
-                .blob(BlobSize::Tiny)
-                .not_null(),
-        )
+        .col(ColumnDef::new(DeployExpired::Raw).text().not_null())
         .col(
             ColumnDef::new(DeployExpired::EventLogId)
                 .big_unsigned()
@@ -35,7 +31,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         )
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_DeployExpired")
                 .col(DeployExpired::DeployHash),

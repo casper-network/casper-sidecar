@@ -6,11 +6,9 @@ use sqlx::{sqlite::SqliteRow, Executor, Row, SqlitePool};
 
 use casper_event_types::FinalitySignature as FinSig;
 
-use super::{
-    errors::{wrap_query_error, SqliteDbError},
-    SqliteDatabase,
-};
+use super::SqliteDatabase;
 use crate::{
+    database::errors::{wrap_query_error, DbError},
     sql::tables,
     types::{
         database::{DatabaseReadError, DatabaseReader, DeployAggregate},
@@ -269,8 +267,8 @@ impl DatabaseReader for SqliteDatabase {
     }
 }
 
-fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, SqliteDbError> {
-    serde_json::from_str::<T>(data).map_err(SqliteDbError::SerdeJson)
+fn deserialize_data<'de, T: Deserialize<'de>>(data: &'de str) -> Result<T, DbError> {
+    serde_json::from_str::<T>(data).map_err(DbError::SerdeJson)
 }
 
 fn parse_block_from_row(row: SqliteRow) -> Result<BlockAdded, DatabaseReadError> {

@@ -13,7 +13,7 @@ use tempfile::{tempdir, TempDir};
 use tokio::sync::mpsc;
 
 use crate::{
-    sqlite_database::SqliteDatabase,
+    database::sqlite_database::SqliteDatabase,
     testing::{
         mock_node::tests::{MockNode, MockNodeBuilder},
         raw_sse_events_utils::tests::{

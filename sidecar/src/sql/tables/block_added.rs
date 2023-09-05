@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, BlobSize, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden,
-    Index, InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
+    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
 };
 
 use super::event_log::EventLog;
@@ -26,11 +26,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .unique_key(),
         )
         .col(ColumnDef::new(BlockAdded::BlockHash).string().not_null())
-        .col(
-            ColumnDef::new(BlockAdded::Raw)
-                .blob(BlobSize::Tiny)
-                .not_null(),
-        )
+        .col(ColumnDef::new(BlockAdded::Raw).text().not_null())
         .col(
             ColumnDef::new(BlockAdded::EventLogId)
                 .big_unsigned()
@@ -38,7 +34,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
         )
         .index(
             Index::create()
-                .unique()
                 .primary()
                 .name("PDX_BlockAdded")
                 .col(BlockAdded::BlockHash)

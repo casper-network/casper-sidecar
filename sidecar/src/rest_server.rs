@@ -14,16 +14,17 @@ use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use warp::Filter;
 
 use crate::{
-    sqlite_database::SqliteDatabase, types::config::RestServerConfig, utils::resolve_address,
+    types::{config::RestServerConfig, database::DatabaseReader},
+    utils::resolve_address,
 };
 
 const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 
-pub async fn run_server(
+pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
     config: RestServerConfig,
-    sqlite_database: SqliteDatabase,
+    database: Db,
 ) -> Result<(), Error> {
-    let api = filters::combined_filters(sqlite_database);
+    let api = filters::combined_filters(database);
     let address = format!("{}:{}", BIND_ALL_INTERFACES, config.port);
     let socket_address = resolve_address(&address)?;
 

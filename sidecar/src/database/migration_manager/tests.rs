@@ -1,8 +1,8 @@
+use crate::database::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use crate::types::database::{
     DatabaseReader, DatabaseWriteError, Migration, MigrationScriptExecutor, StatementWrapper,
     TransactionWrapper,
 };
-use crate::{migration_manager::MigrationManager, sqlite_database::SqliteDatabase};
 use async_trait::async_trait;
 use itertools::Itertools;
 use sqlx::{Executor, Row};
