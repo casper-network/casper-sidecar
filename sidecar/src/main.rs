@@ -49,6 +49,7 @@ use casper_event_types::{
     Filter,
 };
 use clap::Parser;
+use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 #[cfg(not(target_env = "msvc"))]
@@ -182,6 +183,15 @@ fn start_sse_processors(
                     is_empty_database,
                     api_version_manager.clone(),
                 )),
+                Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
+                    event_listener,
+                    sse_data_receiver,
+                    outbound_sse_data_sender.clone(),
+                    db.clone(),
+                    connection_config.enable_logging,
+                    is_empty_database,
+                    api_version_manager.clone(),
+                )),
             };
 
             join_handles.push(join_handle);
@@ -213,6 +223,9 @@ fn build_and_start_rest_server(
             Database::SqliteDatabaseWrapper(db) => {
                 start_rest_server(rest_server_config, db.clone()).await
             }
+            Database::PostgreSqlDatabaseWrapper(db) => {
+                start_rest_server(rest_server_config, db.clone()).await
+            }
         }
     })
 }
@@ -239,6 +252,12 @@ async fn build_database(config: &StorageConfig) -> Result<Database, Error> {
                 .await
                 .context("Error instantiating database")?;
             Ok(Database::SqliteDatabaseWrapper(sqlite_database))
+        }
+        StorageConfig::PostgreSqlDbConfig {
+            postgresql_config, ..
+        } => {
+            let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone()).await?;
+            Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
         }
     }
 }
@@ -310,7 +329,7 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
 async fn handle_database_save_result<F>(
     entity_name: &str,
     entity_identifier: &str,
-    res: Result<usize, DatabaseWriteError>,
+    res: Result<u64, DatabaseWriteError>,
     outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
     inbound_filter: Filter,
     json_data: Option<String>,

@@ -102,6 +102,9 @@ impl SqliteDatabase {
                 storage_path,
                 sqlite_config,
             } => SqliteDatabase::new(Path::new(storage_path), sqlite_config.clone()).await,
+            StorageConfig::PostgreSqlDbConfig { .. } => Err(Error::msg(
+                "can't build Sqlite database from postgres config",
+            )),
         }
     }
 

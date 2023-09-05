@@ -1,5 +1,8 @@
 use crate::{
-    database::{sqlite_database::SqliteDatabase, types::DDLConfiguration},
+    database::{
+        postgresql_database::PostgreSqlDatabase, sqlite_database::SqliteDatabase,
+        types::DDLConfiguration,
+    },
     sql::tables,
     types::sse_events::{
         BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
@@ -15,12 +18,14 @@ use utoipa::ToSchema;
 #[derive(Clone)]
 pub enum Database {
     SqliteDatabaseWrapper(SqliteDatabase),
+    PostgreSqlDatabaseWrapper(PostgreSqlDatabase),
 }
 
 impl Database {
     pub async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
         match self {
             Database::SqliteDatabaseWrapper(db) => db.get_number_of_events().await,
+            Database::PostgreSqlDatabaseWrapper(db) => db.get_number_of_events().await,
         }
     }
 }
@@ -42,7 +47,7 @@ pub trait DatabaseWriter {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployAccepted event to the database.
     ///
     /// * `deploy_accepted`: the [DeployAccepted] from the `data` field.
@@ -53,7 +58,7 @@ pub trait DatabaseWriter {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployProcessed event to the database.
     ///
     /// * `deploy_accepted`: the [DeployProcessed] from the `data` field.
@@ -64,7 +69,7 @@ pub trait DatabaseWriter {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployExpired event to the database.
     ///
     /// * `deploy_expired`: the [DeployExpired] from the `data` field.
@@ -75,7 +80,7 @@ pub trait DatabaseWriter {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a Fault event to the database.
     ///
     /// * `fault`: the [Fault] from the `data` field.
@@ -86,7 +91,7 @@ pub trait DatabaseWriter {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a FinalitySignature event to the database.
     ///
     /// * `finality_signature`: the [FinalitySignature] from the `data` field.
@@ -97,7 +102,7 @@ pub trait DatabaseWriter {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
     /// Save a Step event to the database.
     ///
     /// * `step`: the [Step] from the `data` field.
@@ -108,14 +113,14 @@ pub trait DatabaseWriter {
         step: Step,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
 
     // Save data about shutdown to the database
     async fn save_shutdown(
         &self,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError>;
+    ) -> Result<u64, DatabaseWriteError>;
 
     /// Executes migration and stores current migration version
     ///
