@@ -113,6 +113,7 @@ impl PostgreSqlDatabase {
         self.connection_pool.begin().await
     }
 }
+
 /// This function will return the value of the environment variable with the key `key`.
 ///
 /// If the environment variable is not set, the function will check if a value has been set in the config file
