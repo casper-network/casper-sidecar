@@ -3,16 +3,17 @@ mod writer;
 
 use std::env;
 
-use crate::{
-    database::migration_manager::MigrationManager,
-    sql::tables,
-    types::{config::PostgresqlConfig, database::DatabaseWriteError},
-};
 use anyhow::Error;
 use sea_query::PostgresQueryBuilder;
 use sqlx::{
     postgres::{PgConnectOptions, PgPool, PgPoolOptions},
     ConnectOptions, Executor, Postgres, Transaction,
+};
+
+use crate::{
+    database::migration_manager::MigrationManager,
+    sql::tables,
+    types::{config::PostgresqlConfig, database::DatabaseWriteError},
 };
 
 /// The environment variable key for the Postgres username.
