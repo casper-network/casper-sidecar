@@ -57,7 +57,7 @@ pub fn create_insert_stmt(
     block_hash: String,
     public_key: String,
     raw: String,
-    event_log_id: u32,
+    event_log_id: u64,
 ) -> SqResult<InsertStatement> {
     Query::insert()
         .into_table(FinalitySignature::Table)

@@ -48,7 +48,7 @@ pub fn create_table_stmt() -> TableCreateStatement {
 
 pub fn create_insert_stmt(
     deploy_hash: String,
-    event_log_id: u32,
+    event_log_id: u64,
     raw: String,
 ) -> SqResult<InsertStatement> {
     Query::insert()
