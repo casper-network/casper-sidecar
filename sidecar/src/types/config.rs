@@ -73,11 +73,11 @@ pub struct SqliteConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct PostgresqlConfig {
-    pub host: String,
-    pub database_name: String,
-    pub database_username: String,
-    pub database_password: String,
-    pub max_connections_in_pool: u32,
+    pub host: Option<String>,
+    pub database_name: Option<String>,
+    pub database_username: Option<String>,
+    pub database_password: Option<String>,
+    pub max_connections_in_pool: Option<u32>,
     pub port: Option<u16>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
