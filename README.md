@@ -210,8 +210,9 @@ SIDECAR_POSTGRES_MAX_CONNECTIONS="max connections"
 SIDECAR_POSTGRES_PORT="port"
 ```
 
-The suggested method to set the connection information for the postgeSQL database is through these environment variables.
 However, they can also be set in the configuration file
+In the event that both the environment variables and the configuration file have the same variable set, the environment variable will take precedence.
+For security purposes, the suggested method to set the connection information for the postgeSQL database is through these environment variables.
 
 ## Testing Sidecar with a Local Network using NCTL
 
