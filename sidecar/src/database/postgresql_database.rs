@@ -3,7 +3,11 @@ mod writer;
 
 use std::env;
 
-use crate::{database::migration_manager::MigrationManager, sql::tables, types::{config::PostgresqlConfig, database::DatabaseWriteError}};
+use crate::{
+    database::migration_manager::MigrationManager,
+    sql::tables,
+    types::{config::PostgresqlConfig, database::DatabaseWriteError},
+};
 use anyhow::Error;
 use sea_query::PostgresQueryBuilder;
 use sqlx::{
@@ -29,7 +33,6 @@ const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 const DEFAULT_PORT: u16 = 5432;
 
-
 /// [PostgreSqlDatabase] can be cloned to allow multiple components access to the database.
 /// The [PostgreSqlDatabase] is cloned using an [Arc](std::sync::Arc) so each cloned instance of [PostgreSqlDatabase] shares the same connection pool.
 #[derive(Clone)]
@@ -39,15 +42,24 @@ pub struct PostgreSqlDatabase {
 
 impl PostgreSqlDatabase {
     pub async fn new(config: PostgresqlConfig) -> Result<PostgreSqlDatabase, Error> {
-
         let host = get_connection_information_from_env(DATABASE_HOST_ENV_VAR_KEY, config.host);
-        let database_name = get_connection_information_from_env(DATABASE_NAME_ENV_VAR_KEY, config.database_name);
-        let database_username = get_connection_information_from_env(DATABASE_USERNAME_ENV_VAR_KEY, config.database_username);
-        let database_password = get_connection_information_from_env(DATABASE_PASSWORD_ENV_VAR_KEY, config.database_password);
+        let database_name =
+            get_connection_information_from_env(DATABASE_NAME_ENV_VAR_KEY, config.database_name);
+        let database_username = get_connection_information_from_env(
+            DATABASE_USERNAME_ENV_VAR_KEY,
+            config.database_username,
+        );
+        let database_password = get_connection_information_from_env(
+            DATABASE_PASSWORD_ENV_VAR_KEY,
+            config.database_password,
+        );
 
-        let max_connections = get_connection_information_from_env(DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, config.max_connections_in_pool)
-            .parse::<u32>()
-            .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+        let max_connections = get_connection_information_from_env(
+            DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY,
+            config.max_connections_in_pool,
+        )
+        .parse::<u32>()
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
         let port: u16 = get_connection_information_from_env(DATABASE_PORT_ENV_VAR_KEY, config.port)
             .parse::<u16>()
             .unwrap_or(DEFAULT_PORT);
@@ -102,13 +114,17 @@ impl PostgreSqlDatabase {
     }
 }
 /// This function will return the value of the environment variable with the key `key`.
+///
 /// If the environment variable is not set, the function will check if a value has been set in the config file
-/// and return that value. If no value has been set in the config file, the function will return an empty string.
+/// and return that value.
+///
+/// If no value has been set in the config file, the function will return an empty string.
+///
 /// Note: The empty string will likely cause an error in setting up the db. This is expected and should
 /// happen if the config value is not set in either place.
-fn get_connection_information_from_env<T: ToString>(key: &str, config_backup: Option<T>) -> String{
-    env::var(key).unwrap_or_else(|_|match config_backup{
+fn get_connection_information_from_env<T: ToString>(key: &str, config_backup: Option<T>) -> String {
+    env::var(key).unwrap_or_else(|_| match config_backup {
         Some(config_value) => config_value.to_string(),
-        None => "".to_string()
+        None => "".to_string(),
     })
 }
