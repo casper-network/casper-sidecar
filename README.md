@@ -184,6 +184,35 @@ The log levels, listed in order of increasing verbosity, are:
 
 Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
+Additionally, to run the sidecar with PostgreSQL, you can set the following environment variables to control how the sidecar connects to the database:
+
+```
+SIDECAR_POSTGRES_USERNAME="your username"
+```
+
+```
+SIDECAR_POSTGRES_PASSWORD="your password"
+```
+
+```
+SIDECAR_POSTGRES_DATABASE_NAME="your database name"
+```
+
+```
+SIDECAR_POSTGRES_HOST="your host"
+```
+
+```
+SIDECAR_POSTGRES_MAX_CONNECTIONS="max connections"
+```
+
+```
+SIDECAR_POSTGRES_PORT="port"
+```
+
+The suggested method to set the connection information for the postgeSQL database is through these environment variables.
+However, they can also be set in the configuration file
+
 ## Testing Sidecar with a Local Network using NCTL
 
 Your instance of the Sidecar application can be tested against a local network using NCTL.
