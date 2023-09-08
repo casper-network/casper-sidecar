@@ -32,4 +32,4 @@ fn parse_migration_row(maybe_row: Option<PgRow>) -> Result<Option<(u32, bool)>, 
     }
 }
 
-database_reader_implementation!(PostgreSqlDatabase,  PgRow, PostgresQueryBuilder {});
+database_reader_implementation!(PostgreSqlDatabase, PgRow, PostgresQueryBuilder {});
