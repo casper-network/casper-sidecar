@@ -35,4 +35,4 @@ fn parse_migration_row(
     }
 }
 
-database_reader_implementation!(SqliteDatabase, SqlitePool, SqliteRow, SqliteQueryBuilder {});
+database_reader_implementation!(SqliteDatabase, SqliteRow, SqliteQueryBuilder {});

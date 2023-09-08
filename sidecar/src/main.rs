@@ -250,13 +250,15 @@ async fn build_database(config: &StorageConfig) -> Result<Database, Error> {
             let path_to_database_dir = Path::new(storage_path);
             let sqlite_database = SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
                 .await
-                .context("Error instantiating database")?;
+                .context("Error instantiating sqlite database")?;
             Ok(Database::SqliteDatabaseWrapper(sqlite_database))
         }
         StorageConfig::PostgreSqlDbConfig {
             postgresql_config, ..
         } => {
-            let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone()).await?;
+            let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone())
+                .await
+                .context("Error instantiating postgres database")?;
             Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
         }
     }

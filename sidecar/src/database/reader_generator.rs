@@ -1,7 +1,6 @@
 #[macro_export]
 macro_rules! database_reader_implementation {
     ($extended_type:ty,
-     $pool_type: ty,
      $row_type: ty,
      $query_materializer_expr:expr) => {
         use anyhow::Error;
