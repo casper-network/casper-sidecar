@@ -7,3 +7,5 @@ pub mod migration_manager;
 pub mod postgresql_database;
 pub mod sqlite_database;
 pub mod types;
+pub mod database_errors;
+pub mod env_vars;
