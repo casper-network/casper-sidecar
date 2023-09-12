@@ -19,3 +19,4 @@ utoipa = { version = "3.4.4", features = ["rc_schema"]}
 
 [features]
 sse-data-testing = ["blake2", "casper-types/testing", "rand"]
+db-perf-measurement = []

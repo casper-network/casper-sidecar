@@ -1,5 +1,8 @@
 use prometheus::{GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
+const DB_OPERATION_BUCKETS: &[f64; 8] = &[
+    3e+5_f64, 3e+6_f64, 10e+6_f64, 20e+6_f64, 5e+7_f64, 1e+8_f64, 5e+8_f64, 1e+9_f64,
+];
 const BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
 ];
@@ -29,6 +32,15 @@ lazy_static! {
         &["node"]
     )
     .expect("metric can't be created");
+
+    pub static ref DB_OPERATION_TIMES: HistogramVec = HistogramVec::new(
+        HistogramOpts {
+            common_opts: Opts::new("db_operation_times", "Times (in nanoseconds) it took to perform a database operation."),
+            buckets: Vec::from(DB_OPERATION_BUCKETS as &'static [f64]),
+        },
+        &["filter"]
+    )
+    .expect("metric can't be created");
 }
 
 pub fn register_metrics() {
@@ -43,6 +55,9 @@ pub fn register_metrics() {
         .expect("cannot register metric");
     REGISTRY
         .register(Box::new(NODE_STATUSES.clone()))
+        .expect("cannot register metric");
+    REGISTRY
+        .register(Box::new(DB_OPERATION_TIMES.clone()))
         .expect("cannot register metric");
 }
 pub struct MetricCollectionError {
