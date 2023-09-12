@@ -82,7 +82,7 @@ impl DatabaseWriter for FakeDatabase {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let identifier_hash = block_added.hex_encoded_hash();
@@ -105,7 +105,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let hash = deploy_accepted.hex_encoded_hash();
@@ -125,7 +125,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let hash = deploy_processed.hex_encoded_hash();
@@ -145,7 +145,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let hash = deploy_expired.hex_encoded_hash();
@@ -165,7 +165,7 @@ impl DatabaseWriter for FakeDatabase {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let identifier_era = fault.era_id.value().to_string();
@@ -189,7 +189,7 @@ impl DatabaseWriter for FakeDatabase {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let identifier = finality_signature.hex_encoded_block_hash();
@@ -207,7 +207,7 @@ impl DatabaseWriter for FakeDatabase {
         step: Step,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
         let identifier = step.era_id.value().to_string();
@@ -223,7 +223,7 @@ impl DatabaseWriter for FakeDatabase {
         &self,
         event_id: u32,
         event_source_address: String,
-    ) -> Result<usize, DatabaseWriteError> {
+    ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
         let unix_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

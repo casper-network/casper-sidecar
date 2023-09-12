@@ -41,6 +41,10 @@ pub enum StorageConfig {
         storage_path: String,
         sqlite_config: SqliteConfig,
     },
+    PostgreSqlDbConfig {
+        storage_path: String,
+        postgresql_config: PostgresqlConfig,
+    },
 }
 
 impl StorageConfig {
@@ -48,12 +52,14 @@ impl StorageConfig {
     pub(crate) fn set_storage_path(&mut self, path: String) {
         match self {
             StorageConfig::SqliteDbConfig { storage_path, .. } => *storage_path = path,
+            StorageConfig::PostgreSqlDbConfig { storage_path, .. } => *storage_path = path,
         }
     }
 
     pub fn get_storage_path(&self) -> String {
         match self {
             StorageConfig::SqliteDbConfig { storage_path, .. } => storage_path.clone(),
+            StorageConfig::PostgreSqlDbConfig { storage_path, .. } => storage_path.clone(),
         }
     }
 }
