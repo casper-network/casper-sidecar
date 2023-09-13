@@ -1,4 +1,5 @@
 use std::{convert::{TryFrom, TryInto}, num::ParseIntError};
+use std::string::ToString;
 
 use anyhow::{Context, Error};
 use serde::Deserialize;
@@ -16,6 +17,8 @@ use crate::database::{
 pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 pub(crate) const DEFAULT_PORT: u16 = 5432;
+
+pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: String = "/casper/sidecar-storage/casper-event-sidecar".to_string();
 
 pub fn read_config(config_path: &str) -> Result<Config, Error> {
     let toml_content =
@@ -89,15 +92,15 @@ pub enum StorageConfigSerdeTarget {
     },
     PostgreSqlDbConfigSerdeTarget {
         storage_path: String,
-        postgresql_config: PostgresqlConfigSerdeTarget,
+        postgresql_config: Option<PostgresqlConfigSerdeTarget>,
     },
 }
 
 impl Default for StorageConfigSerdeTarget{
     fn default() -> Self {
         StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget{
-            storage_path: "/casper/sidecar-storage/casper-event-sidecar".to_string(),
-            postgresql_config: PostgresqlConfigSerdeTarget::default(),
+            storage_path: DEFAULT_POSTGRES_STORAGE_PATH,
+            postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
         }
     }
 }
@@ -118,7 +121,7 @@ impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
                 postgresql_config,
             } => Ok(StorageConfig::PostgreSqlDbConfig {
                 storage_path,
-                postgresql_config: postgresql_config.try_into()?,
+                postgresql_config: postgresql_config.unwrap_or_default().try_into()?,
             }),
         }
     }
@@ -231,14 +234,14 @@ mod tests {
                 Connection::example_connection_2(),
                 Connection::example_connection_3(),
             ],
-            storage: StorageConfig::SqliteDbConfig {
+            storage: Some(StorageConfigSerdeTarget::SqliteDbConfig {
                 storage_path: "./target/storage".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
                 },
-            },
+            }),
             rest_server: build_rest_server_config(),
             event_stream_server: EventStreamServerConfig::default(),
             admin_server: None,
@@ -267,14 +270,14 @@ mod tests {
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
             }],
-            storage: StorageConfig::SqliteDbConfig {
+            storage: Some(StorageConfigSerdeTarget::SqliteDbConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
                 },
-            },
+            }),
             rest_server: build_rest_server_config(),
             event_stream_server: EventStreamServerConfig::default(),
             admin_server: Some(AdminServerConfig {
