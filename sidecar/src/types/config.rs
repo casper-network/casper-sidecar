@@ -18,9 +18,9 @@ pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 pub(crate) const DEFAULT_PORT: u16 = 5432;
 
-pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: String = "/casper/sidecar-storage/casper-event-sidecar".to_string();
+pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str = "/casper/sidecar-storage/casper-event-sidecar";
 
-pub fn read_config(config_path: &str) -> Result<Config, Error> {
+pub fn read_config(config_path: &str) -> Result<ConfigSerdeTarget, Error> {
     let toml_content =
         std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
@@ -33,12 +33,37 @@ pub struct Config {
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
+    pub storage: StorageConfig,
+    pub rest_server: RestServerConfig,
+    pub event_stream_server: EventStreamServerConfig,
+    pub admin_server: Option<AdminServerConfig>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(Default))]
+pub struct ConfigSerdeTarget{
+    pub inbound_channel_size: Option<usize>,
+    pub outbound_channel_size: Option<usize>,
+    pub connections: Vec<Connection>,
     pub storage: Option<StorageConfigSerdeTarget>,
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
     pub admin_server: Option<AdminServerConfig>,
 }
+impl TryFrom<ConfigSerdeTarget> for Config{
+    type Error = DatabaseConfigError;
 
+    fn try_from(value: ConfigSerdeTarget) -> Result<Self, Self::Error> {
+        Ok(Config {
+            inbound_channel_size: value.inbound_channel_size,
+            outbound_channel_size: value.outbound_channel_size,
+            connections: value.connections,
+            storage: value.storage.unwrap_or_default().try_into()?,
+            rest_server: value.rest_server,
+            event_stream_server: value.event_stream_server,
+            admin_server: value.admin_server,
+        })
+    }
+}
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
     pub ip_address: String,
@@ -99,7 +124,7 @@ pub enum StorageConfigSerdeTarget {
 impl Default for StorageConfigSerdeTarget{
     fn default() -> Self {
         StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget{
-            storage_path: DEFAULT_POSTGRES_STORAGE_PATH,
+            storage_path: DEFAULT_POSTGRES_STORAGE_PATH.to_string(),
             postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
         }
     }
@@ -234,21 +259,21 @@ mod tests {
                 Connection::example_connection_2(),
                 Connection::example_connection_3(),
             ],
-            storage: Some(StorageConfigSerdeTarget::SqliteDbConfig {
+            storage: StorageConfig::SqliteDbConfig {
                 storage_path: "./target/storage".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
                 },
-            }),
+            },
             rest_server: build_rest_server_config(),
             event_stream_server: EventStreamServerConfig::default(),
             admin_server: None,
         };
 
-        let parsed_config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml");
+        let parsed_config: Config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
+            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml").try_into().unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }
@@ -270,14 +295,14 @@ mod tests {
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
             }],
-            storage: Some(StorageConfigSerdeTarget::SqliteDbConfig {
+            storage: StorageConfig::SqliteDbConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
                 sqlite_config: SqliteConfig {
                     file_name: "sqlite_database.db3".to_string(),
                     max_connections_in_pool: 100,
                     wal_autocheckpointing_interval: 1000,
                 },
-            }),
+            },
             rest_server: build_rest_server_config(),
             event_stream_server: EventStreamServerConfig::default(),
             admin_server: Some(AdminServerConfig {
@@ -287,8 +312,8 @@ mod tests {
             }),
         };
 
-        let parsed_config = read_config("../EXAMPLE_NODE_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml");
+        let parsed_config: Config = read_config("../EXAMPLE_NODE_CONFIG.toml")
+            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml").try_into().unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }
