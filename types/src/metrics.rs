@@ -1,5 +1,6 @@
 use prometheus::{GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
+#[cfg(feature = "db-perf-measurement")]
 const DB_OPERATION_BUCKETS: &[f64; 8] = &[
     3e+5_f64, 3e+6_f64, 10e+6_f64, 20e+6_f64, 5e+7_f64, 1e+8_f64, 5e+8_f64, 1e+9_f64,
 ];
@@ -33,9 +34,16 @@ lazy_static! {
     )
     .expect("metric can't be created");
 
+}
+
+#[cfg(feature = "db-perf-measurement")]
+lazy_static! {
     pub static ref DB_OPERATION_TIMES: HistogramVec = HistogramVec::new(
         HistogramOpts {
-            common_opts: Opts::new("db_operation_times", "Times (in nanoseconds) it took to perform a database operation."),
+            common_opts: Opts::new(
+                "db_operation_times",
+                "Times (in nanoseconds) it took to perform a database operation."
+            ),
             buckets: Vec::from(DB_OPERATION_BUCKETS as &'static [f64]),
         },
         &["filter"]
@@ -56,6 +64,7 @@ pub fn register_metrics() {
     REGISTRY
         .register(Box::new(NODE_STATUSES.clone()))
         .expect("cannot register metric");
+    #[cfg(feature = "db-perf-measurement")]
     REGISTRY
         .register(Box::new(DB_OPERATION_TIMES.clone()))
         .expect("cannot register metric");

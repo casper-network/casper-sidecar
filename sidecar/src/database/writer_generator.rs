@@ -22,7 +22,7 @@ use $crate::{
     },
 };
 #[cfg(feature = "db-perf-measurement")]
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
