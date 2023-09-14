@@ -65,6 +65,7 @@ use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
 };
+
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -88,7 +89,8 @@ async fn main() -> Result<(), Error> {
 
     let path_to_config = args.path_to_config;
 
-    let config: Config = read_config(&path_to_config).context("Error constructing config")?;
+    let config_serde = read_config(&path_to_config).context("Error constructing config")?;
+    let config = config_serde.try_into()?;
 
     info!("Configuration loaded");
     register_metrics();
@@ -105,9 +107,8 @@ async fn run(config: Config) -> Result<(), Error> {
 
     let connection_configs = config.connections.clone();
 
-    let storage_config_serde = config.storage.clone().unwrap_or_default();
-
-    let storage_config = storage_config_serde.try_into()?;
+    let storage_config = config.storage.clone();
+    info!("Storage config: {:?}", storage_config);
 
     let database = build_database(&storage_config).await?;
     let rest_server_handle = build_and_start_rest_server(&config, database.clone());
