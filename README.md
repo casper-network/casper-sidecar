@@ -82,8 +82,9 @@ This directory stores the SQLite database for the Sidecar and the SSE cache.
 storage_path = "./target/storage"
 ```
 
-### SQLite Database
-
+### Database
+Sidecar can connect to different databases. For now it's either `Sqlite` or `Postgresql`. Following sections show how to configure connections to all possible databases. The following sections are exclusive (you can't provide more than one)
+#### SQLite Database
 ```
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
@@ -97,6 +98,24 @@ This section includes configurations for the SQLite database.
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
+
+#### PostgreSQL Database
+```
+[storage.postgresql_config]
+database_name = "event_sidecar"
+host = "localhost"
+database_password = "p@$$w0rd"
+database_username = "postgres"
+max_connections_in_pool = 30
+```
+
+This section includes configurations for PostgreSQL database.
+
+* `database_name` - Name of the database
+* `host` - url to postgresql instance
+* `database_username` - username
+* `database_password` - database password
+* `max_connections_in_pool` - The maximum number of connections to the database.
 
 ### Rest & Event Stream Criteria
 

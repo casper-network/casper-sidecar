@@ -8,6 +8,8 @@ macro_rules! database_writer_implementation {
 use anyhow::Context;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
+#[cfg(feature = "db-perf-measurement")]
+use casper_event_types::metrics;
 use itertools::Itertools;
 use tokio::sync::Mutex;
 use $crate::{
@@ -19,6 +21,8 @@ use $crate::{
         sse_events::*,
     },
 };
+#[cfg(feature = "db-perf-measurement")]
+use std::time::Instant;
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -49,6 +53,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&block_added)?;
         let encoded_hash = block_added.hex_encoded_hash();
@@ -73,6 +79,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_block_added", start);
         res
     }
 
@@ -82,6 +90,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_accepted)?;
         let encoded_hash = deploy_accepted.hex_encoded_hash();
@@ -107,6 +117,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_deploy_accepted", start);
         res
     }
 
@@ -116,6 +128,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_processed)?;
         let encoded_hash = deploy_processed.hex_encoded_hash();
@@ -140,6 +154,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_deploy_processed", start);
         res
     }
 
@@ -149,6 +165,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_expired)?;
         let encoded_hash = deploy_expired.hex_encoded_hash();
@@ -173,6 +191,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_deploy_expired", start);
         res
     }
 
@@ -182,6 +202,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&fault)?;
         let era_id = fault.era_id.value();
@@ -203,6 +225,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_fault", start);
         res
     }
 
@@ -212,6 +236,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&finality_signature)?;
         let block_hash = finality_signature.hex_encoded_block_hash();
@@ -239,6 +265,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_finality_signature", start);
         res
     }
 
@@ -248,6 +276,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&step)?;
         let era_id = step.era_id.value();
@@ -268,6 +298,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_step", start);
         res
     }
 
@@ -276,6 +308,8 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
+        #[cfg(feature = "db-perf-measurement")]
+        let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let unix_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -298,7 +332,8 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-
+        #[cfg(feature = "db-perf-measurement")]
+        observe_db_operation_time("save_shutdown", start);
         res
     }
 
@@ -380,6 +415,14 @@ async fn save_event_log(
         .context("save_block_added: Error parsing event_log_id from row")?
         as u64;
     Ok(event_log_id)
+}
+
+#[cfg(feature = "db-perf-measurement")]
+fn observe_db_operation_time(operation_name: &str, start: Instant) {
+    let duration = start.elapsed();
+    metrics::DB_OPERATION_TIMES
+        .with_label_values(&[operation_name])
+        .observe(duration.as_nanos() as f64);
 }
 
     }
