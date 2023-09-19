@@ -1,16 +1,19 @@
-use std::{convert::{TryFrom, TryInto}, num::ParseIntError};
 use std::string::ToString;
+use std::{
+    convert::{TryFrom, TryInto},
+    num::ParseIntError,
+};
 
 use anyhow::{Context, Error};
 use serde::Deserialize;
 
 use crate::database::{
+    database_errors::DatabaseConfigError,
     env_vars::{
-        DATABASE_HOST_ENV_VAR_KEY, DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, DATABASE_NAME_ENV_VAR_KEY,
+        get_connection_information_from_env, DATABASE_HOST_ENV_VAR_KEY,
+        DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, DATABASE_NAME_ENV_VAR_KEY,
         DATABASE_PASSWORD_ENV_VAR_KEY, DATABASE_PORT_ENV_VAR_KEY, DATABASE_USERNAME_ENV_VAR_KEY,
-        get_connection_information_from_env,
     },
-    database_errors::DatabaseConfigError
 };
 
 /// The default postgres max connections.
@@ -18,7 +21,8 @@ pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 pub(crate) const DEFAULT_PORT: u16 = 5432;
 
-pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str = "/casper/sidecar-storage/casper-event-sidecar";
+pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
+    "/casper/sidecar-storage/casper-event-sidecar";
 
 pub fn read_config(config_path: &str) -> Result<ConfigSerdeTarget, Error> {
     let toml_content =
@@ -40,7 +44,7 @@ pub struct Config {
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(Default))]
-pub struct ConfigSerdeTarget{
+pub struct ConfigSerdeTarget {
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
@@ -49,7 +53,7 @@ pub struct ConfigSerdeTarget{
     pub event_stream_server: EventStreamServerConfig,
     pub admin_server: Option<AdminServerConfig>,
 }
-impl TryFrom<ConfigSerdeTarget> for Config{
+impl TryFrom<ConfigSerdeTarget> for Config {
     type Error = DatabaseConfigError;
 
     fn try_from(value: ConfigSerdeTarget) -> Result<Self, Self::Error> {
@@ -121,9 +125,9 @@ pub enum StorageConfigSerdeTarget {
     },
 }
 
-impl Default for StorageConfigSerdeTarget{
+impl Default for StorageConfigSerdeTarget {
     fn default() -> Self {
-        StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget{
+        StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget {
             storage_path: DEFAULT_POSTGRES_STORAGE_PATH.to_string(),
             postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
         }
@@ -183,7 +187,6 @@ impl TryFrom<PostgresqlConfigSerdeTarget> for PostgresqlConfig {
     type Error = DatabaseConfigError;
 
     fn try_from(value: PostgresqlConfigSerdeTarget) -> Result<Self, Self::Error> {
-
         let host = get_connection_information_from_env(DATABASE_HOST_ENV_VAR_KEY, value.host)?;
 
         let database_name =
@@ -202,16 +205,21 @@ impl TryFrom<PostgresqlConfigSerdeTarget> for PostgresqlConfig {
         let max_connections: u32 = get_connection_information_from_env(
             DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY,
             value.max_connections_in_pool,
-        ).unwrap_or(DEFAULT_MAX_CONNECTIONS.to_string()).parse().map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
+        )
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS.to_string())
+        .parse()
+        .map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
             field_name: "Max connections",
             error: e.to_string(),
         })?;
 
         let port: u16 = get_connection_information_from_env(DATABASE_PORT_ENV_VAR_KEY, value.port)
-            .unwrap_or(DEFAULT_PORT.to_string()).parse().map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
+            .unwrap_or(DEFAULT_PORT.to_string())
+            .parse()
+            .map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
                 field_name: "Port",
                 error: e.to_string(),
-        })?;
+            })?;
 
         Ok(PostgresqlConfig {
             host,
@@ -273,7 +281,9 @@ mod tests {
         };
 
         let parsed_config: Config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml").try_into().unwrap();
+            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml")
+            .try_into()
+            .unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }
@@ -313,7 +323,9 @@ mod tests {
         };
 
         let parsed_config: Config = read_config("../EXAMPLE_NODE_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml").try_into().unwrap();
+            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml")
+            .try_into()
+            .unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }
