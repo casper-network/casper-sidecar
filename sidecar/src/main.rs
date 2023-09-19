@@ -20,13 +20,13 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+use std::convert::TryInto;
 use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
 };
-use std::convert::TryInto;
 
 use crate::{
     admin_server::run_server as start_admin_server,
@@ -124,7 +124,8 @@ async fn run(config: Config) -> Result<(), Error> {
         is_empty_database,
     );
 
-    let event_broadcasting_handle = start_event_broadcasting(&config, &storage_config, outbound_sse_data_receiver);
+    let event_broadcasting_handle =
+        start_event_broadcasting(&config, &storage_config, outbound_sse_data_receiver);
 
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),

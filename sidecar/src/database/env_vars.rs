@@ -26,20 +26,17 @@ pub(crate) const DATABASE_PORT_ENV_VAR_KEY: &str = "SIDECAR_POSTGRES_PORT";
 /// Note: The empty string will likely cause an error in setting up the db. This is expected and should
 /// happen if the config value is not set in either place.
 pub(crate) fn get_connection_information_from_env<T: ToString>(
-    key: &'static str ,
+    key: &'static str,
     config_backup: Option<T>,
 ) -> Result<String, DatabaseConfigError> {
     match env::var(key) {
         Ok(value) => Ok(value),
         Err(_) => match config_backup {
             Some(config_value) => Ok(config_value.to_string()),
-            None => {
-                Err(DatabaseConfigError::FieldNotFound {
-                    field_name: key,
-                    error: "Config value not set in ENV vars or config file".to_string(),
-                })
-            }
+            None => Err(DatabaseConfigError::FieldNotFound {
+                field_name: key,
+                error: "Config value not set in ENV vars or config file".to_string(),
+            }),
         },
     }
 }
-
