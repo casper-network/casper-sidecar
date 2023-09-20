@@ -100,6 +100,49 @@ This section includes configurations for the SQLite database.
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
 #### PostgreSQL Database
+
+The properties listed below are elements of the PostgreSQL database connection that can be configured for the sidecar.
+
+* `database_name` - Name of the database
+* `host` - url to postgresql instance
+* `database_username` - username
+* `database_password` - database password
+* `max_connections_in_pool` - The maximum number of connections to the database.
+* `port` - The port for the database.
+
+
+To run the sidecar with PostgreSQL, you can set the following environment variables to control how the Sidecar connects to the database.
+This is the suggested method to set the connection information for the PostgeSQL database.
+```
+SIDECAR_POSTGRES_USERNAME="your username"
+```
+
+```
+SIDECAR_POSTGRES_PASSWORD="your password"
+```
+
+```
+SIDECAR_POSTGRES_DATABASE_NAME="your database name"
+```
+
+```
+SIDECAR_POSTGRES_HOST="your host"
+```
+
+```
+SIDECAR_POSTGRES_MAX_CONNECTIONS="max connections"
+```
+
+```
+SIDECAR_POSTGRES_PORT="port"
+```
+
+However, they can also be set in the configuration file.
+
+In the event that both the environment variables and the configuration file have the same variable set, the environment variable will take precedence.
+Additionally, it is possible to completely omit the PostgreSQL configuration from the configuration file. In the event this occurs,
+The sidecar will attempt to connect to the database using the environment variables, or use some default values for non-critical variables.
+
 ```
 [storage.postgresql_config]
 database_name = "event_sidecar"
@@ -109,13 +152,7 @@ database_username = "postgres"
 max_connections_in_pool = 30
 ```
 
-This section includes configurations for PostgreSQL database.
 
-* `database_name` - Name of the database
-* `host` - url to postgresql instance
-* `database_username` - username
-* `database_password` - database password
-* `max_connections_in_pool` - The maximum number of connections to the database.
 
 ### Rest & Event Stream Criteria
 

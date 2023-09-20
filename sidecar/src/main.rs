@@ -20,6 +20,7 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+use std::convert::TryInto;
 use std::{
     net::IpAddr,
     path::{Path, PathBuf},
@@ -64,6 +65,7 @@ use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
 };
+
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -87,7 +89,8 @@ async fn main() -> Result<(), Error> {
 
     let path_to_config = args.path_to_config;
 
-    let config: Config = read_config(&path_to_config).context("Error constructing config")?;
+    let config_serde = read_config(&path_to_config).context("Error constructing config")?;
+    let config = config_serde.try_into()?;
 
     info!("Configuration loaded");
     register_metrics();
@@ -103,7 +106,11 @@ async fn run(config: Config) -> Result<(), Error> {
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
 
     let connection_configs = config.connections.clone();
-    let database = build_database(&config.storage).await?;
+
+    let storage_config = config.storage.clone();
+    info!("Storage config: {:?}", storage_config);
+
+    let database = build_database(&storage_config).await?;
     let rest_server_handle = build_and_start_rest_server(&config, database.clone());
     let is_empty_database = check_if_database_is_empty(database.clone()).await?;
 
@@ -117,7 +124,8 @@ async fn run(config: Config) -> Result<(), Error> {
         is_empty_database,
     );
 
-    let event_broadcasting_handle = start_event_broadcasting(&config, outbound_sse_data_receiver);
+    let event_broadcasting_handle =
+        start_event_broadcasting(&config, &storage_config, outbound_sse_data_receiver);
 
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
@@ -130,9 +138,10 @@ async fn run(config: Config) -> Result<(), Error> {
 
 fn start_event_broadcasting(
     config: &Config,
+    storage_config: &StorageConfig,
     mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>, Option<String>)>,
 ) -> JoinHandle<Result<(), Error>> {
-    let storage_path = config.storage.get_storage_path();
+    let storage_path = storage_config.get_storage_path();
     let event_stream_server_port = config.event_stream_server.port;
     let buffer_length = config.event_stream_server.event_stream_buffer_length;
     let max_concurrent_subscribers = config.event_stream_server.max_concurrent_subscribers;
@@ -193,7 +202,6 @@ fn start_sse_processors(
                     api_version_manager.clone(),
                 )),
             };
-
             join_handles.push(join_handle);
         }
 
@@ -616,11 +624,11 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
 
 async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
-    database: Db,
+    sqlite_database: Db,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
 ) {
     warn!("Node ({}) is unavailable", sse_event.source.to_string());
-    let res = database
+    let res = sqlite_database
         .save_shutdown(sse_event.id, sse_event.source.to_string())
         .await;
     match res {

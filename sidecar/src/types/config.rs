@@ -1,7 +1,30 @@
+use std::string::ToString;
+use std::{
+    convert::{TryFrom, TryInto},
+    num::ParseIntError,
+};
+
 use anyhow::{Context, Error};
 use serde::Deserialize;
 
-pub fn read_config(config_path: &str) -> Result<Config, Error> {
+use crate::database::{
+    database_errors::DatabaseConfigError,
+    env_vars::{
+        get_connection_information_from_env, DATABASE_HOST_ENV_VAR_KEY,
+        DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, DATABASE_NAME_ENV_VAR_KEY,
+        DATABASE_PASSWORD_ENV_VAR_KEY, DATABASE_PORT_ENV_VAR_KEY, DATABASE_USERNAME_ENV_VAR_KEY,
+    },
+};
+
+/// The default postgres max connections.
+pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
+/// The default postgres port.
+pub(crate) const DEFAULT_PORT: u16 = 5432;
+
+pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
+    "/casper/sidecar-storage/casper-event-sidecar";
+
+pub fn read_config(config_path: &str) -> Result<ConfigSerdeTarget, Error> {
     let toml_content =
         std::fs::read_to_string(config_path).context("Error reading config file contents")?;
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
@@ -19,7 +42,32 @@ pub struct Config {
     pub event_stream_server: EventStreamServerConfig,
     pub admin_server: Option<AdminServerConfig>,
 }
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(Default))]
+pub struct ConfigSerdeTarget {
+    pub inbound_channel_size: Option<usize>,
+    pub outbound_channel_size: Option<usize>,
+    pub connections: Vec<Connection>,
+    pub storage: Option<StorageConfigSerdeTarget>,
+    pub rest_server: RestServerConfig,
+    pub event_stream_server: EventStreamServerConfig,
+    pub admin_server: Option<AdminServerConfig>,
+}
+impl TryFrom<ConfigSerdeTarget> for Config {
+    type Error = DatabaseConfigError;
 
+    fn try_from(value: ConfigSerdeTarget) -> Result<Self, Self::Error> {
+        Ok(Config {
+            inbound_channel_size: value.inbound_channel_size,
+            outbound_channel_size: value.outbound_channel_size,
+            connections: value.connections,
+            storage: value.storage.unwrap_or_default().try_into()?,
+            rest_server: value.rest_server,
+            event_stream_server: value.event_stream_server,
+            admin_server: value.admin_server,
+        })
+    }
+}
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
     pub ip_address: String,
@@ -64,6 +112,50 @@ impl StorageConfig {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum StorageConfigSerdeTarget {
+    SqliteDbConfig {
+        storage_path: String,
+        sqlite_config: SqliteConfig,
+    },
+    PostgreSqlDbConfigSerdeTarget {
+        storage_path: String,
+        postgresql_config: Option<PostgresqlConfigSerdeTarget>,
+    },
+}
+
+impl Default for StorageConfigSerdeTarget {
+    fn default() -> Self {
+        StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget {
+            storage_path: DEFAULT_POSTGRES_STORAGE_PATH.to_string(),
+            postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
+        }
+    }
+}
+impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
+    type Error = DatabaseConfigError;
+
+    fn try_from(value: StorageConfigSerdeTarget) -> Result<Self, Self::Error> {
+        match value {
+            StorageConfigSerdeTarget::SqliteDbConfig {
+                storage_path,
+                sqlite_config,
+            } => Ok(StorageConfig::SqliteDbConfig {
+                storage_path,
+                sqlite_config,
+            }),
+            StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget {
+                storage_path,
+                postgresql_config,
+            } => Ok(StorageConfig::PostgreSqlDbConfig {
+                storage_path,
+                postgresql_config: postgresql_config.unwrap_or_default().try_into()?,
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SqliteConfig {
     pub file_name: String,
@@ -78,8 +170,68 @@ pub struct PostgresqlConfig {
     pub database_username: String,
     pub database_password: String,
     pub max_connections_in_pool: u32,
+    pub port: u16,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct PostgresqlConfigSerdeTarget {
+    pub host: Option<String>,
+    pub database_name: Option<String>,
+    pub database_username: Option<String>,
+    pub database_password: Option<String>,
+    pub max_connections_in_pool: Option<u32>,
     pub port: Option<u16>,
 }
+
+impl TryFrom<PostgresqlConfigSerdeTarget> for PostgresqlConfig {
+    type Error = DatabaseConfigError;
+
+    fn try_from(value: PostgresqlConfigSerdeTarget) -> Result<Self, Self::Error> {
+        let host = get_connection_information_from_env(DATABASE_HOST_ENV_VAR_KEY, value.host)?;
+
+        let database_name =
+            get_connection_information_from_env(DATABASE_NAME_ENV_VAR_KEY, value.database_name)?;
+
+        let database_username = get_connection_information_from_env(
+            DATABASE_USERNAME_ENV_VAR_KEY,
+            value.database_username,
+        )?;
+
+        let database_password = get_connection_information_from_env(
+            DATABASE_PASSWORD_ENV_VAR_KEY,
+            value.database_password,
+        )?;
+
+        let max_connections: u32 = get_connection_information_from_env(
+            DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY,
+            value.max_connections_in_pool,
+        )
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS.to_string())
+        .parse()
+        .map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
+            field_name: "Max connections",
+            error: e.to_string(),
+        })?;
+
+        let port: u16 = get_connection_information_from_env(DATABASE_PORT_ENV_VAR_KEY, value.port)
+            .unwrap_or(DEFAULT_PORT.to_string())
+            .parse()
+            .map_err(|e: ParseIntError| DatabaseConfigError::ParseError {
+                field_name: "Port",
+                error: e.to_string(),
+            })?;
+
+        Ok(PostgresqlConfig {
+            host,
+            database_name,
+            database_username,
+            database_password,
+            max_connections_in_pool: max_connections,
+            port,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct RestServerConfig {
     pub port: u16,
@@ -128,8 +280,10 @@ mod tests {
             admin_server: None,
         };
 
-        let parsed_config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml");
+        let parsed_config: Config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
+            .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml")
+            .try_into()
+            .unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }
@@ -168,8 +322,10 @@ mod tests {
             }),
         };
 
-        let parsed_config = read_config("../EXAMPLE_NODE_CONFIG.toml")
-            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml");
+        let parsed_config: Config = read_config("../EXAMPLE_NODE_CONFIG.toml")
+            .expect("Error parsing EXAMPLE_NODE_CONFIG.toml")
+            .try_into()
+            .unwrap();
 
         assert_eq!(parsed_config, expected_config);
     }

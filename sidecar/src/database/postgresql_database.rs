@@ -1,15 +1,17 @@
 mod reader;
 mod writer;
-use crate::{
-    database::migration_manager::MigrationManager,
-    sql::tables,
-    types::{config::PostgresqlConfig, database::DatabaseWriteError},
-};
+
 use anyhow::Error;
 use sea_query::PostgresQueryBuilder;
 use sqlx::{
     postgres::{PgConnectOptions, PgPool, PgPoolOptions},
     ConnectOptions, Executor, Postgres, Transaction,
+};
+
+use crate::{
+    database::migration_manager::MigrationManager,
+    sql::tables,
+    types::{config::PostgresqlConfig, database::DatabaseWriteError},
 };
 
 /// [PostgreSqlDatabase] can be cloned to allow multiple components access to the database.
@@ -21,22 +23,25 @@ pub struct PostgreSqlDatabase {
 
 impl PostgreSqlDatabase {
     pub async fn new(config: PostgresqlConfig) -> Result<PostgreSqlDatabase, Error> {
-        let database_name = config.database_name.clone();
-        let host = config.host.clone();
-        let database_username = config.database_username.clone();
-        let database_password = config.database_password.clone();
+        let host = config.host;
+        let database_name = config.database_name;
+        let database_username = config.database_username;
+        let database_password = config.database_password;
+        let port = config.port;
+        let max_connections = config.max_connections_in_pool;
 
         let db_connection_config = PgConnectOptions::new()
             .host(host.as_str())
             .database(database_name.as_str())
             .username(database_username.as_str())
             .password(database_password.as_str())
-            .port(config.port.unwrap_or(5432))
+            .port(port)
             .disable_statement_logging();
 
         let connection_pool = PgPoolOptions::new()
-            .max_connections(config.max_connections_in_pool)
+            .max_connections(max_connections)
             .connect_lazy_with(db_connection_config);
+
         let db = PostgreSqlDatabase { connection_pool };
 
         MigrationManager::apply_all_migrations(db.clone()).await?;
