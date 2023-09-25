@@ -66,6 +66,8 @@ use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
 };
+#[cfg(feature = "additional-metrics")]
+use utils::start_metrics_thread;
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
@@ -695,6 +697,8 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
 ) -> Result<(), Error> {
+    #[cfg(feature = "additional-metrics")]
+    let metrics_tx = start_metrics_thread("sse_save".to_string());
     // This task starts the listener pushing events to the sse_data_receiver
     if database_supports_multithreaded_processing {
         start_multi_threaded_events_consumer(
@@ -703,6 +707,8 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
             database,
             enable_event_logging,
             api_version_manager,
+            #[cfg(feature = "additional-metrics")]
+            metrics_tx,
         )
         .await;
     } else {
@@ -712,6 +718,8 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
             database,
             enable_event_logging,
             api_version_manager,
+            #[cfg(feature = "additional-metrics")]
+            metrics_tx,
         )
         .await;
     }
@@ -724,6 +732,7 @@ fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + 
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     api_version_manager: GuardedApiVersionManager,
     enable_event_logging: bool,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) {
     tokio::spawn(async move {
         while let Some(sse_event) = queue_rx.recv().await {
@@ -735,6 +744,8 @@ fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + 
                 api_version_manager.clone(),
             )
             .await;
+            #[cfg(feature = "additional-metrics")]
+            let _ = metrics_sender.send(()).await;
         }
     });
 }
@@ -756,6 +767,7 @@ async fn start_multi_threaded_events_consumer<
     database: Db,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) {
     let mut senders_and_receivers_map = build_queues(DEFAULT_CHANNEL_SIZE);
     let mut senders_map = HashMap::new();
@@ -766,6 +778,8 @@ async fn start_multi_threaded_events_consumer<
             outbound_sse_data_sender.clone(),
             api_version_manager.clone(),
             enable_event_logging,
+            #[cfg(feature = "additional-metrics")]
+            metrics_sender.clone(),
         );
         senders_map.insert(filter, tx);
     }
@@ -791,6 +805,7 @@ async fn start_single_threaded_events_consumer<
     database: Db,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) {
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
@@ -801,6 +816,8 @@ async fn start_single_threaded_events_consumer<
             api_version_manager.clone(),
         )
         .await;
+        #[cfg(feature = "additional-metrics")]
+        let _ = metrics_sender.send(()).await;
     }
 }
 

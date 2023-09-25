@@ -1,6 +1,8 @@
 //! Types and functions used by the http server to manage the event-stream.
 
 use super::endpoint::Endpoint;
+#[cfg(feature = "additional-metrics")]
+use crate::utils::start_metrics_thread;
 use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
 use casper_types::ProtocolVersion;
 use futures::{future, Stream, StreamExt};
@@ -14,6 +16,8 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
+#[cfg(feature = "additional-metrics")]
+use tokio::sync::mpsc::Sender;
 use tokio::sync::{
     broadcast::{self, error::RecvError},
     mpsc::{self, UnboundedSender},
@@ -365,6 +369,7 @@ fn serve_sse_response_handler(
     cloned_broadcaster: tokio::sync::broadcast::Sender<BroadcastChannelMessage>,
     max_concurrent_subscribers: u32,
     new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) -> http::Response<Body> {
     if let Some(value) = validate(&cloned_broadcaster, max_concurrent_subscribers) {
         return value;
@@ -398,6 +403,8 @@ fn serve_sse_response_handler(
         ongoing_events_receiver,
         stream_filter,
         event_filter,
+        #[cfg(feature = "additional-metrics")]
+        metrics_sender,
     )))
     .into_response()
 }
@@ -445,6 +452,8 @@ impl ChannelsAndFilter {
         let (event_broadcaster, _) = broadcast::channel(broadcast_channel_size);
         let cloned_broadcaster = event_broadcaster.clone();
 
+        #[cfg(feature = "additional-metrics")]
+        let tx = start_metrics_thread("pushing outbound_events".to_string());
         // Create a channel for `NewSubscriberInfo`s to pass the information required to handle a
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
@@ -465,6 +474,8 @@ impl ChannelsAndFilter {
                         cloned_broadcaster.clone(),
                         max_concurrent_subscribers,
                         new_subscriber_info_sender_clone,
+                        #[cfg(feature = "additional-metrics")]
+                        tx.clone(),
                     )
                 },
             )
@@ -499,6 +510,7 @@ fn stream_to_client(
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
     stream_filter: &'static Endpoint,
     event_filter: &'static [EventFilter],
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
     let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
@@ -542,12 +554,25 @@ fn stream_to_client(
             Ok(event)
         })
         .chain(ongoing_stream)
-        .filter_map(move |result| async move {
-            match result {
-                Ok(event) => {
-                    filter_map_server_sent_event(&event, stream_filter, event_filter).await
+        .filter_map(move |result| {
+            #[cfg(feature = "additional-metrics")]
+            let metrics_sender = metrics_sender.clone();
+            async move {
+                #[cfg(feature = "additional-metrics")]
+                let sender = metrics_sender;
+                match result {
+                    Ok(event) => {
+                        let fitlered_data =
+                            filter_map_server_sent_event(&event, stream_filter, event_filter).await;
+                        #[cfg(feature = "additional-metrics")]
+                        if let Some(_) = fitlered_data {
+                            let _ = sender.clone().send(()).await;
+                        }
+                        #[allow(clippy::let_and_return)]
+                        fitlered_data
+                    }
+                    Err(error) => Some(Err(error)),
                 }
-                Err(error) => Some(Err(error)),
             }
         })
 }
@@ -559,6 +584,8 @@ mod tests {
     use casper_types::testing::TestRng;
     use regex::Regex;
     use std::iter;
+    #[cfg(feature = "additional-metrics")]
+    use tokio::sync::mpsc::channel;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
@@ -817,12 +844,16 @@ mod tests {
             drop(ongoing_events_sender);
 
             let stream_filter = path_to_filter(path_filter).unwrap();
+            #[cfg(feature = "additional-metrics")]
+            let (tx, rx) = channel(1000);
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
                 stream_filter,
                 get_filter(path_filter).unwrap(),
+                #[cfg(feature = "additional-metrics")]
+                tx,
             )
             .collect()
             .await;

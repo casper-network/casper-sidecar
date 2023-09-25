@@ -8,7 +8,7 @@ macro_rules! database_writer_implementation {
 use anyhow::Context;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
-#[cfg(feature = "db-perf-measurement")]
+#[cfg(feature = "additional-metrics")]
 use casper_event_types::metrics;
 use itertools::Itertools;
 use tokio::sync::Mutex;
@@ -21,7 +21,7 @@ use $crate::{
         sse_events::*,
     },
 };
-#[cfg(feature = "db-perf-measurement")]
+#[cfg(feature = "additional-metrics")]
 use std::time::Instant;
 use std::{
     sync::Arc,
@@ -53,7 +53,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&block_added)?;
@@ -79,7 +79,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_block_added", start);
         res
     }
@@ -90,7 +90,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_accepted)?;
@@ -117,7 +117,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_deploy_accepted", start);
         res
     }
@@ -128,7 +128,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_processed)?;
@@ -154,7 +154,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_deploy_processed", start);
         res
     }
@@ -165,7 +165,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&deploy_expired)?;
@@ -191,7 +191,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_deploy_expired", start);
         res
     }
@@ -202,7 +202,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&fault)?;
@@ -225,7 +225,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_fault", start);
         res
     }
@@ -236,7 +236,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&finality_signature)?;
@@ -265,7 +265,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_finality_signature", start);
         res
     }
@@ -276,7 +276,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let json = serde_json::to_string(&step)?;
@@ -298,7 +298,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_step", start);
         res
     }
@@ -308,7 +308,7 @@ impl DatabaseWriter for $extended_type {
         event_id: u32,
         event_source_address: String,
     ) -> Result<u64, DatabaseWriteError> {
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
         let mut transaction = self.get_transaction().await?;
         let unix_timestamp = SystemTime::now()
@@ -332,7 +332,7 @@ impl DatabaseWriter for $extended_type {
         if res.is_ok() {
             transaction.commit().await?;
         }
-        #[cfg(feature = "db-perf-measurement")]
+        #[cfg(feature = "additional-metrics")]
         observe_db_operation_time("save_shutdown", start);
         res
     }
@@ -417,7 +417,7 @@ async fn save_event_log(
     Ok(event_log_id)
 }
 
-#[cfg(feature = "db-perf-measurement")]
+#[cfg(feature = "additional-metrics")]
 fn observe_db_operation_time(operation_name: &str, start: Instant) {
     let duration = start.elapsed();
     metrics::DB_OPERATION_TIMES

@@ -1,6 +1,6 @@
 use prometheus::{GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
-#[cfg(feature = "db-perf-measurement")]
+#[cfg(feature = "additional-metrics")]
 const DB_OPERATION_BUCKETS: &[f64; 8] = &[
     3e+5_f64, 3e+6_f64, 10e+6_f64, 20e+6_f64, 5e+7_f64, 1e+8_f64, 5e+8_f64, 1e+9_f64,
 ];
@@ -36,7 +36,7 @@ lazy_static! {
 
 }
 
-#[cfg(feature = "db-perf-measurement")]
+#[cfg(feature = "additional-metrics")]
 lazy_static! {
     pub static ref DB_OPERATION_TIMES: HistogramVec = HistogramVec::new(
         HistogramOpts {
@@ -48,6 +48,11 @@ lazy_static! {
         },
         &["filter"]
     )
+    .expect("metric can't be created");
+pub static ref EVENTS_PROCESSED_PER_SECOND: GaugeVec = GaugeVec::new(
+            Opts::new("events_processed", "Events processed by sidecar. Split by \"module\" which should be either \"inbound\" or \"outbound\". \"Inbound\" means the number of events per second which were read from node endpoints and persisted in DB. \"Outbound\" means number of events pushed to clients."),
+            &["module"]
+        )
     .expect("metric can't be created");
 }
 
@@ -64,10 +69,15 @@ pub fn register_metrics() {
     REGISTRY
         .register(Box::new(NODE_STATUSES.clone()))
         .expect("cannot register metric");
-    #[cfg(feature = "db-perf-measurement")]
-    REGISTRY
-        .register(Box::new(DB_OPERATION_TIMES.clone()))
-        .expect("cannot register metric");
+    #[cfg(feature = "additional-metrics")]
+    {
+        REGISTRY
+            .register(Box::new(DB_OPERATION_TIMES.clone()))
+            .expect("cannot register metric");
+        REGISTRY
+            .register(Box::new(EVENTS_PROCESSED_PER_SECOND.clone()))
+            .expect("cannot register metric");
+    }
 }
 pub struct MetricCollectionError {
     reason: String,

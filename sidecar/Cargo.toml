@@ -6,7 +6,7 @@ edition = "2018"
 readme = "README.md"
 
 [features]
-db-perf-measurement = ["casper-event-types/db-perf-measurement"]
+additional-metrics = ["casper-event-types/additional-metrics"]
 
 [dependencies]
 anyhow = { version = "1.0.44", default-features = false }
