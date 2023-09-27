@@ -1,9 +1,14 @@
 [package]
 name = "casper-event-sidecar"
 authors = ["George Williamson <george@casperlabs.io>", "Jakub Zajkowski <jakub@casperlabs.io>"]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2018"
 readme = "README.md"
+description = "App for storing and republishing sse events of a casper node"
+license-file = "../LICENSE"
+documentation = "README.md"
+homepage = "https://github.com/CasperLabs/event-sidecar"
+repository = "https://github.com/CasperLabs/event-sidecar"
 
 [features]
 additional-metrics = ["casper-event-types/additional-metrics"]
@@ -12,8 +17,8 @@ additional-metrics = ["casper-event-types/additional-metrics"]
 anyhow = { version = "1.0.44", default-features = false }
 async-trait = "0.1.56"
 bytes = "1.2.0"
-casper-event-listener = { path = "../listener", version = "0.1.0" }
-casper-event-types = { path = "../types", version = "0.1.0" }
+casper-event-listener = { path = "../listener", version = "1.0.0" }
+casper-event-types = { path = "../types", version = "1.0.0" }
 casper-types = { version = "3.0.0", features = ["std", "json-schema"] }
 clap = { version = "4.0.32", features = ["derive"] }
 derive-new = "0.5.9"
@@ -51,7 +56,7 @@ tikv-jemallocator = "0.5"
 
 [dev-dependencies]
 async-stream = "0.3.4"
-casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"] }
+casper-event-types = { path = "../types", version = "1.0.0", features = ["sse-data-testing"] }
 casper-types = { version = "3.0.0", features = ["std", "testing"] }
 colored = "2.0.0"
 futures-util = "0.3.21"
