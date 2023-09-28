@@ -2,8 +2,6 @@
 #![deny(clippy::cognitive_complexity)]
 #![deny(clippy::too_many_lines)]
 
-#[macro_use]
-extern crate lazy_static;
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
 pub mod block;

@@ -442,7 +442,7 @@ dependencies = [
  "casper-types",
  "hex-buffer-serde",
  "hex_fmt",
- "lazy_static",
+ "once_cell",
  "prometheus",
  "rand 0.8.5",
  "serde",

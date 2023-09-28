@@ -1,13 +1,19 @@
 #[cfg(test)]
 use crate::integration_tests::{build_test_config, start_sidecar};
+#[cfg(feature = "additional-metrics")]
+use crate::metrics::EVENTS_PROCESSED_PER_SECOND;
 #[cfg(test)]
 use crate::testing::mock_node::tests::MockNode;
 #[cfg(test)]
 use crate::testing::testing_config::TestingConfig;
 #[cfg(test)]
 use anyhow::Error;
-#[cfg(test)]
+#[cfg(feature = "additional-metrics")]
+use std::sync::Arc;
+#[cfg(any(feature = "additional-metrics", test))]
 use std::time::Duration;
+#[cfg(feature = "additional-metrics")]
+use std::time::Instant;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
@@ -17,6 +23,11 @@ use std::{
 use tempfile::TempDir;
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
+#[cfg(feature = "additional-metrics")]
+use tokio::sync::{
+    mpsc::{channel, Sender},
+    Mutex,
+};
 #[cfg(test)]
 use tokio::time::timeout;
 
@@ -202,4 +213,48 @@ pub async fn prepare_one_node_and_start(node_mock: &mut MockNode) -> MockNodeTes
         node_port_for_rest_connection,
         event_stream_server_port,
     }
+}
+
+#[cfg(feature = "additional-metrics")]
+struct MetricsData {
+    last_measurement: Instant,
+    observed_events: u64,
+}
+
+#[cfg(feature = "additional-metrics")]
+pub fn start_metrics_thread(module_name: String) -> Sender<()> {
+    let (metrics_queue_tx, mut metrics_queue_rx) = channel(10000);
+    let metrics_data = Arc::new(Mutex::new(MetricsData {
+        last_measurement: Instant::now(),
+        observed_events: 0,
+    }));
+    let metrics_data_for_thread = metrics_data.clone();
+    tokio::spawn(async move {
+        let metrics_data = metrics_data_for_thread;
+        let sleep_for = Duration::from_secs(30);
+        loop {
+            tokio::time::sleep(sleep_for).await;
+            let mut guard = metrics_data.lock().await;
+            let duration = guard.last_measurement.elapsed();
+            let number_of_observed_events = guard.observed_events;
+            guard.observed_events = 0;
+            guard.last_measurement = Instant::now();
+            drop(guard);
+            let seconds = duration.as_secs_f64();
+            let events_per_second = (number_of_observed_events as f64) / seconds;
+            EVENTS_PROCESSED_PER_SECOND
+                .with_label_values(&[module_name.as_str()])
+                .set(events_per_second);
+        }
+    });
+    let metrics_data_for_thread = metrics_data.clone();
+    tokio::spawn(async move {
+        let metrics_data = metrics_data_for_thread;
+        while let Some(_) = metrics_queue_rx.recv().await {
+            let mut guard = metrics_data.lock().await;
+            guard.observed_events += 1;
+            drop(guard);
+        }
+    });
+    metrics_queue_tx
 }

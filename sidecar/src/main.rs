@@ -20,6 +20,7 @@ pub(crate) mod testing;
 mod types;
 mod utils;
 
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::{
     net::IpAddr,
@@ -44,11 +45,7 @@ use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{
-    metrics::{self, register_metrics},
-    sse_data::SseData,
-    Filter,
-};
+use casper_event_types::{metrics, sse_data::SseData, Filter};
 use clap::Parser;
 use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
@@ -60,11 +57,13 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
 };
+#[cfg(feature = "additional-metrics")]
+use utils::start_metrics_thread;
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
@@ -93,7 +92,6 @@ async fn main() -> Result<(), Error> {
     let config = config_serde.try_into()?;
 
     info!("Configuration loaded");
-    register_metrics();
     run(config).await
 }
 
@@ -104,12 +102,8 @@ async fn run(config: Config) -> Result<(), Error> {
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
-
     let connection_configs = config.connections.clone();
-
     let storage_config = config.storage.clone();
-    info!("Storage config: {:?}", storage_config);
-
     let database = build_database(&storage_config).await?;
     let rest_server_handle = build_and_start_rest_server(&config, database.clone());
     let is_empty_database = check_if_database_is_empty(database.clone()).await?;
@@ -177,28 +171,31 @@ fn start_sse_processors(
         let mut join_handles = Vec::with_capacity(event_listeners.len());
         let api_version_manager = ApiVersionManager::new();
 
-        for ((event_listener, connection_config), sse_data_receiver) in event_listeners
+        for ((mut event_listener, connection_config), sse_data_receiver) in event_listeners
             .into_iter()
             .zip(connection_configs)
             .zip(sse_data_receivers)
         {
+            tokio::spawn(async move {
+                let _ = event_listener
+                    .stream_aggregated_events(is_empty_database)
+                    .await;
+            });
             let join_handle = match database.clone() {
                 Database::SqliteDatabaseWrapper(db) => tokio::spawn(sse_processor(
-                    event_listener,
                     sse_data_receiver,
                     outbound_sse_data_sender.clone(),
                     db.clone(),
+                    false,
                     connection_config.enable_logging,
-                    is_empty_database,
                     api_version_manager.clone(),
                 )),
                 Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
-                    event_listener,
                     sse_data_receiver,
                     outbound_sse_data_sender.clone(),
                     db.clone(),
+                    true,
                     connection_config.enable_logging,
-                    is_empty_database,
                     api_version_manager.clone(),
                 )),
             };
@@ -683,21 +680,124 @@ async fn handle_api_version(
     }
 }
 
-async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
-    mut sse_event_listener: EventListener,
+async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
+    inbound_sse_data_receiver: Receiver<SseEvent>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    database: Db,
+    database_supports_multithreaded_processing: bool,
+    enable_event_logging: bool,
+    api_version_manager: GuardedApiVersionManager,
+) -> Result<(), Error> {
+    #[cfg(feature = "additional-metrics")]
+    let metrics_tx = start_metrics_thread("sse_save".to_string());
+    // This task starts the listener pushing events to the sse_data_receiver
+    if database_supports_multithreaded_processing {
+        start_multi_threaded_events_consumer(
+            inbound_sse_data_receiver,
+            outbound_sse_data_sender,
+            database,
+            enable_event_logging,
+            api_version_manager,
+            #[cfg(feature = "additional-metrics")]
+            metrics_tx,
+        )
+        .await;
+    } else {
+        start_single_threaded_events_consumer(
+            inbound_sse_data_receiver,
+            outbound_sse_data_sender,
+            database,
+            enable_event_logging,
+            api_version_manager,
+            #[cfg(feature = "additional-metrics")]
+            metrics_tx,
+        )
+        .await;
+    }
+    Ok(())
+}
+
+fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
+    mut queue_rx: Receiver<SseEvent>,
+    database: Db,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    api_version_manager: GuardedApiVersionManager,
+    enable_event_logging: bool,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
+) {
+    tokio::spawn(async move {
+        while let Some(sse_event) = queue_rx.recv().await {
+            handle_single_event(
+                sse_event,
+                database.clone(),
+                enable_event_logging,
+                outbound_sse_data_sender.clone(),
+                api_version_manager.clone(),
+            )
+            .await;
+            #[cfg(feature = "additional-metrics")]
+            let _ = metrics_sender.send(()).await;
+        }
+    });
+}
+
+fn build_queues(cache_size: usize) -> HashMap<Filter, (Sender<SseEvent>, Receiver<SseEvent>)> {
+    let mut map = HashMap::new();
+    map.insert(Filter::Deploys, mpsc_channel(cache_size));
+    map.insert(Filter::Events, mpsc_channel(cache_size));
+    map.insert(Filter::Main, mpsc_channel(cache_size));
+    map.insert(Filter::Sigs, mpsc_channel(cache_size));
+    map
+}
+
+async fn start_multi_threaded_events_consumer<
+    Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static,
+>(
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     database: Db,
     enable_event_logging: bool,
-    is_empty_database: bool,
     api_version_manager: GuardedApiVersionManager,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) {
-    // This task starts the listener pushing events to the sse_data_receiver
-    tokio::spawn(async move {
-        let _ = sse_event_listener
-            .stream_aggregated_events(is_empty_database)
-            .await;
-    });
+    let mut senders_and_receivers_map = build_queues(DEFAULT_CHANNEL_SIZE);
+    let mut senders_map = HashMap::new();
+    for (filter, (tx, rx)) in senders_and_receivers_map.drain() {
+        handle_events_in_thread(
+            rx,
+            database.clone(),
+            outbound_sse_data_sender.clone(),
+            api_version_manager.clone(),
+            enable_event_logging,
+            #[cfg(feature = "additional-metrics")]
+            metrics_sender.clone(),
+        );
+        senders_map.insert(filter, tx);
+    }
+
+    while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
+        if let Some(tx) = senders_map.get(&sse_event.inbound_filter) {
+            tx.send(sse_event).await.unwrap()
+        } else {
+            error!(
+                "Failed to find an sse handler queue for inbound filter {}",
+                sse_event.inbound_filter
+            );
+            break;
+        }
+    }
+}
+
+async fn start_single_threaded_events_consumer<
+    Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync,
+>(
+    mut inbound_sse_data_receiver: Receiver<SseEvent>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    database: Db,
+    enable_event_logging: bool,
+    api_version_manager: GuardedApiVersionManager,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
+) {
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
@@ -706,7 +806,9 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
             outbound_sse_data_sender.clone(),
             api_version_manager.clone(),
         )
-        .await
+        .await;
+        #[cfg(feature = "additional-metrics")]
+        let _ = metrics_sender.send(()).await;
     }
 }
 
