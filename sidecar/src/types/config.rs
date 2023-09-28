@@ -290,21 +290,23 @@ mod tests {
 
     #[test]
     fn should_parse_node_config_toml() {
+        let mut expected_connection = Connection::example_connection_1();
+        expected_connection.sse_port = 9999;
+        expected_connection.rest_port = 8888;
+        expected_connection.max_attempts = 10;
+        expected_connection.enable_logging = true;
+        let mut expected_connection_2 = expected_connection.clone();
+        expected_connection_2.ip_address = "168.254.51.2".to_string();
+        let mut expected_connection_3 = expected_connection.clone();
+        expected_connection_3.ip_address = "168.254.51.3".to_string();
         let expected_config = Config {
             inbound_channel_size: None,
             outbound_channel_size: None,
-            connections: vec![Connection {
-                ip_address: "127.0.0.1".to_string(),
-                sse_port: 9999,
-                rest_port: 8888,
-                max_attempts: 10,
-                delay_between_retries_in_seconds: 5,
-                allow_partial_connection: false,
-                enable_logging: true,
-                connection_timeout_in_seconds: None,
-                sleep_between_keep_alive_checks_in_seconds: None,
-                no_message_timeout_in_seconds: None,
-            }],
+            connections: vec![
+                expected_connection,
+                expected_connection_2,
+                expected_connection_3,
+            ],
             storage: StorageConfig::SqliteDbConfig {
                 storage_path: "/var/lib/casper-event-sidecar".to_string(),
                 sqlite_config: SqliteConfig {
@@ -321,7 +323,6 @@ mod tests {
                 max_requests_per_second: 1,
             }),
         };
-
         let parsed_config: Config = read_config("../EXAMPLE_NODE_CONFIG.toml")
             .expect("Error parsing EXAMPLE_NODE_CONFIG.toml")
             .try_into()

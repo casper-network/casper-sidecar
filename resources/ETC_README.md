@@ -44,6 +44,28 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables logging of events from the node in question.
 
+Connecting to multiple nodes requires multiple `[[connections]]` sections, like:
+```
+[[connections]]
+ip_address = "127.0.0.1"
+sse_port = 9999
+rest_port = 8888
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
+
+[[connections]]
+ip_address = "18.154.79.193"
+sse_port = 1234
+rest_port = 3456
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
+
+```
+
 ### Storage
 
 ```

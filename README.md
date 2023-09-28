@@ -152,8 +152,6 @@ database_username = "postgres"
 max_connections_in_pool = 30
 ```
 
-
-
 ### Rest & Event Stream Criteria
 
 ```
