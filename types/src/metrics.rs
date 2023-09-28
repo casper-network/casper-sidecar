@@ -1,5 +1,5 @@
+use once_cell::sync::Lazy;
 use prometheus::{GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
-
 #[cfg(feature = "additional-metrics")]
 const DB_OPERATION_BUCKETS: &[f64; 8] = &[
     3e+5_f64, 3e+6_f64, 10e+6_f64, 20e+6_f64, 5e+7_f64, 1e+8_f64, 5e+8_f64, 1e+9_f64,
@@ -7,78 +7,87 @@ const DB_OPERATION_BUCKETS: &[f64; 8] = &[
 const BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
 ];
-lazy_static! {
-    pub static ref REGISTRY: Registry = Registry::new();
-    pub static ref ERROR_COUNTS: IntCounterVec = IntCounterVec::new(
+
+static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+pub static ERROR_COUNTS: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
         Opts::new("error_counts", "Error counts"),
-        &["category", "description"]
+        &["category", "description"],
     )
     .unwrap();
-    pub static ref RECEIVED_BYTES: HistogramVec = HistogramVec::new(
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+pub static RECEIVED_BYTES: Lazy<HistogramVec> = Lazy::new(|| {
+    let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new("received_bytes", "Received bytes"),
             buckets: Vec::from(BUCKETS as &'static [f64]),
         },
-        &["filter"]
+        &["filter"],
     )
-    .expect("metric can't be created");
-    pub static ref INTERNAL_EVENTS: IntCounterVec = IntCounterVec::new(
+    .unwrap();
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+pub static INTERNAL_EVENTS: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
         Opts::new("internal_events", "Count of internal events"),
-        &["category", "description"]
+        &["category", "description"],
     )
     .expect("metric can't be created");
-
-    pub static ref NODE_STATUSES: GaugeVec = GaugeVec::new(
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+pub static NODE_STATUSES: Lazy<GaugeVec> = Lazy::new(|| {
+    let counter = GaugeVec::new(
         Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct (used up all connection attempts)"),
         &["node"]
     )
     .expect("metric can't be created");
-
-}
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
 
 #[cfg(feature = "additional-metrics")]
-lazy_static! {
-    pub static ref DB_OPERATION_TIMES: HistogramVec = HistogramVec::new(
+pub static DB_OPERATION_TIMES: Lazy<HistogramVec> = Lazy::new(|| {
+    let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new(
                 "db_operation_times",
-                "Times (in nanoseconds) it took to perform a database operation."
+                "Times (in nanoseconds) it took to perform a database operation.",
             ),
             buckets: Vec::from(DB_OPERATION_BUCKETS as &'static [f64]),
         },
-        &["filter"]
+        &["filter"],
     )
     .expect("metric can't be created");
-pub static ref EVENTS_PROCESSED_PER_SECOND: GaugeVec = GaugeVec::new(
-            Opts::new("events_processed", "Events processed by sidecar. Split by \"module\" which should be either \"inbound\" or \"outbound\". \"Inbound\" means the number of events per second which were read from node endpoints and persisted in DB. \"Outbound\" means number of events pushed to clients."),
-            &["module"]
-        )
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+#[cfg(feature = "additional-metrics")]
+pub static EVENTS_PROCESSED_PER_SECOND: Lazy<GaugeVec> = Lazy::new(|| {
+    let counter = GaugeVec::new(
+        Opts::new("events_processed", "Events processed by sidecar. Split by \"module\" which should be either \"inbound\" or \"outbound\". \"Inbound\" means the number of events per second which were read from node endpoints and persisted in DB. \"Outbound\" means number of events pushed to clients."),
+        &["module"]
+    )
     .expect("metric can't be created");
-}
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
 
-pub fn register_metrics() {
-    REGISTRY
-        .register(Box::new(ERROR_COUNTS.clone()))
-        .expect("cannot register metric");
-    REGISTRY
-        .register(Box::new(RECEIVED_BYTES.clone()))
-        .expect("cannot register metric");
-    REGISTRY
-        .register(Box::new(INTERNAL_EVENTS.clone()))
-        .expect("cannot register metric");
-    REGISTRY
-        .register(Box::new(NODE_STATUSES.clone()))
-        .expect("cannot register metric");
-    #[cfg(feature = "additional-metrics")]
-    {
-        REGISTRY
-            .register(Box::new(DB_OPERATION_TIMES.clone()))
-            .expect("cannot register metric");
-        REGISTRY
-            .register(Box::new(EVENTS_PROCESSED_PER_SECOND.clone()))
-            .expect("cannot register metric");
-    }
-}
 pub struct MetricCollectionError {
     reason: String,
 }

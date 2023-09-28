@@ -45,11 +45,7 @@ use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{
-    metrics::{self, register_metrics},
-    sse_data::SseData,
-    Filter,
-};
+use casper_event_types::{metrics, sse_data::SseData, Filter};
 use clap::Parser;
 use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
@@ -96,7 +92,6 @@ async fn main() -> Result<(), Error> {
     let config = config_serde.try_into()?;
 
     info!("Configuration loaded");
-    register_metrics();
     run(config).await
 }
 
@@ -107,12 +102,8 @@ async fn run(config: Config) -> Result<(), Error> {
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
-
     let connection_configs = config.connections.clone();
-
     let storage_config = config.storage.clone();
-    info!("Storage config: {:?}", storage_config);
-
     let database = build_database(&storage_config).await?;
     let rest_server_handle = build_and_start_rest_server(&config, database.clone());
     let is_empty_database = check_if_database_is_empty(database.clone()).await?;
