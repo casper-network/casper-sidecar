@@ -67,6 +67,7 @@ tabled = { version = "0.10.0", features = ["derive", "color"] }
 tempfile = "3"
 once_cell = "1.17.1"
 tokio-util = "0.7.8"
+pg-embed = { git = "https://github.com/faokunega/pg-embed", tag = "v0.8.0" }
 
 [package.metadata.deb]
 revision = "0"

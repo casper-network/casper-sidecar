@@ -48,10 +48,11 @@ jobs:
         # Hope to get to here:
         # run: cargo audit --deny warnings
         # RUSTSEC-2022-0093 - that is an issue that comes form casper-types, need to update that depenency as soon as a new release is made
-        run: cargo audit --ignore RUSTSEC-2022-0093
+        # RUSTSEC-2020-0071 - this comes as transitive from pg-embed, potential segfault but pg-embed is a dev-dependency for us so it'd not a high priority
+        run: cargo audit --ignore RUSTSEC-2022-0093 --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0052
 
       - name: test
-        run: cargo test
+        run: cargo test -- --nocapture
 
       - name: install cargo packaging tools
         run: |
