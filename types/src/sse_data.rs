@@ -20,12 +20,13 @@ use super::testing;
 use crate::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
 use casper_types::testing::TestRng;
-
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::value::{to_raw_value, RawValue};
+#[cfg(feature = "sse-data-testing")]
+use serde_json::value::to_raw_value;
+use serde_json::value::RawValue;
 use std::sync::Arc;
 use thiserror::Error;
 

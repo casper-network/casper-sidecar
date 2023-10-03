@@ -1,0 +1,23 @@
+---
+name: publish-casper-event-sidecar-crates
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+      - uses: actions-rs/toolchain@v1
+
+      - name: update toolchain
+        run: rustup update nightly
+
+      - name: Publish Crates
+        env:
+          CARGO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: ./ci/publish_to_crates_io.sh

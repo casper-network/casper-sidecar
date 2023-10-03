@@ -1,13 +1,18 @@
 [package]
 name = "casper-event-listener"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+description = "Event listener for casper-event-listener library"
+license-file = "../LICENSE"
+documentation = "README.md"
+homepage = "https://github.com/CasperLabs/event-sidecar"
+repository = "https://github.com/CasperLabs/event-sidecar"
 
 [dependencies]
 anyhow = "1.0.65"
 async-trait = "0.1.72"
 bytes = "1.2.0"
-casper-event-types = { path = "../types", version = "0.1.0" }
+casper-event-types = { path = "../types", version = "1.0.0" }
 casper-types = { version = "3.0.0", features = ["std"] }
 eventsource-stream = "0.2.3"
 futures = "0.3.24"
@@ -22,8 +27,8 @@ tracing = "0.1"
 url = "2.3.1"
 
 [dev-dependencies]
-casper-event-types = { path = "../types", version = "0.1.0", features = ["sse-data-testing"]}
+casper-event-types = { path = "../types", version = "1.0.0", features = ["sse-data-testing"]}
 eventsource-stream = "0.2.3"
 futures-util = "0.3.28"
 portpicker = "0.1.1"
-warp = { version = "0.3.3"}
+warp = { version = "0.3.6"}
