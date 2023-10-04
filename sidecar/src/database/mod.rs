@@ -8,4 +8,6 @@ pub mod errors;
 pub mod migration_manager;
 pub mod postgresql_database;
 pub mod sqlite_database;
+#[cfg(test)]
+pub mod tests;
 pub mod types;

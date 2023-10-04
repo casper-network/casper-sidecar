@@ -53,7 +53,7 @@ pub(crate) mod tests {
         let (blocks_added, rng) =
             generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
         let data = vec![(None, "{\"ApiVersion\":\"1.4.10\"}".to_string())];
-        let mut data: EventsWithIds = data.into_iter().chain(blocks_added.into_iter()).collect();
+        let mut data: EventsWithIds = data.into_iter().chain(blocks_added).collect();
         let shutdown_index: u32 = start_index + 31;
         data.push((Some(shutdown_index.to_string()), shutdown()));
         (data, rng)

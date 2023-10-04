@@ -91,7 +91,7 @@ impl TestingConfig {
         port_of_node: u16,
         allow_partial_connection: bool,
     ) {
-        for mut connection in &mut self.config.connections {
+        for connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
                 connection.allow_partial_connection = allow_partial_connection;
                 break;
@@ -108,7 +108,7 @@ impl TestingConfig {
         max_attempts: usize,
         delay_between_retries_in_seconds: usize,
     ) {
-        for mut connection in &mut self.config.connections {
+        for connection in &mut self.config.connections {
             if connection.sse_port == port_of_node {
                 connection.max_attempts = max_attempts;
                 connection.delay_between_retries_in_seconds = delay_between_retries_in_seconds;
