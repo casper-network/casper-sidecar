@@ -78,32 +78,24 @@ async fn start_embedded_postgres() -> (PgEmbed, TempDir) {
         .unwrap()
 }
 
-async fn build_database(test_name: &str) -> Result<TestContext, Error> {
-    println!("{} Running test", test_name);
+async fn build_database() -> Result<TestContext, Error> {
     let (pg, temp_dir) = start_embedded_postgres().await;
-    println!("{} Embedded postgres started: ", test_name);
     let database_name = "event_sidecar";
     pg.create_database(database_name).await?;
-    println!("{} Database created: ", test_name);
     let pg_db_uri: String = pg.full_db_uri(database_name);
     let db = PostgreSqlDatabase::new_from_postgres_uri(pg_db_uri)
         .await
         .unwrap();
-    println!("{} Database connection created ", test_name);
-    let res = Ok(TestContext {
+    Ok(TestContext {
         pg,
         _temp_dir: temp_dir,
         db,
-    });
-    println!("{} Back to test", test_name);
-    res
+    })
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_u32max_id() {
-    let context = build_database("should_save_and_retrieve_a_u32max_id")
-        .await
-        .unwrap();
+    let context = build_database().await.unwrap();
     let sqlite_db = &context.db;
     let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key")
         .expect("Error creating event_log insert SQL")
@@ -126,103 +118,79 @@ async fn should_save_and_retrieve_a_u32max_id() {
 
 #[tokio::test]
 async fn should_save_and_retrieve_block_added() {
-    let test_context = build_database("should_save_and_retrieve_block_added")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_block_added(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_deploy_accepted() {
-    let test_context = build_database("should_save_and_retrieve_deploy_accepted")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_deploy_accepted(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_deploy_processed() {
-    let test_context = build_database("should_save_and_retrieve_deploy_processed")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_deploy_processed(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_deploy_expired() {
-    let test_context = build_database("should_save_and_retrieve_deploy_expired")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_deploy_expired(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_retrieve_deploy_aggregate_of_accepted() {
-    let test_context = build_database("should_retrieve_deploy_aggregate_of_accepted")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_retrieve_deploy_aggregate_of_accepted(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_retrieve_deploy_aggregate_of_processed() {
-    let test_context = build_database("should_retrieve_deploy_aggregate_of_processed")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_retrieve_deploy_aggregate_of_processed(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_retrieve_deploy_aggregate_of_expired() {
-    let test_context = build_database("should_retrieve_deploy_aggregate_of_expired")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_retrieve_deploy_aggregate_of_expired(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_fault() {
-    let test_context = build_database("should_save_and_retrieve_fault")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_fault(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_fault_with_a_u64max() {
-    let test_context = build_database("should_save_and_retrieve_fault_with_a_u64max")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_fault_with_a_u64max(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_finality_signature() {
-    let test_context = build_database("should_save_and_retrieve_finality_signature")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_finality_signature(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_step() {
-    let test_context = build_database("should_save_and_retrieve_step")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_step(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_step_with_u64_max_era() {
-    let test_context = build_database("should_save_and_retrieve_a_step_with_u64_max_era")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_save_and_retrieve_a_step_with_u64_max_era(
         test_context.db.clone(),
     )
@@ -231,27 +199,21 @@ async fn should_save_and_retrieve_a_step_with_u64_max_era() {
 
 #[tokio::test]
 async fn should_disallow_duplicate_event_id_from_source() {
-    let test_context = build_database("should_disallow_duplicate_event_id_from_source")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_duplicate_event_id_from_source(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_block_added() {
-    let test_context = build_database("should_disallow_insert_of_existing_block_added")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_block_added(test_context.db.clone())
         .await;
 }
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_deploy_accepted() {
-    let test_context = build_database("should_disallow_insert_of_existing_deploy_accepted")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_deploy_accepted(
         test_context.db.clone(),
     )
@@ -260,9 +222,7 @@ async fn should_disallow_insert_of_existing_deploy_accepted() {
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_deploy_expired() {
-    let test_context = build_database("should_disallow_insert_of_existing_deploy_expired")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_deploy_expired(
         test_context.db.clone(),
     )
@@ -271,9 +231,7 @@ async fn should_disallow_insert_of_existing_deploy_expired() {
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_deploy_processed() {
-    let test_context = build_database("should_disallow_insert_of_existing_deploy_processed")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_deploy_processed(
         test_context.db.clone(),
     )
@@ -282,17 +240,13 @@ async fn should_disallow_insert_of_existing_deploy_processed() {
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_fault() {
-    let test_context = build_database("should_disallow_insert_of_existing_fault")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_fault(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_finality_signature() {
-    let test_context = build_database("should_disallow_insert_of_existing_finality_signature")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_finality_signature(
         test_context.db.clone(),
     )
@@ -301,9 +255,7 @@ async fn should_disallow_insert_of_existing_finality_signature() {
 
 #[tokio::test]
 async fn should_disallow_insert_of_existing_step() {
-    let test_context = build_database("should_disallow_insert_of_existing_step")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::should_disallow_insert_of_existing_step(test_context.db.clone()).await;
 }
 
@@ -311,9 +263,7 @@ async fn should_disallow_insert_of_existing_step() {
 async fn should_save_block_added_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_block_added_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let block_added = BlockAdded::random(&mut test_rng);
@@ -342,9 +292,7 @@ async fn should_save_block_added_with_correct_event_type_id() {
 async fn should_save_deploy_accepted_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_deploy_accepted_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
@@ -373,9 +321,7 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
 async fn should_save_deploy_processed_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_deploy_processed_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
@@ -404,9 +350,7 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
 async fn should_save_deploy_expired_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_deploy_expired_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
@@ -435,9 +379,7 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
 async fn should_save_fault_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_fault_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let fault = Fault::random(&mut test_rng);
@@ -466,9 +408,7 @@ async fn should_save_fault_with_correct_event_type_id() {
 async fn should_save_finality_signature_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_finality_signature_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let finality_signature = FinalitySignature::random(&mut test_rng);
@@ -497,9 +437,7 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
 async fn should_save_step_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
-    let test_context = build_database("should_save_step_with_correct_event_type_id")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
 
     let step = Step::random(&mut test_rng);
@@ -526,9 +464,7 @@ async fn should_save_step_with_correct_event_type_id() {
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_shutdown() {
-    let test_context = build_database("should_save_and_retrieve_a_shutdown")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     let sqlite_db = &test_context.db;
     assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
 
@@ -546,21 +482,13 @@ async fn should_save_and_retrieve_a_shutdown() {
 
 #[tokio::test]
 async fn get_number_of_events_should_return_0() {
-    let test_context = build_database("get_number_of_events_should_return_0")
-        .await
-        .unwrap();
-    crate::database::tests::get_number_of_events_should_return_0(
-        "postgres",
-        test_context.db.clone(),
-    )
-    .await;
+    let test_context = build_database().await.unwrap();
+    crate::database::tests::get_number_of_events_should_return_0(test_context.db.clone()).await;
 }
 
 #[tokio::test]
 async fn get_number_of_events_should_return_1_when_event_stored() {
-    let test_context = build_database("get_number_of_events_should_return_1_when_event_stored")
-        .await
-        .unwrap();
+    let test_context = build_database().await.unwrap();
     crate::database::tests::get_number_of_events_should_return_1_when_event_stored(
         test_context.db.clone(),
     )

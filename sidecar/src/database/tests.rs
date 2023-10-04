@@ -239,17 +239,17 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
 }
 
 pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader + DatabaseWriter>(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let block_added = BlockAdded::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_block_added(block_added.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_block_added(block_added, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -265,17 +265,17 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
 pub async fn should_disallow_insert_of_existing_deploy_accepted<
     DB: DatabaseReader + DatabaseWriter,
 >(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_deploy_accepted(deploy_accepted, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -291,17 +291,17 @@ pub async fn should_disallow_insert_of_existing_deploy_accepted<
 pub async fn should_disallow_insert_of_existing_deploy_expired<
     DB: DatabaseReader + DatabaseWriter,
 >(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
-    assert!(sqlite_db
+    assert!(db
         .save_deploy_expired(deploy_expired.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -317,17 +317,17 @@ pub async fn should_disallow_insert_of_existing_deploy_expired<
 pub async fn should_disallow_insert_of_existing_deploy_processed<
     DB: DatabaseReader + DatabaseWriter,
 >(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
-    assert!(sqlite_db
+    assert!(db
         .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -340,18 +340,16 @@ pub async fn should_disallow_insert_of_existing_deploy_processed<
     }
 }
 
-pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + DatabaseWriter>(
-    sqlite_db: DB,
-) {
+pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + DatabaseWriter>(db: DB) {
     let mut test_rng = TestRng::new();
     let fault = Fault::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_fault(fault.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_fault(fault, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -367,17 +365,17 @@ pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + Datab
 pub async fn should_disallow_insert_of_existing_finality_signature<
     DB: DatabaseReader + DatabaseWriter,
 >(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_finality_signature(finality_signature.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_finality_signature(finality_signature, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -390,18 +388,16 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
     }
 }
 
-pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + DatabaseWriter>(
-    sqlite_db: DB,
-) {
+pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + DatabaseWriter>(db: DB) {
     let mut test_rng = TestRng::new();
     let step = Step::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_step(step.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
-    let db_err = sqlite_db
+    let db_err = db
         .save_step(step, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
@@ -414,31 +410,21 @@ pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + Databa
     }
 }
 
-pub async fn get_number_of_events_should_return_0<DB: DatabaseReader + DatabaseWriter>(
-    t: &str,
-    sqlite_db: DB,
-) {
-    let res = sqlite_db.get_number_of_events().await;
-    println!(
-        "get_number_of_events_should_return_0: {}, res: {:?}",
-        t, res
-    );
-    let val = res.unwrap();
-    println!("get_number_of_events_should_return_0 {} value: {}", t, val);
-    assert_eq!(val, 0);
+pub async fn get_number_of_events_should_return_0<DB: DatabaseReader + DatabaseWriter>(db: DB) {
+    assert_eq!(db.get_number_of_events().await.unwrap(), 0);
 }
 
 pub async fn get_number_of_events_should_return_1_when_event_stored<
     DB: DatabaseReader + DatabaseWriter,
 >(
-    sqlite_db: DB,
+    db: DB,
 ) {
     let mut test_rng = TestRng::new();
     let fault = Fault::random(&mut test_rng);
 
-    assert!(sqlite_db
+    assert!(db
         .save_fault(fault, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
-    assert_eq!(sqlite_db.get_number_of_events().await.unwrap(), 1);
+    assert_eq!(db.get_number_of_events().await.unwrap(), 1);
 }

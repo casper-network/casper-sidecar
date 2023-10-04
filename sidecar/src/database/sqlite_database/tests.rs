@@ -378,7 +378,7 @@ async fn should_save_and_retrieve_a_shutdown() {
 #[tokio::test]
 async fn get_number_of_events_should_return_0() {
     let sqlite_db = build_database().await;
-    crate::database::tests::get_number_of_events_should_return_0("sqlite", sqlite_db).await;
+    crate::database::tests::get_number_of_events_should_return_0(sqlite_db).await;
 }
 
 #[tokio::test]
