@@ -4,7 +4,7 @@ pub mod tests {
 
     use crate::testing::fake_event_stream::setup_mock_build_version_server_with_version;
     use crate::testing::raw_sse_events_utils::tests::{
-        example_data_1_0_0, simple_sse_server, sse_server_example_1_4_10_data, EventsWithIds,
+        example_data_1_5_3, simple_sse_server, sse_server_example_data, EventsWithIds,
     };
     use crate::testing::testing_config::get_port;
     use futures::join;
@@ -20,27 +20,42 @@ pub mod tests {
     }
 
     impl MockNodeBuilder {
-        pub fn example_1_0_0_node() -> MockNode {
-            MockNodeBuilder {
-                version: "1.0.0".to_string(),
-                data_of_node: example_data_1_0_0(),
-                cache_of_node: None,
-                sse_port: None,
-                rest_port: None,
-            }
-            .build()
-        }
-
-        pub fn build_example_1_4_10_node(
+        pub fn build_example_1_5_3_node(
             node_port_for_sse_connection: u16,
             node_port_for_rest_connection: u16,
         ) -> MockNode {
             MockNodeBuilder {
-                version: "1.4.10".to_string(),
-                data_of_node: sse_server_example_1_4_10_data(),
+                version: "1.5.3".to_string(),
+                data_of_node: example_data_1_5_3(),
                 cache_of_node: None,
                 sse_port: Some(node_port_for_sse_connection),
                 rest_port: Some(node_port_for_rest_connection),
+            }
+            .build()
+        }
+
+        pub fn build_example_1_5_2_node(
+            node_port_for_sse_connection: u16,
+            node_port_for_rest_connection: u16,
+        ) -> MockNode {
+            Self::build_example_node_with_version(
+                Some(node_port_for_sse_connection),
+                Some(node_port_for_rest_connection),
+                "1.5.2",
+            )
+        }
+
+        pub fn build_example_node_with_version(
+            node_port_for_sse_connection: Option<u16>,
+            node_port_for_rest_connection: Option<u16>,
+            version: &str,
+        ) -> MockNode {
+            MockNodeBuilder {
+                version: version.to_string(),
+                data_of_node: sse_server_example_data(version),
+                cache_of_node: None,
+                sse_port: node_port_for_sse_connection,
+                rest_port: node_port_for_rest_connection,
             }
             .build()
         }

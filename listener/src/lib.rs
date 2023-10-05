@@ -14,11 +14,12 @@ use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use keep_alive_monitor::KeepAliveMonitor;
+use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Sender},
         Mutex,
     },
     time::sleep,
@@ -28,6 +29,8 @@ pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
 
 const BUILD_VERSION_KEY: &str = "build_version";
+pub static MINIMAL_NODE_VERSION: Lazy<ProtocolVersion> =
+    Lazy::new(|| ProtocolVersion::from_parts(1, 5, 2));
 
 pub struct EventListenerBuilder {
     pub node: NodeConnectionInterface,
@@ -40,6 +43,8 @@ pub struct EventListenerBuilder {
     pub no_message_timeout: Duration,
 }
 
+type FilterWithEventId = Sender<(Filter, u32)>;
+type CurrentFilterToIdHolder = Arc<Mutex<HashMap<Filter, u32>>>;
 impl EventListenerBuilder {
     pub fn build(&self) -> EventListener {
         EventListener {
@@ -122,7 +127,22 @@ enum ConnectOutcome {
     ConnectionLost,
     SystemReconnect, //In this case we don't increase the current_attempt counter
 }
+
+enum BuildVersionFetchError {
+    Error(anyhow::Error),
+    VersionNotAcceptable(String),
+}
+
+enum GetVersionResult {
+    Ok(Option<ProtocolVersion>),
+    Retry,
+    Error(Error),
+}
+
 impl EventListener {
+    pub fn get_node_interface(&self) -> NodeConnectionInterface {
+        self.node.clone()
+    }
     fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
         let url_str = format!(
             "http://{}:{}/{}",
@@ -135,13 +155,14 @@ impl EventListener {
         &self,
         curent_protocol_version: ProtocolVersion,
         current_attempt: usize,
-    ) -> Result<Option<ProtocolVersion>, Error> {
+    ) -> Result<Option<ProtocolVersion>, BuildVersionFetchError> {
         info!(
             "Attempting to connect...\t{}/{}",
             current_attempt, self.max_connection_attempts
         );
         match self.fetch_build_version_from_status().await {
             Ok(version) => {
+                validate_version(&version)?;
                 let new_node_build_version = version;
                 // Compare versions to reset attempts in the case that the version changed.
                 // This guards against endlessly retrying when the version hasn't changed, suggesting
@@ -160,9 +181,9 @@ impl EventListener {
                 );
                 if current_attempt >= self.max_connection_attempts {
                     EventListenerStatus::Defunct.log_status_for_event_listener(self);
-                    return Err(Error::msg(
+                    return Err(BuildVersionFetchError::Error(Error::msg(
                         "Unable to retrieve build version from node status",
-                    ));
+                    )));
                 }
                 Ok(None)
             }
@@ -174,27 +195,23 @@ impl EventListener {
     /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
     pub async fn stream_aggregated_events(&mut self, is_empty_database: bool) -> Result<(), Error> {
         EventListenerStatus::Preparing.log_status_for_event_listener(self);
-        let (last_seen_event_id_sender, last_seen_event_id_receiver) = mpsc::channel(10);
-        let last_event_id_for_filter = start_last_event_id_registry(
-            last_seen_event_id_receiver,
-            self.node.ip_address.to_string(),
-            self.node.sse_port,
-        );
+        let (last_event_id_for_filter, last_seen_event_id_sender) =
+            self.start_last_event_id_registry(self.node.ip_address.to_string(), self.node.sse_port);
         EventListenerStatus::Connecting.log_status_for_event_listener(self);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
-            if let Some(new_node_build_version) = self
-                .fetch_build_version(self.node_build_version, current_attempt)
-                .await?
-            {
-                if self.node_build_version != new_node_build_version {
-                    self.node_build_version = new_node_build_version;
+            match self.get_version(current_attempt).await {
+                GetVersionResult::Ok(Some(protocol_version)) => {
+                    self.node_build_version = protocol_version;
                     current_attempt = 1
                 }
-            } else {
-                sleep(self.delay_between_attempts).await;
-                current_attempt += 1;
-                continue;
+                GetVersionResult::Retry => {
+                    sleep(self.delay_between_attempts).await;
+                    current_attempt += 1;
+                    continue;
+                }
+                GetVersionResult::Error(e) => return Err(e),
+                _ => {}
             }
             match self
                 .do_connect(
@@ -217,7 +234,7 @@ impl EventListener {
         &mut self,
         last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
         is_empty_database: bool,
-        last_seen_event_id_sender: Sender<(Filter, u32)>,
+        last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<ConnectOutcome, Error> {
         let connections = self
             .build_connections(
@@ -301,7 +318,7 @@ impl EventListener {
         &mut self,
         last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
         is_empty_database: bool,
-        last_seen_event_id_sender: Sender<(Filter, u32)>,
+        last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<HashMap<Filter, ConnectionManager>, Error> {
         let filters = filters_from_version(self.node_build_version);
         let mut connections = HashMap::new();
@@ -365,7 +382,7 @@ impl EventListener {
         maybe_tasks: Option<ConnectionTasks>,
         start_from_event_id: Option<u32>,
         filter: Filter,
-        last_seen_event_id_sender: Sender<(Filter, u32)>,
+        last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<ConnectionManager, Error> {
         let bind_address_for_filter = self.filtered_sse_url(&filter)?;
         let keep_alive_monitor = KeepAliveMonitor::new(
@@ -384,11 +401,50 @@ impl EventListener {
             connection_timeout: self.connection_timeout,
             start_from_event_id,
             filter,
-            node_build_version: self.node_build_version,
             current_event_id_sender: last_seen_event_id_sender,
             cancellation_token,
         };
         Ok(builder.build())
+    }
+
+    async fn get_version(&mut self, current_attempt: usize) -> GetVersionResult {
+        let fetch_result = self
+            .fetch_build_version(self.node_build_version, current_attempt)
+            .await;
+        match fetch_result {
+            Ok(Some(new_node_build_version)) => {
+                if self.node_build_version != new_node_build_version {
+                    return GetVersionResult::Ok(Some(new_node_build_version));
+                }
+                GetVersionResult::Ok(None)
+            }
+            Err(BuildVersionFetchError::VersionNotAcceptable(msg)) => {
+                //The node has a build version which sidecar can't talk to. Failing fast in this case.
+                GetVersionResult::Error(Error::msg(msg))
+            }
+            _ => GetVersionResult::Retry,
+        }
+    }
+
+    fn start_last_event_id_registry(
+        &self,
+        node_address: String,
+        sse_port: u16,
+    ) -> (CurrentFilterToIdHolder, FilterWithEventId) {
+        let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
+        let last_event_id_for_filter: CurrentFilterToIdHolder =
+            Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
+        let last_event_id_for_filter_for_thread = last_event_id_for_filter.clone();
+        tokio::spawn(async move {
+            while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
+                EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
+                let last_event_id_for_filter_clone = last_event_id_for_filter_for_thread.clone();
+                let mut guard = last_event_id_for_filter_clone.lock().await;
+                guard.insert(filter, id);
+                drop(guard);
+            }
+        });
+        (last_event_id_for_filter, last_seen_event_id_sender)
     }
 }
 
@@ -411,26 +467,6 @@ fn start_connections(
             })
         })
         .collect()
-}
-
-fn start_last_event_id_registry(
-    mut last_seen_event_id_receiver: Receiver<(Filter, u32)>,
-    node_address: String,
-    sse_port: u16,
-) -> Arc<Mutex<HashMap<Filter, u32>>> {
-    let last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>> =
-        Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
-    let last_event_id_for_filter_for_thread = last_event_id_for_filter.clone();
-    tokio::spawn(async move {
-        while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
-            EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
-            let last_event_id_for_filter_clone = last_event_id_for_filter_for_thread.clone();
-            let mut guard = last_event_id_for_filter_clone.lock().await;
-            guard.insert(filter, id);
-            drop(guard);
-        }
-    });
-    last_event_id_for_filter
 }
 
 fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
@@ -495,6 +531,18 @@ fn count_error(reason: &str) {
     casper_event_types::metrics::ERROR_COUNTS
         .with_label_values(&["event_listener", reason])
         .inc();
+}
+
+fn validate_version(version: &ProtocolVersion) -> Result<(), BuildVersionFetchError> {
+    if version.lt(&MINIMAL_NODE_VERSION) {
+        let msg = format!(
+            "Node version expected to be >= {}.",
+            MINIMAL_NODE_VERSION.value(),
+        );
+        Err(BuildVersionFetchError::VersionNotAcceptable(msg))
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

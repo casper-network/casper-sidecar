@@ -177,28 +177,21 @@ fn start_sse_processors(
             .zip(sse_data_receivers)
         {
             tokio::spawn(async move {
-                let _ = event_listener
+                let res = event_listener
                     .stream_aggregated_events(is_empty_database)
                     .await;
+                if let Err(e) = res {
+                    let addr = event_listener.get_node_interface().ip_address.to_string();
+                    error!("Disconnected from {}. Reason: {}", addr, e.to_string());
+                }
             });
-            let join_handle = match database.clone() {
-                Database::SqliteDatabaseWrapper(db) => tokio::spawn(sse_processor(
-                    sse_data_receiver,
-                    outbound_sse_data_sender.clone(),
-                    db.clone(),
-                    false,
-                    connection_config.enable_logging,
-                    api_version_manager.clone(),
-                )),
-                Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
-                    sse_data_receiver,
-                    outbound_sse_data_sender.clone(),
-                    db.clone(),
-                    true,
-                    connection_config.enable_logging,
-                    api_version_manager.clone(),
-                )),
-            };
+            let join_handle = spawn_sse_processor(
+                &database,
+                sse_data_receiver,
+                &outbound_sse_data_sender,
+                connection_config,
+                &api_version_manager,
+            );
             join_handles.push(join_handle);
         }
 
@@ -216,6 +209,33 @@ fn start_sse_processors(
         sleep(Duration::from_millis(200)).await;
         Err::<(), Error>(Error::msg("Connected node(s) are unavailable"))
     })
+}
+
+fn spawn_sse_processor(
+    database: &Database,
+    sse_data_receiver: Receiver<SseEvent>,
+    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
+    connection_config: types::config::Connection,
+    api_version_manager: &std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
+) -> JoinHandle<Result<(), Error>> {
+    match database.clone() {
+        Database::SqliteDatabaseWrapper(db) => tokio::spawn(sse_processor(
+            sse_data_receiver,
+            outbound_sse_data_sender.clone(),
+            db.clone(),
+            false,
+            connection_config.enable_logging,
+            api_version_manager.clone(),
+        )),
+        Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
+            sse_data_receiver,
+            outbound_sse_data_sender.clone(),
+            db.clone(),
+            true,
+            connection_config.enable_logging,
+            api_version_manager.clone(),
+        )),
+    }
 }
 
 fn build_and_start_rest_server(
