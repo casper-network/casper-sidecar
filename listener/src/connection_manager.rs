@@ -6,10 +6,9 @@ use crate::{
 use anyhow::Error;
 use casper_event_types::{
     metrics,
-    sse_data::{deserialize, SseData, SseDataDeserializeError},
+    sse_data::{deserialize, SseData},
     Filter,
 };
-use casper_types::ProtocolVersion;
 use eventsource_stream::Event;
 use reqwest::Url;
 use std::{
@@ -23,7 +22,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace, warn};
 
-type DeserializationFn = fn(&str) -> Result<(SseData, bool), SseDataDeserializeError>;
 const FETCHING_FROM_STREAM_FAILED: &str = "fetching_from_stream_failed";
 const DESERIALIZATION_ERROR: &str = "deserialization_error";
 const EVENT_WITHOUT_ID: &str = "event_without_id";
@@ -40,7 +38,6 @@ pub(super) struct ConnectionManager {
     sse_event_sender: Sender<SseEvent>,
     maybe_tasks: Option<ConnectionTasks>,
     filter: Filter,
-    deserialization_fn: DeserializationFn,
     current_event_id_sender: Sender<(Filter, u32)>,
     cancellation_token: CancellationToken,
 }
@@ -84,9 +81,6 @@ pub struct ConnectionManagerBuilder {
     pub(super) start_from_event_id: Option<u32>,
     /// Nodes filter to which we are connected
     pub(super) filter: Filter,
-    /// Build version of the node. It's necessary because after 1.2 non-backwards compatible changes to the event
-    /// structure were introduced and we need to apply different deserialization logic
-    pub(super) node_build_version: ProtocolVersion,
     /// Channel via which we inform that this filter observed a specific event_id so the ConnectionListener can give
     /// a correct start_from_event_id parameter in case of a connection restart
     pub(super) current_event_id_sender: Sender<(Filter, u32)>,
@@ -111,7 +105,6 @@ impl ConnectionManagerBuilder {
             sse_event_sender: self.sse_data_sender,
             maybe_tasks: self.maybe_tasks,
             filter: self.filter,
-            deserialization_fn: determine_deserializer(self.node_build_version),
             current_event_id_sender: self.current_event_id_sender,
             cancellation_token: self.cancellation_token,
         }
@@ -214,7 +207,7 @@ impl ConnectionManager {
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
-        match (self.deserialization_fn)(&event.data) {
+        match deserialize(&event.data) {
             Err(serde_error) => {
                 count_error(DESERIALIZATION_ERROR);
                 let error_message = format!("Serde Error: {}", serde_error);
@@ -358,15 +351,6 @@ fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerEr
     )))
 }
 
-fn determine_deserializer(node_build_version: ProtocolVersion) -> DeserializationFn {
-    let one_two_zero = ProtocolVersion::from_parts(1, 2, 0);
-    if node_build_version.lt(&one_two_zero) {
-        casper_event_types::sse_data_1_0_0::deserialize
-    } else {
-        deserialize
-    }
-}
-
 fn count_error(reason: &str) {
     metrics::ERROR_COUNTS
         .with_label_values(&["connection_manager", reason])
@@ -380,7 +364,7 @@ mod tests {
         sse_connector::{MockSseConnection, StreamConnector},
         SseEvent,
     };
-    use casper_event_types::{sse_data::test_support::*, sse_data_1_0_0::test_support::*, Filter};
+    use casper_event_types::{sse_data::test_support::*, Filter};
     use tokio::sync::mpsc::{channel, Receiver};
     use tokio_util::sync::CancellationToken;
     use url::Url;
@@ -412,8 +396,8 @@ mod tests {
     #[tokio::test]
     async fn given_data_without_api_version_should_fail() {
         let data = vec![
-            example_block_added_1_0_0(BLOCK_HASH_1, "1"),
-            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_1_5_2(BLOCK_HASH_1, "1"),
+            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, _, _) = build_manager(connector);
@@ -431,8 +415,8 @@ mod tests {
     async fn given_data_should_pass_data() {
         let data = vec![
             example_api_version(),
-            example_block_added_1_0_0(BLOCK_HASH_1, "1"),
-            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_1_5_2(BLOCK_HASH_1, "1"),
+            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, event_ids) = build_manager(connector);
@@ -450,7 +434,7 @@ mod tests {
         let data = vec![
             example_api_version(),
             "XYZ".to_string(),
-            example_block_added_1_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, _event_ids) = build_manager(connector);
@@ -496,143 +480,9 @@ mod tests {
             sse_event_sender: data_tx,
             maybe_tasks: None,
             filter: Filter::Sigs,
-            deserialization_fn: casper_event_types::sse_data_1_0_0::deserialize,
             current_event_id_sender: event_id_tx,
             cancellation_token,
         };
         (manager, data_rx, event_id_rx)
-    }
-}
-
-#[cfg(test)]
-mod deserialization_tests {
-    use casper_event_types::{
-        sse_data::test_support::{example_block_added_1_4_10, BLOCK_HASH_1},
-        sse_data_1_0_0::test_support::example_block_added_1_0_0,
-    };
-    use serde_json::Value;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_0_0_should_return_1_0_0_deserializer() {
-        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
-        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
-        let sse_data = tuple.0;
-        assert!(tuple.1);
-
-        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
-        if let SseData::BlockAdded {
-            block_hash: _,
-            block,
-        } = sse_data.clone()
-        {
-            assert!(block.proofs.is_empty());
-            assert_eq!(
-                serde_json::to_value(sse_data).unwrap(),
-                serde_json::from_str::<Value>(&new_format_block_added_raw).unwrap()
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_fails_on_contemporary_block_added(
-    ) {
-        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let result = (deserializer)(&new_format_block_added_raw);
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_1_0_should_return_generic_deserializer_which_deserializes_legacy_block_added(
-    ) {
-        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
-        let new_format_block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 1, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let tuple = (deserializer)(&legacy_block_added_raw).unwrap();
-        let sse_data = tuple.0;
-        assert!(tuple.1);
-
-        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
-        if let SseData::BlockAdded {
-            block_hash: _,
-            block,
-        } = sse_data.clone()
-        {
-            assert!(block.proofs.is_empty());
-            let sse_data_1_4_10 =
-                serde_json::from_str::<Value>(&new_format_block_added_raw).unwrap();
-            assert_eq!(serde_json::to_value(sse_data).unwrap(), sse_data_1_4_10);
-        }
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_2_0_should_return_generic_deserializer_which_fails_on_legacy_block_added(
-    ) {
-        let legacy_block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let result = (deserializer)(&legacy_block_added_raw);
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_2_0_should_deserialize_contemporary_block_added_payload(
-    ) {
-        let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let tuple = (deserializer)(&block_added_raw).unwrap();
-        let sse_data = tuple.0;
-        assert!(!tuple.1);
-
-        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
-        if let SseData::BlockAdded {
-            block_hash: _,
-            block,
-        } = sse_data.clone()
-        {
-            assert!(block.proofs.is_empty());
-            let raw = serde_json::to_string(&sse_data);
-            assert_eq!(raw.unwrap(), block_added_raw);
-        }
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_4_10_should_return_generic_deserializer_which_fails_on_legacy_block_added(
-    ) {
-        let block_added_raw = example_block_added_1_0_0(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 2, 0);
-        let deserializer = determine_deserializer(protocol_version);
-        let result = (deserializer)(&block_added_raw);
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn given_determine_deserializer_and_1_4_10_should_deserialize_contemporary_block_added_payload(
-    ) {
-        let block_added_raw = example_block_added_1_4_10(BLOCK_HASH_1, "1");
-        let protocol_version = ProtocolVersion::from_parts(1, 4, 10);
-        let deserializer = determine_deserializer(protocol_version);
-        let tuple = (deserializer)(&block_added_raw).unwrap();
-        let sse_data = tuple.0;
-        assert!(!tuple.1);
-
-        assert!(matches!(sse_data, SseData::BlockAdded { .. }));
-        if let SseData::BlockAdded {
-            block_hash: _,
-            block,
-        } = sse_data.clone()
-        {
-            assert!(block.proofs.is_empty());
-            let raw = serde_json::to_string(&sse_data);
-            assert_eq!(raw.unwrap(), block_added_raw);
-        }
     }
 }

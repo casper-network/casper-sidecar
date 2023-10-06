@@ -25,6 +25,7 @@ tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = "0.7.8"
 tracing = "0.1"
 url = "2.3.1"
+once_cell = {workspace = true}
 
 [dev-dependencies]
 casper-event-types = { path = "../types", version = "1.0.0", features = ["sse-data-testing"]}

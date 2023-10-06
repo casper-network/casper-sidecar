@@ -520,7 +520,7 @@ async fn load_testing_deploy(
 }
 
 pub async fn setup_mock_build_version_server(port: u16) -> (Sender<()>, Receiver<()>) {
-    setup_mock_build_version_server_with_version(port, "1.4.10".to_string()).await
+    setup_mock_build_version_server_with_version(port, "1.5.2".to_string()).await
 }
 
 pub async fn setup_mock_build_version_server_with_version(

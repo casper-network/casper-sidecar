@@ -432,6 +432,7 @@ dependencies = [
  "eventsource-stream",
  "futures",
  "futures-util",
+ "once_cell",
  "portpicker",
  "reqwest",
  "serde",
