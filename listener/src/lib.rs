@@ -99,6 +99,9 @@ enum EventListenerStatus {
     /// with node and there are no more `max_connection_attempts` left. There will be no futhrer
     /// tries to establish the connection.
     Defunct,
+    /// If Event Listener reports this state it means that the node it was trying to connect to has a
+    /// version which sidecar can't work with
+    IncompatibleVersion,
 }
 
 impl EventListenerStatus {
@@ -115,6 +118,7 @@ impl EventListenerStatus {
             EventListenerStatus::Connected => 2,
             EventListenerStatus::Reconnecting => 3,
             EventListenerStatus::Defunct => -1,
+            EventListenerStatus::IncompatibleVersion => -2,
         } as f64;
         let node_label = format!("{}:{}", node_address, sse_port);
         metrics::NODE_STATUSES
@@ -162,7 +166,10 @@ impl EventListener {
         );
         match self.fetch_build_version_from_status().await {
             Ok(version) => {
-                validate_version(&version)?;
+                validate_version(&version).map_err(|err| {
+                    EventListenerStatus::IncompatibleVersion.log_status_for_event_listener(self);
+                    err
+                })?;
                 let new_node_build_version = version;
                 // Compare versions to reset attempts in the case that the version changed.
                 // This guards against endlessly retrying when the version hasn't changed, suggesting

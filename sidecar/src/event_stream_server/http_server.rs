@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::{
     config::Config,
     event_indexer::EventIndex,
@@ -6,6 +8,7 @@ use super::{
 use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
 use futures::{future, Future, FutureExt};
+use once_cell::sync::Lazy;
 use tokio::{
     select,
     sync::{
@@ -20,7 +23,12 @@ use wheelbuf::WheelBuf;
 pub type InboundData = (Option<u32>, SseData, Option<Filter>, Option<String>);
 pub type OutboundReceiver =
     mpsc::UnboundedReceiver<(Option<EventIndex>, SseData, Option<Filter>, Option<String>)>;
-
+pub static SIDECAR_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    let major: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MAJOR")).unwrap();
+    let minor: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MINOR")).unwrap();
+    let patch: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap();
+    ProtocolVersion::from_parts(major, minor, patch)
+});
 /// Run the HTTP server.
 ///
 /// * `server_with_shutdown` is the actual server as a future which can be gracefully shut down.
@@ -95,12 +103,9 @@ async fn send_api_version_from_global_state(
 async fn send_sidecar_version(
     subscriber: &NewSubscriberInfo,
 ) -> Result<(), SendError<ServerSentEvent>> {
-    // #TODO this version shouldn't be hardcoded, it should come from the build process
     subscriber
         .initial_events_sender
-        .send(ServerSentEvent::sidecar_version_event(
-            ProtocolVersion::from_parts(1, 1, 0),
-        ))
+        .send(ServerSentEvent::sidecar_version_event(*SIDECAR_VERSION))
 }
 
 async fn handle_incoming_data(
