@@ -1,16 +1,28 @@
 use crate::connection_manager::{non_recoverable_error, recoverable_error, ConnectionManagerError};
+use crate::keep_alive_monitor::KeepAliveMonitor;
 use anyhow::Error;
+use async_stream::stream;
 use async_trait::async_trait;
 use bytes::Bytes;
-use eventsource_stream::{Event, EventStream, Eventsource};
+use eventsource_stream::{Event, EventStream, EventStreamError, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
-use std::{fmt::Debug, time::Duration};
-use tokio::sync::mpsc::{channel, Receiver};
+use std::pin::Pin;
+use std::{fmt::Debug, sync::Arc, time::Duration};
+use tokio::select;
+#[cfg(test)]
+use tokio::sync::mpsc::channel;
 use tokio_stream::Stream;
 use tracing::debug;
 use url::Url;
 
+#[derive(Clone, Debug)]
+pub enum SseDataStreamingError {
+    NoDataTimeout(),
+    ConnectionError(Arc<Error>),
+}
+
+pub type EventResult = Result<Event, EventStreamError<SseDataStreamingError>>;
 /// Abstraction over sse connection which hides all the http details and allows mocks for testing.
 /// It returns a channel which passes data from stream.
 #[async_trait]
@@ -18,7 +30,7 @@ pub trait StreamConnector {
     async fn connect(
         &mut self,
         current_event_id: Option<u32>,
-    ) -> Result<Receiver<Result<Event, Error>>, ConnectionManagerError>;
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>;
 }
 
 /// Implementation of [StreamConnector] which connects to an sse http endpoint. Includes retries of initial connection.
@@ -28,8 +40,9 @@ pub struct SseConnection {
     pub max_attempts: usize,
     pub delay_between_attempts: Duration,
     pub connection_timeout: Duration,
-    pub channel_buffer_size: usize,
     pub bind_address: Url,
+    pub sleep_between_keepalive_checks: Duration,
+    pub no_message_timeout: Duration,
 }
 
 impl SseConnection {
@@ -37,7 +50,7 @@ impl SseConnection {
         &mut self,
         url: Url,
     ) -> Result<
-        EventStream<impl Stream<Item = Result<Bytes, reqwest::Error>>>,
+        Pin<Box<EventStream<impl Stream<Item = Result<Bytes, SseDataStreamingError>>>>>,
         ConnectionManagerError,
     > {
         debug!("Connecting to node...\t{}", url);
@@ -50,26 +63,45 @@ impl SseConnection {
             .send()
             .await
             .map_err(|err| recoverable_error(Error::new(err)))?;
-        Ok(sse_response.bytes_stream().eventsource())
+        let stream = self.build_byte_stream(sse_response).await;
+        Ok(Box::pin(stream.eventsource()))
     }
 
-    fn push_events_to_channel<E, S>(&self, mut event_stream: S) -> Receiver<Result<Event, Error>>
-    where
-        E: Debug + Sync + Send + std::error::Error + 'static,
-        S: Stream<Item = Result<Event, E>> + Sized + Unpin + Send + 'static,
-    {
-        let (tx, rx) = channel(self.channel_buffer_size);
-        tokio::spawn(async move {
-            while let Some(stream_res) = event_stream.next().await {
-                let stream_res = stream_res.map_err(|stream_error| Error::from(stream_error));
-                let res = tx.send(stream_res).await;
-                if res.is_err() {
-                    break;
+    async fn build_byte_stream(
+        &mut self,
+        sse_response: reqwest::Response,
+    ) -> impl Stream<Item = Result<Bytes, SseDataStreamingError>> {
+        let monitor =
+            KeepAliveMonitor::new(self.sleep_between_keepalive_checks, self.no_message_timeout);
+        monitor.start().await;
+        let cancellation_token = monitor.get_cancellation_token();
+        let mut stream = sse_response.bytes_stream();
+        stream! {
+            loop {
+                select! {
+                    maybe_bytes = stream.next() => {
+                        if let Some(res_bytes) = maybe_bytes {
+                            match res_bytes {
+                                Ok(bytes) => {
+                                    monitor.tick().await;
+                                    yield Ok(bytes);
+                                },
+                                Err(err) => {
+                                    yield Err(SseDataStreamingError::ConnectionError(Arc::new(Error::from(err))));
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    _ = cancellation_token.cancelled() => {
+                        yield Err(SseDataStreamingError::NoDataTimeout());
+                        break;
+                    }
                 }
             }
-            drop(tx);
-        });
-        rx
+        }
     }
 }
 
@@ -78,7 +110,8 @@ impl StreamConnector for SseConnection {
     async fn connect(
         &mut self,
         current_event_id: Option<u32>,
-    ) -> Result<Receiver<Result<Event, Error>>, ConnectionManagerError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
+    {
         let mut bind_address = self.bind_address.clone();
         if let Some(event_id) = current_event_id {
             let query = format!("start_from={}", event_id);
@@ -88,7 +121,9 @@ impl StreamConnector for SseConnection {
         let mut last_error = None;
         while retry_count <= self.max_attempts {
             match self.internal_connect(bind_address.clone()).await {
-                Ok(event_stream) => return Ok(self.push_events_to_channel(event_stream)),
+                Ok(event_stream) => {
+                    return Ok(event_stream);
+                }
                 Err(ConnectionManagerError::NonRecoverableError { error }) => {
                     return Err(ConnectionManagerError::NonRecoverableError { error })
                 }
@@ -134,7 +169,7 @@ fn couldnt_connect(
 pub struct MockSseConnection {
     data: Vec<Event>,
     failure_on_connection: Option<ConnectionManagerError>,
-    failure_on_message: Option<Error>,
+    failure_on_message: Option<SseDataStreamingError>,
 }
 
 #[cfg(test)]
@@ -167,7 +202,8 @@ impl MockSseConnection {
     }
 
     pub fn build_failing_on_message() -> Self {
-        let e = Error::msg("Some error on message");
+        let e =
+            SseDataStreamingError::ConnectionError(Arc::new(Error::msg("Some error on message")));
         MockSseConnection {
             data: vec![],
             failure_on_connection: None,
@@ -182,12 +218,13 @@ impl StreamConnector for MockSseConnection {
     async fn connect(
         &mut self,
         _current_event_id: Option<u32>,
-    ) -> Result<Receiver<Result<Event, Error>>, ConnectionManagerError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
+    {
         if let Some(err) = self.failure_on_connection.take() {
             return Err(err);
         }
         let data = self.data.clone();
-        let (tx, rx) = channel(100);
+        let (tx, mut rx) = channel(100);
         let maybe_fail_on_message = self.failure_on_message.take();
         tokio::spawn(async move {
             let mut maybe_fail_on_message = maybe_fail_on_message;
@@ -196,15 +233,58 @@ impl StreamConnector for MockSseConnection {
                     let _ = tx.send(Err(err)).await;
                     break;
                 }
-                let res = tx.send(Ok(datum)).await;
+
+                let res = tx
+                    .send(Ok(bytes::Bytes::from(build_sse_raw_from_event(datum))))
+                    .await;
                 if res.is_err() {
                     break;
                 }
             }
             drop(tx);
         });
-        Ok(rx)
+        let a = stream! {
+            while let Some(res) = rx.recv().await {
+                yield res;
+            }
+        }
+        .eventsource();
+
+        Ok(Box::pin(a))
     }
+}
+
+#[cfg(test)]
+fn build_sse_raw_from_event(datum: Event) -> String {
+    let mut event_raw = String::default();
+    let mut is_empty = true;
+    if !datum.data.is_empty() {
+        let field_data_raw = datum.data;
+        if is_empty {
+            event_raw = format!("{event_raw}data:{field_data_raw}");
+        } else {
+            event_raw = format!("{event_raw}\rdata:{field_data_raw}");
+        }
+        is_empty = false;
+    }
+    if !datum.id.is_empty() && !datum.id.contains('\u{0000}') {
+        let field_data_raw = datum.id;
+        if is_empty {
+            event_raw = format!("{event_raw}id:{field_data_raw}");
+        } else {
+            event_raw = format!("{event_raw}\rid:{field_data_raw}");
+        }
+        is_empty = false;
+    }
+    if !datum.event.is_empty() {
+        let field_data_raw = datum.event;
+        if is_empty {
+            event_raw = format!("{event_raw}event:{field_data_raw}");
+        } else {
+            event_raw = format!("{event_raw}\revent:{field_data_raw}");
+        }
+    }
+    format!("{event_raw}\n\n")
 }
 
 #[cfg(test)]
@@ -212,7 +292,14 @@ mod tests {
     use crate::sse_connector::{MockSseConnection, SseConnection, StreamConnector};
     use eventsource_stream::Event;
     use futures_util::stream::iter;
-    use std::{convert::Infallible, time::Duration};
+    use std::{
+        convert::Infallible,
+        thread::sleep,
+        time::{Duration, Instant},
+    };
+    use tokio::time::interval;
+    use tokio::time::timeout;
+    use tokio_stream::{wrappers::IntervalStream, StreamExt};
     use url::Url;
     use warp::{sse::Event as SseEvent, Filter};
 
@@ -224,11 +311,12 @@ mod tests {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            channel_buffer_size: 50,
             bind_address: Url::parse(
                 format!("http://localhost:{}/notifications", sse_port).as_str(),
             )
             .unwrap(),
+            sleep_between_keepalive_checks: Duration::from_secs(20),
+            no_message_timeout: Duration::from_secs(20),
         };
 
         let data = fetch_data(&mut connection).await;
@@ -242,14 +330,35 @@ mod tests {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            channel_buffer_size: 50,
             bind_address: Url::parse(
                 format!("http://localhost:{}/notifications", sse_port).as_str(),
             )
             .unwrap(),
+            sleep_between_keepalive_checks: Duration::from_secs(20),
+            no_message_timeout: Duration::from_secs(20),
         };
         let res = connection.connect(None).await;
         assert!(res.is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn given_sse_connection_when_no_data_should_fail() {
+        let sse_port = portpicker::pick_unused_port().unwrap();
+        sse_server(sse_port, 1, Some(25));
+        let mut connection = SseConnection {
+            max_attempts: 5,
+            delay_between_attempts: Duration::from_secs(2),
+            connection_timeout: Duration::from_secs(10),
+            bind_address: Url::parse(format!("http://localhost:{}/ticks", sse_port).as_str())
+                .unwrap(),
+            sleep_between_keepalive_checks: Duration::from_secs(1),
+            no_message_timeout: Duration::from_secs(5),
+        };
+        let start = Instant::now();
+        let data = fetch_data_with_timeout(&mut connection, Duration::from_secs(20)).await;
+        let elapsed = start.elapsed();
+        assert!(elapsed.as_secs() >= 5); // It should take more then 5 seconds before the inactivity check kicks in
+        assert!(data.is_empty());
     }
 
     #[tokio::test]
@@ -272,15 +381,50 @@ mod tests {
         assert_eq!(data, vec!["data 1", "data 2"])
     }
 
-    async fn fetch_data(connection: &mut dyn StreamConnector) -> Vec<String> {
+    async fn fetch_data_with_timeout(
+        connection: &mut dyn StreamConnector,
+        timeout_after: Duration,
+    ) -> Vec<String> {
         let mut data = vec![];
         if let Ok(mut receiver) = connection.connect(None).await {
-            while let Some(event_res) = receiver.recv().await {
-                let event = event_res.unwrap();
-                data.push(event.data);
+            while let Ok(res) = timeout(timeout_after, receiver.next()).await {
+                if let Some(event_res) = res {
+                    if let Ok(event) = event_res {
+                        data.push(event.data);
+                    }
+                } else {
+                    break;
+                }
             }
         }
         data
+    }
+
+    async fn fetch_data(connection: &mut dyn StreamConnector) -> Vec<String> {
+        fetch_data_with_timeout(connection, Duration::from_secs(120)).await
+    }
+
+    fn sse_server(port: u16, interval_in_seconds: u64, mut initial_delay_in_seconds: Option<u64>) {
+        let routes = warp::path("ticks").and(warp::get()).map(move || {
+            let mut counter: u64 = 0;
+            // create server event source
+            let interval = interval(Duration::from_secs(interval_in_seconds));
+            let stream = IntervalStream::new(interval);
+            let event_stream = stream.map(move |_| {
+                if let Some(delay) = initial_delay_in_seconds.take() {
+                    sleep(Duration::from_secs(delay));
+                }
+                counter += 1;
+                let event = warp::sse::Event::default().data(counter.to_string());
+                Ok::<warp::sse::Event, Infallible>(event)
+            });
+            // reply using server-sent events
+            // keep-alive is omitted intentionally so we can test scenarios in which the sse endpoint gives no traffic
+            warp::sse::reply(event_stream)
+        });
+        tokio::spawn(async move {
+            warp::serve(routes).run(([127, 0, 0, 1], port)).await;
+        });
     }
 
     async fn spin_up_test_sse_endpoint(sse_port: u16) {

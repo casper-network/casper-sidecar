@@ -425,6 +425,7 @@ name = "casper-event-listener"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "bytes",
  "casper-event-types",

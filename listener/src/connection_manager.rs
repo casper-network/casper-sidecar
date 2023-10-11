@@ -1,6 +1,6 @@
 use super::ConnectionTasks;
 use crate::{
-    sse_connector::{SseConnection, StreamConnector},
+    sse_connector::{EventResult, SseConnection, StreamConnector},
     SseEvent,
 };
 use anyhow::Error;
@@ -10,16 +10,15 @@ use casper_event_types::{
     Filter,
 };
 use eventsource_stream::Event;
+use futures_util::Stream;
 use reqwest::Url;
 use std::{
     fmt::{self, Debug, Display},
+    pin::Pin,
     time::Duration,
 };
-use tokio::{
-    select,
-    sync::mpsc::{Receiver, Sender},
-};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::mpsc::Sender;
+use tokio_stream::StreamExt;
 use tracing::{error, trace, warn};
 
 const FETCHING_FROM_STREAM_FAILED: &str = "fetching_from_stream_failed";
@@ -39,9 +38,9 @@ pub(super) struct ConnectionManager {
     maybe_tasks: Option<ConnectionTasks>,
     filter: Filter,
     current_event_id_sender: Sender<(Filter, u32)>,
-    cancellation_token: CancellationToken,
 }
 
+#[derive(Debug)]
 pub enum ConnectionManagerError {
     NonRecoverableError { error: Error },
     InitialConnectionError { error: Error },
@@ -84,8 +83,10 @@ pub struct ConnectionManagerBuilder {
     /// Channel via which we inform that this filter observed a specific event_id so the ConnectionListener can give
     /// a correct start_from_event_id parameter in case of a connection restart
     pub(super) current_event_id_sender: Sender<(Filter, u32)>,
-    /// Cancel token which can force ConnectionManager to halt if external curcomstances require it
-    pub(super) cancellation_token: CancellationToken,
+    /// Time the KeepAliveMonitor wait between checks
+    pub(super) sleep_between_keep_alive_checks: Duration,
+    /// Time of inactivity of a node connection that is allowed by KeepAliveMonitor
+    pub(super) no_message_timeout: Duration,
 }
 
 impl ConnectionManagerBuilder {
@@ -95,8 +96,9 @@ impl ConnectionManagerBuilder {
             max_attempts: self.max_attempts,
             delay_between_attempts: Duration::from_secs(1),
             connection_timeout: self.connection_timeout,
-            channel_buffer_size: 200,
             bind_address: self.bind_address.clone(),
+            sleep_between_keepalive_checks: self.sleep_between_keep_alive_checks,
+            no_message_timeout: self.no_message_timeout,
         });
         ConnectionManager {
             connector,
@@ -106,7 +108,6 @@ impl ConnectionManagerBuilder {
             maybe_tasks: self.maybe_tasks,
             filter: self.filter,
             current_event_id_sender: self.current_event_id_sender,
-            cancellation_token: self.cancellation_token,
         }
     }
 }
@@ -118,7 +119,10 @@ impl ConnectionManager {
         self.do_start_handling().await
     }
 
-    async fn connect(&mut self) -> Result<Receiver<Result<Event, Error>>, ConnectionManagerError> {
+    async fn connect(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
+    {
         let maybe_event_tx = self.connector.connect(self.current_event_id).await;
         if let Ok(event_tx) = maybe_event_tx {
             self.consume_api_version(event_tx).await
@@ -157,53 +161,48 @@ impl ConnectionManager {
         self.handle_stream(receiver).await
     }
 
-    async fn handle_stream<E>(
+    async fn handle_stream(
         &mut self,
-        mut receiver: Receiver<Result<Event, E>>,
-    ) -> Result<(), ConnectionManagerError>
-    where
-        E: Debug,
-    {
-        loop {
-            select! {
-                maybe_event = receiver.recv() => {
-                    if let Some(event) = maybe_event {
-                        match event {
-                            Ok(event) => {
-                                match event.id.parse::<u32>() {
-                                    Ok(id) => {
-                                        self.current_event_id = Some(id);
-                                        self.current_event_id_sender.send((self.filter.clone(), id)).await.map_err(|err| non_recoverable_error(Error::msg(format!("Error when trying to report observed event id {}", err))))?;
-                                    },
-                                    Err(parse_error) => {
-                                        // ApiVersion events have no ID so parsing "" to u32 will fail.
-                                        // This gate saves displaying a warning for a trivial error.
-                                        if !event.data.contains("ApiVersion") {
-                                            count_error(EVENT_WITHOUT_ID);
-                                            warn!("Parse Error: {}", parse_error);
-                                        }
-                                    }
-                                }
-                                self.handle_event(event)
-                                    .await
-                                    .map_err(non_recoverable_error)?;
-                            }
-                            Err(stream_error) => {
-                                count_error(FETCHING_FROM_STREAM_FAILED);
-                                let error_message = format!("EventStream Error: {:?}", stream_error);
-                                return Err(non_recoverable_error(Error::msg(error_message)));
+        mut receiver: Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>,
+    ) -> Result<(), ConnectionManagerError> {
+        while let Some(event) = receiver.next().await {
+            match event {
+                Ok(event) => {
+                    match event.id.parse::<u32>() {
+                        Ok(id) => {
+                            self.current_event_id = Some(id);
+                            self.current_event_id_sender
+                                .send((self.filter.clone(), id))
+                                .await
+                                .map_err(|err| {
+                                    non_recoverable_error(Error::msg(format!(
+                                        "Error when trying to report observed event id {}",
+                                        err
+                                    )))
+                                })?;
+                        }
+                        Err(parse_error) => {
+                            // ApiVersion events have no ID so parsing "" to u32 will fail.
+                            // This gate saves displaying a warning for a trivial error.
+                            if !event.data.contains("ApiVersion") {
+                                count_error(EVENT_WITHOUT_ID);
+                                warn!("Parse Error: {}", parse_error);
                             }
                         }
-                    } else {
-                        return Err(decorate_with_event_stream_closed(self.bind_address.clone()))
                     }
+                    self.handle_event(event)
+                        .await
+                        .map_err(non_recoverable_error)?;
                 }
-                _ = self.cancellation_token.cancelled() => {
-                    count_internal_event("connection_manager", "cancellation");
-                    return Err(non_recoverable_error(Error::msg(format!("Detected sse connection inactivity on filter {}", self.bind_address.as_str()))))
+                Err(stream_error) => {
+                    count_error(FETCHING_FROM_STREAM_FAILED);
+                    let error_message =
+                        format!("EventStream Error ({}): {:?}", self.filter, stream_error);
+                    return Err(non_recoverable_error(Error::msg(error_message)));
                 }
             }
         }
+        Err(decorate_with_event_stream_closed(self.bind_address.clone()))
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
@@ -239,16 +238,14 @@ impl ConnectionManager {
         Ok(())
     }
 
-    async fn consume_api_version<E>(
+    async fn consume_api_version(
         &mut self,
-        mut receiver: Receiver<Result<Event, E>>,
-    ) -> Result<Receiver<Result<Event, E>>, ConnectionManagerError>
-    where
-        E: Debug,
+        mut receiver: Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>,
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
     {
         // We want to see if the first message got from a connection is ApiVersion. That is the protocols guarantee.
         // If it's not - something went very wrong and we shouldn't consider this connection valid
-        match receiver.recv().await {
+        match receiver.next().await {
             None => Err(recoverable_error(Error::msg("First event was empty"))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
@@ -263,13 +260,11 @@ impl ConnectionManager {
         }
     }
 
-    async fn try_handle_api_version_message<E>(
+    async fn try_handle_api_version_message(
         &mut self,
         event: &Event,
-        receiver: Receiver<Result<Event, E>>,
-    ) -> Result<Receiver<Result<Event, E>>, ConnectionManagerError>
-    where
-        E: Debug,
+        receiver: Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>,
+    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
     {
         match deserialize(&event.data) {
             //at this point we
@@ -311,12 +306,6 @@ impl ConnectionManager {
             .with_label_values(&[self.filter.to_string().as_str()])
             .observe(payload_size as f64);
     }
-}
-
-fn count_internal_event(category: &str, reason: &str) {
-    metrics::INTERNAL_EVENTS
-        .with_label_values(&[category, reason])
-        .inc();
 }
 
 pub fn non_recoverable_error(error: Error) -> ConnectionManagerError {
@@ -366,7 +355,7 @@ mod tests {
     };
     use casper_event_types::{sse_data::test_support::*, Filter};
     use tokio::sync::mpsc::{channel, Receiver};
-    use tokio_util::sync::CancellationToken;
+
     use url::Url;
 
     #[tokio::test]
@@ -472,7 +461,6 @@ mod tests {
         let bind_address = Url::parse("http://localhost:123").unwrap();
         let (data_tx, data_rx) = channel(100);
         let (event_id_tx, event_id_rx) = channel(100);
-        let cancellation_token = CancellationToken::new();
         let manager = ConnectionManager {
             connector,
             bind_address,
@@ -481,7 +469,6 @@ mod tests {
             maybe_tasks: None,
             filter: Filter::Sigs,
             current_event_id_sender: event_id_tx,
-            cancellation_token,
         };
         (manager, data_rx, event_id_rx)
     }

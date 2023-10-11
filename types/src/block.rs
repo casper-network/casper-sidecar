@@ -208,8 +208,10 @@ impl Block {
     pub fn hash(&self) -> &BlockHash {
         &self.hash
     }
-
     pub fn random(rng: &mut TestRng) -> Self {
+        Self::random_with_height(rng, None)
+    }
+    pub fn random_with_height(rng: &mut TestRng, maybe_height: Option<u64>) -> Self {
         // Create the block body.
         let proposer = PublicKey::random(rng);
         let deploy_count = rng.gen_range(0..11);
@@ -226,7 +228,7 @@ impl Block {
             transfer_hashes,
         };
         // Create the block header.
-        let header = random_block_header(rng, &body);
+        let header = random_block_header(rng, &body, maybe_height);
 
         // Create the block hash.
         let serialized_header = header
@@ -239,7 +241,11 @@ impl Block {
 }
 
 #[cfg(feature = "sse-data-testing")]
-fn random_block_header(rng: &mut TestRng, body: &BlockBody) -> BlockHeader {
+fn random_block_header(
+    rng: &mut TestRng,
+    body: &BlockBody,
+    maybe_height: Option<u64>,
+) -> BlockHeader {
     let parent_hash = BlockHash(Digest::random(rng));
     let state_root_hash = Digest::random(rng);
     let serialized_body = body
@@ -256,7 +262,7 @@ fn random_block_header(rng: &mut TestRng, body: &BlockBody) -> BlockHeader {
     };
     let timestamp = Timestamp::now();
     let era = rng.gen_range(1..6);
-    let height = era * 10 + rng.gen_range(0..10);
+    let height = maybe_height.unwrap_or_else(|| era * 10 + rng.gen_range(0..10));
     BlockHeader {
         parent_hash,
         state_root_hash,
@@ -594,7 +600,12 @@ pub mod json_compatibility {
 
         #[cfg(feature = "sse-data-testing")]
         pub fn random(rng: &mut TestRng) -> Self {
-            let block = Block::random(rng);
+            Self::random_with_height(rng, None)
+        }
+
+        #[cfg(feature = "sse-data-testing")]
+        pub fn random_with_height(rng: &mut TestRng, maybe_height: Option<u64>) -> Self {
+            let block = Block::random_with_height(rng, maybe_height);
             let proofs_count = rng.gen_range(0..11);
             let proofs = iter::repeat_with(|| {
                 let finality_signature = FinalitySignature::random_for_block(

@@ -30,6 +30,8 @@ use tokio::sync::{
 };
 #[cfg(test)]
 use tokio::time::timeout;
+#[cfg(feature = "additional-metrics")]
+use tracing::error;
 
 use thiserror::Error;
 use warp::{reject, Filter};

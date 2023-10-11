@@ -62,7 +62,7 @@ pub mod tests {
         pub fn build(&self) -> MockNode {
             let sse_port = self.sse_port.unwrap_or(get_port());
             let rest_port = self.rest_port.unwrap_or(get_port());
-            let cache_of_node = self.cache_of_node.clone().unwrap_or(vec![]);
+            let cache_of_node = self.cache_of_node.clone().unwrap_or_default();
             MockNode::new(
                 self.version.clone(),
                 self.data_of_node.clone(),
