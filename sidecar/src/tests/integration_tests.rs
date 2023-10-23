@@ -1,5 +1,3 @@
-use super::run;
-use anyhow::Error;
 use bytes::Bytes;
 use casper_event_types::sse_data::{test_support::*, SseData};
 use casper_types::testing::TestRng;
@@ -25,11 +23,10 @@ use crate::{
         testing_config::{prepare_config, TestingConfig},
     },
     types::{
-        config::Config,
         database::DatabaseWriter,
         sse_events::{BlockAdded, Fault},
     },
-    utils::{any_string_contains, start_nodes_and_wait, stop_nodes_and_wait, wait_for_n_messages},
+    utils::{any_string_contains, start_nodes_and_wait, stop_nodes_and_wait, wait_for_n_messages, build_test_config, start_sidecar, build_test_config_with_retries, build_test_config_without_connections}, run,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -673,44 +670,6 @@ pub async fn try_connect_to_single_stream(
         }
     }
     event_stream
-}
-pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
-    build_test_config_with_retries(10, 1)
-}
-
-pub fn build_test_config_without_connections() -> (TestingConfig, TempDir, u16) {
-    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let testing_config = prepare_config(&temp_storage_dir);
-    let event_stream_server_port = testing_config.event_stream_server_port();
-    (testing_config, temp_storage_dir, event_stream_server_port)
-}
-
-pub fn build_test_config_with_retries(
-    max_attempts: usize,
-    delay_between_retries: usize,
-) -> (TestingConfig, TempDir, u16, u16, u16) {
-    let (mut testing_config, temp_storage_dir, event_stream_server_port) =
-        build_test_config_without_connections();
-    testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
-    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
-    testing_config.set_retries_for_node(
-        node_port_for_sse_connection,
-        max_attempts,
-        delay_between_retries,
-    );
-    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
-    (
-        testing_config,
-        temp_storage_dir,
-        node_port_for_sse_connection,
-        node_port_for_rest_connection,
-        event_stream_server_port,
-    )
-}
-
-pub async fn start_sidecar(config: Config) -> tokio::task::JoinHandle<Result<(), Error>> {
-    tokio::spawn(async move { run(config).await }) // starting event sidecar
 }
 
 pub async fn poll_events<E, S>(mut stream: S, sender: mpsc::Sender<()>) -> Vec<String>

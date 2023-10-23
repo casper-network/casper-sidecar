@@ -1,11 +1,15 @@
-#[cfg(test)]
-use crate::integration_tests::{build_test_config, start_sidecar};
 #[cfg(feature = "additional-metrics")]
 use crate::metrics::EVENTS_PROCESSED_PER_SECOND;
 #[cfg(test)]
+use crate::run;
+#[cfg(test)]
 use crate::testing::mock_node::tests::MockNode;
 #[cfg(test)]
+use crate::testing::testing_config::prepare_config;
+#[cfg(test)]
 use crate::testing::testing_config::TestingConfig;
+#[cfg(test)]
+use crate::types::config::Config;
 #[cfg(test)]
 use anyhow::Error;
 #[cfg(feature = "additional-metrics")]
@@ -20,7 +24,7 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
 };
 #[cfg(test)]
-use tempfile::TempDir;
+use tempfile::{tempdir, TempDir};
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
 #[cfg(feature = "additional-metrics")]
@@ -259,4 +263,47 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
         }
     });
     metrics_queue_tx
+}
+
+#[cfg(test)]
+pub async fn start_sidecar(config: Config) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::spawn(async move { run(config).await }) // starting event sidecar
+}
+
+#[cfg(test)]
+pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
+    build_test_config_with_retries(10, 1)
+}
+
+#[cfg(test)]
+pub fn build_test_config_without_connections() -> (TestingConfig, TempDir, u16) {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir);
+    let event_stream_server_port = testing_config.event_stream_server_port();
+    (testing_config, temp_storage_dir, event_stream_server_port)
+}
+
+#[cfg(test)]
+pub fn build_test_config_with_retries(
+    max_attempts: usize,
+    delay_between_retries: usize,
+) -> (TestingConfig, TempDir, u16, u16, u16) {
+    let (mut testing_config, temp_storage_dir, event_stream_server_port) =
+        build_test_config_without_connections();
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    testing_config.set_retries_for_node(
+        node_port_for_sse_connection,
+        max_attempts,
+        delay_between_retries,
+    );
+    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
+    (
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    )
 }
