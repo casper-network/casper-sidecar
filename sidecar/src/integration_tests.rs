@@ -448,7 +448,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
+async fn sidecar_should_use_start_from_if_database_is_not_empty() {
     let mut rng = TestRng::new();
     let (
         testing_config,
@@ -481,10 +481,10 @@ async fn sidecar_should_not_use_start_from_if_database_is_not_empty() {
     stop_nodes_and_wait(vec![&mut node_mock]).await;
 
     let events_received = tokio::join!(join_handle).0.unwrap();
-    assert_eq!(events_received.len(), 2);
-    //Should not have data from node cache
+    assert_eq!(events_received.len(), 3);
     assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
+    assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
