@@ -60,6 +60,8 @@ delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = false
 connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
@@ -72,6 +74,8 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
 * `connection_timeout_in_seconds` - The total time before the connection request times out.
+* `no_message_timeout_in_seconds` - Optional parameter that determines after what time of not receiving any bytes from the connection will it be restarted. Defaults to 120
+* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter which determines in what intervals will the liveliness of the connection be checked. Defaults to 60
 
 ### Storage
 
@@ -198,15 +202,19 @@ This information determines configuration for the Sidecar's `admin_server`. It i
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
 * `max_requests_per_second` - The maximum total number of requests that can be made per second.
 
+## Swagger documentation
+
+Once Sidecar is running, you can access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
+
 ## Unit Testing the Sidecar Application
 
-You can run included unit tests with the following command:
+You can run included unit and integration tests with the following command:
 
 ```
 cargo test
 ```
 
-You can also run the integration and performance tests using the following command:
+You can also run the performance tests using the following command:
 
 ```
 cargo test -- --include-ignored
