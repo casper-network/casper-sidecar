@@ -198,9 +198,7 @@ impl EventListener {
     }
 
     /// Spins up the connections and starts pushing data from node
-    ///
-    /// * `is_empty_database` - if set to true, sidecar will connect to the node and fetch all the events the node has in it's cache.
-    pub async fn stream_aggregated_events(&mut self, is_empty_database: bool) -> Result<(), Error> {
+    pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
         EventListenerStatus::Preparing.log_status_for_event_listener(self);
         let (last_event_id_for_filter, last_seen_event_id_sender) =
             self.start_last_event_id_registry(self.node.ip_address.to_string(), self.node.sse_port);
@@ -223,7 +221,6 @@ impl EventListener {
             match self
                 .do_connect(
                     last_event_id_for_filter.clone(),
-                    is_empty_database,
                     last_seen_event_id_sender.clone(),
                 )
                 .await?
@@ -240,13 +237,11 @@ impl EventListener {
     async fn do_connect(
         &mut self,
         last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
-        is_empty_database: bool,
         last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<ConnectOutcome, Error> {
         let connections = self
             .build_connections(
                 last_event_id_for_filter.clone(),
-                is_empty_database,
                 last_seen_event_id_sender.clone(),
             )
             .await?;
@@ -324,7 +319,6 @@ impl EventListener {
     async fn build_connections(
         &mut self,
         last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
-        is_empty_database: bool,
         last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<HashMap<Filter, ConnectionManager>, Error> {
         let filters = filters_from_version(self.node_build_version);
@@ -334,7 +328,7 @@ impl EventListener {
         let guard = last_event_id_for_filter.lock().await;
         for filter in filters {
             let mut start_from_event_id = guard.get(&filter).copied();
-            if is_empty_database && start_from_event_id.is_none() {
+            if start_from_event_id.is_none() {
                 start_from_event_id = Some(0);
             }
             let connection = self
