@@ -106,7 +106,6 @@ async fn run(config: Config) -> Result<(), Error> {
     let storage_config = config.storage.clone();
     let database = build_database(&storage_config).await?;
     let rest_server_handle = build_and_start_rest_server(&config, database.clone());
-    let is_empty_database = check_if_database_is_empty(database.clone()).await?;
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
@@ -115,7 +114,6 @@ async fn run(config: Config) -> Result<(), Error> {
         sse_data_receivers,
         database.clone(),
         outbound_sse_data_sender.clone(),
-        is_empty_database,
     );
 
     let event_broadcasting_handle =
@@ -165,7 +163,6 @@ fn start_sse_processors(
     sse_data_receivers: Vec<Receiver<SseEvent>>,
     database: Database,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
-    is_empty_database: bool,
 ) -> JoinHandle<Result<(), Error>> {
     tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
@@ -177,9 +174,7 @@ fn start_sse_processors(
             .zip(sse_data_receivers)
         {
             tokio::spawn(async move {
-                let res = event_listener
-                    .stream_aggregated_events(is_empty_database)
-                    .await;
+                let res = event_listener.stream_aggregated_events().await;
                 if let Err(e) = res {
                     let addr = event_listener.get_node_interface().ip_address.to_string();
                     error!("Disconnected from {}. Reason: {}", addr, e.to_string());
@@ -830,14 +825,6 @@ async fn start_single_threaded_events_consumer<
         #[cfg(feature = "additional-metrics")]
         let _ = metrics_sender.send(()).await;
     }
-}
-
-async fn check_if_database_is_empty(database: Database) -> Result<bool, Error> {
-    database
-        .get_number_of_events()
-        .await
-        .map(|i| i == 0)
-        .map_err(|e| Error::msg(format!("Error when checking if database is empty {:?}", e)))
 }
 
 fn count_error(reason: &str) {

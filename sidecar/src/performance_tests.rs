@@ -249,7 +249,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     .build();
 
     tokio::spawn(async move {
-        let res = node_event_listener.stream_aggregated_events(false).await;
+        let res = node_event_listener.stream_aggregated_events().await;
         if let Err(error) = res {
             println!("Node listener Error: {}", error)
         }
@@ -275,7 +275,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     }
     .build();
     tokio::spawn(async move {
-        let res = sidecar_event_listener.stream_aggregated_events(false).await;
+        let res = sidecar_event_listener.stream_aggregated_events().await;
         if let Err(error) = res {
             println!("Sidecar listener Error: {}", error)
         }

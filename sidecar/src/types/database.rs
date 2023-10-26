@@ -21,15 +21,6 @@ pub enum Database {
     PostgreSqlDatabaseWrapper(PostgreSqlDatabase),
 }
 
-impl Database {
-    pub async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError> {
-        match self {
-            Database::SqliteDatabaseWrapper(db) => db.get_number_of_events().await,
-            Database::PostgreSqlDatabaseWrapper(db) => db.get_number_of_events().await,
-        }
-    }
-}
-
 /// Describes a reference for the writing interface of an 'Event Store' database.
 /// There is a one-to-one relationship between each method and each event that can be received from the node.
 /// Each method takes the `data` and `id` fields as well as the source IP address (useful for tying the node-specific `id` to the relevant node).
