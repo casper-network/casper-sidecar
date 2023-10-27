@@ -243,14 +243,14 @@ impl StreamConnector for MockSseConnection {
             }
             drop(tx);
         });
-        let a = stream! {
-            while let Some(res) = rx.recv().await {
-                yield res;
+        Ok(Box::pin(
+            stream! {
+                while let Some(res) = rx.recv().await {
+                    yield res;
+                }
             }
-        }
-        .eventsource();
-
-        Ok(Box::pin(a))
+            .eventsource(),
+        ))
     }
 }
 

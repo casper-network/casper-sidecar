@@ -12,6 +12,7 @@ use tokio::{sync::mpsc, time::sleep};
 
 use crate::{
     database::sqlite_database::SqliteDatabase,
+    run,
     testing::{
         mock_node::tests::{MockNode, MockNodeBuilder},
         raw_sse_events_utils::tests::{
@@ -26,7 +27,11 @@ use crate::{
         database::DatabaseWriter,
         sse_events::{BlockAdded, Fault},
     },
-    utils::{any_string_contains, start_nodes_and_wait, stop_nodes_and_wait, wait_for_n_messages, build_test_config, start_sidecar, build_test_config_with_retries, build_test_config_without_connections}, run,
+    utils::{
+        any_string_contains, build_test_config, build_test_config_with_retries,
+        build_test_config_without_connections, start_nodes_and_wait, start_sidecar,
+        stop_nodes_and_wait, wait_for_n_messages,
+    },
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

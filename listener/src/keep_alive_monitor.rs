@@ -22,7 +22,6 @@ pub struct KeepAliveMonitor {
     /// If KeepAliveMonitor will not see any new data from the endpoint in at least this duration, it will cancel the `cancellation_token`
     no_message_timeout: Duration,
     /// Internal state of KeepAliveMonitor, it is the instant of time when the last bytes were observed from `bind_address`
-    /// This mutex could be turned into an RwLock, but for now there is only one reader and one writer task
     last_message_seen_at: Arc<Mutex<Option<Instant>>>,
     /// This receiver should get messages every time there is something happening on the datasource that we are monitoring for inactivity.
     receiver: Arc<Mutex<Receiver<()>>>,

@@ -355,7 +355,6 @@ mod tests {
     };
     use casper_event_types::{sse_data::test_support::*, Filter};
     use tokio::sync::mpsc::{channel, Receiver};
-
     use url::Url;
 
     #[tokio::test]

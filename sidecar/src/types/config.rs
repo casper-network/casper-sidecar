@@ -104,6 +104,21 @@ impl StorageConfig {
         }
     }
 
+    #[cfg(test)]
+    pub fn postgres_with_port(port: u16) -> Self {
+        StorageConfig::PostgreSqlDbConfig {
+            storage_path: "/target/test_storage".to_string(),
+            postgresql_config: PostgresqlConfig {
+                host: "localhost".to_string(),
+                database_name: "event_sidecar".to_string(),
+                database_username: "postgres".to_string(),
+                database_password: "p@$$w0rd".to_string(),
+                max_connections_in_pool: 100,
+                port,
+            },
+        }
+    }
+
     pub fn get_storage_path(&self) -> String {
         match self {
             StorageConfig::SqliteDbConfig { storage_path, .. } => storage_path.clone(),

@@ -17,7 +17,7 @@ database_writer_implementation!(
 
 #[cfg(test)]
 impl PostgreSqlDatabase {
-    pub(super) async fn fetch_one(&self, sql: &str) -> PgRow {
+    pub async fn fetch_one(&self, sql: &str) -> PgRow {
         self.connection_pool
             .fetch_one(sql)
             .await

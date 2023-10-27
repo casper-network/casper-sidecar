@@ -3,7 +3,7 @@ use portpicker::Port;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
-use crate::types::config::{Config, Connection};
+use crate::types::config::{Config, Connection, StorageConfig};
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
 pub struct TestingConfig {
@@ -59,6 +59,10 @@ impl TestingConfig {
     /// By default it is set to `/target/test_storage` however it is recommended to overwrite this with a `TempDir` path for testing purposes.
     pub(crate) fn set_storage_path(&mut self, path: String) {
         self.config.storage.set_storage_path(path);
+    }
+
+    pub(crate) fn set_storage(&mut self, storage: StorageConfig) {
+        self.config.storage = storage;
     }
 
     pub(crate) fn add_connection(

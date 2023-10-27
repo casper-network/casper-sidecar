@@ -10,9 +10,9 @@ mod event_stream_server;
 pub mod rest_server;
 mod sql;
 #[cfg(test)]
-pub(crate) mod tests;
-#[cfg(test)]
 pub(crate) mod testing;
+#[cfg(test)]
+pub(crate) mod tests;
 mod types;
 mod utils;
 
