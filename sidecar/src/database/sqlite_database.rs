@@ -94,8 +94,10 @@ impl SqliteDatabase {
     async fn get_transaction(&self) -> Result<Transaction<Sqlite>, sqlx::Error> {
         self.connection_pool.begin().await
     }
+}
 
-    #[cfg(test)]
+#[cfg(test)]
+impl SqliteDatabase {
     pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
         match storage_config {
             StorageConfig::SqliteDbConfig {
@@ -108,14 +110,12 @@ impl SqliteDatabase {
         }
     }
 
-    #[cfg(test)]
     pub async fn new_in_memory(max_connections: u32) -> Result<SqliteDatabase, Error> {
         let sqlite_db = Self::new_in_memory_no_migrations(max_connections).await?;
         MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
         Ok(sqlite_db)
     }
 
-    #[cfg(test)]
     pub async fn new_in_memory_no_migrations(
         max_connections: u32,
     ) -> Result<SqliteDatabase, Error> {
@@ -135,7 +135,6 @@ impl SqliteDatabase {
         Ok(sqlite_db)
     }
 
-    #[cfg(test)]
     pub async fn get_number_of_tables(&self) -> u32 {
         self.connection_pool
         .fetch_one("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name != 'android_metadata' AND name != 'sqlite_sequence';")

@@ -8,8 +8,6 @@ use casper_types::ProtocolVersion;
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
-#[cfg(test)]
-use rand::Rng;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -77,14 +75,6 @@ const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
 type UrlProps = (&'static [EventFilter], &'static Endpoint, Option<u32>);
-
-#[cfg(test)]
-// The number of events in the initial stream, excluding the very first `ApiVersion` one.
-const NUM_INITIAL_EVENTS: usize = 10;
-#[cfg(test)]
-// The number of events in the ongoing stream, including any duplicated from the initial
-// stream.
-const NUM_ONGOING_EVENTS: usize = 20;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -582,10 +572,16 @@ mod tests {
     use super::*;
     use casper_event_types::DeployHash;
     use casper_types::testing::TestRng;
+    use rand::Rng;
     use regex::Regex;
     use std::iter;
     #[cfg(feature = "additional-metrics")]
     use tokio::sync::mpsc::channel;
+    // The number of events in the initial stream, excluding the very first `ApiVersion` one.
+    const NUM_INITIAL_EVENTS: usize = 10;
+    // The number of events in the ongoing stream, including any duplicated from the initial
+    // stream.
+    const NUM_ONGOING_EVENTS: usize = 20;
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(

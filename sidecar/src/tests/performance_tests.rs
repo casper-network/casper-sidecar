@@ -23,7 +23,7 @@ use crate::{
     testing::fake_event_stream::Bound,
     tests::integration_tests::fetch_data_from_endpoint,
     types::database::DatabaseReader,
-    utils::{build_postgres_based_test_config, wait_for_n_messages},
+    utils::tests::{build_postgres_based_test_config, wait_for_n_messages},
 };
 use crate::{
     event_stream_server::Config as EssConfig,
@@ -34,7 +34,7 @@ use crate::{
         },
         testing_config::prepare_config,
     },
-    utils::display_duration,
+    utils::tests::display_duration,
 };
 use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface, SseEvent};
 use casper_types::{testing::TestRng, AsymmetricType};

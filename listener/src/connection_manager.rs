@@ -350,7 +350,7 @@ fn count_error(reason: &str) {
 mod tests {
     use crate::{
         connection_manager::{ConnectionManager, ConnectionManagerError},
-        sse_connector::{MockSseConnection, StreamConnector},
+        sse_connector::{tests::MockSseConnection, StreamConnector},
         SseEvent,
     };
     use casper_event_types::{sse_data::test_support::*, Filter};

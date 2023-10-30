@@ -10,8 +10,6 @@ use reqwest::Client;
 use std::pin::Pin;
 use std::{fmt::Debug, sync::Arc, time::Duration};
 use tokio::select;
-#[cfg(test)]
-use tokio::sync::mpsc::channel;
 use tokio_stream::Stream;
 use tracing::debug;
 use url::Url;
@@ -166,142 +164,151 @@ fn couldnt_connect(
 }
 
 #[cfg(test)]
-pub struct MockSseConnection {
-    data: Vec<Event>,
-    failure_on_connection: Option<ConnectionManagerError>,
-    failure_on_message: Option<SseDataStreamingError>,
-}
-
-#[cfg(test)]
-impl MockSseConnection {
-    pub fn build_with_data(input_data: Vec<String>) -> Self {
-        let mut data = vec![];
-        for (i, raw) in input_data.iter().enumerate() {
-            let event = Event {
-                event: "".to_string(),
-                data: raw.clone(),
-                id: i.to_string(),
-                retry: None,
-            };
-            data.push(event);
-        }
-        MockSseConnection {
-            data,
-            failure_on_connection: None,
-            failure_on_message: None,
-        }
-    }
-
-    pub fn build_failing_on_connection() -> Self {
-        let e = Error::msg("Some error on connection");
-        MockSseConnection {
-            data: vec![],
-            failure_on_connection: Some(ConnectionManagerError::NonRecoverableError { error: e }),
-            failure_on_message: None,
-        }
-    }
-
-    pub fn build_failing_on_message() -> Self {
-        let e =
-            SseDataStreamingError::ConnectionError(Arc::new(Error::msg("Some error on message")));
-        MockSseConnection {
-            data: vec![],
-            failure_on_connection: None,
-            failure_on_message: Some(e),
-        }
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl StreamConnector for MockSseConnection {
-    async fn connect(
-        &mut self,
-        _current_event_id: Option<u32>,
-    ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
-    {
-        if let Some(err) = self.failure_on_connection.take() {
-            return Err(err);
-        }
-        let data = self.data.clone();
-        let (tx, mut rx) = channel(100);
-        let maybe_fail_on_message = self.failure_on_message.take();
-        tokio::spawn(async move {
-            let mut maybe_fail_on_message = maybe_fail_on_message;
-            for datum in data {
-                if let Some(err) = maybe_fail_on_message.take() {
-                    let _ = tx.send(Err(err)).await;
-                    break;
-                }
-
-                let res = tx
-                    .send(Ok(bytes::Bytes::from(build_sse_raw_from_event(datum))))
-                    .await;
-                if res.is_err() {
-                    break;
-                }
-            }
-            drop(tx);
-        });
-        Ok(Box::pin(
-            stream! {
-                while let Some(res) = rx.recv().await {
-                    yield res;
-                }
-            }
-            .eventsource(),
-        ))
-    }
-}
-
-#[cfg(test)]
-fn build_sse_raw_from_event(datum: Event) -> String {
-    let mut event_raw = String::default();
-    let mut is_empty = true;
-    if !datum.data.is_empty() {
-        let field_data_raw = datum.data;
-        if is_empty {
-            event_raw = format!("{event_raw}data:{field_data_raw}");
-        } else {
-            event_raw = format!("{event_raw}\rdata:{field_data_raw}");
-        }
-        is_empty = false;
-    }
-    if !datum.id.is_empty() && !datum.id.contains('\u{0000}') {
-        let field_data_raw = datum.id;
-        if is_empty {
-            event_raw = format!("{event_raw}id:{field_data_raw}");
-        } else {
-            event_raw = format!("{event_raw}\rid:{field_data_raw}");
-        }
-        is_empty = false;
-    }
-    if !datum.event.is_empty() {
-        let field_data_raw = datum.event;
-        if is_empty {
-            event_raw = format!("{event_raw}event:{field_data_raw}");
-        } else {
-            event_raw = format!("{event_raw}\revent:{field_data_raw}");
-        }
-    }
-    format!("{event_raw}\n\n")
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::sse_connector::{MockSseConnection, SseConnection, StreamConnector};
-    use eventsource_stream::Event;
-    use futures_util::stream::iter;
+pub mod tests {
+    use crate::{
+        connection_manager::ConnectionManagerError,
+        sse_connector::{SseConnection, StreamConnector},
+    };
+    use anyhow::Error;
+    use async_stream::stream;
+    use async_trait::async_trait;
+    use eventsource_stream::{Event, Eventsource};
+    use futures_util::{stream::iter, Stream};
     use std::{
         convert::Infallible,
+        pin::Pin,
+        sync::Arc,
         thread::sleep,
         time::{Duration, Instant},
     };
-    use tokio::time::interval;
     use tokio::time::timeout;
+    use tokio::{sync::mpsc::channel, time::interval};
     use tokio_stream::{wrappers::IntervalStream, StreamExt};
     use url::Url;
     use warp::{sse::Event as SseEvent, Filter};
+
+    use super::{EventResult, SseDataStreamingError};
+
+    pub struct MockSseConnection {
+        data: Vec<Event>,
+        failure_on_connection: Option<ConnectionManagerError>,
+        failure_on_message: Option<SseDataStreamingError>,
+    }
+
+    impl MockSseConnection {
+        pub fn build_with_data(input_data: Vec<String>) -> Self {
+            let mut data = vec![];
+            for (i, raw) in input_data.iter().enumerate() {
+                let event = Event {
+                    event: "".to_string(),
+                    data: raw.clone(),
+                    id: i.to_string(),
+                    retry: None,
+                };
+                data.push(event);
+            }
+            MockSseConnection {
+                data,
+                failure_on_connection: None,
+                failure_on_message: None,
+            }
+        }
+
+        pub fn build_failing_on_connection() -> Self {
+            let e = Error::msg("Some error on connection");
+            MockSseConnection {
+                data: vec![],
+                failure_on_connection: Some(ConnectionManagerError::NonRecoverableError {
+                    error: e,
+                }),
+                failure_on_message: None,
+            }
+        }
+
+        pub fn build_failing_on_message() -> Self {
+            let e = SseDataStreamingError::ConnectionError(Arc::new(Error::msg(
+                "Some error on message",
+            )));
+            MockSseConnection {
+                data: vec![],
+                failure_on_connection: None,
+                failure_on_message: Some(e),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl StreamConnector for MockSseConnection {
+        async fn connect(
+            &mut self,
+            _current_event_id: Option<u32>,
+        ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>
+        {
+            if let Some(err) = self.failure_on_connection.take() {
+                return Err(err);
+            }
+            let data = self.data.clone();
+            let (tx, mut rx) = channel(100);
+            let maybe_fail_on_message = self.failure_on_message.take();
+            tokio::spawn(async move {
+                let mut maybe_fail_on_message = maybe_fail_on_message;
+                for datum in data {
+                    if let Some(err) = maybe_fail_on_message.take() {
+                        let _ = tx.send(Err(err)).await;
+                        break;
+                    }
+
+                    let res = tx
+                        .send(Ok(bytes::Bytes::from(build_sse_raw_from_event(datum))))
+                        .await;
+                    if res.is_err() {
+                        break;
+                    }
+                }
+                drop(tx);
+            });
+            Ok(Box::pin(
+                stream! {
+                    while let Some(res) = rx.recv().await {
+                        yield res;
+                    }
+                }
+                .eventsource(),
+            ))
+        }
+    }
+
+    fn build_sse_raw_from_event(datum: Event) -> String {
+        let mut event_raw = String::default();
+        let mut is_empty = true;
+        if !datum.data.is_empty() {
+            let field_data_raw = datum.data;
+            if is_empty {
+                event_raw = format!("{event_raw}data:{field_data_raw}");
+            } else {
+                event_raw = format!("{event_raw}\rdata:{field_data_raw}");
+            }
+            is_empty = false;
+        }
+        if !datum.id.is_empty() && !datum.id.contains('\u{0000}') {
+            let field_data_raw = datum.id;
+            if is_empty {
+                event_raw = format!("{event_raw}id:{field_data_raw}");
+            } else {
+                event_raw = format!("{event_raw}\rid:{field_data_raw}");
+            }
+            is_empty = false;
+        }
+        if !datum.event.is_empty() {
+            let field_data_raw = datum.event;
+            if is_empty {
+                event_raw = format!("{event_raw}event:{field_data_raw}");
+            } else {
+                event_raw = format!("{event_raw}\revent:{field_data_raw}");
+            }
+        }
+        format!("{event_raw}\n\n")
+    }
 
     #[tokio::test]
     async fn given_sse_connection_should_read_data() {
