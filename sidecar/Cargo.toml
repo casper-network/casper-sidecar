@@ -85,10 +85,10 @@ Package for Casper Event Sidecar
 unit-scripts = "../resources/maintainer_scripts/casper_event_sidecar"
 restart-after-upgrade = true
 
-[package.metadata.deb.variants.bionic]
-name = "casper-event-sidecar"
-revision = "0+bionic"
-
 [package.metadata.deb.variants.focal]
 name = "casper-event-sidecar"
 revision = "0+focal"
+
+[package.metadata.deb.variants.jammy]
+name = "casper-event-sidecar"
+revision = "0+jammy"
