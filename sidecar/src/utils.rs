@@ -1,13 +1,34 @@
 #[cfg(test)]
-use crate::integration_tests::{build_test_config, start_sidecar};
+use super::PostgreSqlDatabase;
 #[cfg(feature = "additional-metrics")]
 use crate::metrics::EVENTS_PROCESSED_PER_SECOND;
 #[cfg(test)]
+use crate::run;
+#[cfg(test)]
 use crate::testing::mock_node::tests::MockNode;
+#[cfg(test)]
+use crate::testing::testing_config::get_port;
+#[cfg(test)]
+use crate::testing::testing_config::prepare_config;
 #[cfg(test)]
 use crate::testing::testing_config::TestingConfig;
 #[cfg(test)]
+use crate::types::config::Config;
+#[cfg(test)]
 use anyhow::Error;
+#[cfg(test)]
+use anyhow::Error as AnyhowError;
+#[cfg(test)]
+use pg_embed::pg_enums::PgAuthMethod;
+#[cfg(test)]
+use pg_embed::postgres::PgSettings;
+#[cfg(test)]
+use pg_embed::{
+    pg_fetch::{PgFetchSettings, PG_V13},
+    postgres::PgEmbed,
+};
+#[cfg(test)]
+use std::path::PathBuf;
 #[cfg(feature = "additional-metrics")]
 use std::sync::Arc;
 #[cfg(any(feature = "additional-metrics", test))]
@@ -20,7 +41,8 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
 };
 #[cfg(test)]
-use tempfile::TempDir;
+use tempfile::{tempdir, TempDir};
+use thiserror::Error;
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
 #[cfg(feature = "additional-metrics")]
@@ -30,8 +52,6 @@ use tokio::sync::{
 };
 #[cfg(test)]
 use tokio::time::timeout;
-
-use thiserror::Error;
 use warp::{reject, Filter};
 
 #[derive(Debug)]
@@ -257,4 +277,160 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
         }
     });
     metrics_queue_tx
+}
+
+#[cfg(test)]
+pub async fn start_sidecar(config: Config) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::spawn(async move { run(config).await }) // starting event sidecar
+}
+
+#[cfg(test)]
+pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
+    build_test_config_with_retries(10, 1)
+}
+
+#[cfg(test)]
+pub fn build_test_config_without_connections() -> (TestingConfig, TempDir, u16) {
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let testing_config = prepare_config(&temp_storage_dir);
+    let event_stream_server_port = testing_config.event_stream_server_port();
+    (testing_config, temp_storage_dir, event_stream_server_port)
+}
+
+#[cfg(test)]
+pub fn build_test_config_with_retries(
+    max_attempts: usize,
+    delay_between_retries: usize,
+) -> (TestingConfig, TempDir, u16, u16, u16) {
+    let (mut testing_config, temp_storage_dir, event_stream_server_port) =
+        build_test_config_without_connections();
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    testing_config.set_retries_for_node(
+        node_port_for_sse_connection,
+        max_attempts,
+        delay_between_retries,
+    );
+    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
+    (
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    )
+}
+
+#[cfg(test)]
+pub struct PostgresTestContext {
+    pub pg: PgEmbed,
+    pub _temp_dir: TempDir,
+    pub db: PostgreSqlDatabase,
+    pub port: u16,
+}
+
+#[cfg(test)]
+impl Drop for PostgresTestContext {
+    fn drop(&mut self) {
+        let _ = self.pg.stop_db_sync();
+    }
+}
+
+#[cfg(test)]
+async fn spin_up_postgres(
+    pg_settings: PgSettings,
+    temp_dir: TempDir,
+) -> Result<(PgEmbed, TempDir), AnyhowError> {
+    let fetch_settings = PgFetchSettings {
+        version: PG_V13,
+        ..Default::default()
+    };
+    let pg_res = PgEmbed::new(pg_settings, fetch_settings).await;
+    if let Err(e) = pg_res {
+        drop(temp_dir);
+        return Err(anyhow::Error::from(e));
+    }
+    let mut pg = pg_res.unwrap();
+    let res = pg.setup().await;
+    if let Err(e) = res {
+        let _ = pg.stop_db().await;
+        drop(temp_dir);
+        return Err(anyhow::Error::from(e));
+    }
+    let res = pg.start_db().await;
+    if let Err(e) = res {
+        let _ = pg.stop_db().await;
+        drop(temp_dir);
+        return Err(anyhow::Error::from(e));
+    }
+    Ok((pg, temp_dir))
+}
+
+#[cfg(test)]
+async fn start_embedded_postgres() -> (PgEmbed, TempDir, u16) {
+    let port = get_port();
+    let temp_storage_path = tempdir().expect("Should have created a temporary storage directory");
+    let path = temp_storage_path.path().to_string_lossy().to_string();
+    let pg_settings = PgSettings {
+        database_dir: PathBuf::from(path),
+        port,
+        user: "postgres".to_string(),
+        password: "p@$$w0rd".to_string(),
+        auth_method: PgAuthMethod::Plain,
+        persistent: false,
+        timeout: Some(Duration::from_secs(120)),
+        migration_dir: None,
+    };
+    let (db, folder) = spin_up_postgres(pg_settings, temp_storage_path)
+        .await
+        .unwrap();
+    (db, folder, port)
+}
+
+#[cfg(test)]
+pub async fn build_postgres_database() -> Result<PostgresTestContext, AnyhowError> {
+    let (pg, temp_dir, port) = start_embedded_postgres().await;
+    let database_name = "event_sidecar";
+    pg.create_database(database_name).await?;
+    let pg_db_uri: String = pg.full_db_uri(database_name);
+    let db = PostgreSqlDatabase::new_from_postgres_uri(pg_db_uri)
+        .await
+        .unwrap();
+    Ok(PostgresTestContext {
+        pg,
+        _temp_dir: temp_dir,
+        db,
+        port,
+    })
+}
+
+#[cfg(test)]
+pub async fn build_postgres_based_test_config(
+    max_attempts: usize,
+    delay_between_retries: usize,
+) -> (TestingConfig, TempDir, u16, u16, u16, PostgresTestContext) {
+    use crate::types::config::StorageConfig;
+    let context = build_postgres_database().await.unwrap();
+    let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
+    let mut testing_config = prepare_config(&temp_storage_dir);
+    let event_stream_server_port = testing_config.event_stream_server_port();
+    testing_config.set_storage(StorageConfig::postgres_with_port(context.port));
+    testing_config.add_connection(None, None, None);
+    let node_port_for_sse_connection = testing_config.config.connections.get(0).unwrap().sse_port;
+    let node_port_for_rest_connection = testing_config.config.connections.get(0).unwrap().rest_port;
+    testing_config.set_retries_for_node(
+        node_port_for_sse_connection,
+        max_attempts,
+        delay_between_retries,
+    );
+    testing_config.set_allow_partial_connection_for_node(node_port_for_sse_connection, true);
+    (
+        testing_config,
+        temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+        context,
+    )
 }

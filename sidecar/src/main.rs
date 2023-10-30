@@ -7,16 +7,12 @@ mod admin_server;
 mod api_version_manager;
 mod database;
 mod event_stream_server;
-#[cfg(test)]
-mod integration_tests;
-#[cfg(test)]
-mod integration_tests_version_switch;
-#[cfg(test)]
-mod performance_tests;
 pub mod rest_server;
 mod sql;
 #[cfg(test)]
 pub(crate) mod testing;
+#[cfg(test)]
+pub(crate) mod tests;
 mod types;
 mod utils;
 

@@ -1,20 +1,30 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    net::IpAddr,
+    str::FromStr,
     time::Duration,
 };
 
+use casper_event_types::sse_data::SseData;
 use colored::Colorize;
 use derive_new::new;
 use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
 use tempfile::tempdir;
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{
+    sync::mpsc::{self, Receiver},
+    task::JoinHandle,
+    time::{sleep, Instant},
+};
 
-use casper_event_listener::SseEvent;
-use casper_types::{testing::TestRng, AsymmetricType};
-
-use super::*;
-use crate::testing::fake_event_stream::Bound;
+use crate::{
+    database::postgresql_database::PostgreSqlDatabase,
+    run,
+    testing::fake_event_stream::Bound,
+    tests::integration_tests::fetch_data_from_endpoint,
+    types::database::DatabaseReader,
+    utils::{build_postgres_based_test_config, wait_for_n_messages},
+};
 use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
@@ -26,6 +36,9 @@ use crate::{
     },
     utils::display_duration,
 };
+use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface, SseEvent};
+use casper_types::{testing::TestRng, AsymmetricType};
+use tokio_util::sync::CancellationToken;
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
 
@@ -71,6 +84,42 @@ async fn check_latency_on_load_testing_deploys_scenario() {
         ACCEPTABLE_LATENCY,
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[ignore]
+async fn test_event_throughput() {
+    let duration_in_secs = 40;
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+        test_context,
+    ) = build_postgres_based_test_config(5, 3).await;
+    let duration = Duration::from_secs(duration_in_secs);
+    let scenario = Scenario::Spam(Bound::Timed(duration));
+    let cancellation_token = CancellationToken::new();
+
+    tokio::spawn(fake_event_stream(
+        scenario,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    ));
+    tokio::spawn(run(testing_config.inner()));
+
+    let handle =
+        start_counting_outbound_events(cancellation_token.clone(), event_stream_server_port).await;
+    //Let the fake event stream push events for some time
+    sleep(duration).await;
+    cancellation_token.cancel();
+
+    let (out_evts_per_sec, db_evts_per_sec) =
+        calculate_events_per_sec(handle, &test_context.db, duration_in_secs).await;
+    println!("out_evts_per_sec: {out_evts_per_sec}. db_evts_per_sec: {db_evts_per_sec}");
+    assert!(out_evts_per_sec > 400.0);
+    assert!(db_evts_per_sec > 400.0);
 }
 
 // This can be uncommented to use as a live test against a node in a real-world network i.e. Mainnet.
@@ -599,4 +648,48 @@ async fn push_timestamped_events_to_vecs(
     }
 
     events_vec
+}
+
+async fn fake_event_stream(
+    scenario: Scenario,
+    node_port_for_sse_connection: u16,
+    node_port_for_rest_connection: u16,
+) {
+    let test_rng = TestRng::new();
+    let (_shutdown_tx, _after_shutdown_rx) =
+        setup_mock_build_version_server(node_port_for_rest_connection).await;
+    let ess_config = EssConfig::new(node_port_for_sse_connection, None, None);
+    spin_up_fake_event_stream(test_rng, ess_config, scenario).await;
+}
+
+async fn start_counting_outbound_events(
+    cancellation_token: CancellationToken,
+    event_stream_server_port: u16,
+) -> JoinHandle<u32> {
+    let (_, receiver) =
+        fetch_data_from_endpoint("/events/deploys?start_from=0", event_stream_server_port).await;
+    let mut receiver = wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
+    tokio::spawn(async move {
+        let mut counter = 0;
+        while !cancellation_token.is_cancelled() {
+            if receiver.recv().await.is_some() {
+                counter += 1;
+            } else {
+                break;
+            }
+        }
+        counter
+    })
+}
+
+async fn calculate_events_per_sec(
+    handle: JoinHandle<u32>,
+    db: &PostgreSqlDatabase,
+    duration_in_secs: u64,
+) -> (f32, f32) {
+    let outbound_sse_events = handle.await.unwrap();
+    let count = db.get_number_of_events().await.unwrap();
+    let events_per_sec = count as f32 / duration_in_secs as f32;
+    let outbound_sse_events_per_sec = outbound_sse_events as f32 / duration_in_secs as f32;
+    (events_per_sec, outbound_sse_events_per_sec)
 }

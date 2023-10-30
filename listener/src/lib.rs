@@ -13,7 +13,6 @@ use casper_event_types::{metrics, Filter};
 use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
-use keep_alive_monitor::KeepAliveMonitor;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
@@ -24,7 +23,7 @@ use tokio::{
     },
     time::sleep,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
 
@@ -258,8 +257,7 @@ impl EventListener {
             // Return on the first completed connection
             let select_result = futures::future::select_all(connection_join_handles).await;
             let task_result = select_result.0;
-            if task_result.is_ok() {
-                let res = task_result.unwrap();
+            if let Ok(res) = task_result {
                 if res.is_err() {
                     EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
                     return Ok(ConnectOutcome::ConnectionLost);
@@ -386,14 +384,6 @@ impl EventListener {
         last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<ConnectionManager, Error> {
         let bind_address_for_filter = self.filtered_sse_url(&filter)?;
-        let keep_alive_monitor = KeepAliveMonitor::new(
-            bind_address_for_filter.clone(),
-            self.connection_timeout,
-            self.sleep_between_keep_alive_checks,
-            self.no_message_timeout,
-        );
-        keep_alive_monitor.start().await;
-        let cancellation_token = keep_alive_monitor.get_cancellation_token();
         let builder = ConnectionManagerBuilder {
             bind_address: bind_address_for_filter,
             max_attempts: self.max_connection_attempts,
@@ -403,7 +393,8 @@ impl EventListener {
             start_from_event_id,
             filter,
             current_event_id_sender: last_seen_event_id_sender,
-            cancellation_token,
+            sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
+            no_message_timeout: self.no_message_timeout,
         };
         Ok(builder.build())
     }
@@ -503,29 +494,8 @@ fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
     }
 }
 
-fn filters_from_version(build_version: ProtocolVersion) -> Vec<Filter> {
-    trace!("Getting filters for version...\t{}", build_version);
-
-    // Prior to this the node only had an /events endpoint producing all events.
-    let one_three_zero = ProtocolVersion::from_parts(1, 3, 0);
-    // From 1.3.X the node had /events/main and /events/sigs
-    let one_four_zero = ProtocolVersion::from_parts(1, 4, 0);
-    // From 1.4.X the node added /events/deploys (in addition to /events/main and /events/sigs)
-
-    let mut filters = Vec::new();
-
-    if build_version.lt(&one_three_zero) {
-        filters.push(Filter::Events);
-    } else if build_version.lt(&one_four_zero) {
-        filters.push(Filter::Main);
-        filters.push(Filter::Sigs);
-    } else {
-        filters.push(Filter::Main);
-        filters.push(Filter::Sigs);
-        filters.push(Filter::Deploys);
-    }
-
-    filters
+fn filters_from_version(_build_version: ProtocolVersion) -> Vec<Filter> {
+    vec![Filter::Main, Filter::Sigs, Filter::Deploys]
 }
 
 fn count_error(reason: &str) {

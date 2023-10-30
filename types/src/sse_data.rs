@@ -124,7 +124,7 @@ impl SseData {
     /// Returns a random `SseData::ApiVersion`.
     pub fn random_api_version(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
-            rng.gen_range(0..10),
+            rng.gen_range(2..10),
             rng.gen::<u8>() as u32,
             rng.gen::<u8>() as u32,
         );

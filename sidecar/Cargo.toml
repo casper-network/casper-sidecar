@@ -50,17 +50,17 @@ utoipa = { version = "3.4.4", features = ["rc_schema"]}
 utoipa-swagger-ui = { version = "3.1.5" }
 warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
-once_cell = {workspace = true}
+once_cell = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5"
 
 [dev-dependencies]
-async-stream = "0.3.4"
+async-stream = { workspace = true }
 casper-event-types = { path = "../types", version = "1.0.0", features = ["sse-data-testing"] }
 casper-types = { version = "3.0.0", features = ["std", "testing"] }
 colored = "2.0.0"
-futures-util = "0.3.21"
+futures-util = { workspace = true }
 portpicker = "0.1.1"
 pretty_assertions = "1.3.0"
 reqwest = { version = "0.11.3", features = ["stream"] }

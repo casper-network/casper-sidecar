@@ -27,7 +27,7 @@ const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
 const NUMBER_OF_VALIDATORS: u16 = 100;
 const NUMBER_OF_DEPLOYS_PER_BLOCK: u16 = 20;
-const API_VERSION_1_4_0: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 10);
+const API_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 2);
 
 type FrequencyOfStepEvents = u8;
 type NumberOfDeployEventsInBurst = u64;
@@ -62,6 +62,7 @@ pub enum Scenario {
     Realistic(GenericScenarioSettings),
     LoadTestingStep(GenericScenarioSettings, FrequencyOfStepEvents),
     LoadTestingDeploy(GenericScenarioSettings, NumberOfDeployEventsInBurst),
+    Spam(Bound),
 }
 
 impl Display for Scenario {
@@ -74,19 +75,22 @@ impl Display for Scenario {
             Scenario::LoadTestingDeploy(_, _) => {
                 write!(f, "Load Testing [Deploy]")
             }
+            Scenario::Spam(_) => {
+                write!(f, "Spam")
+            }
         }
     }
 }
 
-pub(crate) async fn spin_up_fake_event_stream(
+#[allow(clippy::too_many_lines)]
+async fn execute_scenario(
     test_rng: TestRng,
-    ess_config: EssConfig,
     scenario: Scenario,
+    events_sender: Sender<SseData>,
+    events_receiver: Receiver<SseData>,
+    event_stream_server: EventStreamServer,
 ) -> TestRng {
-    let start = Instant::now();
-    let (event_stream_server, log_details) = build_event_stream_server(ess_config, &scenario);
-    let (events_sender, events_receiver) = mpsc_channel(500);
-    let returned_test_rng = match scenario {
+    match scenario {
         Scenario::Realistic(settings) => {
             handle_realistic_scenario(
                 test_rng,
@@ -119,7 +123,35 @@ pub(crate) async fn spin_up_fake_event_stream(
             )
             .await
         }
-    };
+        Scenario::Spam(bound) => {
+            do_spam_testing(
+                test_rng,
+                events_sender,
+                events_receiver,
+                event_stream_server,
+                bound,
+            )
+            .await
+        }
+    }
+}
+
+pub(crate) async fn spin_up_fake_event_stream(
+    test_rng: TestRng,
+    ess_config: EssConfig,
+    scenario: Scenario,
+) -> TestRng {
+    let start = Instant::now();
+    let (event_stream_server, log_details) = build_event_stream_server(ess_config, &scenario);
+    let (events_sender, events_receiver) = mpsc_channel(500);
+    let returned_test_rng = execute_scenario(
+        test_rng,
+        scenario,
+        events_sender,
+        events_receiver,
+        event_stream_server,
+    )
+    .await;
     log_test_end(log_details, start);
     returned_test_rng
 }
@@ -145,6 +177,28 @@ fn build_event_stream_server(
     let event_stream_server = EventStreamServer::new(ess_config, temp_dir.path().to_path_buf())
         .expect("Error spinning up Event Stream Server");
     (event_stream_server, log_details)
+}
+
+async fn do_spam_testing(
+    mut test_rng: TestRng,
+    events_sender: Sender<SseData>,
+    mut events_receiver: Receiver<SseData>,
+    mut event_stream_server: EventStreamServer,
+    bound: Bound,
+) -> TestRng {
+    let scenario_task = tokio::spawn(async move {
+        spam_deploy(&mut test_rng, events_sender.clone(), bound).await;
+        test_rng
+    });
+
+    let broadcasting_task = tokio::spawn(async move {
+        while let Some(event) = events_receiver.recv().await {
+            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+        }
+    });
+
+    let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
+    test_rng.expect("Should have returned TestRng for re-use")
 }
 
 async fn do_load_testing_deploy(
@@ -287,7 +341,7 @@ async fn realistic_event_streaming(
     let test_data = prepare_data(test_rng, loops_in_duration);
     let interval = tokio::time::interval(TIME_BETWEEN_BLOCKS);
     events_sender
-        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .send(SseData::ApiVersion(API_VERSION))
         .await
         .unwrap();
     do_stream(interval, bound, start, events_sender, test_data).await;
@@ -470,7 +524,7 @@ async fn load_testing_step(
 ) {
     let start_time = Instant::now();
     event_sender
-        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .send(SseData::ApiVersion(API_VERSION))
         .await
         .unwrap();
     match bound {
@@ -486,6 +540,26 @@ async fn load_testing_step(
     }
 }
 
+async fn spam_deploy(test_rng: &mut TestRng, events_sender: Sender<SseData>, bound: Bound) {
+    let start_time = Instant::now();
+    events_sender
+        .send(SseData::ApiVersion(API_VERSION))
+        .await
+        .unwrap();
+    match bound {
+        Bound::Timed(duration) => {
+            while start_time.elapsed() < duration {
+                for _ in 0..100 {
+                    events_sender
+                        .send(SseData::random_deploy_accepted(test_rng).0)
+                        .await
+                        .expect("failed sending random_deploy_accepted");
+                }
+            }
+        }
+    }
+}
+
 async fn load_testing_deploy(
     test_rng: &mut TestRng,
     events_sender: Sender<SseData>,
@@ -495,7 +569,7 @@ async fn load_testing_deploy(
     let start_time = Instant::now();
 
     events_sender
-        .send(SseData::ApiVersion(API_VERSION_1_4_0))
+        .send(SseData::ApiVersion(API_VERSION))
         .await
         .unwrap();
     match bound {
