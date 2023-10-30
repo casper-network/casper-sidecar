@@ -88,7 +88,3 @@ restart-after-upgrade = true
 [package.metadata.deb.variants.focal]
 name = "casper-event-sidecar"
 revision = "0+focal"
-
-[package.metadata.deb.variants.jammy]
-name = "casper-event-sidecar"
-revision = "0+jammy"
