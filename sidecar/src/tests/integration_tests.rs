@@ -27,7 +27,7 @@ use crate::{
         database::DatabaseWriter,
         sse_events::{BlockAdded, Fault},
     },
-    utils::{
+    utils::tests::{
         any_string_contains, build_test_config, build_test_config_with_retries,
         build_test_config_without_connections, start_nodes_and_wait, start_sidecar,
         stop_nodes_and_wait, wait_for_n_messages,

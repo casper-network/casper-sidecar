@@ -17,7 +17,7 @@ use tokio::{
 
 use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
-    utils::display_duration,
+    utils::tests::display_duration,
 };
 use casper_event_types::{sse_data::SseData, Filter as SseFilter};
 use casper_types::{testing::TestRng, ProtocolVersion};

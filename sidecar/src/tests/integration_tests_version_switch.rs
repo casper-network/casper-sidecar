@@ -3,7 +3,7 @@ pub mod tests {
     use crate::{
         testing::mock_node::tests::MockNodeBuilder,
         tests::integration_tests::fetch_data_from_endpoint,
-        utils::{
+        utils::tests::{
             prepare_one_node_and_start, start_nodes_and_wait, stop_nodes_and_wait,
             wait_for_n_messages,
         },

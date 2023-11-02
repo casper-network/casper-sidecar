@@ -1,7 +1,7 @@
 use crate::{
     sql::tables::{self, event_type::EventTypeId},
     types::{database::DatabaseWriter, sse_events::*},
-    utils::build_postgres_database,
+    utils::tests::build_postgres_database,
 };
 use casper_types::testing::TestRng;
 use sea_query::{Asterisk, Expr, PostgresQueryBuilder, Query, SqliteQueryBuilder};
