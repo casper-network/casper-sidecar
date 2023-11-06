@@ -12,7 +12,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough replicating the SSE interface of the nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
@@ -88,7 +88,7 @@ storage_path = "./target/storage"
 
 ### Database
 
-The Sidecar can connect to different types of databases. The current options are `Sqlite` or `Postgresql`. The following sections show how to configure the database connection for one of these DBs. Note that the Sidecar can only connect to one DB at a time.
+The Sidecar can connect to different types of databases. The current options are `SQLite` or `PostgreSQL`. The following sections show how to configure the database connection for one of these DBs. Note that the Sidecar can only connect to one DB at a time.
 
 #### SQLite Database
 

@@ -8,7 +8,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough replicating the SSE interface of the nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators.
 
@@ -44,7 +44,8 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables logging of events from the node in question.
 
-Connecting to multiple nodes requires multiple `[[connections]]` sections, like:
+Connecting to multiple nodes requires multiple `[[connections]]` sections:
+
 ```
 [[connections]]
 ip_address = "127.0.0.1"
@@ -63,7 +64,6 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
-
 ```
 
 ### Storage
