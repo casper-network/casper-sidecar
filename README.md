@@ -74,7 +74,7 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
 * `connection_timeout_in_seconds` - The total time before the connection request times out.
-* `no_message_timeout_in_seconds` - Optional parameter specifying after how many seconds of not receiving any bytes from the connection the Sidecar will restart. Defaults to 120 <!-- TODO what restarts? The sidecar or the connection to the node? -->
+* `no_message_timeout_in_seconds` - Optional parameter specifying the number of seconds after which the connection will restart if no bytes are received. Defaults to 120 <!-- TODO restart or be closed? -->
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60 <!-- TODO can multiple nodes be connected? -->
 
 ### Storage
