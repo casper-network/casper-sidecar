@@ -12,7 +12,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough replicating the SSE interface of the nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
@@ -75,7 +75,7 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `enable_logging` - This enables the logging of events from the node in question.
 * `connection_timeout_in_seconds` - The total time before the connection request times out.
 * `no_message_timeout_in_seconds` - Optional parameter specifying the number of seconds after which the connection will time out if no bytes are received. Defaults to 120 <!-- TODO restart or time out? -->
-* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60 <!-- TODO can multiple nodes be connected? -->
+* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
 ### Storage
 

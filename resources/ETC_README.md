@@ -8,7 +8,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough replicating the SSE interface of the nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators.
 
@@ -121,7 +121,9 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
-### Admin server
+### Admin Server
+
+This optional section configures the Sidecar's administrative REST server. If this section is not specified, the Sidecar will not start an admin server.
 
 ```
 [admin_server]
@@ -130,11 +132,9 @@ max_concurrent_requests = 1
 max_requests_per_second = 1
 ```
 
-This information determines configuration for the Sidecar's `admin_server`. It is optional - if this section of configuration isn't specified then sidecar will not start an admin server.
-
-* `port` - The port for accessing the sidecar's `admin_server`.
-* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
-* `max_requests_per_second` - The maximum total number of requests that can be made per second.
+* `port` - The port for accessing the Sidecar's admin REST server.
+* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
+* `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
 
 ## Running the Event Sidecar
 
