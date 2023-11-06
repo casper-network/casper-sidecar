@@ -209,6 +209,13 @@ max_requests_per_second = 1
 
 Once the Sidecar is running, you can access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
 
+<!-- TODO 
+## OpenAPI Specification
+
+Shouldn’t we mention the OpenAPI specification, or is the swagger-ui enough?
+- An OpenAPI schema is available at the following URL: http://localhost:18888/api-doc.json/.
+-->
+
 ## Unit Testing the Sidecar Application
 
 You can run included unit and integration tests with the following command:
