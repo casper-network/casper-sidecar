@@ -28,7 +28,15 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 
 ## Configuration
 
-The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted before running the application.
+The SSE Sidecar service must be configured using a `.toml` file specified at runtime.
+
+This repository contains several sample configuration files that can be used as examples and adjusted according to your scenario:
+
+- [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) - Configuration for connecting to nodes on a local NCTL network. This configuration is used in the unit and integration tests found in this repository
+- [EXAMPLE_NCTL_POSTGRES_CONFIG.toml](./EXAMPLE_NCTL_POSTGRES_CONFIG.toml) - Configuration for using the PostgreSQL database and nodes on a local NCTL network
+- [EXAMPLE_NODE_CONFIG.toml](./EXAMPLE_NODE_CONFIG.toml) - Configuration for connecting to live nodes on a Casper network and setting up an admin server
+
+Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
 ### Node Connections
 
@@ -74,19 +82,19 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
 * `connection_timeout_in_seconds` - The total time before the connection request times out.
-* `no_message_timeout_in_seconds` - Optional parameter specifying the number of seconds after which the connection will time out if no bytes are received. Defaults to 120 <!-- TODO restart or time out? -->
+* `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
 ### Storage
 
-This directory stores the SQLite database for the Sidecar and the SSE cache.
+This directory stores the SSE cache and an SQLite database if configured to use SQLite.
 
 ```
 [storage]
 storage_path = "./target/storage"
 ```
 
-### Database
+### Database Connectivity
 
 The Sidecar can connect to different types of databases. The current options are `SQLite` or `PostgreSQL`. The following sections show how to configure the database connection for one of these DBs. Note that the Sidecar can only connect to one DB at a time.
 
@@ -192,7 +200,7 @@ Additionally, there are the following two options:
 
 ### Admin Server
 
-This optional section configures the Sidecar's administrative REST server. If this section is not specified, the Sidecar will not start an admin server.
+This optional section configures the Sidecar's administrative server. If this section is not specified, the Sidecar will not start an admin server.
 
 ```
 [admin_server]
@@ -201,24 +209,23 @@ max_concurrent_requests = 1
 max_requests_per_second = 1
 ```
 
-* `port` - The port for accessing the Sidecar's admin REST server.
+* `port` - The port for accessing the Sidecar's admin server.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
 * `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
+
+You can access the admin server at `http://localhost:18887/metrics/`.
 
 ## Swagger Documentation
 
 Once the Sidecar is running, you can access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
 
-<!-- TODO 
 ## OpenAPI Specification
 
-Shouldn’t we mention the OpenAPI specification, or is the swagger-ui enough?
-- An OpenAPI schema is available at the following URL: http://localhost:18888/api-doc.json/.
--->
+An OpenAPI schema is available at the following URL: http://localhost:18888/api-doc.json/. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
 
-## Unit Testing the Sidecar Application
+## Unit Testing the Sidecar
 
-You can run included unit and integration tests with the following command:
+You can run the unit and integration tests included in this repository with the following command:
 
 ```
 cargo test
@@ -230,12 +237,14 @@ You can also run the performance tests using the following command:
 cargo test -- --include-ignored
 ```
 
+The [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) file contains the configurations used for these tests.
+
 ## Running the Sidecar
 
-Once you are happy with the configuration, you can run it using Cargo:
+After creating the configuration file, run the Sidecar using Cargo and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
 ```shell
-cargo run
+sudo cargo run -- --path-to-config "EXAMPLE_NODE_CONFIG.toml"
 ```
 
 The Sidecar application leverages tracing, which can be controlled by setting the `RUST_LOG` environment variable.
@@ -243,7 +252,7 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 The following command will run the sidecar application with the `INFO` log level.
 
 ```
-RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_NCTL_CONFIG.toml"
+RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config "EXAMPLE_NCTL_CONFIG.toml"
 ```
 
 The log levels, listed in order of increasing verbosity, are:
@@ -254,12 +263,10 @@ The log levels, listed in order of increasing verbosity, are:
 * `DEBUG`
 * `TRACE`
 
-Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
+Further details about log levels can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
 ## Testing Sidecar with a Local Network using NCTL
 
-Your instance of the Sidecar application can be tested against a local network using NCTL.
-
-Instructions for setting up NCTL can be found [here](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
+The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
 
 The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would with a live node, displaying events as they occur in the local NCTL network.
