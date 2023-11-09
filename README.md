@@ -49,6 +49,9 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 
 [[connections]]
 ip_address = "127.0.0.1"
@@ -58,6 +61,9 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = false
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 
 [[connections]]
 ip_address = "127.0.0.1"
@@ -72,7 +78,7 @@ no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
-The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
+The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[connections]]` sections.
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
@@ -81,13 +87,13 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
-* `connection_timeout_in_seconds` - The total time before the connection request times out.
+* `connection_timeout_in_seconds` - Number of seconds before the connection request times out. Parameter is optional, defaults to 5
 * `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
 ### Storage
 
-This directory stores the SSE cache and an SQLite database if configured to use SQLite.
+This directory stores the SSE cache and an SQLite database if the Sidecar is configured to use SQLite.
 
 ```
 [storage]
@@ -213,15 +219,15 @@ max_requests_per_second = 1
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
 * `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
 
-You can access the admin server at `http://localhost:18887/metrics/`.
+Access the admin server at `http://localhost:18887/metrics/`.
 
 ## Swagger Documentation
 
-Once the Sidecar is running, you can access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
+Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
 
 ## OpenAPI Specification
 
-An OpenAPI schema is available at the following URL: http://localhost:18888/api-doc.json/. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
+An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
 
 ## Unit Testing the Sidecar
 
