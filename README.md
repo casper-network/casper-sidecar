@@ -250,7 +250,7 @@ The [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) file contains the con
 After creating the configuration file, run the Sidecar using Cargo and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
 ```shell
-sudo cargo run -- --path-to-config "EXAMPLE_NODE_CONFIG.toml"
+sudo cargo run -- --path-to-config EXAMPLE_NODE_CONFIG.toml
 ```
 
 The Sidecar application leverages tracing, which can be controlled by setting the `RUST_LOG` environment variable.
@@ -258,7 +258,7 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 The following command will run the sidecar application with the `INFO` log level.
 
 ```
-RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config "EXAMPLE_NCTL_CONFIG.toml"
+RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config EXAMPLE_NCTL_CONFIG.toml
 ```
 
 The log levels, listed in order of increasing verbosity, are:
