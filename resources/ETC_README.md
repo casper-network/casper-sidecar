@@ -52,7 +52,7 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
-Connecting to multiple nodes requires multiple `[[connections]]` sections and the nodes must be on the same network:
+Connecting to multiple nodes requires multiple `[[connections]]` sections:
 
 ```
 [[connections]]

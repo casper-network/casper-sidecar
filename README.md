@@ -78,7 +78,7 @@ no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
-The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[connections]]` sections and the nodes must be on the same network.
+The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[connections]]` sections.
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
