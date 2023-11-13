@@ -90,6 +90,8 @@ id:21821471
 
 The Sidecar can connect simultaneously to nodes with different build versions, which send messages with different API versions. There is also the rare possibility of nodes changing API versions and not being in sync with other connected nodes. Although this situation would be rare, clients should be able to parse messages with different API versions.
 
+>**Note**: The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+
 ### The Version of Sidecar Events
 
 When a client connects to the `events/sidecar` endpoint, it will receive a message containing the version of the Sidecar software. Release version `1.1.0` would look like this:
