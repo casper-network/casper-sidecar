@@ -1,12 +1,19 @@
+use std::net::Ipv4Addr;
+use std::time::Duration;
+
+use crate::rest_server::build_and_start_rest_server;
+use crate::types::config::AuthConfig;
+use crate::{database::sqlite_database::SqliteDatabase, types::database::Database};
 use casper_event_types::FinalitySignature as FinSig;
 use casper_types::AsymmetricType;
 use http::StatusCode;
+use reqwest::Response;
 use warp::test::request;
 
 use super::filters;
 use crate::{
-    testing::fake_database::FakeDatabase,
-    types::{database::DeployAggregate, sse_events::*},
+    testing::fake_database::{populate_with_events, FakeDatabase, IdentifiersForStoredEvents},
+    types::{config::RestServerConfig, database::DeployAggregate, sse_events::*},
 };
 
 // Path elements
@@ -25,6 +32,7 @@ const VALID_ERA: u64 = 2304;
 const VALID_PUBLIC_KEY: &str = "01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703";
 const INVALID_HASH: &str = "not_a_hash";
 const INVALID_PUBLIC_KEY: &str = "not_a_public_key";
+const MAX_CONNECTIONS: u32 = 100;
 
 async fn should_respond_to_path_with(request_path: String, expected_status: StatusCode) {
     let database = FakeDatabase::new();
@@ -471,4 +479,120 @@ async fn should_have_correct_content_type() {
             .expect("Error extracting 'content-type' from headers"),
         "application/json"
     );
+}
+
+#[tokio::test]
+async fn rest_server_should_return_data_when_no_authentication() {
+    let (database, identifiers) = build_database().await;
+    let rest_config = RestServerConfig::random();
+    let port = rest_config.port;
+    build_and_start_rest_server(
+        &rest_config,
+        &None,
+        Database::SqliteDatabaseWrapper(database),
+    );
+    wait_for_rest_server_to_be_up(port).await;
+    let request_path = format!("{}/{}", BLOCK, identifiers.block_added_hash);
+    let response = fetch_data(port, &request_path, None).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", DEPLOY, identifiers.deploy_accepted_hash);
+    let response = fetch_data(port, &request_path, None).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", STEP, identifiers.step_era_id);
+    let response = fetch_data(port, &request_path, None).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", FAULTS, identifiers.fault_public_key);
+    let response = fetch_data(port, &request_path, None).await;
+    assert!(response.status().is_success());
+}
+
+#[tokio::test]
+async fn rest_server_should_return_no_data_when_wrong_auth() {
+    let (database, identifiers) = build_database().await;
+    let rest_config = RestServerConfig::random();
+    let auth_config = AuthConfig::build_test_config();
+    let port = rest_config.port;
+    build_and_start_rest_server(
+        &rest_config,
+        &Some(auth_config),
+        Database::SqliteDatabaseWrapper(database),
+    );
+    wait_for_rest_server_to_be_up(port).await;
+    let request_path = format!("{}/{}", BLOCK, identifiers.block_added_hash);
+    let response = fetch_data(port, &request_path, Some("xyz")).await;
+    assert!(response.status().as_u16() == 401);
+    let request_path = format!("{}/{}", DEPLOY, identifiers.deploy_accepted_hash);
+    let response = fetch_data(port, &request_path, Some("xyz")).await;
+    assert!(response.status().as_u16() == 401);
+    let request_path = format!("{}/{}", STEP, identifiers.step_era_id);
+    let response = fetch_data(port, &request_path, Some("xyz")).await;
+    assert!(response.status().as_u16() == 401);
+    let request_path = format!("{}/{}", FAULTS, identifiers.fault_public_key);
+    let response = fetch_data(port, &request_path, Some("xyz")).await;
+    assert!(response.status().as_u16() == 401);
+}
+
+#[tokio::test]
+async fn rest_server_should_return_data_when_authenticated() {
+    let (database, identifiers) = build_database().await;
+    let rest_config = RestServerConfig::random();
+    let auth_config = AuthConfig::build_test_config();
+    let port = rest_config.port;
+    build_and_start_rest_server(
+        &rest_config,
+        &Some(auth_config),
+        Database::SqliteDatabaseWrapper(database),
+    );
+    wait_for_rest_server_to_be_up(port).await;
+    let request_path = format!("{}/{}", BLOCK, identifiers.block_added_hash);
+    let response = fetch_data(port, &request_path, Some("Bearer api_key_1")).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", DEPLOY, identifiers.deploy_accepted_hash);
+    let response = fetch_data(port, &request_path, Some("Bearer api_key_2")).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", STEP, identifiers.step_era_id);
+    let response = fetch_data(port, &request_path, Some("Bearer api_key_1")).await;
+    assert!(response.status().is_success());
+    let request_path = format!("{}/{}", FAULTS, identifiers.fault_public_key);
+    let response = fetch_data(port, &request_path, Some("Bearer api_key_2")).await;
+    assert!(response.status().is_success());
+}
+
+#[cfg(test)]
+async fn build_database() -> (SqliteDatabase, IdentifiersForStoredEvents) {
+    let db = SqliteDatabase::new_in_memory(MAX_CONNECTIONS)
+        .await
+        .expect("Error opening database in memory");
+    let identifiers = populate_with_events(&db).await.unwrap();
+    (db, identifiers)
+}
+
+async fn fetch_data(port: u16, relative_path: &str, maybe_authorization: Option<&str>) -> Response {
+    let request_url = format!(
+        "http://{}:{}/{}",
+        Ipv4Addr::UNSPECIFIED,
+        port,
+        relative_path
+    );
+    let mut builder = reqwest::Client::new().get(request_url.clone());
+    if let Some(authorization) = maybe_authorization {
+        builder = builder.header("Authorization", authorization)
+    }
+    builder
+        .send()
+        .await
+        .unwrap_or_else(|_| panic!("Error requesting endpoint {}", request_url))
+}
+
+pub async fn wait_for_rest_server_to_be_up(port: u16) {
+    let url = format!("http://{}:{}/block", Ipv4Addr::UNSPECIFIED, port);
+    for _ in 0..10 {
+        let event_source = reqwest::Client::new().get(url.as_str()).send().await;
+        if event_source.is_ok() {
+            return;
+        } else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    panic!("Rest server on port {} didn't start", port);
 }

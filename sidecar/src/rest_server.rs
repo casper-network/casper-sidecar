@@ -4,15 +4,20 @@ mod handlers;
 mod openapi;
 #[cfg(test)]
 mod tests;
-
-use std::net::TcpListener;
-use std::time::Duration;
-
 use anyhow::Error;
 use hyper::Server;
+use std::net::TcpListener;
+use std::time::Duration;
+use tokio::task::JoinHandle;
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use tower_http::auth::AsyncRequireAuthorizationLayer;
 use warp::Filter;
 
+use crate::authorization::{
+    build_authorization_validator, AuthorizationValidator, HeaderBasedAuthorizeRequest,
+};
+use crate::types::config::AuthConfig;
+use crate::types::database::Database;
 use crate::{
     types::{config::RestServerConfig, database::DatabaseReader},
     utils::resolve_address,
@@ -20,7 +25,27 @@ use crate::{
 
 const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 
-pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
+pub fn build_and_start_rest_server(
+    rest_server_config: &RestServerConfig,
+    auth_config: &Option<AuthConfig>,
+    database: Database,
+) -> JoinHandle<Result<(), Error>> {
+    let rest_server_config = rest_server_config.clone();
+    let authorization_validator = build_authorization_validator(auth_config);
+    tokio::spawn(async move {
+        match database {
+            Database::SqliteDatabaseWrapper(db) => {
+                run_server(authorization_validator, rest_server_config, db.clone()).await
+            }
+            Database::PostgreSqlDatabaseWrapper(db) => {
+                run_server(authorization_validator, rest_server_config, db.clone()).await
+            }
+        }
+    })
+}
+
+async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
+    authorization_validator: AuthorizationValidator,
     config: RestServerConfig,
     database: Db,
 ) -> Result<(), Error> {
@@ -36,12 +61,24 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
         .rate_limit(
             config.max_requests_per_second as u64,
             Duration::from_secs(1),
-        )
-        .service(warp_service);
-
-    Server::from_tcp(listener)?
-        .serve(Shared::new(Buffer::new(tower_service, 50)))
-        .await?;
-
+        );
+    match authorization_validator {
+        AuthorizationValidator::SimpleAuthorization(authorizer) => {
+            let tower_service = tower_service
+                .layer(AsyncRequireAuthorizationLayer::new(
+                    HeaderBasedAuthorizeRequest::new(authorizer),
+                ))
+                .service(warp_service);
+            Server::from_tcp(listener)?
+                .serve(Shared::new(Buffer::new(tower_service, 50)))
+                .await?;
+        }
+        AuthorizationValidator::NoAuthorization => {
+            let tower_service = tower_service.service(warp_service);
+            Server::from_tcp(listener)?
+                .serve(Shared::new(Buffer::new(tower_service, 50)))
+                .await?;
+        }
+    }
     Err(Error::msg("REST server shutting down"))
 }

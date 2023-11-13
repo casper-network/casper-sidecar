@@ -5,6 +5,7 @@
 extern crate core;
 mod admin_server;
 mod api_version_manager;
+mod authorization;
 mod database;
 mod event_stream_server;
 pub mod rest_server;
@@ -29,7 +30,6 @@ use crate::{
     admin_server::run_server as start_admin_server,
     database::sqlite_database::SqliteDatabase,
     event_stream_server::{Config as SseConfig, EventStreamServer},
-    rest_server::run_server as start_rest_server,
     types::{
         config::{read_config, Config},
         database::{DatabaseWriteError, DatabaseWriter},
@@ -46,6 +46,7 @@ use clap::Parser;
 use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
+use rest_server::build_and_start_rest_server;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 use tokio::{
@@ -54,6 +55,7 @@ use tokio::{
     time::sleep,
 };
 use tracing::{debug, error, info, trace, warn};
+use types::config::validate_auth_config;
 use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
@@ -101,7 +103,8 @@ async fn run(config: Config) -> Result<(), Error> {
     let connection_configs = config.connections.clone();
     let storage_config = config.storage.clone();
     let database = build_database(&storage_config).await?;
-    let rest_server_handle = build_and_start_rest_server(&config, database.clone());
+    let rest_server_handle =
+        build_and_start_rest_server(&config.rest_server, &config.auth, database.clone());
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
@@ -229,23 +232,6 @@ fn spawn_sse_processor(
     }
 }
 
-fn build_and_start_rest_server(
-    config: &Config,
-    database: Database,
-) -> JoinHandle<Result<(), Error>> {
-    let rest_server_config = config.rest_server.clone();
-    tokio::spawn(async move {
-        match database {
-            Database::SqliteDatabaseWrapper(db) => {
-                start_rest_server(rest_server_config, db.clone()).await
-            }
-            Database::PostgreSqlDatabaseWrapper(db) => {
-                start_rest_server(rest_server_config, db.clone()).await
-            }
-        }
-    })
-}
-
 fn build_and_start_admin_server(config: &Config) -> JoinHandle<Result<(), Error>> {
     let admin_server_config = config.admin_server.clone();
     tokio::spawn(async move {
@@ -333,6 +319,7 @@ fn validate_config(config: &Config) -> Result<(), Error> {
             "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
         ));
     }
+    validate_auth_config(&config.auth)?;
     Ok(())
 }
 

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::string::ToString;
 use std::{
     convert::{TryFrom, TryInto},
@@ -41,6 +42,7 @@ pub struct Config {
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
     pub admin_server: Option<AdminServerConfig>,
+    pub auth: Option<AuthConfig>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(Default))]
@@ -52,7 +54,9 @@ pub struct ConfigSerdeTarget {
     pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
     pub admin_server: Option<AdminServerConfig>,
+    pub auth: Option<AuthConfig>,
 }
+
 impl TryFrom<ConfigSerdeTarget> for Config {
     type Error = DatabaseConfigError;
 
@@ -65,6 +69,7 @@ impl TryFrom<ConfigSerdeTarget> for Config {
             rest_server: value.rest_server,
             event_stream_server: value.event_stream_server,
             admin_server: value.admin_server,
+            auth: value.auth,
         })
     }
 }
@@ -254,6 +259,18 @@ pub struct RestServerConfig {
     pub max_requests_per_second: u32,
 }
 
+#[cfg(test)]
+impl RestServerConfig {
+    pub fn random() -> Self {
+        let port = portpicker::pick_unused_port().unwrap();
+        RestServerConfig {
+            port,
+            max_concurrent_requests: 50,
+            max_requests_per_second: 50,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct EventStreamServerConfig {
     pub port: u16,
@@ -266,6 +283,66 @@ pub struct AdminServerConfig {
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct UserLoginData {
+    pub username: String,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct AuthConfig {
+    pub enabled: bool,
+    pub users: Vec<UserLoginData>,
+}
+
+#[cfg(test)]
+impl AuthConfig {
+    pub fn build_test_config() -> AuthConfig {
+        AuthConfig {
+            enabled: true,
+            users: vec![
+                UserLoginData {
+                    username: "a".into(),
+                    api_key: "api_key_1".into(),
+                },
+                UserLoginData {
+                    username: "b".into(),
+                    api_key: "api_key_2".into(),
+                },
+            ],
+        }
+    }
+}
+
+pub fn validate_auth_config(maybe_auth_config: &Option<AuthConfig>) -> Result<(), Error> {
+    if let Some(auth_config) = maybe_auth_config {
+        let mut usernames = HashSet::new();
+        let mut tokens = HashSet::new();
+        let users = &auth_config.users;
+        let mut error_msgs = vec![];
+        for UserLoginData { username, api_key } in users {
+            if usernames.contains(&username) {
+                error_msgs.push(format!("Duplicate username: {}", username));
+            }
+            if tokens.contains(&api_key) {
+                error_msgs.push(format!("Duplicate api_key: {}", api_key));
+            }
+            usernames.insert(username);
+            tokens.insert(api_key);
+        }
+        if !error_msgs.is_empty() {
+            let final_error_msg = error_msgs.join("; ");
+            return Err(Error::msg(format!(
+                "Failed validating authorization config, reason(s): {}",
+                final_error_msg
+            )));
+        }
+        Ok(())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -293,6 +370,7 @@ mod tests {
             rest_server: build_rest_server_config(),
             event_stream_server: EventStreamServerConfig::default(),
             admin_server: None,
+            auth: None,
         };
 
         let parsed_config: Config = read_config("../EXAMPLE_NCTL_CONFIG.toml")
@@ -337,6 +415,7 @@ mod tests {
                 max_concurrent_requests: 1,
                 max_requests_per_second: 1,
             }),
+            auth: None,
         };
         let parsed_config: Config = read_config("../EXAMPLE_NODE_CONFIG.toml")
             .expect("Error parsing EXAMPLE_NODE_CONFIG.toml")
@@ -344,6 +423,62 @@ mod tests {
             .unwrap();
 
         assert_eq!(parsed_config, expected_config);
+    }
+
+    #[test]
+    fn should_validate_correct_auth_config() {
+        let auth_config = Some(AuthConfig::build_test_config());
+        assert!(validate_auth_config(&None).is_ok());
+        assert!(validate_auth_config(&auth_config).is_ok());
+    }
+
+    #[test]
+    fn should_validate_auth_config_with_duplicate_users() {
+        let auth_config = Some(AuthConfig {
+            enabled: true,
+            users: vec![
+                UserLoginData {
+                    username: "a".into(),
+                    api_key: "api_key_1".into(),
+                },
+                UserLoginData {
+                    username: "b".into(),
+                    api_key: "api_key_2".into(),
+                },
+                UserLoginData {
+                    username: "a".into(),
+                    api_key: "api_key_3".into(),
+                },
+            ],
+        });
+        let err = validate_auth_config(&auth_config).err().unwrap();
+        assert_eq!(
+            err.to_string(),
+            "Failed validating authorization config, reason(s): Duplicate username: a".to_string()
+        );
+    }
+
+    #[test]
+    fn should_validate_auth_config_with_duplicate_api_keys_and_usernames() {
+        let auth_config = Some(AuthConfig {
+            enabled: true,
+            users: vec![
+                UserLoginData {
+                    username: "a".into(),
+                    api_key: "api_key_1".into(),
+                },
+                UserLoginData {
+                    username: "b".into(),
+                    api_key: "api_key_1".into(),
+                },
+                UserLoginData {
+                    username: "a".into(),
+                    api_key: "api_key_3".into(),
+                },
+            ],
+        });
+        let err = validate_auth_config(&auth_config).err().unwrap();
+        assert_eq!(err.to_string(), "Failed validating authorization config, reason(s): Duplicate api_key: api_key_1; Duplicate username: a".to_string());
     }
 
     fn build_rest_server_config() -> RestServerConfig {

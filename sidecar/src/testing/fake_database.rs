@@ -33,44 +33,7 @@ impl FakeDatabase {
     pub(crate) async fn populate_with_events(
         &self,
     ) -> Result<IdentifiersForStoredEvents, DatabaseWriteError> {
-        let mut rng = TestRng::new();
-
-        let block_added = BlockAdded::random(&mut rng);
-        let deploy_accepted = DeployAccepted::random(&mut rng);
-        let deploy_processed = DeployProcessed::random(&mut rng, None);
-        let deploy_expired = DeployExpired::random(&mut rng, None);
-        let fault = Fault::random(&mut rng);
-        let finality_signature = FinalitySignature::random(&mut rng);
-        let step = Step::random(&mut rng);
-
-        let test_stored_keys = IdentifiersForStoredEvents {
-            block_added_hash: block_added.hex_encoded_hash(),
-            block_added_height: block_added.get_height(),
-            deploy_accepted_hash: deploy_accepted.hex_encoded_hash(),
-            deploy_processed_hash: deploy_processed.hex_encoded_hash(),
-            deploy_expired_hash: deploy_expired.hex_encoded_hash(),
-            fault_era_id: fault.era_id.value(),
-            fault_public_key: fault.public_key.to_hex(),
-            finality_signatures_block_hash: finality_signature.hex_encoded_block_hash(),
-            step_era_id: step.era_id.value(),
-        };
-
-        self.save_block_added(block_added, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_deploy_accepted(deploy_accepted, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_deploy_processed(deploy_processed, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_deploy_expired(deploy_expired, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_fault(fault, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_finality_signature(finality_signature, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_step(step, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-
-        Ok(test_stored_keys)
+        populate_with_events(self).await
     }
 }
 
@@ -439,4 +402,49 @@ pub struct IdentifiersForStoredEvents {
     pub fault_era_id: u64,
     pub finality_signatures_block_hash: String,
     pub step_era_id: u64,
+}
+
+pub async fn populate_with_events<
+    Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static,
+>(
+    db: &Db,
+) -> Result<IdentifiersForStoredEvents, DatabaseWriteError> {
+    let mut rng = TestRng::new();
+
+    let block_added = BlockAdded::random(&mut rng);
+    let deploy_accepted = DeployAccepted::random(&mut rng);
+    let deploy_processed = DeployProcessed::random(&mut rng, None);
+    let deploy_expired = DeployExpired::random(&mut rng, None);
+    let fault = Fault::random(&mut rng);
+    let finality_signature = FinalitySignature::random(&mut rng);
+    let step = Step::random(&mut rng);
+
+    let test_stored_keys = IdentifiersForStoredEvents {
+        block_added_hash: block_added.hex_encoded_hash(),
+        block_added_height: block_added.get_height(),
+        deploy_accepted_hash: deploy_accepted.hex_encoded_hash(),
+        deploy_processed_hash: deploy_processed.hex_encoded_hash(),
+        deploy_expired_hash: deploy_expired.hex_encoded_hash(),
+        fault_era_id: fault.era_id.value(),
+        fault_public_key: fault.public_key.to_hex(),
+        finality_signatures_block_hash: finality_signature.hex_encoded_block_hash(),
+        step_era_id: step.era_id.value(),
+    };
+
+    db.save_block_added(block_added, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_deploy_accepted(deploy_accepted, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_deploy_processed(deploy_processed, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_deploy_expired(deploy_expired, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_fault(fault, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_finality_signature(finality_signature, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+    db.save_step(step, rng.gen(), "127.0.0.1".to_string())
+        .await?;
+
+    Ok(test_stored_keys)
 }
