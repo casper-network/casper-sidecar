@@ -25,6 +25,10 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 ### Node Connections
 
+The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+
+The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
+
 ```
 [[connections]]
 ip_address = "127.0.0.1"
@@ -38,8 +42,6 @@ connection_timeout_in_seconds = 3
 no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
-
-The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
@@ -91,6 +93,8 @@ The Sidecar can connect to different types of databases. The current options are
 
 #### SQLite Database
 
+This section includes configurations for the SQLite database.
+
 ```
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
@@ -98,8 +102,6 @@ max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 ```
-
-This section includes configurations for the SQLite database.
 
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
@@ -160,6 +162,8 @@ max_connections_in_pool = 30
 
 ### REST & Event Stream Criteria
 
+This information determines outbound connection criteria for the Sidecar's `rest_server`.
+
 <!--TODO for the REST & Event Stream Criteria section, we could point to the Github README -->
 
 ```
@@ -169,8 +173,6 @@ max_concurrent_requests = 50
 max_requests_per_second = 50
 request_timeout_in_seconds = 10
 ```
-
-This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
 * `port` - The port for accessing the Sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
