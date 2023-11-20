@@ -12,7 +12,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer.)
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
 
@@ -28,9 +28,21 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 
 ## Configuration
 
-The file *example_config.toml* in the base *event-sidecar* directory contains default configuration details for your instance of the Sidecar application. These must be adjusted before running the application.
+The SSE Sidecar service must be configured using a `.toml` file specified at runtime.
+
+This repository contains several sample configuration files that can be used as examples and adjusted according to your scenario:
+
+- [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) - Configuration for connecting to nodes on a local NCTL network. This configuration is used in the unit and integration tests found in this repository
+- [EXAMPLE_NCTL_POSTGRES_CONFIG.toml](./EXAMPLE_NCTL_POSTGRES_CONFIG.toml) - Configuration for using the PostgreSQL database and nodes on a local NCTL network
+- [EXAMPLE_NODE_CONFIG.toml](./EXAMPLE_NODE_CONFIG.toml) - Configuration for connecting to live nodes on a Casper network and setting up an admin server
+
+Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
 ### Node Connections
+
+The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+
+The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[connections]]` sections.
 
 ```
 [[connections]]
@@ -41,6 +53,9 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 
 [[connections]]
 ip_address = "127.0.0.1"
@@ -50,6 +65,9 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = false
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 
 [[connections]]
 ip_address = "127.0.0.1"
@@ -64,8 +82,6 @@ no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
-The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
-
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
 * `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
@@ -73,22 +89,27 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
-* `connection_timeout_in_seconds` - The total time before the connection request times out.
-* `no_message_timeout_in_seconds` - Optional parameter that determines after what time of not receiving any bytes from the connection will it be restarted. Defaults to 120
-* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter which determines in what intervals will the liveliness of the connection be checked. Defaults to 60
+* `connection_timeout_in_seconds` - Number of seconds before the connection request times out. Parameter is optional, defaults to 5
+* `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
+* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
 ### Storage
 
-This directory stores the SQLite database for the Sidecar and the SSE cache.
+This directory stores the SSE cache and an SQLite database if the Sidecar is configured to use SQLite.
 
 ```
 [storage]
 storage_path = "./target/storage"
 ```
 
-### Database
-Sidecar can connect to different databases. For now it's either `Sqlite` or `Postgresql`. Following sections show how to configure connections to all possible databases. The following sections are exclusive (you can't provide more than one)
+### Database Connectivity
+
+The Sidecar can connect to different types of databases. The current options are `SQLite` or `PostgreSQL`. The following sections show how to configure the database connection for one of these DBs. Note that the Sidecar can only connect to one DB at a time.
+
 #### SQLite Database
+
+This section includes configurations for the SQLite database.
+
 ```
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
@@ -97,26 +118,24 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 ```
 
-This section includes configurations for the SQLite database.
-
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
 #### PostgreSQL Database
 
-The properties listed below are elements of the PostgreSQL database connection that can be configured for the sidecar.
+The properties listed below are elements of the PostgreSQL database connection that can be configured for the Sidecar.
 
-* `database_name` - Name of the database
-* `host` - url to postgresql instance
-* `database_username` - username
-* `database_password` - database password
+* `database_name` - Name of the database.
+* `host` - URL to PostgreSQL instance.
+* `database_username` - Username.
+* `database_password` - Database password.
 * `max_connections_in_pool` - The maximum number of connections to the database.
-* `port` - The port for the database.
+* `port` - The port for the database connection.
 
 
-To run the sidecar with PostgreSQL, you can set the following environment variables to control how the Sidecar connects to the database.
-This is the suggested method to set the connection information for the PostgeSQL database.
+To run the Sidecar with PostgreSQL, you can set the following database environment variables to control how the Sidecar connects to the database. This is the suggested method to set the connection information for the PostgreSQL database.
+
 ```
 SIDECAR_POSTGRES_USERNAME="your username"
 ```
@@ -141,11 +160,11 @@ SIDECAR_POSTGRES_MAX_CONNECTIONS="max connections"
 SIDECAR_POSTGRES_PORT="port"
 ```
 
-However, they can also be set in the configuration file.
+However, DB connectivity can also be configured using the Sidecar configuration file.
 
-In the event that both the environment variables and the configuration file have the same variable set, the environment variable will take precedence.
-Additionally, it is possible to completely omit the PostgreSQL configuration from the configuration file. In the event this occurs,
-The sidecar will attempt to connect to the database using the environment variables, or use some default values for non-critical variables.
+If the DB environment variables and the Sidecar's configuration file have the same variable set, the DB environment variables will take precedence.
+
+It is possible to completely omit the PostgreSQL configuration from the Sidecar's configuration file. In this case, the Sidecar will attempt to connect to the PostgreSQL using the database environment variables or use some default values for non-critical variables.
 
 ```
 [storage.postgresql_config]
@@ -158,6 +177,8 @@ max_connections_in_pool = 30
 
 ### Rest & Event Stream Criteria
 
+This information determines outbound connection criteria for the Sidecar's `rest_server`.
+
 ```
 [rest_server]
 port = 18888
@@ -165,8 +186,6 @@ max_concurrent_requests = 50
 max_requests_per_second = 50
 request_timeout_in_seconds = 10
 ```
-
-This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
 * `port` - The port for accessing the sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
@@ -187,7 +206,9 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
-### Admin server
+### Admin Server
+
+This optional section configures the Sidecar's administrative server. If this section is not specified, the Sidecar will not start an admin server.
 
 ```
 [admin_server]
@@ -196,19 +217,23 @@ max_concurrent_requests = 1
 max_requests_per_second = 1
 ```
 
-This information determines configuration for the Sidecar's `admin_server`. It is optional - if this section of configuration isn't specified then sidecar will not start an admin server.
+* `port` - The port for accessing the Sidecar's admin server.
+* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
+* `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
 
-* `port` - The port for accessing the sidecar's `admin_server`.
-* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
-* `max_requests_per_second` - The maximum total number of requests that can be made per second.
+Access the admin server at `http://localhost:18887/metrics/`.
 
-## Swagger documentation
+## Swagger Documentation
 
-Once Sidecar is running, you can access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You will need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
+Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
 
-## Unit Testing the Sidecar Application
+## OpenAPI Specification
 
-You can run included unit and integration tests with the following command:
+An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
+
+## Unit Testing the Sidecar
+
+You can run the unit and integration tests included in this repository with the following command:
 
 ```
 cargo test
@@ -220,12 +245,14 @@ You can also run the performance tests using the following command:
 cargo test -- --include-ignored
 ```
 
+The [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) file contains the configurations used for these tests.
+
 ## Running the Sidecar
 
-Once you are happy with the configuration, you can run it using Cargo:
+After creating the configuration file, run the Sidecar using Cargo and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
 ```shell
-cargo run
+sudo cargo run -- --path-to-config EXAMPLE_NODE_CONFIG.toml
 ```
 
 The Sidecar application leverages tracing, which can be controlled by setting the `RUST_LOG` environment variable.
@@ -233,7 +260,7 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 The following command will run the sidecar application with the `INFO` log level.
 
 ```
-RUST_LOG=info cargo run -p casper-event-sidecar -- -p "EXAMPLE_NCTL_CONFIG.toml"
+RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config EXAMPLE_NCTL_CONFIG.toml
 ```
 
 The log levels, listed in order of increasing verbosity, are:
@@ -244,12 +271,10 @@ The log levels, listed in order of increasing verbosity, are:
 * `DEBUG`
 * `TRACE`
 
-Further details can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
+Further details about log levels can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
 ## Testing Sidecar with a Local Network using NCTL
 
-Your instance of the Sidecar application can be tested against a local network using NCTL.
-
-Instructions for setting up NCTL can be found [here](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
+The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
 
 The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would with a live node, displaying events as they occur in the local NCTL network.

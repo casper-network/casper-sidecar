@@ -1,3 +1,5 @@
+# Casper Event Sidecar README for Node Operators
+
 ## Summary of Purpose
 
 The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribers to monitor the event stream through the Sidecar, while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
@@ -8,7 +10,7 @@ While the primary use case for the Sidecar application is running alongside the 
 
 Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
 
-* Build a sidecar middleware service that connects to the Node Event Stream, with a passthrough that replicates the SSE interface of the node and its filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
+* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
 
 * Provide a new RESTful endpoint that is discoverable to node operators.
 
@@ -23,6 +25,10 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 ### Node Connections
 
+The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+
+The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
+
 ```
 [[connections]]
 ip_address = "127.0.0.1"
@@ -32,9 +38,10 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 60
+sleep_between_keep_alive_checks_in_seconds = 30
 ```
-
-The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 * `ip_address` - The IP address of the node to monitor.
 * `sse_port` - The node's event stream (SSE) port. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
@@ -43,8 +50,12 @@ The `node_connections` option configures the node (or multiple nodes) to which t
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables logging of events from the node in question.
+* `connection_timeout_in_seconds` - Number of seconds before the connection request times out. Parameter is optional, defaults to 5
+* `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
+* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
-Connecting to multiple nodes requires multiple `[[connections]]` sections, like:
+Connecting to multiple nodes requires multiple `[[connections]]` sections:
+
 ```
 [[connections]]
 ip_address = "127.0.0.1"
@@ -63,18 +74,26 @@ max_attempts = 10
 delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
-
 ```
 
 ### Storage
+
+This directory stores the SSE cache and an SQLite database if the Sidecar is configured to use SQLite.
 
 ```
 [storage]
 storage_path = "/var/lib/casper-event-sidecar"
 ```
-This directory stores the SQLite database for the Sidecar and the SSE cache.
 
-### SQLite Database
+### Database Connectivity
+
+<!--TODO for the Database Connectivity section, we could point to the Github README -->
+
+The Sidecar can connect to different types of databases. The current options are `SQLite` or `PostgreSQL`. The following sections show how to configure the database connection for one of these DBs. Note that the Sidecar can only connect to one DB at a time.
+
+#### SQLite Database
+
+This section includes configurations for the SQLite database.
 
 ```
 [storage.sqlite_config]
@@ -84,13 +103,68 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 ```
 
-This section includes configurations for the SQLite database.
-
 * `file_name` - The database file path.
 * `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
 * `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
+#### PostgreSQL Database
+
+The properties listed below are elements of the PostgreSQL database connection that can be configured for the Sidecar.
+
+* `database_name` - Name of the database.
+* `host` - URL to PostgreSQL instance.
+* `database_username` - Username.
+* `database_password` - Database password.
+* `max_connections_in_pool` - The maximum number of connections to the database.
+* `port` - The port for the database connection.
+
+
+To run the Sidecar with PostgreSQL, you can set the following database environment variables to control how the Sidecar connects to the database. This is the suggested method to set the connection information for the PostgreSQL database.
+
+```
+SIDECAR_POSTGRES_USERNAME="your username"
+```
+
+```
+SIDECAR_POSTGRES_PASSWORD="your password"
+```
+
+```
+SIDECAR_POSTGRES_DATABASE_NAME="your database name"
+```
+
+```
+SIDECAR_POSTGRES_HOST="your host"
+```
+
+```
+SIDECAR_POSTGRES_MAX_CONNECTIONS="max connections"
+```
+
+```
+SIDECAR_POSTGRES_PORT="port"
+```
+
+However, DB connectivity can also be configured using the Sidecar configuration file.
+
+If the DB environment variables and the Sidecar's configuration file have the same variable set, the DB environment variables will take precedence.
+
+It is possible to completely omit the PostgreSQL configuration from the Sidecar's configuration file. In this case, the Sidecar will attempt to connect to the PostgreSQL using the database environment variables or use some default values for non-critical variables.
+
+```
+[storage.postgresql_config]
+database_name = "event_sidecar"
+host = "localhost"
+database_password = "p@$$w0rd"
+database_username = "postgres"
+max_connections_in_pool = 30
+```
+
 ### REST & Event Stream Criteria
+
+This information determines outbound connection criteria for the Sidecar's `rest_server`.
+
+<!--TODO for the REST & Event Stream Criteria section, we could point to the Github README -->
 
 ```
 [rest_server]
@@ -99,8 +173,6 @@ max_concurrent_requests = 50
 max_requests_per_second = 50
 request_timeout_in_seconds = 10
 ```
-
-This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
 * `port` - The port for accessing the Sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
@@ -121,7 +193,11 @@ Additionally, there are the following two options:
 * `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
-### Admin server
+### Admin Server
+
+<!--TODO for the Admin Server section, we could point to the Github README -->
+
+This optional section configures the Sidecar's administrative REST server. If this section is not specified, the Sidecar will not start an admin server.
 
 ```
 [admin_server]
@@ -130,11 +206,19 @@ max_concurrent_requests = 1
 max_requests_per_second = 1
 ```
 
-This information determines configuration for the Sidecar's `admin_server`. It is optional - if this section of configuration isn't specified then sidecar will not start an admin server.
+* `port` - The port for accessing the Sidecar's admin REST server.
+* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
+* `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
 
-* `port` - The port for accessing the sidecar's `admin_server`.
-* `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
-* `max_requests_per_second` - The maximum total number of requests that can be made per second.
+Access the admin server at `http://localhost:18887/metrics/`.
+
+## Swagger Documentation
+
+Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`.
+
+## OpenAPI Specification
+
+An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`.
 
 ## Running the Event Sidecar
 
