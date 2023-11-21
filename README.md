@@ -273,8 +273,92 @@ The log levels, listed in order of increasing verbosity, are:
 
 Further details about log levels can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
-## Testing Sidecar with a Local Network using NCTL
+## Testing the Sidecar using NCTL
 
 The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
 
 The configuration shown within this README will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would with a live node, displaying events as they occur in the local NCTL network.
+
+## Troubleshooting Tips
+
+This section covers helpful tips when troubleshooting the Sidecar service. Replace the URL and ports provided in the examples as appropriate.
+
+### Checking liveness
+
+To check whether the Sidecar is running, run the following `curl` command, which returns the newest stored block.
+
+```sh
+curl http://SIDECAR_URL:SIDECAR_REST_PORT/block
+```
+
+Each block should have a `.block.header.timestamp` field. Even if there were no deploys, a block should be produced every 30-60 seconds. If the latest block falls behind, it means there is an issue with the Sidecar reading events from the node. Here is a helpful script provided `jq` is installed:
+
+```sh
+curl http://SIDECAR_URL:SIDECAR_REST_PORT/block | jq '.block.header.timestamp'
+```
+
+### Checking the node connection
+
+Checking the node connection status requires the admin server to be enabled, as shown [here](#admin-server). Use this `curl` command and observe the output:
+
+```sh
+curl http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics
+```
+
+**Sample output**:
+
+```
+# HELP node_statuses Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct -> used up all connection attempts ; -2 - defunct -> node is in an incompatible version
+# TYPE node_statuses gauge
+node_statuses{node="35.180.42.211:9999"} 2
+node_statuses{node="69.197.42.27:9999"} 2
+```
+
+In the above `node_statuses`, you can see which nodes are connecting, which are already connected, which are disconnected due to no more retries, etc. The number next to each node represents the connection status:
+
+- `0` - The Sidecar is preparing to connect
+- `1` - The Sidecar is connecting to the node
+- `2` - The Sidecar is connected to this node
+- `3` - The Sidecar is reconnecting
+- `-1` - The Sidecar is not connected and has reached the maximum connection attempts
+- `-2` - The Sidecar is not connected due to an incompatible node version
+
+
+### Diagnosing errors
+
+
+To diagnose errors, look for `error` logs and check the `error_counts` on the metrics page, `http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics`, where most of the errors related to data flow will be stored:
+
+```
+# HELP error_counts Error counts
+# TYPE error_counts counter
+error_counts{category="connection_manager",description="fetching_from_stream_failed"} 6
+```
+
+### Monitoring memory consumption
+
+To monitor the Sidecar's memory consumption, observe the metrics page, `http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics`. Search for `process_resident_memory_bytes`:
+
+```
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 292110336
+```
+
+If memory consumption is high without an apparent reason, please inform the Sidecar team by creating an [issue in GitHub](https://github.com/CasperLabs/event-sidecar/issues).
+
+Remember to check the `event_stream_buffer_length` setting in the configuration because it dramatically impacts how much memory the Sidecar consumes. Also, some events, like step events, consume more memory.
+
+### Ensuring sufficient storage
+
+Ensuring enough space in the database is essential for the Sidecar to consume events produced from the nodes' SSE streams over a more extended period. Each event is written to the database in a raw format for future processing. Running the Sidecar for an extended period (weeks or months) can result in storing multiple Gigabytes of data. If the database runs out of space, the Sidecar will lose events, as it cannot record them.
+
+### Inspecting the REST API
+
+The easiest way to inspect the Sidecar’s REST API is with [Swagger](#swagger-documentation).
+
+### Limiting concurrent requests
+
+The Sidecar can be configured to limit concurrent requests (`max_concurrent_requests`) and requests per second (`max_requests_per_second`) for the REST and admin servers.
+
+However, remember that those are application-level guards, meaning that the operating system already accepted the connection, which used up the operating system's resources. Limiting potential DDoS attacks requires consideration before the requests are directed to the Sidecar application.
