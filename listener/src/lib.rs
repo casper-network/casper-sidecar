@@ -23,7 +23,7 @@ use tokio::{
     },
     time::sleep,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
 
@@ -160,8 +160,8 @@ impl EventListener {
         current_attempt: usize,
     ) -> Result<Option<ProtocolVersion>, BuildVersionFetchError> {
         info!(
-            "Attempting to connect...\t{}/{}",
-            current_attempt, self.max_connection_attempts
+            "Attempting to connect {} \t{}/{}",
+            self.node.ip_address, current_attempt, self.max_connection_attempts
         );
         match self.fetch_build_version_from_status().await {
             Ok(version) => {
@@ -224,7 +224,13 @@ impl EventListener {
                 )
                 .await?
             {
-                ConnectOutcome::ConnectionLost => current_attempt += 1,
+                ConnectOutcome::ConnectionLost => {
+                    current_attempt += 1;
+                    warn!(
+                        "Lost connection to node {}, on attempt {}/{}",
+                        self.node.ip_address, current_attempt, self.max_connection_attempts
+                    );
+                }
                 ConnectOutcome::SystemReconnect => {}
             };
             sleep(Duration::from_secs(1)).await;
