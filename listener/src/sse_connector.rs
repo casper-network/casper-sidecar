@@ -178,12 +178,11 @@ pub mod tests {
         convert::Infallible,
         pin::Pin,
         sync::Arc,
-        thread::sleep,
         time::{Duration, Instant},
     };
-    use tokio::time::timeout;
-    use tokio::{sync::mpsc::channel, time::interval};
-    use tokio_stream::{wrappers::IntervalStream, StreamExt};
+    use tokio::sync::mpsc::channel;
+    use tokio::time::{sleep, timeout};
+    use tokio_stream::StreamExt;
     use url::Url;
     use warp::{sse::Event as SseEvent, Filter};
 
@@ -313,7 +312,7 @@ pub mod tests {
     #[tokio::test]
     async fn given_sse_connection_should_read_data() {
         let sse_port = portpicker::pick_unused_port().unwrap();
-        spin_up_test_sse_endpoint(sse_port).await;
+        sse_server_finite_messages(sse_port).await;
         let mut connection = SseConnection {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
@@ -351,21 +350,23 @@ pub mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_sse_connection_when_no_data_should_fail() {
         let sse_port = portpicker::pick_unused_port().unwrap();
-        sse_server(sse_port, 1, Some(25));
+        sse_server_messages_in_loop(sse_port, 1, 25);
         let mut connection = SseConnection {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            bind_address: Url::parse(format!("http://localhost:{}/ticks", sse_port).as_str())
-                .unwrap(),
+            bind_address: Url::parse(
+                format!("http://localhost:{}/notifications", sse_port).as_str(),
+            )
+            .unwrap(),
             sleep_between_keepalive_checks: Duration::from_secs(1),
             no_message_timeout: Duration::from_secs(5),
         };
         let start = Instant::now();
         let data = fetch_data_with_timeout(&mut connection, Duration::from_secs(20)).await;
         let elapsed = start.elapsed();
-        assert!(elapsed.as_secs() >= 5); // It should take more then 5 seconds before the inactivity check kicks in
         assert!(data.is_empty());
+        assert!(elapsed.as_secs() >= 5); // It should take more then 5 seconds before the inactivity check kicks in
     }
 
     #[tokio::test]
@@ -393,7 +394,11 @@ pub mod tests {
         timeout_after: Duration,
     ) -> Vec<String> {
         let mut data = vec![];
-        if let Ok(mut receiver) = connection.connect(None).await {
+        let connection = timeout(Duration::from_secs(5), connection.connect(None)).await;
+        if connection.is_err() {
+            panic!("Couln't connect to sse endpoint in 5 seconds");
+        }
+        if let Ok(mut receiver) = connection.unwrap() {
             while let Ok(res) = timeout(timeout_after, receiver.next()).await {
                 if let Some(event_res) = res {
                     if let Ok(event) = event_res {
@@ -411,20 +416,36 @@ pub mod tests {
         fetch_data_with_timeout(connection, Duration::from_secs(120)).await
     }
 
-    fn sse_server(port: u16, interval_in_seconds: u64, mut initial_delay_in_seconds: Option<u64>) {
-        let routes = warp::path("ticks").and(warp::get()).map(move || {
-            let mut counter: u64 = 0;
-            // create server event source
-            let interval = interval(Duration::from_secs(interval_in_seconds));
-            let stream = IntervalStream::new(interval);
-            let event_stream = stream.map(move |_| {
-                if let Some(delay) = initial_delay_in_seconds.take() {
-                    sleep(Duration::from_secs(delay));
-                }
-                counter += 1;
-                let event = warp::sse::Event::default().data(counter.to_string());
-                Ok::<warp::sse::Event, Infallible>(event)
-            });
+    fn build_stream(
+        interval_in_seconds: u64,
+        initial_delay_in_seconds: u64,
+    ) -> impl Stream<Item = Result<warp::sse::Event, Infallible>> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        tokio::spawn(async move {
+            sleep(Duration::from_secs(initial_delay_in_seconds)).await;
+            let mut i = 0;
+            loop {
+                let _ = tx.send(i).await;
+                i += 1;
+                sleep(Duration::from_secs(interval_in_seconds)).await;
+            }
+        });
+        stream! {
+            while let Some(z) = rx.recv().await {
+                let mut event = warp::sse::Event::default().data("abc".to_string());
+                event = event.id(z.to_string());
+                yield Ok(event);
+            }
+        }
+    }
+
+    fn sse_server_messages_in_loop(
+        port: u16,
+        interval_in_seconds: u64,
+        initial_delay_in_seconds: u64,
+    ) {
+        let routes = warp::path("notifications").and(warp::get()).map(move || {
+            let event_stream = build_stream(interval_in_seconds, initial_delay_in_seconds);
             // reply using server-sent events
             // keep-alive is omitted intentionally so we can test scenarios in which the sse endpoint gives no traffic
             warp::sse::reply(event_stream)
@@ -434,7 +455,7 @@ pub mod tests {
         });
     }
 
-    async fn spin_up_test_sse_endpoint(sse_port: u16) {
+    async fn sse_server_finite_messages(sse_port: u16) {
         fn sse_events() -> impl futures_util::Stream<Item = Result<SseEvent, Infallible>> {
             iter(vec![
                 Ok(SseEvent::default().data("msg 1")),

@@ -9,7 +9,7 @@ use tokio::sync::Notify;
 /// failure to connect to any filter should cause all connections to fail without reading any events
 /// from the stream(s).
 #[derive(Clone)]
-pub(super) struct ConnectionTasks {
+pub struct ConnectionTasks {
     /// The total number filters to which the [ConnectionManager](super::ConnectionManager) is attempting to connect.
     total: usize,
     /// The number of filters to which successful connections have been established.

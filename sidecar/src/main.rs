@@ -54,6 +54,7 @@ use tokio::{
     time::sleep,
 };
 use tracing::{debug, error, info, trace, warn};
+use types::config::Connection;
 use types::{
     config::StorageConfig,
     database::{Database, DatabaseReader},
@@ -154,7 +155,7 @@ fn start_event_broadcasting(
 }
 
 fn start_sse_processors(
-    connection_configs: Vec<types::config::Connection>,
+    connection_configs: Vec<Connection>,
     event_listeners: Vec<EventListener>,
     sse_data_receivers: Vec<Receiver<SseEvent>>,
     database: Database,
@@ -206,7 +207,7 @@ fn spawn_sse_processor(
     database: &Database,
     sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
-    connection_config: types::config::Connection,
+    connection_config: Connection,
     api_version_manager: &std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
 ) -> JoinHandle<Result<(), Error>> {
     match database.clone() {
@@ -288,39 +289,43 @@ fn build_event_listeners(
     for connection in &config.connections {
         let (inbound_sse_data_sender, inbound_sse_data_receiver) =
             mpsc_channel(config.inbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
-
         sse_data_receivers.push(inbound_sse_data_receiver);
-
-        let node_interface = NodeConnectionInterface {
-            ip_address: IpAddr::from_str(&connection.ip_address)?,
-            sse_port: connection.sse_port,
-            rest_port: connection.rest_port,
-        };
-
-        let event_listener = EventListenerBuilder {
-            node: node_interface,
-            max_connection_attempts: connection.max_attempts,
-            delay_between_attempts: Duration::from_secs(
-                connection.delay_between_retries_in_seconds as u64,
-            ),
-            allow_partial_connection: connection.allow_partial_connection,
-            sse_event_sender: inbound_sse_data_sender,
-            connection_timeout: Duration::from_secs(
-                connection.connection_timeout_in_seconds.unwrap_or(5) as u64,
-            ),
-            sleep_between_keep_alive_checks: Duration::from_secs(
-                connection
-                    .sleep_between_keep_alive_checks_in_seconds
-                    .unwrap_or(60) as u64,
-            ),
-            no_message_timeout: Duration::from_secs(
-                connection.no_message_timeout_in_seconds.unwrap_or(120) as u64,
-            ),
-        }
-        .build();
-        event_listeners.push(event_listener);
+        let event_listener = builder(connection, inbound_sse_data_sender)?.build();
+        event_listeners.push(event_listener?);
     }
     Ok((event_listeners, sse_data_receivers))
+}
+
+fn builder(
+    connection: &Connection,
+    inbound_sse_data_sender: Sender<SseEvent>,
+) -> Result<EventListenerBuilder, Error> {
+    let node_interface = NodeConnectionInterface {
+        ip_address: IpAddr::from_str(&connection.ip_address)?,
+        sse_port: connection.sse_port,
+        rest_port: connection.rest_port,
+    };
+    let event_listener_builder = EventListenerBuilder {
+        node: node_interface,
+        max_connection_attempts: connection.max_attempts,
+        delay_between_attempts: Duration::from_secs(
+            connection.delay_between_retries_in_seconds as u64,
+        ),
+        allow_partial_connection: connection.allow_partial_connection,
+        sse_event_sender: inbound_sse_data_sender,
+        connection_timeout: Duration::from_secs(
+            connection.connection_timeout_in_seconds.unwrap_or(5) as u64,
+        ),
+        sleep_between_keep_alive_checks: Duration::from_secs(
+            connection
+                .sleep_between_keep_alive_checks_in_seconds
+                .unwrap_or(60) as u64,
+        ),
+        no_message_timeout: Duration::from_secs(
+            connection.no_message_timeout_in_seconds.unwrap_or(120) as u64,
+        ),
+    };
+    Ok(event_listener_builder)
 }
 
 fn validate_config(config: &Config) -> Result<(), Error> {

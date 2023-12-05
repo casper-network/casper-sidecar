@@ -4,6 +4,7 @@ use crate::{
     SseEvent,
 };
 use anyhow::Error;
+use async_trait::async_trait;
 use casper_event_types::{
     metrics,
     sse_data::{deserialize, SseData},
@@ -21,16 +22,27 @@ use tokio::sync::mpsc::Sender;
 use tokio_stream::StreamExt;
 use tracing::{error, trace, warn};
 
+const API_VERSION: &str = "ApiVersion";
 const FETCHING_FROM_STREAM_FAILED: &str = "fetching_from_stream_failed";
+const FIRST_EVENT_EMPTY: &str = "First event was empty";
+const ERROR_WHEN_TRYING_TO_SEND_MESSAGE: &str =
+    "Error when trying to send message in ConnectionManager#handle_event";
 const DESERIALIZATION_ERROR: &str = "deserialization_error";
 const EVENT_WITHOUT_ID: &str = "event_without_id";
 const SENDING_FAILED: &str = "sending_downstream_failed";
 const API_VERSION_SENDING_FAILED: &str = "api_version_sending_failed";
 const API_VERSION_DESERIALIZATION_FAILED: &str = "api_version_deserialization_failed";
 const API_VERSION_EXPECTED: &str = "api_version_expected";
+const OTHER_TYPE_OF_MESSAGE_WHEN_API_VERSION_EXPECTED: &str =
+    "When trying to deserialize ApiVersion got other type of message";
+
+#[async_trait]
+pub trait ConnectionManager: Sync + Send {
+    async fn start_handling(&mut self) -> Result<(), ConnectionManagerError>;
+}
 
 /// Implementation of a connection to a single sse endpoint of a node.
-pub(super) struct ConnectionManager {
+pub struct DefaultConnectionManager {
     connector: Box<dyn StreamConnector + Send + Sync>,
     bind_address: Url,
     current_event_id: Option<u32>,
@@ -60,7 +72,7 @@ impl Display for ConnectionManagerError {
 }
 
 /// Builder for [ConnectionManager]
-pub struct ConnectionManagerBuilder {
+pub struct DefaultConnectionManagerBuilder {
     /// Address of the node
     pub(super) bind_address: Url,
     /// Maximum attempts the connection manager will try to (initially) connect.
@@ -89,8 +101,14 @@ pub struct ConnectionManagerBuilder {
     pub(super) no_message_timeout: Duration,
 }
 
-impl ConnectionManagerBuilder {
-    pub(super) fn build(self) -> ConnectionManager {
+#[async_trait::async_trait]
+impl ConnectionManager for DefaultConnectionManager {
+    async fn start_handling(&mut self) -> Result<(), ConnectionManagerError> {
+        self.do_start_handling().await
+    }
+}
+impl DefaultConnectionManagerBuilder {
+    pub(super) fn build(self) -> DefaultConnectionManager {
         trace!("Creating connection manager for: {}", self.bind_address);
         let connector = Box::new(SseConnection {
             max_attempts: self.max_attempts,
@@ -100,7 +118,7 @@ impl ConnectionManagerBuilder {
             sleep_between_keepalive_checks: self.sleep_between_keep_alive_checks,
             no_message_timeout: self.no_message_timeout,
         });
-        ConnectionManager {
+        DefaultConnectionManager {
             connector,
             bind_address: self.bind_address,
             current_event_id: self.start_from_event_id,
@@ -112,12 +130,9 @@ impl ConnectionManagerBuilder {
     }
 }
 
-impl ConnectionManager {
+impl DefaultConnectionManager {
     /// Start handling traffic from nodes endpoint. This function is blocking, it will return a
     /// ConnectionManagerError result if something went wrong while processing.
-    pub(super) async fn start_handling(&mut self) -> Result<(), ConnectionManagerError> {
-        self.do_start_handling().await
-    }
 
     async fn connect(
         &mut self,
@@ -184,7 +199,7 @@ impl ConnectionManager {
                         Err(parse_error) => {
                             // ApiVersion events have no ID so parsing "" to u32 will fail.
                             // This gate saves displaying a warning for a trivial error.
-                            if !event.data.contains("ApiVersion") {
+                            if !event.data.contains(API_VERSION) {
                                 count_error(EVENT_WITHOUT_ID);
                                 warn!("Parse Error: {}", parse_error);
                             }
@@ -208,7 +223,8 @@ impl ConnectionManager {
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match deserialize(&event.data) {
             Err(serde_error) => {
-                count_error(DESERIALIZATION_ERROR);
+                let reason = format!("{}:{}", DESERIALIZATION_ERROR, self.filter);
+                count_error(&reason);
                 let error_message = format!("Serde Error: {}", serde_error);
                 error!(error_message);
                 return Err(Error::msg(error_message));
@@ -229,9 +245,7 @@ impl ConnectionManager {
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(SENDING_FAILED);
-                    Error::msg(
-                        "Error when trying to send message in ConnectionManager#handle_event",
-                    )
+                    Error::msg(ERROR_WHEN_TRYING_TO_SEND_MESSAGE)
                 })?;
             }
         }
@@ -246,12 +260,12 @@ impl ConnectionManager {
         // We want to see if the first message got from a connection is ApiVersion. That is the protocols guarantee.
         // If it's not - something went very wrong and we shouldn't consider this connection valid
         match receiver.next().await {
-            None => Err(recoverable_error(Error::msg("First event was empty"))),
+            None => Err(recoverable_error(Error::msg(FIRST_EVENT_EMPTY))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
                 let payload_size = event.data.len();
                 self.observe_bytes(payload_size);
-                if event.data.contains("ApiVersion") {
+                if event.data.contains(API_VERSION) {
                     self.try_handle_api_version_message(&event, receiver).await
                 } else {
                     Err(expected_first_message_to_be_api_version(event.data))
@@ -279,15 +293,13 @@ impl ConnectionManager {
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(API_VERSION_SENDING_FAILED);
-                    non_recoverable_error(Error::msg(
-                        "Error when trying to send message in ConnectionManager#handle_event",
-                    ))
+                    non_recoverable_error(Error::msg(ERROR_WHEN_TRYING_TO_SEND_MESSAGE))
                 })?
             }
             Ok(_sse_data) => {
                 count_error(API_VERSION_EXPECTED);
                 return Err(non_recoverable_error(Error::msg(
-                    "When trying to deserialize ApiVersion got other type of message",
+                    OTHER_TYPE_OF_MESSAGE_WHEN_API_VERSION_EXPECTED,
                 )));
             }
             Err(x) => {
@@ -347,9 +359,9 @@ fn count_error(reason: &str) {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::{
-        connection_manager::{ConnectionManager, ConnectionManagerError},
+        connection_manager::{ConnectionManagerError, DefaultConnectionManager, FIRST_EVENT_EMPTY},
         sse_connector::{tests::MockSseConnection, StreamConnector},
         SseEvent,
     };
@@ -375,7 +387,7 @@ mod tests {
         let (mut connection_manager, _, _) = build_manager(connector);
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::InitialConnectionError { error }) = res {
-            assert_eq!(error.to_string(), "First event was empty");
+            assert_eq!(error.to_string(), FIRST_EVENT_EMPTY);
         } else {
             unreachable!();
         }
@@ -453,14 +465,14 @@ mod tests {
     fn build_manager(
         connector: Box<dyn StreamConnector + Send + Sync>,
     ) -> (
-        ConnectionManager,
+        DefaultConnectionManager,
         Receiver<SseEvent>,
         Receiver<(Filter, u32)>,
     ) {
         let bind_address = Url::parse("http://localhost:123").unwrap();
         let (data_tx, data_rx) = channel(100);
         let (event_id_tx, event_id_rx) = channel(100);
-        let manager = ConnectionManager {
+        let manager = DefaultConnectionManager {
             connector,
             bind_address,
             current_event_id: None,

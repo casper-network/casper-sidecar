@@ -494,7 +494,6 @@ impl ChannelsAndFilter {
 ///
 /// It also takes an `EventFilter` which causes events to which the client didn't subscribe to be
 /// skipped.
-#[allow(clippy::too_many_lines)]
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
@@ -513,29 +512,35 @@ fn stream_to_client(
             async move {
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
-                        if let Some(id) = event.id {
-                            if cloned_initial_ids.read().unwrap().contains(&id) {
-                                debug!(event_id=%id, "skipped duplicate event");
-                                return None;
-                            }
-                        }
-                        Some(Ok(event))
+                        handle_sse_event(event, cloned_initial_ids)
                     }
                     Ok(BroadcastChannelMessage::Shutdown) => Some(Err(RecvError::Closed)),
-                    Err(BroadcastStreamRecvError::Lagged(amount)) => {
-                        info!(
-                            "client lagged by {} events - dropping event stream connection to client",
-                            amount
-                        );
-                        Some(Err(RecvError::Lagged(amount)))
-                    }
+                    Err(BroadcastStreamRecvError::Lagged(amount)) => handle_lagged(amount),
                 }
             }
         })
-        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))));
+        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))))
+        .boxed();
 
-    // Serve the initial events followed by the ongoing ones, filtering as dictated by the
-    // `event_filter`.
+    build_combined_events_stream(
+        initial_events,
+        initial_stream_ids,
+        ongoing_stream,
+        stream_filter,
+        event_filter,
+    )
+}
+
+// Builds stream that serves the initial events followed by the ongoing ones, filtering as dictated by the `event_filter`.
+fn build_combined_events_stream(
+    initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
+    initial_stream_ids: Arc<RwLock<HashSet<u32>>>,
+    ongoing_stream: std::pin::Pin<
+        Box<dyn Stream<Item = Result<ServerSentEvent, RecvError>> + Send>,
+    >,
+    stream_filter: &'static Endpoint,
+    event_filter: &'static [EventFilter],
+) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     UnboundedReceiverStream::new(initial_events)
         .map(move |event| {
             if let Some(id) = event.id {
@@ -565,6 +570,27 @@ fn stream_to_client(
                 }
             }
         })
+}
+
+fn handle_lagged(amount: u64) -> Option<Result<ServerSentEvent, RecvError>> {
+    info!(
+        "client lagged by {} events - dropping event stream connection to client",
+        amount
+    );
+    Some(Err(RecvError::Lagged(amount)))
+}
+
+fn handle_sse_event(
+    event: ServerSentEvent,
+    cloned_initial_ids: Arc<RwLock<HashSet<u32>>>,
+) -> Option<Result<ServerSentEvent, RecvError>> {
+    if let Some(id) = event.id {
+        if cloned_initial_ids.read().unwrap().contains(&id) {
+            debug!(event_id=%id, "skipped duplicate event");
+            return None;
+        }
+    }
+    Some(Ok(event))
 }
 
 #[cfg(test)]
