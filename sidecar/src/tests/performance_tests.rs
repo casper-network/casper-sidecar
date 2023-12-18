@@ -1,22 +1,3 @@
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter},
-    net::IpAddr,
-    str::FromStr,
-    time::Duration,
-};
-
-use casper_event_types::sse_data::SseData;
-use colored::Colorize;
-use derive_new::new;
-use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
-use tempfile::tempdir;
-use tokio::{
-    sync::mpsc::{self, Receiver},
-    task::JoinHandle,
-    time::{sleep, Instant},
-};
-
 use crate::{
     database::postgresql_database::PostgreSqlDatabase,
     run,
@@ -37,7 +18,24 @@ use crate::{
     utils::tests::display_duration,
 };
 use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface, SseEvent};
+use casper_event_types::sse_data::SseData;
 use casper_types::{testing::TestRng, AsymmetricType};
+use colored::Colorize;
+use derive_new::new;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+    net::IpAddr,
+    str::FromStr,
+    time::Duration,
+};
+use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
+use tempfile::tempdir;
+use tokio::{
+    sync::mpsc::{self, Receiver},
+    task::JoinHandle,
+    time::{sleep, Instant},
+};
 use tokio_util::sync::CancellationToken;
 
 const ACCEPTABLE_LATENCY: Duration = Duration::from_millis(1000);
@@ -277,14 +275,13 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     tokio::spawn(run(testing_config.inner()));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
-
+    let ip_address = IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr");
     let node_interface = NodeConnectionInterface {
-        ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
+        ip_address,
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
     };
     let (node_event_tx, node_event_rx) = mpsc::channel(100);
-
     let mut node_event_listener = EventListenerBuilder {
         node: node_interface,
         max_connection_attempts: 5,
@@ -295,7 +292,8 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         sleep_between_keep_alive_checks: Duration::from_secs(100),
         no_message_timeout: Duration::from_secs(100),
     }
-    .build();
+    .build()
+    .unwrap();
 
     tokio::spawn(async move {
         let res = node_event_listener.stream_aggregated_events().await;
@@ -311,7 +309,6 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
     };
-
     let mut sidecar_event_listener = EventListenerBuilder {
         node: sidecar_node_interface,
         max_connection_attempts: 5,
@@ -322,7 +319,8 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         sleep_between_keep_alive_checks: Duration::from_secs(100),
         no_message_timeout: Duration::from_secs(100),
     }
-    .build();
+    .build()
+    .unwrap();
     tokio::spawn(async move {
         let res = sidecar_event_listener.stream_aggregated_events().await;
         if let Err(error) = res {

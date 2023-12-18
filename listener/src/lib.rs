@@ -4,15 +4,16 @@
 
 mod connection_manager;
 mod connection_tasks;
+pub mod connections_builder;
 mod keep_alive_monitor;
 mod sse_connector;
 mod types;
-use crate::connection_manager::ConnectionManagerBuilder;
 use anyhow::{anyhow, Context, Error};
 use casper_event_types::{metrics, Filter};
 use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
+use connections_builder::{ConnectionsBuilder, DefaultConnectionsBuilder};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
@@ -30,6 +31,7 @@ use url::Url;
 const BUILD_VERSION_KEY: &str = "build_version";
 pub static MINIMAL_NODE_VERSION: Lazy<ProtocolVersion> =
     Lazy::new(|| ProtocolVersion::from_parts(1, 5, 2));
+const MAX_CONNECTION_ATTEMPTS_REACHED: &str = "Max connection attempts reached";
 
 pub struct EventListenerBuilder {
     pub node: NodeConnectionInterface,
@@ -45,18 +47,25 @@ pub struct EventListenerBuilder {
 type FilterWithEventId = Sender<(Filter, u32)>;
 type CurrentFilterToIdHolder = Arc<Mutex<HashMap<Filter, u32>>>;
 impl EventListenerBuilder {
-    pub fn build(&self) -> EventListener {
-        EventListener {
+    pub fn build(&self) -> Result<EventListener, Error> {
+        let connections_builder = Arc::new(DefaultConnectionsBuilder {
+            sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
+            no_message_timeout: self.no_message_timeout,
+            max_connection_attempts: self.max_connection_attempts,
+            connection_timeout: self.connection_timeout,
+            sse_event_sender: self.sse_event_sender.clone(),
+            ip_address: self.node.ip_address,
+            sse_port: self.node.sse_port,
+            allow_partial_connection: self.allow_partial_connection,
+        });
+        Ok(EventListener {
             node_build_version: ProtocolVersion::from_parts(1, 0, 0),
             node: self.node.clone(),
             max_connection_attempts: self.max_connection_attempts,
             delay_between_attempts: self.delay_between_attempts,
             allow_partial_connection: self.allow_partial_connection,
-            sse_event_sender: self.sse_event_sender.clone(),
-            connection_timeout: self.connection_timeout,
-            sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
-            no_message_timeout: self.no_message_timeout,
-        }
+            connections_builder,
+        })
     }
 }
 
@@ -73,19 +82,12 @@ pub struct EventListener {
     /// If set to false, the listener needs to connect to all endpoints a node should expose in a given `node_build_version` for the listener to start processing data.
     /// If set to true the listen will proceed after connecting to at least one connection.
     allow_partial_connection: bool,
-    /// Channel to which data from the node is pushed
-    sse_event_sender: Sender<SseEvent>,
-    /// Maximum duration we will wait to establish a connection to the node
-    connection_timeout: Duration,
-    /// Time the KeepAliveMonitor wait between checks
-    sleep_between_keep_alive_checks: Duration,
-    /// Time of inactivity of a node connection that is allowed by KeepAliveMonitor
-    no_message_timeout: Duration,
+    connections_builder: Arc<dyn ConnectionsBuilder>,
 }
 
 /// Helper enum determining in what state connection to a node is in.
 /// It's used to named different situations in which the connection can be.
-enum EventListenerStatus {
+pub enum EventListenerStatus {
     /// Event Listener has not yet started to attempt the connection
     Preparing,
     /// Event Listener started establishing relevant sse connections to filters of the node
@@ -104,13 +106,7 @@ enum EventListenerStatus {
 }
 
 impl EventListenerStatus {
-    fn log_status_for_event_listener(&self, event_listener: &EventListener) {
-        let node_address = event_listener.node.ip_address.to_string();
-        let sse_port = event_listener.node.sse_port;
-        EventListenerStatus::log_status(self, node_address.as_str(), sse_port);
-    }
-
-    fn log_status(&self, node_address: &str, sse_port: u16) {
+    pub fn log_status(&self, node_address: &str, sse_port: u16) {
         let status = match self {
             EventListenerStatus::Preparing => 0,
             EventListenerStatus::Connecting => 1,
@@ -146,13 +142,6 @@ impl EventListener {
     pub fn get_node_interface(&self) -> NodeConnectionInterface {
         self.node.clone()
     }
-    fn filtered_sse_url(&self, filter: &Filter) -> Result<Url, Error> {
-        let url_str = format!(
-            "http://{}:{}/{}",
-            self.node.ip_address, self.node.sse_port, filter
-        );
-        Url::parse(&url_str).map_err(Error::from)
-    }
 
     async fn fetch_build_version(
         &self,
@@ -166,7 +155,7 @@ impl EventListener {
         match self.fetch_build_version_from_status().await {
             Ok(version) => {
                 validate_version(&version).map_err(|err| {
-                    EventListenerStatus::IncompatibleVersion.log_status_for_event_listener(self);
+                    log_status_for_event_listener(EventListenerStatus::IncompatibleVersion, self);
                     err
                 })?;
                 let new_node_build_version = version;
@@ -186,7 +175,7 @@ impl EventListener {
                     self.node.ip_address
                 );
                 if current_attempt >= self.max_connection_attempts {
-                    EventListenerStatus::Defunct.log_status_for_event_listener(self);
+                    log_status_for_event_listener(EventListenerStatus::Defunct, self);
                     return Err(BuildVersionFetchError::Error(Error::msg(
                         "Unable to retrieve build version from node status",
                     )));
@@ -198,45 +187,43 @@ impl EventListener {
 
     /// Spins up the connections and starts pushing data from node
     pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
-        EventListenerStatus::Preparing.log_status_for_event_listener(self);
+        log_status_for_event_listener(EventListenerStatus::Preparing, self);
         let (last_event_id_for_filter, last_seen_event_id_sender) =
             self.start_last_event_id_registry(self.node.ip_address.to_string(), self.node.sse_port);
-        EventListenerStatus::Connecting.log_status_for_event_listener(self);
+        log_status_for_event_listener(EventListenerStatus::Connecting, self);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
+            if current_attempt > 1 {
+                sleep(self.delay_between_attempts).await;
+            }
             match self.get_version(current_attempt).await {
                 GetVersionResult::Ok(Some(protocol_version)) => {
                     self.node_build_version = protocol_version;
-                    current_attempt = 1
+                    current_attempt = 1 // Restart counter if the nodes version changed
                 }
                 GetVersionResult::Retry => {
-                    sleep(self.delay_between_attempts).await;
                     current_attempt += 1;
+                    if current_attempt >= self.max_connection_attempts {
+                        log_status_for_event_listener(EventListenerStatus::Defunct, self);
+                    }
                     continue;
                 }
                 GetVersionResult::Error(e) => return Err(e),
                 _ => {}
             }
-            match self
+            if let ConnectOutcome::ConnectionLost = self
                 .do_connect(
                     last_event_id_for_filter.clone(),
                     last_seen_event_id_sender.clone(),
                 )
                 .await?
             {
-                ConnectOutcome::ConnectionLost => {
-                    current_attempt += 1;
-                    warn!(
-                        "Lost connection to node {}, on attempt {}/{}",
-                        self.node.ip_address, current_attempt, self.max_connection_attempts
-                    );
-                }
-                ConnectOutcome::SystemReconnect => {}
-            };
-            sleep(Duration::from_secs(1)).await;
+                current_attempt += 1;
+                warn_connection_lost(self, current_attempt);
+            }
         }
-        EventListenerStatus::Defunct.log_status_for_event_listener(self);
-        Ok(())
+        log_status_for_event_listener(EventListenerStatus::Defunct, self);
+        Err(Error::msg(MAX_CONNECTION_ATTEMPTS_REACHED))
     }
 
     async fn do_connect(
@@ -245,9 +232,11 @@ impl EventListener {
         last_seen_event_id_sender: FilterWithEventId,
     ) -> Result<ConnectOutcome, Error> {
         let connections = self
+            .connections_builder
             .build_connections(
                 last_event_id_for_filter.clone(),
                 last_seen_event_id_sender.clone(),
+                self.node_build_version,
             )
             .await?;
         let connection_join_handles = start_connections(connections);
@@ -265,12 +254,12 @@ impl EventListener {
             let task_result = select_result.0;
             if let Ok(res) = task_result {
                 if res.is_err() {
-                    EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                    log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
                     return Ok(ConnectOutcome::ConnectionLost);
                 }
                 Ok(ConnectOutcome::SystemReconnect)
             } else {
-                EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
                 Ok(ConnectOutcome::ConnectionLost)
             }
         }
@@ -301,15 +290,17 @@ impl EventListener {
                                 self.node.ip_address.to_string(),
                                 error
                             );
-                            EventListenerStatus::Reconnecting.log_status_for_event_listener(self);
+                            log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
                             return ConnectOutcome::ConnectionLost;
                         }
                         ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
                                 error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
-                                EventListenerStatus::Reconnecting
-                                    .log_status_for_event_listener(self);
+                                log_status_for_event_listener(
+                                    EventListenerStatus::Reconnecting,
+                                    self,
+                                );
                                 return ConnectOutcome::ConnectionLost;
                             }
                         }
@@ -318,35 +309,6 @@ impl EventListener {
             }
             connection_join_handles = futures_left
         }
-    }
-
-    async fn build_connections(
-        &mut self,
-        last_event_id_for_filter: Arc<Mutex<HashMap<Filter, u32>>>,
-        last_seen_event_id_sender: FilterWithEventId,
-    ) -> Result<HashMap<Filter, ConnectionManager>, Error> {
-        let filters = filters_from_version(self.node_build_version);
-        let mut connections = HashMap::new();
-        let maybe_tasks =
-            (!self.allow_partial_connection).then(|| ConnectionTasks::new(filters.len()));
-        let guard = last_event_id_for_filter.lock().await;
-        for filter in filters {
-            let mut start_from_event_id = guard.get(&filter).copied();
-            if start_from_event_id.is_none() {
-                start_from_event_id = Some(0);
-            }
-            let connection = self
-                .build_connection(
-                    maybe_tasks.clone(),
-                    start_from_event_id,
-                    filter.clone(),
-                    last_seen_event_id_sender.clone(),
-                )
-                .await?;
-            connections.insert(filter, connection);
-        }
-        drop(guard);
-        Ok(connections)
     }
 
     fn status_endpoint(&self) -> Result<Url, Error> {
@@ -382,30 +344,11 @@ impl EventListener {
         try_resolve_version(response_json)
     }
 
-    async fn build_connection(
-        &self,
-        maybe_tasks: Option<ConnectionTasks>,
-        start_from_event_id: Option<u32>,
-        filter: Filter,
-        last_seen_event_id_sender: FilterWithEventId,
-    ) -> Result<ConnectionManager, Error> {
-        let bind_address_for_filter = self.filtered_sse_url(&filter)?;
-        let builder = ConnectionManagerBuilder {
-            bind_address: bind_address_for_filter,
-            max_attempts: self.max_connection_attempts,
-            sse_data_sender: self.sse_event_sender.clone(),
-            maybe_tasks,
-            connection_timeout: self.connection_timeout,
-            start_from_event_id,
-            filter,
-            current_event_id_sender: last_seen_event_id_sender,
-            sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
-            no_message_timeout: self.no_message_timeout,
-        };
-        Ok(builder.build())
-    }
-
     async fn get_version(&mut self, current_attempt: usize) -> GetVersionResult {
+        info!(
+            "Attempting to connect...\t{}/{}",
+            current_attempt, self.max_connection_attempts
+        );
         let fetch_result = self
             .fetch_build_version(self.node_build_version, current_attempt)
             .await;
@@ -417,6 +360,7 @@ impl EventListener {
                 GetVersionResult::Ok(None)
             }
             Err(BuildVersionFetchError::VersionNotAcceptable(msg)) => {
+                log_status_for_event_listener(EventListenerStatus::IncompatibleVersion, self);
                 //The node has a build version which sidecar can't talk to. Failing fast in this case.
                 GetVersionResult::Error(Error::msg(msg))
             }
@@ -447,7 +391,7 @@ impl EventListener {
 }
 
 fn start_connections(
-    connections: HashMap<Filter, ConnectionManager>,
+    connections: HashMap<Filter, Box<dyn ConnectionManager>>,
 ) -> Vec<tokio::task::JoinHandle<Result<(), ConnectionManagerError>>> {
     connections
         .into_iter()
@@ -500,8 +444,10 @@ fn try_resolve_version(raw_response: Value) -> Result<ProtocolVersion, Error> {
     }
 }
 
-fn filters_from_version(_build_version: ProtocolVersion) -> Vec<Filter> {
-    vec![Filter::Main, Filter::Sigs, Filter::Deploys]
+fn log_status_for_event_listener(status: EventListenerStatus, event_listener: &EventListener) {
+    let node_address = event_listener.node.ip_address.to_string();
+    let sse_port = event_listener.node.sse_port;
+    status.log_status(node_address.as_str(), sse_port);
 }
 
 fn count_error(reason: &str) {
@@ -522,44 +468,9 @@ fn validate_version(version: &ProtocolVersion) -> Result<(), BuildVersionFetchEr
     }
 }
 
-#[cfg(test)]
-mod tests {
-
-    use anyhow::Error;
-    use casper_types::{ProtocolVersion, SemVer};
-    use serde_json::json;
-
-    use crate::{try_resolve_version, BUILD_VERSION_KEY};
-
-    #[test]
-    fn try_resolve_version_should_interpret_correct_build_version() {
-        let mut protocol = test_by_build_version(Some("5.1.111-b94c4f79a")).unwrap();
-        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(5, 1, 111)));
-
-        protocol = test_by_build_version(Some("6.2.112-b94c4f79a-casper-mainnet")).unwrap();
-        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(6, 2, 112)));
-
-        protocol = test_by_build_version(Some("7.3.113")).unwrap();
-        assert_eq!(protocol, ProtocolVersion::new(SemVer::new(7, 3, 113)));
-    }
-
-    #[test]
-    fn try_resolve_should_fail_if_build_version_is_absent() {
-        let ret = test_by_build_version(None);
-        assert!(ret.is_err());
-    }
-
-    #[test]
-    fn try_resolve_should_fail_if_build_version_is_invalid() {
-        let ret = test_by_build_version(Some("not-a-semver"));
-        assert!(ret.is_err());
-    }
-
-    fn test_by_build_version(build_version: Option<&str>) -> Result<ProtocolVersion, Error> {
-        let json_object = match build_version {
-            Some(version) => json!({ BUILD_VERSION_KEY: version }),
-            None => json!({}),
-        };
-        try_resolve_version(json_object)
-    }
+fn warn_connection_lost(listener: &EventListener, current_attempt: usize) {
+    warn!(
+        "Lost connection to node {}, on attempt {}/{}",
+        listener.node.ip_address, current_attempt, listener.max_connection_attempts
+    );
 }

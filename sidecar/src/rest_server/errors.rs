@@ -32,7 +32,6 @@ impl reject::Reject for StorageError {}
 /// - Database-related errors
 /// - Invalid request path errors
 /// - Invalid parameters in the request query
-#[allow(clippy::too_many_lines)]
 pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
@@ -46,20 +45,7 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = err_msg;
     } else if let Some(StorageError(err)) = err.find() {
-        match err {
-            DatabaseReadError::NotFound => {
-                code = StatusCode::NOT_FOUND;
-                message = "Query returned no results".to_string();
-            }
-            DatabaseReadError::Serialisation(err) => {
-                code = StatusCode::INTERNAL_SERVER_ERROR;
-                message = format!("Error deserializing returned data: {}", err)
-            }
-            DatabaseReadError::Unhandled(err) => {
-                code = StatusCode::INTERNAL_SERVER_ERROR;
-                message = format!("Unhandled error occurred in storage: {}", err)
-            }
-        }
+        (code, message) = status_code_and_err_message_for_read_error(err);
     } else if let Some(InvalidPath) = err.find() {
         code = StatusCode::BAD_REQUEST;
         message = "Invalid request path provided".to_string();
@@ -67,13 +53,7 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
         code = StatusCode::BAD_REQUEST;
         message = format!("Invalid parameter in query: {}", err);
     } else {
-        let err_msg = format!(
-            "Unexpected error in REST server - please file a bug report!\n{:?}",
-            err
-        );
-        error!(%err_msg);
-        code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = err_msg;
+        (code, message) = fallback_status_code_and_message(err)
     }
 
     let json = warp::reply::json(&ApiError {
@@ -82,6 +62,32 @@ pub(super) async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infal
     });
 
     Ok(warp::reply::with_status(json, code))
+}
+
+fn fallback_status_code_and_message(err: Rejection) -> (StatusCode, String) {
+    let err_msg = format!(
+        "Unexpected error in REST server - please file a bug report!\n{:?}",
+        err
+    );
+    error!(%err_msg);
+    (StatusCode::INTERNAL_SERVER_ERROR, err_msg)
+}
+
+fn status_code_and_err_message_for_read_error(err: &DatabaseReadError) -> (StatusCode, String) {
+    match err {
+        DatabaseReadError::NotFound => (
+            StatusCode::NOT_FOUND,
+            "Query returned no results".to_string(),
+        ),
+        DatabaseReadError::Serialisation(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error deserializing returned data: {}", err),
+        ),
+        DatabaseReadError::Unhandled(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unhandled error occurred in storage: {}", err),
+        ),
+    }
 }
 
 #[cfg(test)]
