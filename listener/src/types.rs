@@ -13,6 +13,17 @@ pub struct NodeConnectionInterface {
     pub rest_port: u16,
 }
 
+#[cfg(test)]
+impl Default for NodeConnectionInterface {
+    fn default() -> Self {
+        Self {
+            ip_address: "127.0.0.1".parse().unwrap(),
+            sse_port: 100,
+            rest_port: 200,
+        }
+    }
+}
+
 /// Data fot from sse connection to node which sidecar cares about.
 pub struct SseEvent {
     /// Id of the message

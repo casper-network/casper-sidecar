@@ -360,13 +360,19 @@ fn count_error(reason: &str) {
 
 #[cfg(test)]
 pub mod tests {
+    use super::ConnectionManager;
     use crate::{
         connection_manager::{ConnectionManagerError, DefaultConnectionManager, FIRST_EVENT_EMPTY},
         sse_connector::{tests::MockSseConnection, StreamConnector},
         SseEvent,
     };
+    use anyhow::Error;
     use casper_event_types::{sse_data::test_support::*, Filter};
-    use tokio::sync::mpsc::{channel, Receiver};
+    use std::time::Duration;
+    use tokio::{
+        sync::mpsc::{channel, Receiver, Sender},
+        time::sleep,
+    };
     use url::Url;
 
     #[tokio::test]
@@ -482,5 +488,53 @@ pub mod tests {
             current_event_id_sender: event_id_tx,
         };
         (manager, data_rx, event_id_rx)
+    }
+
+    pub struct MockConnectionManager {
+        sender: Sender<String>,
+        finish_after: Duration,
+        to_return: Option<Result<(), ConnectionManagerError>>,
+        msg: Option<String>,
+    }
+
+    impl MockConnectionManager {
+        pub fn new(
+            finish_after: Duration,
+            to_return: Result<(), ConnectionManagerError>,
+            sender: Sender<String>,
+            msg: Option<String>,
+        ) -> Self {
+            Self {
+                sender,
+                finish_after,
+                to_return: Some(to_return),
+                msg,
+            }
+        }
+        pub fn fail_fast(sender: Sender<String>) -> Self {
+            let error = Error::msg("xyz");
+            let a = Err(ConnectionManagerError::NonRecoverableError { error });
+            Self::new(Duration::from_millis(1), a, sender, None)
+        }
+
+        pub fn ok_long(sender: Sender<String>, msg: Option<&str>) -> Self {
+            Self::new(
+                Duration::from_secs(10),
+                Ok(()),
+                sender,
+                msg.map(|s| s.to_string()),
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ConnectionManager for MockConnectionManager {
+        async fn start_handling(&mut self) -> Result<(), ConnectionManagerError> {
+            if let Some(msg) = &self.msg {
+                self.sender.send(msg.clone()).await.unwrap();
+            }
+            sleep(self.finish_after).await;
+            self.to_return.take().unwrap() //Unwraping on purpose - this method should only be called once.
+        }
     }
 }
