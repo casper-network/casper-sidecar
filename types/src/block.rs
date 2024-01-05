@@ -1,8 +1,6 @@
-use casper_types::{
-    bytesrepr, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
-};
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{bytesrepr::ToBytes, crypto, testing::TestRng};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, crypto, testing::TestRng, SecretKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey, Signature, Timestamp, U512};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};

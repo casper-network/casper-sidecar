@@ -44,8 +44,8 @@ sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
 * `ip_address` - The IP address of the node to monitor.
-* `sse_port` - The node's event stream (SSE) port. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
-* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
+* `sse_port` - The node's event stream (SSE) port. This [example configuration](../resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
+* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](../resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
 * `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.

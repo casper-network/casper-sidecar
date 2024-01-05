@@ -32,9 +32,9 @@ The SSE Sidecar service must be configured using a `.toml` file specified at run
 
 This repository contains several sample configuration files that can be used as examples and adjusted according to your scenario:
 
-- [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) - Configuration for connecting to nodes on a local NCTL network. This configuration is used in the unit and integration tests found in this repository
-- [EXAMPLE_NCTL_POSTGRES_CONFIG.toml](./EXAMPLE_NCTL_POSTGRES_CONFIG.toml) - Configuration for using the PostgreSQL database and nodes on a local NCTL network
-- [EXAMPLE_NODE_CONFIG.toml](./EXAMPLE_NODE_CONFIG.toml) - Configuration for connecting to live nodes on a Casper network and setting up an admin server
+- [EXAMPLE_NCTL_CONFIG.toml](./resources/example_configs/event_sidecar/EXAMPLE_NCTL_CONFIG.toml) - Configuration for connecting to nodes on a local NCTL network. This configuration is used in the unit and integration tests found in this repository
+- [EXAMPLE_NCTL_POSTGRES_CONFIG.toml](./resources/example_configs/event_sidecar/EXAMPLE_NCTL_POSTGRES_CONFIG.toml) - Configuration for using the PostgreSQL database and nodes on a local NCTL network
+- [EXAMPLE_NODE_CONFIG.toml](./resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml) - Configuration for connecting to live nodes on a Casper network and setting up an admin server
 
 Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
@@ -83,8 +83,8 @@ sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
 * `ip_address` - The IP address of the node to monitor.
-* `sse_port` - The node's event stream (SSE) port. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
-* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
+* `sse_port` - The node's event stream (SSE) port. This [example configuration](./resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
+* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](./resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
 * `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
@@ -245,14 +245,14 @@ You can also run the performance tests using the following command:
 cargo test -- --include-ignored
 ```
 
-The [EXAMPLE_NCTL_CONFIG.toml](./EXAMPLE_NCTL_CONFIG.toml) file contains the configurations used for these tests.
+The [EXAMPLE_NCTL_CONFIG.toml](./resources/example_configs/event_sidecar/EXAMPLE_NCTL_CONFIG.toml) file contains the configurations used for these tests.
 
 ## Running the Sidecar
 
 After creating the configuration file, run the Sidecar using Cargo and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
 ```shell
-sudo cargo run -- --path-to-config EXAMPLE_NODE_CONFIG.toml
+sudo cargo run -- --path-to-config ./resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml
 ```
 
 The Sidecar application leverages tracing, which can be controlled by setting the `RUST_LOG` environment variable.
@@ -260,7 +260,7 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 The following command will run the sidecar application with the `INFO` log level.
 
 ```
-RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config EXAMPLE_NCTL_CONFIG.toml
+RUST_LOG=info cargo run -p casper-event-sidecar -- --path-to-config ./resources/example_configs/event_sidecar/EXAMPLE_NCTL_CONFIG.toml
 ```
 
 The log levels, listed in order of increasing verbosity, are:

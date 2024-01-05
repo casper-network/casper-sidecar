@@ -10,9 +10,11 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{bytesrepr::ToBytes, testing::TestRng};
 use casper_types::{
-    bytesrepr::{self},
+    bytesrepr::{self, ToBytes},
+    testing::TestRng,
+};
+use casper_types::{
     runtime_args, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512,
 };
 use utoipa::ToSchema;

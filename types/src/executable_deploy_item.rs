@@ -6,11 +6,14 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "sse-data-testing")]
-use casper_types::bytesrepr::{self, Bytes, ToBytes};
 use casper_types::{
-    system::auction::ARG_AMOUNT, CLValue, ContractHash, ContractPackageHash, ContractVersion,
-    RuntimeArgs, U512,
+    bytesrepr::Bytes, CLValue, ContractHash, ContractPackageHash, ContractVersion, RuntimeArgs,
+    U512,
+};
+#[cfg(feature = "sse-data-testing")]
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    system::auction::ARG_AMOUNT,
 };
 use utoipa::ToSchema;
 
