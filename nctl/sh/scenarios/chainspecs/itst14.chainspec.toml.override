@@ -1,0 +1,8 @@
+[core]
+era_duration = '180seconds'
+
+[highway]
+maximum_round_length = '17seconds'
+
+[deploys]
+delete = { cost = 14_000, arguments = [0, 0] }

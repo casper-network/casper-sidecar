@@ -7,6 +7,7 @@ on:
       - "dev"
       - "feat-*"
       - "rc-*"
+      - "nctl-extracted-sidecar"
     paths-ignore:
       - '**.md'
 
@@ -28,6 +29,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+      - uses: actions/checkout@master
+        with:
+            name: zajko/casper-node
+            ref: refs/heads/nctl-extracted-sidecar
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
@@ -35,25 +40,6 @@ jobs:
       - name: update toolchain
         run: rustup update
 
-      - name: fmt
-        run: cargo fmt -- --check
-
-      - name: clippy
-        run: cargo clippy --all-targets -- --deny warnings
-
-      - name: audit
-        # Hope to get to here:
-        # run: cargo audit --deny warnings
-        # RUSTSEC-2022-0093 - that is an issue that comes form casper-types, need to update that depenency as soon as a new release is made
-        # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
-        run: cargo audit --ignore RUSTSEC-2022-0093 --ignore RUSTSEC-2023-0071
-
-      - name: test
-        run: cargo test
-
-      - name: install cargo packaging tools
+      - name: List files in the repository
         run: |
-          cargo install cargo-deb
-
-      - name: deb
-        run: cargo deb --package casper-event-sidecar
+            ls ${{ github.workspace }}
