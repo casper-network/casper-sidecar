@@ -29,17 +29,28 @@ jobs:
 
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+        with:
+            path: /event-sidecar
+      - name: list files 1
+        run: |
+            ls ${{ github.workspace }}
+      - name: pwd 1
+        run: |
+            pwd
       - uses: actions/checkout@master
         with:
             repository: zajko/casper-node
             ref: refs/heads/nctl-extracted-sidecar
+            path: /casper-node
+      - name: list files 2
+        run: |
+            ls ${{ github.workspace }}
+      - name: pwd 2
+        run: |
+            pwd
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
 
       - name: update toolchain
         run: rustup update
-
-      - name: List files in the repository
-        run: |
-            ls ${{ github.workspace }}
