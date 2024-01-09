@@ -31,23 +31,24 @@ jobs:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
         with:
             path: /home/runner/work/event-sidecar/event-sidecar/event-sidecar
-      - name: list files 1
-        run: |
-            ls ${{ github.workspace }}
-      - name: pwd 1
-        run: |
-            pwd
       - uses: actions/checkout@master
         with:
             repository: zajko/casper-node
             ref: refs/heads/nctl-extracted-sidecar
             path: /home/runner/work/event-sidecar/event-sidecar/casper-node
-      - name: list files 2
+      - uses: actions/checkout@master
+        with:
+            repository: casper-ecosystem/casper-client-rs
+            ref: refs/heads/feat-track-node-2.0
+            path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+      - uses: actions/checkout@master
+        with:
+            repository: casper-network/casper-node-launcher
+            ref: refs/heads/main
+            path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+      - name: compile
         run: |
-            ls ${{ github.workspace }}
-      - name: pwd 2
-        run: |
-            pwd
+            bash -c /home/runner/work/event-sidecar/event-sidecar/casper-node/ci/nctl_compile.sh
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
