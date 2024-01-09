@@ -48,6 +48,7 @@ jobs:
             path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
       - name: compile
         run: |
+            alias cachepot='echo "cachepot used";:'
             bash -c /home/runner/work/event-sidecar/event-sidecar/casper-node/ci/nctl_compile.sh
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
