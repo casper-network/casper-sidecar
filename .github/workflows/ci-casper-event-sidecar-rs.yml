@@ -41,6 +41,7 @@ jobs:
             repository: casper-ecosystem/casper-client-rs
             ref: refs/heads/feat-track-node-2.0
             path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+            
       - name: compile casper-client-rs
             run: |
                 cd /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
