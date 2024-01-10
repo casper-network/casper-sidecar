@@ -41,11 +41,21 @@ jobs:
             repository: casper-ecosystem/casper-client-rs
             ref: refs/heads/feat-track-node-2.0
             path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+      - name: compile casper-client-rs
+            run: |
+                cd /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+                cargo build --release
+                cd -
       - uses: actions/checkout@master
         with:
             repository: casper-network/casper-node-launcher
             ref: refs/heads/main
-            path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
+            path: /home/runner/work/event-sidecar/event-sidecar/casper-node-launcher
+      - name: compile casper-node-launcher
+            run: |
+                cd /home/runner/work/event-sidecar/event-sidecar/casper-node-launcher
+                cargo build --release
+                cd -
       - name: compile
         run: |
             python -m pip install --upgrade pip
