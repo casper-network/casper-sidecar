@@ -1,6 +1,8 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use super::{binary_response::BinaryResponse, payload_type::PayloadEntity};
+use super::binary_response::BinaryResponse;
+#[cfg(any(feature = "testing", test))]
+use super::payload_type::PayloadEntity;
 use alloc::vec::Vec;
 
 #[cfg(any(feature = "testing", test))]
@@ -74,6 +76,16 @@ impl BinaryResponseAndRequest {
             original_request: rng.random_vec(64..128),
             response: BinaryResponse::random(rng),
         }
+    }
+
+    /// Returns serialized bytes representing the original request.
+    pub fn original_request(&self) -> &[u8] {
+        self.original_request.as_ref()
+    }
+
+    /// Returns the inner binary response.
+    pub fn response(&self) -> &BinaryResponse {
+        &self.response
     }
 }
 

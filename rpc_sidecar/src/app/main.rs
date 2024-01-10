@@ -59,7 +59,7 @@ fn main() -> anyhow::Result<()> {
 async fn run_all(opts: &Cli) -> anyhow::Result<()> {
     let config = load_config(&opts.config)?;
 
-    let (node_client, client_loop) = JulietNodeClient::new(config.node_client).await;
+    let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
     let rpc_server = run_rpc(&config.rpc_server, Arc::clone(&node_client));
