@@ -48,7 +48,7 @@ jobs:
             path: /home/runner/work/event-sidecar/event-sidecar/casper-client-rs
       - name: compile
         run: |
-            bash -c "cachepot() { echo 'yyy' ; } && export -f cachepot && /home/runner/work/event-sidecar/event-sidecar/casper-node/ci/nctl_compile.sh"
+            bash -c "cachepot() { echo 'cachepot called' ; } && export -f cachepot && /home/runner/work/event-sidecar/event-sidecar/casper-node/ci/nightly-test.sh"
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
