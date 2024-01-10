@@ -3583,14 +3583,14 @@
             "description": "The transformation.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Transform"
+                "$ref": "#/components/schemas/TransformV1"
               }
             ]
           }
         },
         "additionalProperties": false
       },
-      "Transform": {
+      "TransformV1": {
         "description": "The actual transformation performed while executing a deploy.",
         "oneOf": [
           {
@@ -3793,7 +3793,7 @@
               "AddKeys": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/NamedKey"
+                  "$ref": "#/components/schemas/ExecutionResultNamedKey"
                 }
               }
             },
@@ -4335,7 +4335,7 @@
         "description": "Decimal representation of a 256-bit integer.",
         "type": "string"
       },
-      "NamedKey": {
+      "ExecutionResultNamedKey": {
         "description": "A key with a name.",
         "type": "object",
         "required": [
@@ -4628,10 +4628,10 @@
         "description": "A log of all transforms produced during execution.",
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/Transform2"
+          "$ref": "#/components/schemas/TransformV2"
         }
       },
-      "Transform2": {
+      "TransformV2": {
         "description": "A transformation performed while executing a deploy.",
         "type": "object",
         "required": [
@@ -5033,10 +5033,10 @@
             "$ref": "#/components/schemas/URef"
           },
           "associated_keys": {
-            "$ref": "#/components/schemas/AssociatedKeys"
+            "$ref": "#/components/schemas/AccountAssociatedKeys"
           },
           "action_thresholds": {
-            "$ref": "#/components/schemas/ActionThresholds"
+            "$ref": "#/components/schemas/AccountActionThresholds"
           }
         },
         "additionalProperties": false
@@ -5052,10 +5052,10 @@
       "Array_of_NamedKey": {
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/NamedKey2"
+          "$ref": "#/components/schemas/NamedKey"
         }
       },
-      "NamedKey2": {
+      "NamedKey": {
         "description": "A key with a name.",
         "type": "object",
         "required": [
@@ -5077,7 +5077,7 @@
           }
         }
       },
-      "AssociatedKeys": {
+      "AccountAssociatedKeys": {
         "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
         "allOf": [
           {
@@ -5111,19 +5111,19 @@
             "description": "The weight assigned to the public key.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           }
         }
       },
-      "Weight": {
+      "AccountAssociatedKeyWeight": {
         "description": "The weight associated with public keys in an account's associated keys.",
         "type": "integer",
         "format": "uint8",
         "minimum": 0.0
       },
-      "ActionThresholds": {
+      "AccountActionThresholds": {
         "description": "Thresholds that have to be met when executing an action of a certain type.",
         "type": "object",
         "required": [
@@ -5135,7 +5135,7 @@
             "description": "Threshold for deploy execution.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           },
@@ -5143,7 +5143,7 @@
             "description": "Threshold for managing action threshold.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           }
@@ -5494,10 +5494,10 @@
             "$ref": "#/components/schemas/URef"
           },
           "associated_keys": {
-            "$ref": "#/components/schemas/AssociatedKeys2"
+            "$ref": "#/components/schemas/EntityAssociatedKeys"
           },
           "action_thresholds": {
-            "$ref": "#/components/schemas/ActionThresholds2"
+            "$ref": "#/components/schemas/EntityActionThresholds"
           },
           "message_topics": {
             "$ref": "#/components/schemas/Array_of_MessageTopic"
@@ -5508,7 +5508,7 @@
         "description": "The hash address of the contract wasm",
         "type": "string"
       },
-      "AssociatedKeys2": {
+      "EntityAssociatedKeys": {
         "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
         "allOf": [
           {
@@ -5516,7 +5516,7 @@
           }
         ]
       },
-      "ActionThresholds2": {
+      "EntityActionThresholds": {
         "description": "Thresholds that have to be met when executing an action of a certain type.",
         "type": "object",
         "required": [
@@ -5529,7 +5529,7 @@
             "description": "Threshold for deploy execution.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight2"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           },
@@ -5537,7 +5537,7 @@
             "description": "Threshold for upgrading contracts.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight2"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           },
@@ -5545,13 +5545,13 @@
             "description": "Threshold for managing action threshold.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight2"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           }
         }
       },
-      "Weight2": {
+      "EntityAssociatedKeyWeight": {
         "description": "The weight associated with public keys in an account's associated keys.",
         "type": "integer",
         "format": "uint8",
@@ -5869,7 +5869,7 @@
             ],
             "properties": {
               "Serialization": {
-                "$ref": "#/components/schemas/Error"
+                "$ref": "#/components/schemas/SerializationError"
               }
             },
             "additionalProperties": false
@@ -5896,7 +5896,7 @@
           }
         ]
       },
-      "Error": {
+      "SerializationError": {
         "description": "Serialization and deserialization errors.",
         "oneOf": [
           {
