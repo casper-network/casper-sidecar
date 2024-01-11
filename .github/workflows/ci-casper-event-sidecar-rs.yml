@@ -22,12 +22,18 @@ env:
 
 jobs:
   build_and_test:
+    defaults:
+      run:
+        working-directory: /
     strategy:
       matrix:
         os: [ubuntu-22.04]
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: compile casper-node-launcher
+        run: |
+            echo $(pwd)
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
         with:
             path: /home/runner/work/event-sidecar/event-sidecar/event-sidecar
