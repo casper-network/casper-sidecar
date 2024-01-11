@@ -31,12 +31,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: compile casper-node-launcher
+      - name: print pwd
         run: |
             echo $(pwd)
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
         with:
-            path: /home/runner/work/event-sidecar/event-sidecar
+            path: /home/runner/work/event-sidecar/z
       - uses: actions/checkout@master
         with:
             repository: zajko/casper-node
