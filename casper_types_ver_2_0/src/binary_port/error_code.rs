@@ -12,7 +12,7 @@ pub enum ErrorCode {
     NoError = 0,
     /// This function is disabled.
     #[cfg_attr(feature = "std", error("this function is disabled"))]
-    FunctionIsDisabled = 1,
+    FunctionDisabled = 1,
     /// Data not found.
     #[cfg_attr(feature = "std", error("data not found"))]
     NotFound = 2,
@@ -26,8 +26,8 @@ pub enum ErrorCode {
     #[cfg_attr(feature = "std", error("wasm preprocessing"))]
     WasmPreprocessing = 5,
     /// Invalid protocol version.
-    #[cfg_attr(feature = "std", error("invalid protocol version"))]
-    InvalidProtocolVersion = 6,
+    #[cfg_attr(feature = "std", error("unsupported protocol version"))]
+    UnsupportedProtocolVersion = 6,
     /// Invalid deploy.
     #[cfg_attr(feature = "std", error("invalid deploy"))]
     InvalidDeploy = 7,
@@ -40,6 +40,9 @@ pub enum ErrorCode {
     /// Bad request.
     #[cfg_attr(feature = "std", error("bad request"))]
     BadRequest = 10,
+    /// Received an unsupported type of request.
+    #[cfg_attr(feature = "std", error("unsupported request"))]
+    UnsupportedRequest = 11,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -47,17 +50,18 @@ impl TryFrom<u8> for ErrorCode {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(Self::NoError),
-            1 => Ok(Self::FunctionIsDisabled),
-            2 => Ok(Self::NotFound),
-            3 => Ok(Self::RootNotFound),
-            4 => Ok(Self::InvalidDeployItemVariant),
-            5 => Ok(Self::WasmPreprocessing),
-            6 => Ok(Self::InvalidProtocolVersion),
-            7 => Ok(Self::InvalidDeploy),
-            8 => Ok(Self::InternalError),
-            9 => Ok(Self::QueryFailedToExecute),
-            10 => Ok(Self::BadRequest),
+            0 => Ok(ErrorCode::NoError),
+            1 => Ok(ErrorCode::FunctionDisabled),
+            2 => Ok(ErrorCode::NotFound),
+            3 => Ok(ErrorCode::RootNotFound),
+            4 => Ok(ErrorCode::InvalidDeployItemVariant),
+            5 => Ok(ErrorCode::WasmPreprocessing),
+            6 => Ok(ErrorCode::UnsupportedProtocolVersion),
+            7 => Ok(ErrorCode::InvalidDeploy),
+            8 => Ok(ErrorCode::InternalError),
+            9 => Ok(ErrorCode::QueryFailedToExecute),
+            10 => Ok(ErrorCode::BadRequest),
+            11 => Ok(ErrorCode::UnsupportedRequest),
             _ => Err(UnknownErrorCode),
         }
     }

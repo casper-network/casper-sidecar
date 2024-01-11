@@ -23,7 +23,7 @@ use std::{
 use tracing::warn;
 
 pub async fn start_rpc_server(config: RpcServerConfig) -> Result<(), Error> {
-    let (node_client, client_loop) = JulietNodeClient::new(config.node_client).await;
+    let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
     let rpc_server = run_rpc(config.rpc_server, node_client.clone());

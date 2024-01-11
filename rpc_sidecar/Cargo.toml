@@ -22,7 +22,7 @@ datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 http = "0.2.1"
 hyper = "0.14.26"
-juliet = "0.1"
+juliet = "0.2"
 num_cpus = "1"
 once_cell = { workspace = true }
 rand = "0.8.3"
