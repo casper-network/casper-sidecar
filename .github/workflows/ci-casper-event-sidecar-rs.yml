@@ -36,30 +36,30 @@ jobs:
             echo $(pwd)
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
         with:
-            path: /home/runner/work/event-sidecar/event-sidecar/event-sidecar
+            path: /home/runner/work/event-sidecar/event-sidecar
       - uses: actions/checkout@master
         with:
             repository: zajko/casper-node
             ref: refs/heads/nctl-extracted-sidecar
-            path: /home/runner/work/event-sidecar/event-sidecar/cn
+            path: /home/runner/work/event-sidecar/cn
       - uses: actions/checkout@master
         with:
             repository: casper-ecosystem/casper-client-rs
             ref: refs/heads/feat-track-node-2.0
-            path: /home/runner/work/event-sidecar/event-sidecar/cc
+            path: /home/runner/work/event-sidecar/cc
 
       - name: compile casper-client-rs
         run: |
-            cd /home/runner/work/event-sidecar/event-sidecar/cc
+            cd /home/runner/work/event-sidecar/cc
             cargo build --release
       - uses: actions/checkout@master
         with:
             repository: casper-network/casper-node-launcher
             ref: refs/heads/main
-            path: /home/runner/work/event-sidecar/event-sidecar/cnl
+            path: /home/runner/work/event-sidecar/cnl
       - name: compile casper-node-launcher
         run: |
-            cd /home/runner/work/event-sidecar/event-sidecar/cnl
+            cd /home/runner/work/event-sidecar/cnl
             cargo build --release
       - name: compile
         run: |
@@ -67,7 +67,7 @@ jobs:
             python -m pip install --upgrade pip
             python3 -m pip install supervisor
             python3 -m pip install toml tomlkit
-            bash -c "cachepot() { echo 'cachepot called' ; } && export -f cachepot && /home/runner/work/event-sidecar/event-sidecar/cn/ci/nightly-test.sh"
+            bash -c "cachepot() { echo 'cachepot called' ; } && export -f cachepot && /home/runner/work/event-sidecar/cn/ci/nightly-test.sh"
       - uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8
         with:
           shared-key: ${{ matrix.os }}
