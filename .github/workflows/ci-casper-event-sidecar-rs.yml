@@ -33,7 +33,9 @@ jobs:
     steps:
       - name: print pwd
         run: |
-            echo $(pwd)
+            echo A ${{ github.workspace }}
+            echo B $GITHUB_WORKSPACE
+            ls
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
         with:
             path: /home/runner/work/event-sidecar/z
