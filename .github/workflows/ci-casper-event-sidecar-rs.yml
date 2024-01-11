@@ -57,6 +57,7 @@ jobs:
             cargo build --release
       - name: compile
         run: |
+            echo "starting stuff"
             python -m pip install --upgrade pip
             python3 -m pip install supervisor
             python3 -m pip install toml tomlkit
