@@ -170,7 +170,7 @@ mod tests {
         AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, Block, TestBlockBuilder,
     };
 
-    use crate::ClientError;
+    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
 
     use super::*;
 
@@ -252,6 +252,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::BlockBody,
                         &self.block.clone_body(),
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -260,33 +261,43 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::BlockHeader,
                         &self.block.clone_header(),
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
                     if db_tag == u8::from(DbId::BlockMetadata) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(),
+                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                         &[],
                     ))
                 }
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::AvailableBlockRange,
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    BinaryResponse::from_value(
+                        AvailableBlockRange::RANGE_0_0,
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::CompletedBlocksContain { .. },
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                    BinaryResponse::from_value(
+                        HighestBlockSequenceCheckResult(true),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(SpeculativeExecutionResult(Some((
-                        self.execution_result.clone(),
-                        Messages::new(),
-                    )))),
+                    BinaryResponse::from_value(
+                        SpeculativeExecutionResult(Some((
+                            self.execution_result.clone(),
+                            Messages::new(),
+                        ))),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 _ => unimplemented!(),

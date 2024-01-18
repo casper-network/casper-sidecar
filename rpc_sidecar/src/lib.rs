@@ -5,6 +5,7 @@ mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
 use anyhow::Error;
+use casper_types_ver_2_0::ProtocolVersion;
 pub use config::RpcServerConfig;
 pub use config::{NodeClientConfig, RpcConfig};
 use futures::future::BoxFuture;
@@ -21,6 +22,8 @@ use std::{
     sync::Arc,
 };
 use tracing::warn;
+
+pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 4);
 
 pub async fn start_rpc_server(config: RpcServerConfig) -> Result<(), Error> {
     let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;

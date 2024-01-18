@@ -547,7 +547,7 @@ fn version_string() -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rpcs::ErrorCode, ClientError};
+    use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
             binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
@@ -583,6 +583,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::Transaction,
                             &self.transaction,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -591,6 +592,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::FinalizedTransactionApprovals,
                             &self.approvals,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -599,12 +601,16 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::ExecutionResult,
                             &self.exec_result,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(self.block_hash, 0),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -669,6 +675,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_legacy_test_response(
                             DbId::Transaction,
                             &self.deploy,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -677,6 +684,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_legacy_test_response(
                             DbId::FinalizedTransactionApprovals,
                             &self.approvals,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -685,12 +693,16 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::ExecutionResult,
                             &self.exec_result,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(self.block_hash, 0),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -755,6 +767,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::Transaction,
                             &self.transaction,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -763,6 +776,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_legacy_test_response(
                             DbId::FinalizedTransactionApprovals,
                             &self.approvals,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -771,12 +785,16 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::ExecutionResult,
                             &self.exec_result,
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(self.block_hash, 0),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
