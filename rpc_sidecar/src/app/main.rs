@@ -5,6 +5,7 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
     pin::Pin,
+    process::ExitCode,
     sync::Arc,
 };
 
@@ -37,8 +38,11 @@ use tracing_subscriber::{fmt::format::Writer, EnvFilter};
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
 
+/// This exit code is used to indicate that the client has shut down due to version mismatch.
+const CLIENT_SHUTDOWN_EXIT_CODE: u8 = 0x3;
+
 /// Main function.
-fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<ExitCode> {
     let num_cpus = num_cpus::get();
     let runtime = Builder::new_multi_thread()
         .enable_all()
@@ -56,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(run_all(&opts))
 }
 
-async fn run_all(opts: &Cli) -> anyhow::Result<()> {
+async fn run_all(opts: &Cli) -> anyhow::Result<ExitCode> {
     let config = load_config(&opts.config)?;
 
     let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
@@ -73,9 +77,11 @@ async fn run_all(opts: &Cli) -> anyhow::Result<()> {
         Box::pin(future::ready(Ok(())))
     };
 
-    let (rpc_result, spec_exec_result, ()) =
-        tokio::join!(rpc_server, spec_exec_server, client_loop);
-    rpc_result.and(spec_exec_result)
+    tokio::select! {
+        _ = rpc_server => Ok(ExitCode::SUCCESS),
+        _ = spec_exec_server => Ok(ExitCode::SUCCESS),
+        _ = client_loop => Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)),
+    }
 }
 
 async fn run_rpc(config: &RpcConfig, node_client: Arc<dyn NodeClient>) -> anyhow::Result<()> {

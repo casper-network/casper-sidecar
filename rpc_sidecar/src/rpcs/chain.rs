@@ -404,7 +404,7 @@ async fn get_era_summary_by_block(
 
 #[cfg(test)]
 mod tests {
-    use crate::ClientError;
+    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
             binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
@@ -463,6 +463,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_legacy_test_response(
                             DbId::BlockBody,
                             self.0.body(),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -471,35 +472,42 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_legacy_test_response(
                             DbId::BlockHeader,
                             self.0.header(),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
                         if db_tag == u8::from(DbId::BlockMetadata) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(),
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
                         ))
                     }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::AvailableBlockRange,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        BinaryResponse::from_value(
+                            AvailableBlockRange::RANGE_0_0,
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::CompletedBlocksContain { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                        BinaryResponse::from_value(
+                            HighestBlockSequenceCheckResult(true),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::HighestCompleteBlock,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(
-                            *self.0.hash(),
-                            self.0.height(),
-                        )),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(*self.0.hash(), self.0.height()),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -688,6 +696,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::BlockBody,
                         &self.block.clone_body(),
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -696,6 +705,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::BlockHeader,
                         &self.block.clone_header(),
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -704,45 +714,55 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         DbId::Transfer,
                         &self.transfers,
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
                     if db_tag == u8::from(DbId::BlockMetadata) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(),
+                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                         &[],
                     ))
                 }
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::AvailableBlockRange,
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    BinaryResponse::from_value(
+                        AvailableBlockRange::RANGE_0_0,
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::CompletedBlocksContain { .. },
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                    BinaryResponse::from_value(
+                        HighestBlockSequenceCheckResult(true),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::HighestCompleteBlock,
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(BlockHashAndHeight::new(
-                        *self.block.hash(),
-                        self.block.height(),
-                    )),
+                    BinaryResponse::from_value(
+                        BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::State {
                     base_key: Key::EraSummary,
                     ..
                 }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(GlobalStateQueryResult::new(
-                        StoredValue::EraInfo(EraInfo::new()),
-                        String::new(),
-                    )),
+                    BinaryResponse::from_value(
+                        GlobalStateQueryResult::new(
+                            StoredValue::EraInfo(EraInfo::new()),
+                            String::new(),
+                        ),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),

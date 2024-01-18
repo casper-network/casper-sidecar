@@ -156,7 +156,7 @@ mod tests {
         BinaryResponseAndRequest, ErrorCode as BinaryPortErrorCode,
     };
 
-    use crate::rpcs::ErrorCode;
+    use crate::{rpcs::ErrorCode, SUPPORTED_PROTOCOL_VERSION};
 
     use super::*;
 
@@ -171,9 +171,12 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::TryAcceptTransaction { .. } => Ok(
-                        BinaryResponseAndRequest::new(BinaryResponse::new_empty(), &[]),
-                    ),
+                    BinaryRequest::TryAcceptTransaction { .. } => {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
                     _ => unimplemented!(),
                 }
             }
@@ -209,9 +212,12 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::TryAcceptTransaction { .. } => Ok(
-                        BinaryResponseAndRequest::new(BinaryResponse::new_empty(), &[]),
-                    ),
+                    BinaryRequest::TryAcceptTransaction { .. } => {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
                     _ => unimplemented!(),
                 }
             }
@@ -249,7 +255,10 @@ mod tests {
                 match req {
                     BinaryRequest::TryAcceptTransaction { .. } => {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_error(BinaryPortErrorCode::InvalidDeploy),
+                            BinaryResponse::new_error(
+                                BinaryPortErrorCode::InvalidDeploy,
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
                             &[],
                         ))
                     }

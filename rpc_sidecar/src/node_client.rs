@@ -3,7 +3,7 @@ use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Du
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 
-use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
+use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types_ver_2_0::{
     binary_port::{
         binary_request::{BinaryRequest, BinaryRequestHeader},
@@ -16,14 +16,14 @@ use casper_types_ver_2_0::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             SpeculativeExecutionResult, StoredValues,
         },
-        ErrorCode as BinaryPortError, NodeStatus, BINARY_PROTOCOL_VERSION,
+        ErrorCode as BinaryPortError, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
     BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockIdentifier, BlockSignatures,
     ChainspecRawBytes, Deploy, Digest, FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag,
-    Peers, ProtocolVersion, SemVer, Timestamp, Transaction, TransactionHash, Transfer,
+    Peers, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -36,7 +36,7 @@ use tokio::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
     },
-    sync::RwLock,
+    sync::{Notify, RwLock},
 };
 use tracing::{error, info, warn};
 
@@ -270,7 +270,7 @@ pub enum Error {
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
     #[error("received a response with an unsupported protocol version: {0}")]
-    UnsupportedProtocolVersion(SemVer),
+    UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
     UnexpectedNodeError { message: String, code: u8 },
 }
@@ -303,6 +303,7 @@ const CHANNEL_COUNT: usize = 1;
 #[derive(Debug)]
 pub struct JulietNodeClient {
     client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
+    shutdown: Arc<Notify>,
 }
 
 impl JulietNodeClient {
@@ -321,15 +322,17 @@ impl JulietNodeClient {
         let (reader, writer) = stream.into_split();
         let (client, server) = rpc_builder.build(reader, writer);
         let client = Arc::new(RwLock::new(client));
+        let shutdown = Arc::new(Notify::new());
         let server_loop = Self::server_loop(
             config.address,
             &config.exponential_backoff,
             rpc_builder,
             Arc::clone(&client),
             server,
+            shutdown.clone(),
         );
 
-        (Self { client }, server_loop)
+        (Self { client, shutdown }, server_loop)
     }
 
     async fn server_loop(
@@ -338,21 +341,28 @@ impl JulietNodeClient {
         rpc_builder: RpcBuilder<CHANNEL_COUNT>,
         client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
         mut server: JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
+        shutdown: Arc<Notify>,
     ) {
         loop {
-            match server.next_request().await {
-                Ok(None) | Err(_) => {
-                    error!("node connection closed, will attempt to reconnect");
-                    let (reader, writer) =
-                        Self::connect_with_retries(addr, config).await.into_split();
-                    let (new_client, new_server) = rpc_builder.build(reader, writer);
+            tokio::select! {
+                req = server.next_request() => match req {
+                    Ok(None) | Err(_) => {
+                        error!("node connection closed, will attempt to reconnect");
+                        let (reader, writer) =
+                            Self::connect_with_retries(addr, config).await.into_split();
+                        let (new_client, new_server) = rpc_builder.build(reader, writer);
 
-                    info!("connection with the node has been re-established");
-                    *client.write().await = new_client;
-                    server = new_server;
-                }
-                Ok(Some(_)) => {
-                    error!("node client received a request from the node, it's going to be ignored")
+                        info!("connection with the node has been re-established");
+                        *client.write().await = new_client;
+                        server = new_server;
+                    }
+                    Ok(Some(_)) => {
+                        error!("node client received a request from the node, it's going to be ignored")
+                    }
+                },
+                _ = shutdown.notified() => {
+                    info!("node client shutdown has been requested");
+                    break
                 }
             }
         }
@@ -393,13 +403,29 @@ impl NodeClient for JulietNodeClient {
             .await
             .map_err(|err| Error::RequestFailed(err.to_string()))?
             .ok_or(Error::NoResponseBody)?;
-        bytesrepr::deserialize_from_slice(&response)
-            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))
+        let resp = bytesrepr::deserialize_from_slice(&response)
+            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
+        handle_response(resp, &self.shutdown)
+    }
+}
+
+fn handle_response(
+    resp: BinaryResponseAndRequest,
+    shutdown: &Notify,
+) -> Result<BinaryResponseAndRequest, Error> {
+    let version = resp.response().protocol_version();
+
+    if version.is_compatible_with(&SUPPORTED_PROTOCOL_VERSION) {
+        Ok(resp)
+    } else {
+        info!("received a response with incompatible major version from the node {version}, shutting down");
+        shutdown.notify_one();
+        Err(Error::UnsupportedProtocolVersion(version))
     }
 }
 
 fn encode_request(req: &BinaryRequest) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(BINARY_PROTOCOL_VERSION);
+    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION);
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;
@@ -413,7 +439,9 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    validate_response(resp)?;
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
+    }
     match resp.returned_data_type_tag() {
         Some(found) if found == u8::from(A::PAYLOAD_TYPE) => {
             bytesrepr::deserialize_from_slice(resp.payload())
@@ -433,7 +461,9 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    validate_response(resp)?;
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
+    }
     match resp.returned_data_type_tag() {
         Some(found) if found == u8::from(V1::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
             .map(|val| Some(V2::from(val)))
@@ -455,7 +485,9 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    validate_response(resp)?;
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
+    }
     match resp.returned_data_type_tag() {
         Some(found) if found == u8::from(A::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
             .map(Some)
@@ -465,101 +497,79 @@ where
     }
 }
 
-fn validate_response(resp: &BinaryResponse) -> Result<(), Error> {
-    if !resp
-        .protocol_version()
-        .is_major_compatible(BINARY_PROTOCOL_VERSION)
-    {
-        return Err(Error::UnsupportedProtocolVersion(resp.protocol_version()));
-    }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    use casper_types_ver_2_0::SemVer;
+    use futures::FutureExt;
+
     use super::*;
 
     #[tokio::test]
     async fn should_reject_bad_major_version() {
-        struct ClientMock;
+        let notify = Notify::new();
+        let bad_version = ProtocolVersion::from_parts(10, 0, 0);
 
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                _req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, Error> {
-                Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value_with_protocol_version(
-                        AvailableBlockRange::RANGE_0_0,
-                        SemVer::new(10, 0, 0),
-                    ),
-                    &[],
-                ))
-            }
-        }
-
-        let result = ClientMock.read_available_block_range().await;
-        assert_eq!(
-            result,
-            Err(Error::UnsupportedProtocolVersion(SemVer::new(10, 0, 0)))
+        let result = handle_response(
+            BinaryResponseAndRequest::new(
+                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
+                &[],
+            ),
+            &notify,
         );
+
+        assert_eq!(result, Err(Error::UnsupportedProtocolVersion(bad_version)));
+        assert_eq!(notify.notified().now_or_never(), Some(()))
     }
 
     #[tokio::test]
     async fn should_accept_different_minor_version() {
-        struct ClientMock;
+        let notify = Notify::new();
+        let version = ProtocolVersion::new(SemVer {
+            minor: SUPPORTED_PROTOCOL_VERSION.value().minor + 1,
+            ..SUPPORTED_PROTOCOL_VERSION.value()
+        });
 
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                _req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, Error> {
-                Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value_with_protocol_version(
-                        AvailableBlockRange::RANGE_0_0,
-                        SemVer {
-                            minor: BINARY_PROTOCOL_VERSION.minor + 1,
-                            ..BINARY_PROTOCOL_VERSION
-                        },
-                    ),
-                    &[],
-                ))
-            }
-        }
+        let result = handle_response(
+            BinaryResponseAndRequest::new(
+                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
+                &[],
+            ),
+            &notify,
+        );
 
-        let result = ClientMock.read_available_block_range().await;
-        assert_eq!(result, Ok(AvailableBlockRange::RANGE_0_0));
+        assert_eq!(
+            result,
+            Ok(BinaryResponseAndRequest::new(
+                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
+                &[],
+            ))
+        );
+        assert_eq!(notify.notified().now_or_never(), None)
     }
 
     #[tokio::test]
     async fn should_accept_different_patch_version() {
-        struct ClientMock;
+        let notify = Notify::new();
+        let version = ProtocolVersion::new(SemVer {
+            patch: SUPPORTED_PROTOCOL_VERSION.value().patch + 1,
+            ..SUPPORTED_PROTOCOL_VERSION.value()
+        });
 
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                _req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, Error> {
-                Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value_with_protocol_version(
-                        AvailableBlockRange::RANGE_0_0,
-                        SemVer {
-                            patch: BINARY_PROTOCOL_VERSION.patch + 1,
-                            ..BINARY_PROTOCOL_VERSION
-                        },
-                    ),
-                    &[],
-                ))
-            }
-        }
+        let result = handle_response(
+            BinaryResponseAndRequest::new(
+                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
+                &[],
+            ),
+            &notify,
+        );
 
-        let result = ClientMock.read_available_block_range().await;
-        assert_eq!(result, Ok(AvailableBlockRange::RANGE_0_0));
+        assert_eq!(
+            result,
+            Ok(BinaryResponseAndRequest::new(
+                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
+                &[],
+            ))
+        );
+        assert_eq!(notify.notified().now_or_never(), None)
     }
 }

@@ -839,7 +839,7 @@ fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraV
 mod tests {
     use std::iter;
 
-    use crate::ClientError;
+    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys},
         binary_port::{
@@ -934,16 +934,19 @@ mod tests {
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::AvailableBlockRange,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        BinaryResponse::from_value(
+                            AvailableBlockRange::RANGE_0_0,
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::HighestCompleteBlock,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(
-                            *self.block.hash(),
-                            self.block.height(),
-                        )),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -952,6 +955,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::BlockHeader,
                             &self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::AllValues {
@@ -965,7 +969,10 @@ mod tests {
                             .map(StoredValue::BidKind)
                             .collect();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(StoredValues(bids)),
+                            BinaryResponse::from_value(
+                                StoredValues(bids),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
                             &[],
                         ))
                     }
@@ -981,7 +988,7 @@ mod tests {
                             String::default(),
                         );
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result),
+                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
                         ))
                     }
@@ -994,7 +1001,7 @@ mod tests {
                             String::default(),
                         );
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result),
+                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
                         ))
                     }
@@ -1152,16 +1159,19 @@ mod tests {
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::AvailableBlockRange,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        BinaryResponse::from_value(
+                            AvailableBlockRange::RANGE_0_0,
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::HighestCompleteBlock,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(
-                            *self.block.hash(),
-                            self.block.height(),
-                        )),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -1170,26 +1180,33 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::BlockHeader,
                             &self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State {
                         base_key: Key::Account(_),
                         ..
                     }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(GlobalStateQueryResult::new(
-                            StoredValue::Account(self.account.clone()),
-                            String::default(),
-                        )),
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::Account(self.account.clone()),
+                                String::default(),
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::State {
                         base_key: Key::Balance(_),
                         ..
                     }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(GlobalStateQueryResult::new(
-                            StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                            String::default(),
-                        )),
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
+                                String::default(),
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1253,16 +1270,19 @@ mod tests {
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::AvailableBlockRange,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        BinaryResponse::from_value(
+                            AvailableBlockRange::RANGE_0_0,
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::HighestCompleteBlock,
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(
-                            *self.block.hash(),
-                            self.block.height(),
-                        )),
+                        BinaryResponse::from_value(
+                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -1271,6 +1291,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new_test_response(
                             DbId::BlockHeader,
                             &self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State {
@@ -1281,10 +1302,13 @@ mod tests {
                             Key::addressable_entity_key(PackageKindTag::Account, self.entity_hash);
                         let value = CLValue::from_t(key).unwrap();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(GlobalStateQueryResult::new(
-                                StoredValue::CLValue(value),
-                                String::default(),
-                            )),
+                            BinaryResponse::from_value(
+                                GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(value),
+                                    String::default(),
+                                ),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
                             &[],
                         ))
                     }
@@ -1292,20 +1316,26 @@ mod tests {
                         base_key: Key::AddressableEntity(_, _),
                         ..
                     }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(GlobalStateQueryResult::new(
-                            StoredValue::AddressableEntity(self.entity.clone()),
-                            String::default(),
-                        )),
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::AddressableEntity(self.entity.clone()),
+                                String::default(),
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     BinaryRequest::Get(GetRequest::State {
                         base_key: Key::Balance(_),
                         ..
                     }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(GlobalStateQueryResult::new(
-                            StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                            String::default(),
-                        )),
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
+                                String::default(),
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1364,7 +1394,7 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(self.0.clone()),
+                    BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
                     &[],
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -1388,16 +1418,19 @@ mod tests {
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::AvailableBlockRange,
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    BinaryResponse::from_value(
+                        AvailableBlockRange::RANGE_0_0,
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::HighestCompleteBlock,
                 )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(BlockHashAndHeight::new(
-                        *self.block.hash(),
-                        self.block.height(),
-                    )),
+                    BinaryResponse::from_value(
+                        BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 BinaryRequest::Get(GetRequest::Db { db_tag, .. })
@@ -1406,10 +1439,11 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::BlockHeader,
                         &self.block.clone_header(),
+                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(self.result.clone()),
+                    BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
                     &[],
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
