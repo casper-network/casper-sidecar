@@ -35,7 +35,7 @@ curl -s http://<HOST:PORT>/events/<TYPE>
 - `PORT` - The port number where the Sidecar emits events
 - `TYPE` - The type of event emitted
 
-Given this [example configuration](./resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml), here are the commands for each endpoint:
+Given this [example configuration](EXAMPLE_NODE_CONFIG.toml), here are the commands for each endpoint:
 
 - **Deploy events:** 
 

@@ -553,7 +553,6 @@ dependencies = [
  "casper-event-listener",
  "casper-event-types",
  "casper-types",
- "clap 4.4.13",
  "colored",
  "derive-new",
  "eventsource-stream",
@@ -581,11 +580,9 @@ dependencies = [
  "tabled",
  "tempfile",
  "thiserror",
- "tikv-jemallocator",
  "tokio",
  "tokio-stream",
  "tokio-util",
- "toml 0.5.11",
  "tower",
  "tracing",
  "tracing-subscriber",
@@ -665,6 +662,27 @@ dependencies = [
  "tracing-subscriber",
  "vergen",
  "warp",
+]
+
+[[package]]
+name = "casper-sidecar"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "backtrace",
+ "casper-event-sidecar",
+ "casper-rpc-sidecar",
+ "clap 4.4.13",
+ "datasize",
+ "futures",
+ "num_cpus",
+ "serde",
+ "thiserror",
+ "tikv-jemallocator",
+ "tokio",
+ "toml 0.5.11",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
