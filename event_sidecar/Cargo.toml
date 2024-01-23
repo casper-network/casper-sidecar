@@ -69,7 +69,7 @@ revision = "0"
 assets = [
     ["../target/release/casper-event-sidecar", "/usr/bin/casper-event-sidecar", "755"],
     ["../resources/ETC_README.md", "/etc/casper-event-sidecar/README.md", "644"],
-    ["../resources/default_sse_only_config.toml", "/etc/casper-event-sidecar/config.toml", "644"]
+    ["../resources/example_configs/default_sse_only_config.toml", "/etc/casper-event-sidecar/config.toml", "644"]
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """

@@ -25,7 +25,7 @@ use std::{
 };
 use tracing::warn;
 
-/// Casper protocol version supported by this sidecar.
+/// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 4);
 
 /// The exit code is used to indicate that the client has shut down due to version mismatch.
@@ -47,7 +47,7 @@ pub async fn start_rpc_server(config: &RpcServerConfig) -> Result<ExitCode, Erro
         .filter(|conf| conf.enable_server)
         .map_or_else(
             || Box::pin(std::future::pending()) as BoxFuture<_>,
-            |conf| Box::pin(run_speculative_exec(&conf, node_client.clone())),
+            |conf| Box::pin(run_speculative_exec(conf, node_client.clone())),
         );
 
     tokio::select! {

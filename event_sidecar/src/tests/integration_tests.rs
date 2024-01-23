@@ -44,7 +44,7 @@ async fn should_not_allow_zero_max_attempts() {
 
     testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
 
-    let shutdown_error = run(testing_config.inner())
+    let shutdown_error = run(&testing_config.inner())
         .await
         .expect_err("Sidecar should return an Err on shutdown");
 

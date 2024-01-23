@@ -105,7 +105,10 @@ async fn test_event_throughput() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     ));
-    tokio::spawn(run(testing_config.inner()));
+    tokio::spawn(async move {
+        let sse_config = testing_config.inner();
+        run(&sse_config).await
+    });
 
     let handle =
         start_counting_outbound_events(cancellation_token.clone(), event_stream_server_port).await;
@@ -273,7 +276,10 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
 
-    tokio::spawn(run(testing_config.inner()));
+    tokio::spawn(async move {
+        let sse_config = testing_config.inner();
+        run(&sse_config).await
+    });
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     let ip_address = IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr");

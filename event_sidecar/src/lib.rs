@@ -83,7 +83,7 @@ pub async fn run(config: &SseEventServerConfig) -> Result<ExitCode, Error> {
     );
 
     let event_broadcasting_handle =
-        start_event_broadcasting(&config, &storage_config, outbound_sse_data_receiver);
+        start_event_broadcasting(config, &storage_config, outbound_sse_data_receiver);
 
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),

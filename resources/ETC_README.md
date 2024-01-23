@@ -30,7 +30,7 @@ The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 
 ```
-[[connections]]
+[[sse_server.connections]]
 ip_address = "127.0.0.1"
 sse_port = 9999
 rest_port = 8888
@@ -44,8 +44,8 @@ sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
 * `ip_address` - The IP address of the node to monitor.
-* `sse_port` - The node's event stream (SSE) port. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
-* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](../EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
+* `sse_port` - The node's event stream (SSE) port. This [example configuration](../resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
+* `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](../resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
 * `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the sidecar will allow a partial connection to this node.
@@ -54,10 +54,10 @@ sleep_between_keep_alive_checks_in_seconds = 30
 * `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
 
-Connecting to multiple nodes requires multiple `[[connections]]` sections:
+Connecting to multiple nodes requires multiple `[[sse_server.connections]]` sections:
 
 ```
-[[connections]]
+[[sse_server.connections]]
 ip_address = "127.0.0.1"
 sse_port = 9999
 rest_port = 8888
@@ -66,7 +66,7 @@ delay_between_retries_in_seconds = 5
 allow_partial_connection = false
 enable_logging = true
 
-[[connections]]
+[[sse_server.connections]]
 ip_address = "18.154.79.193"
 sse_port = 1234
 rest_port = 3456
@@ -81,7 +81,7 @@ enable_logging = true
 This directory stores the SSE cache and an SQLite database if the Sidecar is configured to use SQLite.
 
 ```
-[storage]
+[sse_server.storage]
 storage_path = "/var/lib/casper-event-sidecar"
 ```
 
@@ -96,7 +96,7 @@ The Sidecar can connect to different types of databases. The current options are
 This section includes configurations for the SQLite database.
 
 ```
-[storage.sqlite_config]
+[sse_server.storage.sqlite_config]
 file_name = "sqlite_database.db3"
 max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint

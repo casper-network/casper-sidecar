@@ -163,6 +163,7 @@ pub mod tests {
         postgres::PgEmbed,
     };
     use std::path::PathBuf;
+    use std::process::ExitCode;
     use std::time::Duration;
     use tempfile::{tempdir, TempDir};
     use tokio::sync::mpsc::Receiver;
@@ -257,8 +258,8 @@ pub mod tests {
     }
     pub async fn start_sidecar(
         config: SseEventServerConfig,
-    ) -> tokio::task::JoinHandle<Result<(), Error>> {
-        tokio::spawn(async move { run(config).await }) // starting event sidecar
+    ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
+        tokio::spawn(async move { run(&config).await }) // starting event sidecar
     }
 
     pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
