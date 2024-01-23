@@ -21,7 +21,7 @@ const DEFAULT_CORS_ORIGIN: &str = "";
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct RpcServerConfig {
-    pub rpc_server: RpcConfig,
+    pub main_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,
     pub node_client: NodeClientConfig,
 }
@@ -31,6 +31,8 @@ pub struct RpcServerConfig {
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct RpcConfig {
+    /// Setting to enable the HTTP server.
+    pub enable_server: bool,
     /// Address to bind JSON-RPC HTTP server to.
     pub address: String,
     /// Maximum rate limit in queries per second.
@@ -45,6 +47,7 @@ impl RpcConfig {
     /// Creates a default instance for `RpcServer`.
     pub fn new() -> Self {
         RpcConfig {
+            enable_server: true,
             address: DEFAULT_ADDRESS.to_string(),
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,

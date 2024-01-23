@@ -1,7 +1,9 @@
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
-[rpc_server]
+[rpc_server.main_server]
+# Enables the JSON-RPC HTTP server.
+enable_server = true
 
 # Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
@@ -29,9 +31,9 @@ cors_origin = ''
 # ========================================================================
 # Configuration options for the speculative execution JSON-RPC HTTP server
 # ========================================================================
-[speculative_exec_server]
+[rpc_server.speculative_exec_server]
 
-# Flag which enables the speculative execution JSON-RPC HTTP server.
+# Enables the speculative execution JSON-RPC HTTP server.
 enable_server = true
 
 # Listening address for speculative execution JSON-RPC HTTP server.  If the port
@@ -61,7 +63,7 @@ cors_origin = ''
 # =========================================
 # Configuration options for the node client
 # =========================================
-[node_client]
+[rpc_server.node_client]
 # The address of the node to connect to.
 address = '127.0.0.1:28104'
 # Maximum size of a request in bytes.
@@ -73,7 +75,7 @@ request_limit = 3
 # Number of node requests that can be buffered.
 request_buffer_size = 16
 
-[node_client.exponential_backoff]
+[rpc_server.node_client.exponential_backoff]
 # The initial delay in milliseconds before the first retry.
 initial_delay_ms = 1000
 # The maximum delay in milliseconds before a retry.

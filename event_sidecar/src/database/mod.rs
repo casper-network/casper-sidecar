@@ -11,3 +11,5 @@ pub mod sqlite_database;
 #[cfg(test)]
 pub mod tests;
 pub mod types;
+
+pub use self::database_errors::DatabaseConfigError;

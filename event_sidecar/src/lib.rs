@@ -17,7 +17,7 @@ mod types;
 mod utils;
 
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::process::ExitCode;
 use std::{
     net::IpAddr,
     path::{Path, PathBuf},
@@ -31,7 +31,6 @@ use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     types::{
-        config::{read_config, SseEventServerConfig},
         database::{DatabaseWriteError, DatabaseWriter},
         sse_events::*,
     },
@@ -42,67 +41,37 @@ use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
 use casper_event_types::{metrics, sse_data::SseData, Filter};
-use clap::Parser;
 use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
 use tokio::{
     sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
     time::sleep,
 };
 use tracing::{debug, error, info, trace, warn};
-use types::config::Connection;
-use types::{
-    config::StorageConfig,
-    database::{Database, DatabaseReader},
-};
+use types::database::{Database, DatabaseReader};
 #[cfg(feature = "additional-metrics")]
 use utils::start_metrics_thread;
 
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct CmdLineArgs {
-    /// Path to the TOML-formatted config file
-    #[arg(short, long, value_name = "FILE")]
-    path_to_config: String,
-}
+pub use database::DatabaseConfigError;
+pub use types::config::{
+    Connection, SseEventServerConfig, SseEventServerConfigSerdeTarget, StorageConfig,
+};
 
 const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    // Install global collector for tracing
-    tracing_subscriber::fmt::init();
-
-    let args = CmdLineArgs::parse();
-
-    let path_to_config = args.path_to_config;
-
-    let config_serde = read_config(&path_to_config).context("Error constructing config")?;
-    let config = config_serde.try_into()?;
-
-    info!("Configuration loaded");
-    run(config).await
-}
-
-pub async fn run(config: SseEventServerConfig) -> Result<(), Error> {
-    validate_config(&config)?;
-    let (event_listeners, sse_data_receivers) = build_event_listeners(&config)?;
-    let admin_server_handle = build_and_start_admin_server(&config);
+pub async fn run(config: &SseEventServerConfig) -> Result<ExitCode, Error> {
+    validate_config(config)?;
+    let (event_listeners, sse_data_receivers) = build_event_listeners(config)?;
+    let admin_server_handle = build_and_start_admin_server(config);
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
     let connection_configs = config.connections.clone();
     let storage_config = config.storage.clone();
     let database = build_database(&storage_config).await?;
-    let rest_server_handle = build_and_start_rest_server(&config, database.clone());
+    let rest_server_handle = build_and_start_rest_server(config, database.clone());
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
@@ -114,7 +83,7 @@ pub async fn run(config: SseEventServerConfig) -> Result<(), Error> {
     );
 
     let event_broadcasting_handle =
-        start_event_broadcasting(&config, &storage_config, outbound_sse_data_receiver);
+        start_event_broadcasting(config, &storage_config, outbound_sse_data_receiver);
 
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
@@ -122,7 +91,7 @@ pub async fn run(config: SseEventServerConfig) -> Result<(), Error> {
         flatten_handle(listening_task_handle),
         flatten_handle(admin_server_handle),
     )
-    .map(|_| Ok(()))?
+    .map(|_| Ok(ExitCode::SUCCESS))?
 }
 
 fn start_event_broadcasting(

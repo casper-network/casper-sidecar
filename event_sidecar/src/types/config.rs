@@ -1,11 +1,9 @@
+use serde::Deserialize;
 use std::string::ToString;
 use std::{
     convert::{TryFrom, TryInto},
     num::ParseIntError,
 };
-
-use anyhow::{Context, Error};
-use serde::Deserialize;
 
 use crate::database::{
     database_errors::DatabaseConfigError,
@@ -23,12 +21,6 @@ pub(crate) const DEFAULT_PORT: u16 = 5432;
 
 pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
     "/casper/sidecar-storage/casper-event-sidecar";
-
-pub fn read_config(config_path: &str) -> Result<SseEventServerConfigSerdeTarget, Error> {
-    let toml_content =
-        std::fs::read_to_string(config_path).context("Error reading config file contents")?;
-    toml::from_str(&toml_content).context("Error parsing config into TOML format")
-}
 
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -271,90 +263,6 @@ pub struct AdminServerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn should_parse_nctl_config_toml() {
-        let expected_config = SseEventServerConfig {
-            inbound_channel_size: None,
-            outbound_channel_size: None,
-            connections: vec![
-                Connection::example_connection_1(),
-                Connection::example_connection_2(),
-                Connection::example_connection_3(),
-            ],
-            storage: StorageConfig::SqliteDbConfig {
-                storage_path: "./target/storage".to_string(),
-                sqlite_config: SqliteConfig {
-                    file_name: "sqlite_database.db3".to_string(),
-                    max_connections_in_pool: 100,
-                    wal_autocheckpointing_interval: 1000,
-                },
-            },
-            rest_server: build_rest_server_config(),
-            event_stream_server: EventStreamServerConfig::default(),
-            admin_server: None,
-        };
-
-        let parsed_config: SseEventServerConfig =
-            read_config("../resources/example_configs/event_sidecar/EXAMPLE_NCTL_CONFIG.toml")
-                .expect("Error parsing EXAMPLE_NCTL_CONFIG.toml")
-                .try_into()
-                .unwrap();
-
-        assert_eq!(parsed_config, expected_config);
-    }
-
-    #[test]
-    fn should_parse_node_config_toml() {
-        let mut expected_connection = Connection::example_connection_1();
-        expected_connection.sse_port = 9999;
-        expected_connection.rest_port = 8888;
-        expected_connection.max_attempts = 10;
-        expected_connection.enable_logging = true;
-        let mut expected_connection_2 = expected_connection.clone();
-        expected_connection_2.ip_address = "168.254.51.2".to_string();
-        let mut expected_connection_3 = expected_connection.clone();
-        expected_connection_3.ip_address = "168.254.51.3".to_string();
-        let expected_config = SseEventServerConfig {
-            inbound_channel_size: None,
-            outbound_channel_size: None,
-            connections: vec![
-                expected_connection,
-                expected_connection_2,
-                expected_connection_3,
-            ],
-            storage: StorageConfig::SqliteDbConfig {
-                storage_path: "/var/lib/casper-event-sidecar".to_string(),
-                sqlite_config: SqliteConfig {
-                    file_name: "sqlite_database.db3".to_string(),
-                    max_connections_in_pool: 100,
-                    wal_autocheckpointing_interval: 1000,
-                },
-            },
-            rest_server: build_rest_server_config(),
-            event_stream_server: EventStreamServerConfig::default(),
-            admin_server: Some(AdminServerConfig {
-                port: 18887,
-                max_concurrent_requests: 1,
-                max_requests_per_second: 1,
-            }),
-        };
-        let parsed_config: SseEventServerConfig =
-            read_config("../resources/example_configs/event_sidecar/EXAMPLE_NODE_CONFIG.toml")
-                .expect("Error parsing EXAMPLE_NODE_CONFIG.toml")
-                .try_into()
-                .unwrap();
-
-        assert_eq!(parsed_config, expected_config);
-    }
-
-    fn build_rest_server_config() -> RestServerConfig {
-        RestServerConfig {
-            port: 18888,
-            max_concurrent_requests: 50,
-            max_requests_per_second: 50,
-        }
-    }
 
     impl Connection {
         pub fn example_connection_1() -> Connection {

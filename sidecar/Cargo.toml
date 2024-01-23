@@ -1,0 +1,29 @@
+[package]
+name = "casper-sidecar"
+version = "1.0.0"
+authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
+edition = "2021"
+description = "Base module that spins up casper sidecar"
+readme = "README.md"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/event-sidecar/tree/dev"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = { workspace = true }
+backtrace = "0.3.69"
+casper-event-sidecar = { path = "../event_sidecar", version = "1.0.0" }
+casper-rpc-sidecar = { path = "../rpc_sidecar", version = "1.0.0" }
+clap = { version = "4.0.32", features = ["derive"] }
+datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
+futures = { workspace = true }
+num_cpus = "1"
+serde = { workspace = true, default-features = false, features = ["alloc", "derive"] }
+tokio = { workspace = true, features = ["full"] }
+toml = { workspace = true }
+tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
+thiserror = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5"

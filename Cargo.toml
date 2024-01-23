@@ -7,7 +7,9 @@ members = [
     "json_rpc",
     "listener",
     "rpc_sidecar",
-    "types"]
+    "sidecar",
+    "types"
+]
 
 [workspace.dependencies]
 anyhow = "1"

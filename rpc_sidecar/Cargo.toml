@@ -55,13 +55,6 @@ vergen = { version = "8.2.1", default-features = false, features = [
 [features]
 testing = ["casper-types-ver-2_0/testing"]
 
-[[bin]]
-name = "casper-rpc-sidecar"
-path = "src/app/main.rs"
-bench = false
-doctest = false
-test = false
-
 [package.metadata.deb]
 revision = "0"
 assets = [
