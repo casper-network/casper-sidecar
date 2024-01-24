@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Default binding address for the speculative execution RPC HTTP server.
 ///
@@ -13,7 +13,7 @@ const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 const DEFAULT_CORS_ORIGIN: &str = "";
 
 /// JSON-RPC HTTP server configuration.
-#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct SpeculativeExecConfig {

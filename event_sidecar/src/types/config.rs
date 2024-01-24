@@ -60,6 +60,7 @@ impl TryFrom<SseEventServerConfigSerdeTarget> for SseEventServerConfig {
         })
     }
 }
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
     pub ip_address: String,

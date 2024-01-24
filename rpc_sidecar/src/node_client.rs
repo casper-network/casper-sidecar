@@ -1,7 +1,7 @@
-use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
-
+use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
+use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types_ver_2_0::{
@@ -300,7 +300,9 @@ pub struct JulietNodeClient {
 }
 
 impl JulietNodeClient {
-    pub async fn new(config: &NodeClientConfig) -> (Self, impl Future<Output = ()> + '_) {
+    pub async fn new(
+        config: &NodeClientConfig,
+    ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>> + '_), AnyhowError> {
         let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
             ChannelConfiguration::default()
                 .with_request_limit(config.request_limit)
@@ -311,7 +313,8 @@ impl JulietNodeClient {
             .buffer_size(ChannelId::new(0), config.request_buffer_size);
         let rpc_builder = RpcBuilder::new(io_builder);
 
-        let stream = Self::connect_with_retries(config.address, &config.exponential_backoff).await;
+        let stream =
+            Self::connect_with_retries(config.address, &config.exponential_backoff).await?;
         let (reader, writer) = stream.into_split();
         let (client, server) = rpc_builder.build(reader, writer);
         let client = Arc::new(RwLock::new(client));
@@ -325,7 +328,7 @@ impl JulietNodeClient {
             shutdown.clone(),
         );
 
-        (Self { client, shutdown }, server_loop)
+        Ok((Self { client, shutdown }, server_loop))
     }
 
     async fn server_loop(
@@ -335,14 +338,14 @@ impl JulietNodeClient {
         client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
         mut server: JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
         shutdown: Arc<Notify>,
-    ) {
+    ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
                 req = server.next_request() => match req {
                     Ok(None) | Err(_) => {
                         error!("node connection closed, will attempt to reconnect");
                         let (reader, writer) =
-                            Self::connect_with_retries(addr, config).await.into_split();
+                            Self::connect_with_retries(addr, config).await?.into_split();
                         let (new_client, new_server) = rpc_builder.build(reader, writer);
 
                         info!("connection with the node has been re-established");
@@ -355,7 +358,7 @@ impl JulietNodeClient {
                 },
                 _ = shutdown.notified() => {
                     info!("node client shutdown has been requested");
-                    break
+                    return Ok(())
                 }
             }
         }
@@ -364,13 +367,23 @@ impl JulietNodeClient {
     async fn connect_with_retries(
         addr: SocketAddr,
         config: &ExponentialBackoffConfig,
-    ) -> TcpStream {
+    ) -> Result<TcpStream, AnyhowError> {
         let mut wait = config.initial_delay_ms;
+        let mut current_attempt = 1;
         loop {
             match TcpStream::connect(addr).await {
-                Ok(server) => break server,
+                Ok(server) => return Ok(server),
                 Err(err) => {
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
+                    current_attempt += 1;
+                    if !config.max_attempts.can_attempt(current_attempt) {
+                        let msg = format!(
+                            "Couldn't connect to node {} after {} attempts",
+                            addr,
+                            current_attempt - 1
+                        );
+                        return Err(AnyhowError::msg(msg));
+                    }
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.coefficient).min(config.max_delay_ms);
                 }
