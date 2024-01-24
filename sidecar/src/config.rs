@@ -1,7 +1,7 @@
 use casper_event_sidecar::{
     DatabaseConfigError, SseEventServerConfig, SseEventServerConfigSerdeTarget,
 };
-use casper_rpc_sidecar::RpcServerConfig;
+use casper_rpc_sidecar::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -10,7 +10,7 @@ pub struct SidecarConfigTarget {
     max_thread_count: Option<usize>,
     max_blocking_thread_count: Option<usize>,
     sse_server: Option<SseEventServerConfigSerdeTarget>,
-    rpc_server: Option<RpcServerConfig>,
+    rpc_server: Option<RpcServerConfigTarget>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -40,11 +40,14 @@ impl TryFrom<SidecarConfigTarget> for SidecarConfig {
         let sse_server_config_res: Option<Result<SseEventServerConfig, DatabaseConfigError>> =
             value.sse_server.map(|target| target.try_into());
         let sse_server_config = invert(sse_server_config_res)?;
+        let rpc_server_config_res: Option<Result<RpcServerConfig, FieldParseError>> =
+            value.rpc_server.map(|target| target.try_into());
+        let rpc_server_config = invert(rpc_server_config_res)?;
         Ok(SidecarConfig {
             max_thread_count: value.max_thread_count,
             max_blocking_thread_count: value.max_blocking_thread_count,
             sse_server: sse_server_config,
-            rpc_server: value.rpc_server,
+            rpc_server: rpc_server_config,
         })
     }
 }
@@ -57,6 +60,14 @@ fn invert<T, E>(x: Option<Result<T, E>>) -> Result<Option<T>, E> {
 pub enum ConfigReadError {
     #[error("failed to read sidecar configuration. Underlying reason: {}", .error)]
     GeneralError { error: String },
+}
+
+impl From<FieldParseError> for ConfigReadError {
+    fn from(value: FieldParseError) -> Self {
+        ConfigReadError::GeneralError {
+            error: value.to_string(),
+        }
+    }
 }
 
 impl From<DatabaseConfigError> for ConfigReadError {

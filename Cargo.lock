@@ -637,6 +637,7 @@ dependencies = [
  "backtrace",
  "base16",
  "bincode",
+ "bytes",
  "casper-json-rpc",
  "casper-types-ver-2_0",
  "datasize",
@@ -646,6 +647,7 @@ dependencies = [
  "juliet",
  "num_cpus",
  "once_cell",
+ "portpicker",
  "pretty_assertions 0.7.2",
  "rand",
  "regex",
@@ -2606,6 +2608,7 @@ dependencies = [
  "strum 0.25.0",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

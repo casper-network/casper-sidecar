@@ -4,10 +4,12 @@ mod node_client;
 mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
+#[cfg(test)]
+pub(crate) mod testing;
 
 use anyhow::Error;
 use casper_types_ver_2_0::ProtocolVersion;
-pub use config::RpcServerConfig;
+pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 pub use config::{NodeClientConfig, RpcConfig};
 use futures::future::BoxFuture;
 pub use http_server::run as run_rpc_server;
@@ -32,7 +34,7 @@ pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_pa
 pub const CLIENT_SHUTDOWN_EXIT_CODE: u8 = 0x3;
 
 pub async fn start_rpc_server(config: &RpcServerConfig) -> Result<ExitCode, Error> {
-    let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
+    let (node_client, client_loop) = JulietNodeClient::new(config.node_client.clone()).await?;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
     let rpc_server: BoxFuture<anyhow::Result<()>> = config
@@ -53,7 +55,7 @@ pub async fn start_rpc_server(config: &RpcServerConfig) -> Result<ExitCode, Erro
     tokio::select! {
         result = rpc_server => result.map(|()| ExitCode::SUCCESS),
         result = spec_exec_server => result.map(|()| ExitCode::SUCCESS),
-        () = client_loop => Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)),
+        result = client_loop => result.map(|()| ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)),
     }
 }
 

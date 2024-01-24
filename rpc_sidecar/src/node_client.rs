@@ -1,7 +1,7 @@
-use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
-
+use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
+use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types_ver_2_0::{
@@ -300,7 +300,9 @@ pub struct JulietNodeClient {
 }
 
 impl JulietNodeClient {
-    pub async fn new(config: &NodeClientConfig) -> (Self, impl Future<Output = ()> + '_) {
+    pub async fn new(
+        config: NodeClientConfig,
+    ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
         let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
             ChannelConfiguration::default()
                 .with_request_limit(config.request_limit)
@@ -311,38 +313,39 @@ impl JulietNodeClient {
             .buffer_size(ChannelId::new(0), config.request_buffer_size);
         let rpc_builder = RpcBuilder::new(io_builder);
 
-        let stream = Self::connect_with_retries(config.address, &config.exponential_backoff).await;
+        let stream =
+            Self::connect_with_retries(config.address, &config.exponential_backoff).await?;
         let (reader, writer) = stream.into_split();
         let (client, server) = rpc_builder.build(reader, writer);
         let client = Arc::new(RwLock::new(client));
         let shutdown = Arc::new(Notify::new());
         let server_loop = Self::server_loop(
             config.address,
-            &config.exponential_backoff,
+            config.exponential_backoff.clone(),
             rpc_builder,
             Arc::clone(&client),
             server,
             shutdown.clone(),
         );
 
-        (Self { client, shutdown }, server_loop)
+        Ok((Self { client, shutdown }, server_loop))
     }
 
     async fn server_loop(
         addr: SocketAddr,
-        config: &ExponentialBackoffConfig,
+        config: ExponentialBackoffConfig,
         rpc_builder: RpcBuilder<CHANNEL_COUNT>,
         client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
         mut server: JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
         shutdown: Arc<Notify>,
-    ) {
+    ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
                 req = server.next_request() => match req {
                     Ok(None) | Err(_) => {
                         error!("node connection closed, will attempt to reconnect");
                         let (reader, writer) =
-                            Self::connect_with_retries(addr, config).await.into_split();
+                            Self::connect_with_retries(addr, &config).await?.into_split();
                         let (new_client, new_server) = rpc_builder.build(reader, writer);
 
                         info!("connection with the node has been re-established");
@@ -355,7 +358,7 @@ impl JulietNodeClient {
                 },
                 _ = shutdown.notified() => {
                     info!("node client shutdown has been requested");
-                    break
+                    return Ok(())
                 }
             }
         }
@@ -364,13 +367,22 @@ impl JulietNodeClient {
     async fn connect_with_retries(
         addr: SocketAddr,
         config: &ExponentialBackoffConfig,
-    ) -> TcpStream {
+    ) -> Result<TcpStream, AnyhowError> {
         let mut wait = config.initial_delay_ms;
+        let mut current_attempt = 1;
         loop {
             match TcpStream::connect(addr).await {
-                Ok(server) => break server,
+                Ok(server) => return Ok(server),
                 Err(err) => {
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
+                    current_attempt += 1;
+                    if !config.max_attempts.can_attempt(current_attempt) {
+                        anyhow::bail!(
+                            "Couldn't connect to node {} after {} attempts",
+                            addr,
+                            current_attempt - 1
+                        );
+                    }
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.coefficient).min(config.max_delay_ms);
                 }
@@ -492,10 +504,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use casper_types_ver_2_0::SemVer;
-    use futures::FutureExt;
+    use crate::testing::BinaryPortMock;
 
     use super::*;
+    use casper_types_ver_2_0::testing::TestRng;
+    use casper_types_ver_2_0::{CLValue, SemVer};
+    use futures::FutureExt;
+    use tokio::task::JoinHandle;
+    use tokio::time::sleep;
 
     #[tokio::test]
     async fn should_reject_bad_major_version() {
@@ -564,5 +580,93 @@ mod tests {
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
+    }
+
+    #[tokio::test]
+    async fn given_client_and_no_node_should_fail_after_tries() {
+        let config = NodeClientConfig::finite_retries_config(1111, 2);
+        let res = JulietNodeClient::new(config).await;
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+
+        assert!(error_message.starts_with("Couldn't connect to node"));
+        assert!(error_message.ends_with(" after 2 attempts"));
+    }
+
+    #[tokio::test]
+    async fn given_client_and_node_should_connect_and_do_request() {
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(port).await;
+        let config = NodeClientConfig::finite_retries_config(port, 2);
+        let (c, server_loop) = JulietNodeClient::new(config).await.unwrap();
+        tokio::spawn(async move {
+            server_loop.await.unwrap();
+        });
+
+        let res = query_global_state_for_string_value(&mut rng, &c)
+            .await
+            .unwrap();
+
+        assert_eq!(res, StoredValue::CLValue(CLValue::from_t("Foo").unwrap()))
+    }
+
+    #[tokio::test]
+    async fn given_client_should_try_until_node_starts() {
+        let mut rng = TestRng::new();
+        let port = get_port();
+        tokio::spawn(async move {
+            sleep(Duration::from_secs(5)).await;
+            let _mock_server_handle =
+                start_mock_binary_port_responding_with_stored_value(port).await;
+        });
+        let config = NodeClientConfig::finite_retries_config(port, 5);
+        let (client, server_loop) = JulietNodeClient::new(config).await.unwrap();
+        tokio::spawn(async move {
+            server_loop.await.unwrap();
+        });
+
+        let res = query_global_state_for_string_value(&mut rng, &client)
+            .await
+            .unwrap();
+
+        assert_eq!(res, StoredValue::CLValue(CLValue::from_t("Foo").unwrap()))
+    }
+
+    async fn query_global_state_for_string_value(
+        rng: &mut TestRng,
+        client: &JulietNodeClient,
+    ) -> Result<StoredValue, Error> {
+        let state_root_hash = Digest::random(rng);
+        let base_key = Key::ChecksumRegistry;
+        client
+            .query_global_state(state_root_hash, base_key, vec![])
+            .await?
+            .ok_or(Error::NoResponseBody)
+            .map(|query_res| query_res.into_inner().0)
+    }
+
+    async fn start_mock_binary_port_responding_with_stored_value(port: u16) -> JoinHandle<()> {
+        let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
+        let data = GlobalStateQueryResult::new(value, base16::encode_lower(&vec![]));
+        let protocol_version = ProtocolVersion::from_parts(1, 5, 4);
+        let val = BinaryResponse::from_value(data, protocol_version);
+        let request = [];
+        let response = BinaryResponseAndRequest::new(val, &request);
+        start_mock_binary_port(port, response.to_bytes().unwrap()).await
+    }
+
+    async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
+        let handler = tokio::spawn(async move {
+            let binary_port = BinaryPortMock::new(port, data);
+            binary_port.start().await;
+        });
+        sleep(Duration::from_secs(3)).await; // This should be handled differently, preferrably the mock binary port should inform that it already bound to the port
+        handler
+    }
+
+    pub fn get_port() -> u16 {
+        portpicker::pick_unused_port().unwrap()
     }
 }

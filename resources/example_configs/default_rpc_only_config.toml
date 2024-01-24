@@ -82,3 +82,5 @@ initial_delay_ms = 1000
 max_delay_ms = 32_000
 # The multiplier to apply to the previous delay to get the next delay.
 coefficient = 2
+# Maximum number of connection attempts.
+max_attempts = 30
