@@ -83,7 +83,7 @@ impl RpcWithParams for PutDeploy {
                 api_version: CURRENT_API_VERSION,
                 deploy_hash,
             }),
-            Err(err @ ClientError::InvalidDeploy) => {
+            Err(err @ ClientError::InvalidTransaction) => {
                 Err(Error::InvalidDeploy(err.to_string()).into())
             }
             Err(err) => Err(Error::NodeRequest("submitting a deploy", err).into()),
@@ -141,7 +141,7 @@ impl RpcWithParams for PutTransaction {
                 api_version: CURRENT_API_VERSION,
                 transaction_hash,
             }),
-            Err(err @ ClientError::InvalidDeploy) => {
+            Err(err @ ClientError::InvalidTransaction) => {
                 Err(Error::InvalidTransaction(err.to_string()).into())
             }
             Err(err) => Err(Error::NodeRequest("submitting a transaction", err).into()),
@@ -152,8 +152,11 @@ impl RpcWithParams for PutTransaction {
 #[cfg(test)]
 mod tests {
     use casper_types_ver_2_0::{
-        binary_port::binary_request::BinaryRequest, testing::TestRng, BinaryResponse,
-        BinaryResponseAndRequest, ErrorCode as BinaryPortErrorCode,
+        binary_port::{
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
+            ErrorCode as BinaryPortErrorCode,
+        },
+        testing::TestRng,
     };
 
     use crate::{rpcs::ErrorCode, SUPPORTED_PROTOCOL_VERSION};
@@ -256,7 +259,7 @@ mod tests {
                     BinaryRequest::TryAcceptTransaction { .. } => {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_error(
-                                BinaryPortErrorCode::InvalidDeploy,
+                                BinaryPortErrorCode::InvalidTransaction,
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],

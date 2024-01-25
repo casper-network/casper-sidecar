@@ -407,15 +407,13 @@ mod tests {
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
-            binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-            global_state_query_result::GlobalStateQueryResult,
-            non_persistent_data_request::NonPersistedDataRequest,
-            type_wrappers::HighestBlockSequenceCheckResult,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
+            GlobalStateQueryResult, HighestBlockSequenceCheckResult, NonPersistedDataRequest,
         },
         system::auction::EraInfo,
         testing::TestRng,
-        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockV1,
-        DeployHash, TestBlockBuilder, TestBlockV1Builder,
+        AvailableBlockRange, BlockHashAndHeight, BlockV1, DeployHash, TestBlockBuilder,
+        TestBlockV1Builder,
     };
     use rand::Rng;
 
@@ -496,7 +494,7 @@ mod tests {
                         NonPersistedDataRequest::CompletedBlocksContain { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
-                            HighestBlockSequenceCheckResult(true),
+                            HighestBlockSequenceCheckResult::new(true),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
@@ -738,7 +736,7 @@ mod tests {
                     NonPersistedDataRequest::CompletedBlocksContain { .. },
                 )) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
-                        HighestBlockSequenceCheckResult(true),
+                        HighestBlockSequenceCheckResult::new(true),
                         SUPPORTED_PROTOCOL_VERSION,
                     ),
                     &[],

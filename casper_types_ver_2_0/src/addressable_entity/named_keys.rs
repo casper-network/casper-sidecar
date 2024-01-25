@@ -5,10 +5,10 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
+#[cfg(feature = "json-schema")]
+use crate::execution::execution_result_v1::NamedKey;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, Key,
@@ -22,6 +22,7 @@ use crate::{
 #[rustfmt::skip]
 pub struct NamedKeys(
     #[serde(with = "BTreeMapToArray::<String, Key, Labels>")]
+    #[cfg_attr(feature = "json-schema", schemars(with = "Vec<NamedKey>"))]
     BTreeMap<String, Key>,
 );
 
@@ -135,15 +136,6 @@ struct Labels;
 impl KeyValueLabels for Labels {
     const KEY: &'static str = "name";
     const VALUE: &'static str = "key";
-}
-
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for Labels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedKey");
-    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some("A key with a name.");
-    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The name of the entry.");
-    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> =
-        Some("The value of the entry: a casper `Key` type.");
 }
 
 #[cfg(test)]

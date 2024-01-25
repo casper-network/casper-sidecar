@@ -19,7 +19,7 @@ use crate::{
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
-    FinalizedDeployApprovals, Peers, ReactorState, Transaction, Transfer, Uptime,
+    FinalizedDeployApprovals, Peers, ReactorState, StoredValue, Transaction, Transfer,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -30,8 +30,8 @@ use super::{
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
         HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
-        StoredValues,
     },
+    Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -62,9 +62,7 @@ pub enum PayloadType {
     /// Execution result.
     ExecutionResult,
     /// Transfers.
-    VecTransfers,
-    /// Global state bytes.
-    StateStoreValue,
+    Transfers,
     /// Finalized deploy approvals.
     FinalizedDeployApprovals,
     /// Finalized approvals.
@@ -114,21 +112,19 @@ impl PayloadType {
         match (is_legacy, db_id) {
             (true, DbId::BlockHeader) => Self::BlockHeaderV1,
             (true, DbId::BlockBody) => Self::BlockBodyV1,
-            (true, DbId::ApprovalsHashes) => Self::ApprovalsHashes,
+            (true, DbId::ApprovalsHashes) => Self::ApprovalsHashesV1,
             (true, DbId::BlockMetadata) => Self::BlockSignatures,
             (true, DbId::Transaction) => Self::Deploy,
             (true, DbId::ExecutionResult) => Self::ExecutionResultV1,
-            (true, DbId::Transfer) => Self::VecTransfers,
-            (true, DbId::StateStore) => Self::StateStoreValue,
+            (true, DbId::Transfer) => Self::Transfers,
             (true, DbId::FinalizedTransactionApprovals) => Self::FinalizedDeployApprovals,
             (false, DbId::BlockHeader) => Self::BlockHeader,
             (false, DbId::BlockBody) => Self::BlockBody,
-            (false, DbId::ApprovalsHashes) => Self::ApprovalsHashesV1,
+            (false, DbId::ApprovalsHashes) => Self::ApprovalsHashes,
             (false, DbId::BlockMetadata) => Self::BlockSignatures,
             (false, DbId::Transaction) => Self::Transaction,
             (false, DbId::ExecutionResult) => Self::ExecutionResult,
-            (false, DbId::Transfer) => Self::VecTransfers,
-            (false, DbId::StateStore) => Self::StateStoreValue,
+            (false, DbId::Transfer) => Self::Transfers,
             (false, DbId::FinalizedTransactionApprovals) => Self::FinalizedApprovals,
         }
     }
@@ -142,7 +138,6 @@ impl PayloadType {
 impl TryFrom<u8> for PayloadType {
     type Error = ();
 
-    // TODO: replace with macro or find better option
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         match v {
             x if x == PayloadType::BlockHeaderV1 as u8 => Ok(PayloadType::BlockHeaderV1),
@@ -156,8 +151,7 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::Transaction as u8 => Ok(PayloadType::Transaction),
             x if x == PayloadType::ExecutionResultV1 as u8 => Ok(PayloadType::ExecutionResultV1),
             x if x == PayloadType::ExecutionResult as u8 => Ok(PayloadType::ExecutionResult),
-            x if x == PayloadType::VecTransfers as u8 => Ok(PayloadType::VecTransfers),
-            x if x == PayloadType::StateStoreValue as u8 => Ok(PayloadType::StateStoreValue),
+            x if x == PayloadType::Transfers as u8 => Ok(PayloadType::Transfers),
             x if x == PayloadType::FinalizedDeployApprovals as u8 => {
                 Ok(PayloadType::FinalizedDeployApprovals)
             }
@@ -218,8 +212,7 @@ impl fmt::Display for PayloadType {
             PayloadType::Transaction => write!(f, "Transaction"),
             PayloadType::ExecutionResultV1 => write!(f, "ExecutionResultV1"),
             PayloadType::ExecutionResult => write!(f, "ExecutionResult"),
-            PayloadType::VecTransfers => write!(f, "VecTransfers"),
-            PayloadType::StateStoreValue => write!(f, "StateStoreValue"),
+            PayloadType::Transfers => write!(f, "Transfers"),
             PayloadType::FinalizedDeployApprovals => write!(f, "FinalizedDeployApprovals"),
             PayloadType::FinalizedApprovals => write!(f, "FinalizedApprovals"),
             PayloadType::BlockHashAndHeight => write!(f, "BlockHashAndHeight"),
@@ -258,29 +251,28 @@ const DEPLOY_TAG: u8 = 7;
 const TRANSACTION_TAG: u8 = 8;
 const EXECUTION_RESULT_V1_TAG: u8 = 9;
 const EXECUTION_RESULT_TAG: u8 = 10;
-const VEC_TRANSFERS_TAG: u8 = 11;
-const STATE_STORE_VALUE_TAG: u8 = 12;
-const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 13;
-const FINALIZED_APPROVALS_TAG: u8 = 14;
-const BLOCK_HASH_AND_HEIGHT_TAG: u8 = 15;
-const BLOCK_HASH_TAG: u8 = 16;
-const PEERS_MAP_TAG: u8 = 17;
-const UPTIME_TAG: u8 = 18;
-const LAST_PROGRESS_TAG: u8 = 19;
-const REACTOR_STATE_TAG: u8 = 20;
-const NETWORK_NAME_TAG: u8 = 21;
-const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 22;
-const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 23;
-const AVAILABLE_BLOCK_RANGE_TAG: u8 = 24;
-const NEXT_UPGRADE_TAG: u8 = 25;
-const CONSENSUS_STATUS_TAG: u8 = 26;
-const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
-const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
-const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
-const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
-const STORED_VALUES_TAG: u8 = 31;
-const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
-const NODE_STATUS_TAG: u8 = 33;
+const TRANSFERS_TAG: u8 = 11;
+const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 12;
+const FINALIZED_APPROVALS_TAG: u8 = 13;
+const BLOCK_HASH_AND_HEIGHT_TAG: u8 = 14;
+const BLOCK_HASH_TAG: u8 = 15;
+const PEERS_MAP_TAG: u8 = 16;
+const UPTIME_TAG: u8 = 17;
+const LAST_PROGRESS_TAG: u8 = 18;
+const REACTOR_STATE_TAG: u8 = 19;
+const NETWORK_NAME_TAG: u8 = 20;
+const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 21;
+const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 22;
+const AVAILABLE_BLOCK_RANGE_TAG: u8 = 23;
+const NEXT_UPGRADE_TAG: u8 = 24;
+const CONSENSUS_STATUS_TAG: u8 = 25;
+const CHAINSPEC_RAW_BYTES_TAG: u8 = 26;
+const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 27;
+const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 28;
+const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 29;
+const STORED_VALUES_TAG: u8 = 30;
+const GET_TRIE_FULL_RESULT_TAG: u8 = 31;
+const NODE_STATUS_TAG: u8 = 32;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -302,8 +294,7 @@ impl ToBytes for PayloadType {
             PayloadType::Transaction => TRANSACTION_TAG,
             PayloadType::ExecutionResultV1 => EXECUTION_RESULT_V1_TAG,
             PayloadType::ExecutionResult => EXECUTION_RESULT_TAG,
-            PayloadType::VecTransfers => VEC_TRANSFERS_TAG,
-            PayloadType::StateStoreValue => STATE_STORE_VALUE_TAG,
+            PayloadType::Transfers => TRANSFERS_TAG,
             PayloadType::FinalizedDeployApprovals => FINALIZED_DEPLOY_APPROVALS_TAG,
             PayloadType::FinalizedApprovals => FINALIZED_APPROVALS_TAG,
             PayloadType::BlockHashAndHeight => BLOCK_HASH_AND_HEIGHT_TAG,
@@ -349,8 +340,7 @@ impl FromBytes for PayloadType {
             TRANSACTION_TAG => PayloadType::Transaction,
             EXECUTION_RESULT_V1_TAG => PayloadType::ExecutionResultV1,
             EXECUTION_RESULT_TAG => PayloadType::ExecutionResult,
-            VEC_TRANSFERS_TAG => PayloadType::VecTransfers,
-            STATE_STORE_VALUE_TAG => PayloadType::StateStoreValue,
+            TRANSFERS_TAG => PayloadType::Transfers,
             FINALIZED_DEPLOY_APPROVALS_TAG => PayloadType::FinalizedDeployApprovals,
             FINALIZED_APPROVALS_TAG => PayloadType::FinalizedApprovals,
             BLOCK_HASH_AND_HEIGHT_TAG => PayloadType::BlockHashAndHeight,
@@ -437,7 +427,7 @@ impl PayloadEntity for BlockSignatures {
 }
 
 impl PayloadEntity for Vec<Transfer> {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::VecTransfers;
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Transfers;
 }
 
 impl PayloadEntity for BlockHash {
@@ -465,7 +455,7 @@ impl PayloadEntity for GlobalStateQueryResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
 }
 
-impl PayloadEntity for StoredValues {
+impl PayloadEntity for Vec<StoredValue> {
     const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
 }
 

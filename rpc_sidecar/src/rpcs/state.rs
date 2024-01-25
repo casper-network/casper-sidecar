@@ -300,7 +300,6 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .await
             .map_err(|err| Error::NodeRequest("auction bids", err))?;
         let bids = bid_stored_values
-            .into_inner()
             .into_iter()
             .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
             .collect::<Result<Vec<_>, Error>>()?;
@@ -843,15 +842,13 @@ mod tests {
     use casper_types_ver_2_0::{
         addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys},
         binary_port::{
-            binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-            global_state_query_result::GlobalStateQueryResult,
-            non_persistent_data_request::NonPersistedDataRequest, type_wrappers::StoredValues,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
+            GlobalStateQueryResult, NonPersistedDataRequest,
         },
         system::auction::BidKind,
         testing::TestRng,
-        AccessRights, AddressableEntity, AvailableBlockRange, BinaryResponse,
-        BinaryResponseAndRequest, Block, BlockHashAndHeight, ByteCodeHash, EntryPoints,
-        PackageHash, ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, BlockHashAndHeight,
+        ByteCodeHash, EntryPoints, PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use rand::Rng;
 
@@ -967,12 +964,9 @@ mod tests {
                             .iter()
                             .cloned()
                             .map(StoredValue::BidKind)
-                            .collect();
+                            .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                StoredValues(bids),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
+                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
                             &[],
                         ))
                     }

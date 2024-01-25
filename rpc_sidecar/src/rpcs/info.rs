@@ -550,12 +550,11 @@ mod tests {
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
-            binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-            non_persistent_data_request::NonPersistedDataRequest,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
+            NonPersistedDataRequest,
         },
         testing::TestRng,
-        BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
-        FinalizedDeployApprovals, TransactionV1,
+        BlockHash, BlockHashAndHeight, FinalizedDeployApprovals, TransactionV1,
     };
     use pretty_assertions::assert_eq;
 

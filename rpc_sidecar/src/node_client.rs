@@ -6,24 +6,17 @@ use serde::de::DeserializeOwned;
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types_ver_2_0::{
     binary_port::{
-        binary_request::{BinaryRequest, BinaryRequestHeader},
-        db_id::DbId,
-        get::GetRequest,
-        global_state_query_result::GlobalStateQueryResult,
-        non_persistent_data_request::NonPersistedDataRequest,
-        payload_type::PayloadEntity,
-        type_wrappers::{
-            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-            SpeculativeExecutionResult, StoredValues,
-        },
-        ErrorCode as BinaryPortError, NodeStatus,
+        BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+        ConsensusValidatorChanges, DbId, ErrorCode as BinaryPortError, GetRequest,
+        GetTrieFullResult, GlobalStateQueryResult, HighestBlockSequenceCheckResult, NodeStatus,
+        NonPersistedDataRequest, PayloadEntity, SpeculativeExecutionResult,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
-    AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
-    BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockIdentifier, BlockSignatures,
-    ChainspecRawBytes, Deploy, Digest, FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag,
-    Peers, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
+    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockHeaderV1, BlockIdentifier, BlockSignatures, ChainspecRawBytes, Deploy, Digest,
+    FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag, Peers, ProtocolVersion, StoredValue,
+    Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -86,13 +79,13 @@ pub trait NodeClient: Send + Sync {
         &self,
         state_root_hash: Digest,
         tag: KeyTag,
-    ) -> Result<StoredValues, Error> {
+    ) -> Result<Vec<StoredValue>, Error> {
         let get = GetRequest::AllValues {
             state_root_hash,
             key_tag: tag,
         };
         let resp = self.send_request(BinaryRequest::Get(get)).await?;
-        parse_response::<StoredValues>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+        parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
@@ -265,8 +258,8 @@ pub enum Error {
     UnknownStateRootHash,
     #[error("the provided global state query failed to execute")]
     QueryFailedToExecute,
-    #[error("could not execute the provided deploy")]
-    InvalidDeploy,
+    #[error("could not execute the provided transaction")]
+    InvalidTransaction,
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
     #[error("received a response with an unsupported protocol version: {0}")]
@@ -279,7 +272,7 @@ impl Error {
     fn from_error_code(code: u8) -> Self {
         match BinaryPortError::try_from(code) {
             Ok(BinaryPortError::FunctionDisabled) => Self::FunctionIsDisabled,
-            Ok(BinaryPortError::InvalidDeploy) => Self::InvalidDeploy,
+            Ok(BinaryPortError::InvalidTransaction) => Self::InvalidTransaction,
             Ok(BinaryPortError::RootNotFound) => Self::UnknownStateRootHash,
             Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,
             Ok(
