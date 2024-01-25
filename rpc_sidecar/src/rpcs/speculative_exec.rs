@@ -160,14 +160,11 @@ async fn handle_request(
 mod tests {
     use casper_types_ver_2_0::{
         binary_port::{
-            binary_request::BinaryRequest,
-            db_id::DbId,
-            get::GetRequest,
-            non_persistent_data_request::NonPersistedDataRequest,
-            type_wrappers::{HighestBlockSequenceCheckResult, SpeculativeExecutionResult},
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
+            HighestBlockSequenceCheckResult, NonPersistedDataRequest, SpeculativeExecutionResult,
         },
         testing::TestRng,
-        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, Block, TestBlockBuilder,
+        AvailableBlockRange, Block, TestBlockBuilder,
     };
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
@@ -285,14 +282,14 @@ mod tests {
                     NonPersistedDataRequest::CompletedBlocksContain { .. },
                 )) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
-                        HighestBlockSequenceCheckResult(true),
+                        HighestBlockSequenceCheckResult::new(true),
                         SUPPORTED_PROTOCOL_VERSION,
                     ),
                     &[],
                 )),
                 BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
-                        SpeculativeExecutionResult(Some((
+                        SpeculativeExecutionResult::new(Some((
                             self.execution_result.clone(),
                             Messages::new(),
                         ))),
