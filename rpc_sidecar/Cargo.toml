@@ -22,9 +22,9 @@ datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 http = "0.2.1"
 hyper = "0.14.26"
-juliet = "0.2"
+juliet = { version ="0.2", features = ["tracing"] }
 num_cpus = "1"
-once_cell = { workspace = true }
+once_cell.workspace = true
 rand = "0.8.3"
 schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 serde = { workspace = true, default-features = true, features = ["derive"] }
@@ -40,7 +40,9 @@ warp = { version = "0.3.6", features = ["compression"] }
 
 [dev-dependencies]
 assert-json-diff = "2"
+bytes = "1.5.0"
 casper-types-ver-2_0 = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
+portpicker = "0.1.1"
 pretty_assertions = "0.7.2"
 regex = "1"
 tempfile = "3"
