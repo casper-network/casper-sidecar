@@ -1,8 +1,8 @@
 use crate::node_client::Error as NodeClientError;
-use casper_json_rpc::Error as RpcError;
+use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
 use casper_types::{
-    AvailableBlockRange, BlockIdentifier, DeployHash, KeyFromStrError, KeyTag, TransactionHash,
-    URefFromStrError,
+    bytesrepr, AvailableBlockRange, BlockIdentifier, DeployHash, KeyFromStrError, KeyTag,
+    TransactionHash, URefFromStrError,
 };
 
 use super::{ErrorCode, ErrorData};
@@ -23,12 +23,6 @@ pub enum Error {
     GlobalStateEntryNotFound,
     #[error("the requested purse URef was invalid: {0}")]
     InvalidPurseURef(URefFromStrError),
-    #[error("the requested purse balance could not be parsed")]
-    InvalidPurseBalance,
-    #[error("the requested main purse was invalid")]
-    InvalidMainPurse,
-    #[error("the requested account info could not be parsed")]
-    InvalidAccountInfo,
     #[error("the provided dictionary key was invalid: {0}")]
     InvalidDictionaryKey(KeyFromStrError),
     #[error("the provided dictionary key points at an unexpected type: {0}")]
@@ -37,6 +31,10 @@ pub enum Error {
     DictionaryKeyNotFound,
     #[error("the provided dictionary name doesn't exist")]
     DictionaryNameNotFound,
+    #[error("the requested main purse was not found")]
+    MainPurseNotFound,
+    #[error("the requested account was not found")]
+    AccountNotFound,
     #[error("the provided dictionary value is {0} instead of a URef")]
     DictionaryValueIsNotAUref(KeyTag),
     #[error("the provided dictionary key could not be parsed: {0}")]
@@ -45,51 +43,53 @@ pub enum Error {
     InvalidTransaction(String),
     #[error("the deploy was invalid: {0}")]
     InvalidDeploy(String),
-    #[error("the auction bids were invalid")]
-    InvalidAuctionBids,
-    #[error("the auction contract was invalid")]
-    InvalidAuctionContract,
-    #[error("the auction validators were invalid")]
-    InvalidAuctionValidators,
+    #[error("the requested purse balance could not be parsed")]
+    InvalidPurseBalance,
+    #[error("the requested account info could not be parsed")]
+    InvalidAccountInfo,
+    #[error("the auction state was invalid")]
+    InvalidAuctionState,
     #[error("speculative execution returned nothing")]
     SpecExecReturnedNothing,
+    #[error("unexpected bytesrepr failure: {0}")]
+    BytesreprFailure(bytesrepr::Error),
 }
 
 impl Error {
-    fn code(&self) -> ErrorCode {
+    fn code(&self) -> Option<ErrorCode> {
         match self {
-            Error::NoBlockFound(_, _) => ErrorCode::NoSuchBlock,
-            Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
-            Error::NoDeployWithHash(_) => ErrorCode::NoSuchDeploy,
-            Error::FoundTransactionInsteadOfDeploy => ErrorCode::VariantMismatch,
+            Error::NoBlockFound(_, _) => Some(ErrorCode::NoSuchBlock),
+            Error::NoTransactionWithHash(_) => Some(ErrorCode::NoSuchTransaction),
+            Error::NoDeployWithHash(_) => Some(ErrorCode::NoSuchDeploy),
+            Error::FoundTransactionInsteadOfDeploy => Some(ErrorCode::VariantMismatch),
             Error::NodeRequest(_, NodeClientError::UnknownStateRootHash) => {
-                ErrorCode::NoSuchStateRoot
+                Some(ErrorCode::NoSuchStateRoot)
             }
-            Error::GlobalStateEntryNotFound => ErrorCode::QueryFailed,
+            Error::GlobalStateEntryNotFound => Some(ErrorCode::QueryFailed),
             Error::NodeRequest(_, NodeClientError::QueryFailedToExecute) => {
-                ErrorCode::QueryFailedToExecute
+                Some(ErrorCode::QueryFailedToExecute)
             }
             Error::NodeRequest(_, NodeClientError::FunctionIsDisabled) => {
-                ErrorCode::FunctionIsDisabled
+                Some(ErrorCode::FunctionIsDisabled)
             }
-            Error::InvalidPurseURef(_) => ErrorCode::FailedToParseGetBalanceURef,
-            Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
-            Error::InvalidAccountInfo => ErrorCode::NoSuchAccount,
-            Error::InvalidDictionaryKey(_) => ErrorCode::FailedToParseQueryKey,
-            Error::InvalidMainPurse => ErrorCode::NoSuchMainPurse,
+            Error::InvalidPurseURef(_) => Some(ErrorCode::FailedToParseGetBalanceURef),
+            Error::InvalidDictionaryKey(_) => Some(ErrorCode::FailedToParseQueryKey),
+            Error::MainPurseNotFound => Some(ErrorCode::NoSuchMainPurse),
+            Error::AccountNotFound => Some(ErrorCode::NoSuchAccount),
             Error::InvalidTypeUnderDictionaryKey(_)
             | Error::DictionaryKeyNotFound
             | Error::DictionaryNameNotFound
             | Error::DictionaryValueIsNotAUref(_)
-            | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
-            Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
+            | Error::DictionaryKeyCouldNotBeParsed(_) => Some(ErrorCode::FailedToGetDictionaryURef),
+            Error::InvalidTransaction(_) => Some(ErrorCode::InvalidTransaction),
             Error::NodeRequest(_, NodeClientError::SpecExecutionFailed(_))
             | Error::InvalidDeploy(_)
-            | Error::SpecExecReturnedNothing => ErrorCode::InvalidDeploy,
-            Error::InvalidAuctionBids
-            | Error::InvalidAuctionContract
-            | Error::InvalidAuctionValidators => ErrorCode::InvalidAuctionState,
-            Error::NodeRequest(_, _) => ErrorCode::NodeRequestFailed,
+            | Error::SpecExecReturnedNothing => Some(ErrorCode::InvalidDeploy),
+            Error::NodeRequest(_, _) => Some(ErrorCode::NodeRequestFailed),
+            Error::InvalidPurseBalance => Some(ErrorCode::FailedToGetBalance),
+            Error::InvalidAccountInfo | Error::InvalidAuctionState | Error::BytesreprFailure(_) => {
+                None
+            }
         }
     }
 }
@@ -98,13 +98,16 @@ impl From<Error> for RpcError {
     fn from(value: Error) -> Self {
         match value {
             Error::NoBlockFound(_, available_block_range) => RpcError::new(
-                value.code(),
+                ErrorCode::NoSuchBlock,
                 ErrorData::MissingBlockOrStateRoot {
                     message: value.to_string(),
                     available_block_range,
                 },
             ),
-            _ => RpcError::new(value.code(), value.to_string()),
+            _ => match value.code() {
+                Some(code) => RpcError::new(code, value.to_string()),
+                None => RpcError::new(ReservedErrorCode::InternalError, value.to_string()),
+            },
         }
     }
 }

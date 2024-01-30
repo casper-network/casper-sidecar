@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier,
-    GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
+    account::AccountHash, binary_port::GlobalStateQueryResult, bytesrepr::ToBytes,
+    global_state::TrieMerkleProof, AddressableEntity, AvailableBlockRange, BlockHeader,
+    BlockIdentifier, GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
 };
 
 use crate::NodeClient;
@@ -80,33 +81,38 @@ pub async fn get_block_header(
     }
 }
 
-pub async fn get_account(
+pub async fn get_addressable_entity(
     node_client: &dyn NodeClient,
     account_hash: AccountHash,
     state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<AddressableEntity, Error> {
+) -> Result<Option<AddressableEntity>, Error> {
     let account_key = Key::Account(account_hash);
-    let (value, _) = node_client
+    let Some((value, _)) = node_client
         .query_global_state(state_identifier, account_key, vec![])
         .await
         .map_err(|err| Error::NodeRequest("account stored value", err))?
-        .ok_or(Error::GlobalStateEntryNotFound)?
-        .into_inner();
+        .map(GlobalStateQueryResult::into_inner)
+    else {
+        return Ok(None);
+    };
 
     match value {
-        StoredValue::Account(account) => Ok(account.into()),
+        StoredValue::Account(account) => Ok(Some(account.into())),
         StoredValue::CLValue(entity_key_as_clvalue) => {
             let key: Key = entity_key_as_clvalue
                 .into_t()
                 .map_err(|_| Error::InvalidAccountInfo)?;
-            let (value, _) = node_client
+            let Some((value, _)) = node_client
                 .query_global_state(state_identifier, key, vec![])
                 .await
                 .map_err(|err| Error::NodeRequest("account owning a purse", err))?
-                .ok_or(Error::GlobalStateEntryNotFound)?
-                .into_inner();
+                .map(GlobalStateQueryResult::into_inner)
+            else {
+                return Ok(None);
+            };
             value
                 .into_addressable_entity()
+                .map(Some)
                 .ok_or(Error::InvalidAccountInfo)
         }
         _ => Err(Error::InvalidAccountInfo),
@@ -125,9 +131,9 @@ pub async fn get_main_purse(
         PurseIdentifier::MainPurseUnderAccountHash(account_hash) => account_hash,
         PurseIdentifier::PurseUref(purse_uref) => return Ok(purse_uref),
     };
-    let account = get_account(node_client, account_hash, state_identifier)
-        .await
-        .map_err(|_| Error::InvalidMainPurse)?;
+    let account = get_addressable_entity(node_client, account_hash, state_identifier)
+        .await?
+        .ok_or(Error::MainPurseNotFound)?;
     Ok(account.main_purse())
 }
 
@@ -154,8 +160,14 @@ pub async fn get_balance(
     })
 }
 
+pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<String, Error> {
+    Ok(base16::encode_lower(
+        &proof.to_bytes().map_err(Error::BytesreprFailure)?,
+    ))
+}
+
 #[derive(Debug)]
 pub struct SuccessfulQueryResult<A> {
     pub value: A,
-    pub merkle_proof: String,
+    pub merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
 }

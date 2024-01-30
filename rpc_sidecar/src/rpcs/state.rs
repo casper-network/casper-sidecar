@@ -185,7 +185,7 @@ impl RpcWithParams for GetItem {
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             stored_value,
-            merkle_proof,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
 }
@@ -245,7 +245,7 @@ impl RpcWithParams for GetBalance {
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance_value: result.value,
-            merkle_proof: result.merkle_proof,
+            merkle_proof: common::encode_proof(&result.merkle_proof)?,
         })
     }
 }
@@ -308,7 +308,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map_err(|err| Error::NodeRequest("auction bids", err))?;
         let bids = bid_stored_values
             .into_iter()
-            .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
+            .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionState))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let (registry_value, _) = node_client
@@ -319,11 +319,11 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_inner();
         let registry: BTreeMap<String, AddressableEntityHash> = registry_value
             .into_cl_value()
-            .ok_or(Error::InvalidAuctionContract)?
+            .ok_or(Error::InvalidAuctionState)?
             .into_t()
-            .map_err(|_| Error::InvalidAuctionContract)?;
+            .map_err(|_| Error::InvalidAuctionState)?;
 
-        let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionContract)?;
+        let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
         let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
         let (snapshot_value, _) = node_client
             .query_global_state(
@@ -337,9 +337,9 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_inner();
         let snapshot = snapshot_value
             .into_cl_value()
-            .ok_or(Error::InvalidAuctionValidators)?
+            .ok_or(Error::InvalidAuctionState)?
             .into_t()
-            .map_err(|_| Error::InvalidAuctionValidators)?;
+            .map_err(|_| Error::InvalidAuctionState)?;
 
         let validators = era_validators_from_snapshot(snapshot);
         let auction_state = AuctionState::new(
@@ -427,7 +427,7 @@ impl RpcWithParams for GetAccountInfo {
             .query_global_state(maybe_state_identifier, base_key, vec![])
             .await
             .map_err(|err| Error::NodeRequest("account info", err))?
-            .ok_or(Error::GlobalStateEntryNotFound)?
+            .ok_or(Error::AccountNotFound)?
             .into_inner();
         let account = account_value
             .into_account()
@@ -436,7 +436,7 @@ impl RpcWithParams for GetAccountInfo {
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             account,
-            merkle_proof,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
 }
@@ -603,7 +603,7 @@ impl RpcWithParams for GetDictionaryItem {
             api_version: CURRENT_API_VERSION,
             dictionary_key: dictionary_key.to_formatted_string(),
             stored_value,
-            merkle_proof,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
 }
@@ -684,7 +684,7 @@ impl RpcWithParams for QueryGlobalState {
             api_version: CURRENT_API_VERSION,
             block_header,
             stored_value,
-            merkle_proof,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
 }
@@ -835,7 +835,13 @@ fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraV
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, iter};
+    use std::{
+        collections::VecDeque,
+        {
+            convert::TryFrom,
+            iter::{self, FromIterator},
+        },
+    };
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types::{
@@ -846,11 +852,13 @@ mod tests {
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
+        global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::BidKind,
         testing::TestRng,
         AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
         ProtocolVersion, TestBlockBuilder,
     };
+    use pretty_assertions::assert_eq;
     use rand::Rng;
 
     use super::*;
@@ -858,15 +866,20 @@ mod tests {
     #[tokio::test]
     async fn should_read_state_item() {
         let rng = &mut TestRng::new();
+        let key = rng.gen::<Key>();
         let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
-        let merkle_proof = rng.random_string(10..20);
+        let merkle_proof = vec![TrieMerkleProof::new(
+            key,
+            stored_value.clone(),
+            VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
+        )];
         let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
 
         let resp = GetItem::do_handle_request(
             Arc::new(ValidGlobalStateResultMock(expected.clone())),
             GetItemParams {
                 state_root_hash: rng.gen(),
-                key: rng.gen(),
+                key,
                 path: vec![],
             },
         )
@@ -878,7 +891,7 @@ mod tests {
             GetItemResult {
                 api_version: CURRENT_API_VERSION,
                 stored_value,
-                merkle_proof,
+                merkle_proof: common::encode_proof(&merkle_proof).expect("should encode proof"),
             }
         );
     }
@@ -887,10 +900,9 @@ mod tests {
     async fn should_read_balance() {
         let rng = &mut TestRng::new();
         let balance_value: U512 = rng.gen();
-        let merkle_proof = rng.random_string(10..20);
         let result = GlobalStateQueryResult::new(
             StoredValue::CLValue(CLValue::from_t(balance_value).unwrap()),
-            merkle_proof.clone(),
+            vec![],
         );
 
         let resp = GetBalance::do_handle_request(
@@ -908,7 +920,7 @@ mod tests {
             GetBalanceResult {
                 api_version: CURRENT_API_VERSION,
                 balance_value,
-                merkle_proof,
+                merkle_proof: String::from("00000000"),
             }
         );
     }
@@ -965,7 +977,7 @@ mod tests {
                                 .collect::<BTreeMap<_, _>>();
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(system_contracts).unwrap()),
-                            String::default(),
+                            vec![],
                         );
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
@@ -978,7 +990,7 @@ mod tests {
                     })) => {
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
-                            String::default(),
+                            vec![],
                         );
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
@@ -1023,8 +1035,7 @@ mod tests {
     async fn should_read_dictionary_item() {
         let rng = &mut TestRng::new();
         let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
-        let merkle_proof = rng.random_string(10..20);
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let uref = URef::new(rng.gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
@@ -1048,7 +1059,7 @@ mod tests {
                 api_version: CURRENT_API_VERSION,
                 dictionary_key: Key::dictionary(uref, item_key.as_bytes()).to_formatted_string(),
                 stored_value,
-                merkle_proof,
+                merkle_proof: String::from("00000000"),
             }
         );
     }
@@ -1058,8 +1069,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
         let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
-        let merkle_proof = rng.random_string(10..20);
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let resp = QueryGlobalState::do_handle_request(
             Arc::new(ValidGlobalStateResultWithBlockMock {
@@ -1081,7 +1091,7 @@ mod tests {
                 api_version: CURRENT_API_VERSION,
                 block_header: Some(block.take_header()),
                 stored_value,
-                merkle_proof,
+                merkle_proof: String::from("00000000"),
             }
         );
     }
@@ -1092,7 +1102,7 @@ mod tests {
         let block = Block::V2(TestBlockBuilder::new().build(rng));
         let balance = rng.gen::<U512>();
         let stored_value = StoredValue::CLValue(CLValue::from_t(balance).unwrap());
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), rng.random_string(10..20));
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let resp = QueryBalance::do_handle_request(
             Arc::new(ValidGlobalStateResultWithBlockMock {
@@ -1155,7 +1165,7 @@ mod tests {
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::Account(self.account.clone()),
-                                String::default(),
+                                vec![],
                             ),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
@@ -1168,7 +1178,7 @@ mod tests {
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                                String::default(),
+                                vec![],
                             ),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
@@ -1253,10 +1263,7 @@ mod tests {
                         let value = CLValue::from_t(key).unwrap();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(
-                                GlobalStateQueryResult::new(
-                                    StoredValue::CLValue(value),
-                                    String::default(),
-                                ),
+                                GlobalStateQueryResult::new(StoredValue::CLValue(value), vec![]),
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
@@ -1269,7 +1276,7 @@ mod tests {
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::AddressableEntity(self.entity.clone()),
-                                String::default(),
+                                vec![],
                             ),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
@@ -1282,7 +1289,7 @@ mod tests {
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                                String::default(),
+                                vec![],
                             ),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),

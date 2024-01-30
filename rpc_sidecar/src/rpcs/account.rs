@@ -158,6 +158,7 @@ mod tests {
         },
         testing::TestRng,
     };
+    use pretty_assertions::assert_eq;
 
     use crate::{rpcs::ErrorCode, SUPPORTED_PROTOCOL_VERSION};
 
