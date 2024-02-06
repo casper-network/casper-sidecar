@@ -89,9 +89,9 @@ sleep_between_keep_alive_checks_in_seconds = 30
 * `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
 * `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
 * `enable_logging` - This enables the logging of events from the node in question.
-* `connection_timeout_in_seconds` - Number of seconds before the connection request times out. Parameter is optional, defaults to 5
-* `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
-* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
+* `connection_timeout_in_seconds` - The total time before the connection request times out.
+* `no_message_timeout_in_seconds` - Optional parameter that determines after what time of not receiving any bytes from the connection will it be restarted. Defaults to 120
+* `sleep_between_keep_alive_checks_in_seconds` - Optional parameter which determines in what intervals will the liveliness of the connection be checked. Defaults to 60
 
 ### Storage
 

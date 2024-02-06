@@ -63,6 +63,7 @@ async fn metrics_handler() -> Result<impl Reply, Rejection> {
     Ok(res_custom)
 }
 
+#[cfg(target_os = "linux")]
 #[cfg(test)]
 mod tests {
     use crate::{admin_server::run_server, types::config::AdminServerConfig};
@@ -71,6 +72,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_config_should_start_admin_server() {
+        // This test should only run on linux os because only linux offers the "process" metrics
         let port = pick_unused_port().unwrap();
         let request_url = format!("http://localhost:{}/metrics", port);
         let admin_config = AdminServerConfig {

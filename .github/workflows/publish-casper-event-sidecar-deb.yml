@@ -13,14 +13,11 @@ jobs:
         include:
           - os: ubuntu-20.04
             code_name: focal
-          - os: ubuntu-22.04
-            code_name: jammy
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
-      - uses: Swatinem/rust-cache@cb2cf0cc7c5198d3364b9630e2c3d457f160790c #v1.4.0
         with:
           key: ${{ matrix.code_name }}
 
@@ -45,7 +42,7 @@ jobs:
         run: cargo install cargo-deb
 
       - name: Cargo deb
-        run: cargo deb --no-build --variant ${{ matrix.code_name }}
+        run: cargo deb --package casper-event-sidecar --variant ${{ matrix.code_name }}
 
       - name: Upload binaries to repo
         env:
