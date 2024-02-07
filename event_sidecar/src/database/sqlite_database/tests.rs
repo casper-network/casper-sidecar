@@ -21,9 +21,10 @@ async fn build_database() -> SqliteDatabase {
 #[tokio::test]
 async fn should_save_and_retrieve_a_u32max_id() {
     let sqlite_db = build_database().await;
-    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key")
-        .expect("Error creating event_log insert SQL")
-        .to_string(SqliteQueryBuilder);
+    let sql =
+        tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key", "some_version")
+            .expect("Error creating event_log insert SQL")
+            .to_string(SqliteQueryBuilder);
 
     let _ = sqlite_db.fetch_one(&sql).await;
 
@@ -171,7 +172,7 @@ async fn should_save_block_added_with_correct_event_type_id() {
     let block_added = BlockAdded::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_block_added(block_added, 1, "127.0.0.1".to_string())
+        .save_block_added(block_added, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
         .await
         .is_ok());
 
@@ -199,23 +200,32 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_deploy_accepted(deploy_accepted, 1, "127.0.0.1".to_string())
+        .save_deploy_accepted(
+            deploy_accepted,
+            1,
+            "127.0.0.1".to_string(),
+            "1.5.5".to_string()
+        )
         .await
         .is_ok());
 
     let sql = Query::select()
         .column(tables::event_log::EventLog::EventTypeId)
+        .column(tables::event_log::EventLog::ApiVersion)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
         .to_string(SqliteQueryBuilder);
 
-    let event_type_id = sqlite_db
-        .fetch_one(&sql)
-        .await
+    let row = sqlite_db.fetch_one(&sql).await;
+    let event_type_id = row
         .try_get::<i16, usize>(0)
         .expect("Error getting event_type_id from row");
+    let api_version = row
+        .try_get::<String, usize>(1)
+        .expect("Error getting api_version from row");
 
-    assert_eq!(event_type_id, EventTypeId::DeployAccepted as i16)
+    assert_eq!(event_type_id, EventTypeId::DeployAccepted as i16);
+    assert_eq!(api_version, "1.5.5".to_string());
 }
 
 #[tokio::test]
@@ -227,7 +237,12 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
     assert!(sqlite_db
-        .save_deploy_processed(deploy_processed, 1, "127.0.0.1".to_string())
+        .save_deploy_processed(
+            deploy_processed,
+            1,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string()
+        )
         .await
         .is_ok());
 
@@ -255,7 +270,12 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
     assert!(sqlite_db
-        .save_deploy_expired(deploy_expired, 1, "127.0.0.1".to_string())
+        .save_deploy_expired(
+            deploy_expired,
+            1,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string()
+        )
         .await
         .is_ok());
 
@@ -283,7 +303,7 @@ async fn should_save_fault_with_correct_event_type_id() {
     let fault = Fault::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_fault(fault, 1, "127.0.0.1".to_string())
+        .save_fault(fault, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
         .await
         .is_ok());
 
@@ -311,7 +331,12 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_finality_signature(finality_signature, 1, "127.0.0.1".to_string())
+        .save_finality_signature(
+            finality_signature,
+            1,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string()
+        )
         .await
         .is_ok());
 
@@ -339,7 +364,7 @@ async fn should_save_step_with_correct_event_type_id() {
     let step = Step::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_step(step, 1, "127.0.0.1".to_string())
+        .save_step(step, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
         .await
         .is_ok());
 
@@ -361,7 +386,10 @@ async fn should_save_step_with_correct_event_type_id() {
 #[tokio::test]
 async fn should_save_and_retrieve_a_shutdown() {
     let sqlite_db = build_database().await;
-    assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
+    assert!(sqlite_db
+        .save_shutdown(15, "xyz".to_string(), "1.1.1".to_string())
+        .await
+        .is_ok());
 
     let sql = Query::select()
         .expr(Expr::col(Asterisk))
