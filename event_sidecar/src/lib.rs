@@ -408,7 +408,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     BlockAdded::new(block_hash, block.clone()),
                     sse_event.id,
                     sse_event.source.to_string(),
-                    sse_event.api_version,
                 )
                 .await;
             handle_database_save_result(
@@ -431,12 +430,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             let deploy_accepted = DeployAccepted::new(deploy.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_deploy_accepted(
-                    deploy_accepted,
-                    sse_event.id,
-                    sse_event.source.to_string(),
-                    sse_event.api_version,
-                )
+                .save_deploy_accepted(deploy_accepted, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
                 "DeployAccepted",
@@ -461,7 +455,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     DeployExpired::new(deploy_hash),
                     sse_event.id,
                     sse_event.source.to_string(),
-                    sse_event.api_version,
                 )
                 .await;
             handle_database_save_result(
@@ -504,7 +497,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     deploy_processed.clone(),
                     sse_event.id,
                     sse_event.source.to_string(),
-                    sse_event.api_version,
                 )
                 .await;
 
@@ -536,12 +528,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             warn!(%fault, "Fault reported");
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_fault(
-                    fault.clone(),
-                    sse_event.id,
-                    sse_event.source.to_string(),
-                    sse_event.api_version,
-                )
+                .save_fault(fault.clone(), sse_event.id, sse_event.source.to_string())
                 .await;
 
             handle_database_save_result(
@@ -574,7 +561,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     finality_signature.clone(),
                     sse_event.id,
                     sse_event.source.to_string(),
-                    sse_event.api_version,
                 )
                 .await;
             handle_database_save_result(
@@ -598,12 +584,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_step(
-                    step,
-                    sse_event.id,
-                    sse_event.source.to_string(),
-                    sse_event.api_version,
-                )
+                .save_step(step, sse_event.id, sse_event.source.to_string())
                 .await;
             handle_database_save_result(
                 "Step",
@@ -630,11 +611,7 @@ async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sy
 ) {
     warn!("Node ({}) is unavailable", sse_event.source.to_string());
     let res = sqlite_database
-        .save_shutdown(
-            sse_event.id,
-            sse_event.source.to_string(),
-            sse_event.api_version,
-        )
+        .save_shutdown(sse_event.id, sse_event.source.to_string())
         .await;
     match res {
         Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {

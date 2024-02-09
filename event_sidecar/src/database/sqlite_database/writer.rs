@@ -11,6 +11,7 @@ database_writer_implementation!(
     SqliteQueryResult,
     SqliteQueryBuilder,
     DDLConfiguration {
+        is_big_integer_id: false,
         db_supports_unsigned: true,
     }
 );
