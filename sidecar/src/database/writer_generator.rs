@@ -52,6 +52,7 @@ impl DatabaseWriter for $extended_type {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -63,6 +64,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &encoded_hash,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -89,6 +91,7 @@ impl DatabaseWriter for $extended_type {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -101,6 +104,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &encoded_hash,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -127,6 +131,7 @@ impl DatabaseWriter for $extended_type {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -138,6 +143,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &encoded_hash,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -164,6 +170,7 @@ impl DatabaseWriter for $extended_type {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -175,6 +182,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &encoded_hash,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -201,6 +209,7 @@ impl DatabaseWriter for $extended_type {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -214,6 +223,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &event_key,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -235,6 +245,7 @@ impl DatabaseWriter for $extended_type {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -249,6 +260,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &event_key,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -275,6 +287,7 @@ impl DatabaseWriter for $extended_type {
         step: Step,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -287,6 +300,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &era_id.to_string(),
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -307,6 +321,7 @@ impl DatabaseWriter for $extended_type {
         &self,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
@@ -322,6 +337,7 @@ impl DatabaseWriter for $extended_type {
                 &event_source_address,
                 event_id,
                 &event_key,
+                &api_version,
                 &mut transaction,
             )
             .await?;
@@ -399,6 +415,7 @@ async fn save_event_log(
     event_source_address: &str,
     event_id: u32,
     event_key: &str,
+    api_version: &str,
     transaction: &mut Transaction<'_, $database_type>,
 ) -> Result<u64, DatabaseWriteError> {
     let insert_to_event_log_stmt = tables::event_log::create_insert_stmt(
@@ -406,6 +423,7 @@ async fn save_event_log(
         event_source_address,
         event_id,
         event_key,
+        api_version
     )?
     .to_string($query_materializer_expr);
     let event_log_id = transaction

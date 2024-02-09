@@ -38,6 +38,7 @@ pub trait DatabaseWriter {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployAccepted event to the database.
     ///
@@ -49,6 +50,7 @@ pub trait DatabaseWriter {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployProcessed event to the database.
     ///
@@ -60,6 +62,7 @@ pub trait DatabaseWriter {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployExpired event to the database.
     ///
@@ -71,6 +74,7 @@ pub trait DatabaseWriter {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a Fault event to the database.
     ///
@@ -82,6 +86,7 @@ pub trait DatabaseWriter {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a FinalitySignature event to the database.
     ///
@@ -93,6 +98,7 @@ pub trait DatabaseWriter {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a Step event to the database.
     ///
@@ -104,6 +110,7 @@ pub trait DatabaseWriter {
         step: Step,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
 
     // Save data about shutdown to the database
@@ -111,6 +118,7 @@ pub trait DatabaseWriter {
         &self,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
 
     /// Executes migration and stores current migration version
@@ -387,9 +395,7 @@ fn migration_1_ddl_statements(
     vec![
         // Synthetic tables
         StatementWrapper::TableCreateStatement(Box::new(tables::event_type::create_table_stmt())),
-        StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt(
-            config.is_big_integer_id,
-        ))),
+        StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt())),
         StatementWrapper::TableCreateStatement(Box::new(tables::deploy_event::create_table_stmt())),
         // Raw Event tables
         StatementWrapper::TableCreateStatement(Box::new(tables::block_added::create_table_stmt())),

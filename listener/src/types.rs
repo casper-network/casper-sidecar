@@ -37,6 +37,8 @@ pub struct SseEvent {
     pub json_data: Option<String>,
     /// Info from which filter we received the message. For some events (Shutdown in particularly) we want to push only to the same outbound as we received them from so we don't duplicate.
     pub inbound_filter: Filter,
+    /// Api version which was reported for the node from which the event was received.
+    pub api_version: String,
 }
 
 impl SseEvent {
@@ -46,6 +48,7 @@ impl SseEvent {
         mut source: Url,
         json_data: Option<String>,
         inbound_filter: Filter,
+        api_version: String,
     ) -> Self {
         // This is to remove the path e.g. /events/main
         // Leaving just the IP and port
@@ -56,6 +59,7 @@ impl SseEvent {
             source,
             json_data,
             inbound_filter,
+            api_version,
         }
     }
 }
