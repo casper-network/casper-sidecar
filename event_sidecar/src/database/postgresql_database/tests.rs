@@ -4,24 +4,24 @@ use crate::{
     utils::tests::build_postgres_database,
 };
 use casper_types::testing::TestRng;
-use sea_query::{Asterisk, Expr, PostgresQueryBuilder, Query};
+use sea_query::{Asterisk, Expr, PostgresQueryBuilder, Query, SqliteQueryBuilder};
 use sqlx::Row;
 
 #[tokio::test]
 async fn should_save_and_retrieve_a_u32max_id() {
     let context = build_postgres_database().await.unwrap();
-    let db = &context.db;
-    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key", "1.5.3")
+    let sqlite_db = &context.db;
+    let sql = tables::event_log::create_insert_stmt(1, "source", u32::MAX, "event key")
         .expect("Error creating event_log insert SQL")
         .to_string(PostgresQueryBuilder);
-    let _ = db.fetch_one(&sql).await;
+    let _ = sqlite_db.fetch_one(&sql).await;
     let sql = Query::select()
         .column(tables::event_log::EventLog::EventId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
         .to_string(PostgresQueryBuilder);
 
-    let event_id_u32max = db
+    let event_id_u32max = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i64, usize>(0)
@@ -178,32 +178,28 @@ async fn should_save_block_added_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let block_added = BlockAdded::random(&mut test_rng);
 
-    assert!(db
-        .save_block_added(block_added, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
+    assert!(sqlite_db
+        .save_block_added(block_added, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let sql = Query::select()
         .column(tables::event_log::EventLog::EventTypeId)
-        .column(tables::event_log::EventLog::ApiVersion)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let row = db.fetch_one(&sql).await;
-    let event_type_id = row
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
         .try_get::<i16, usize>(0)
         .expect("Error getting event_type_id from row");
-    let api_version = row
-        .try_get::<String, usize>(1)
-        .expect("Error getting api_version from row");
 
-    assert_eq!(event_type_id, EventTypeId::BlockAdded as i16);
-    assert_eq!(api_version, "1.1.1".to_string());
+    assert_eq!(event_type_id, EventTypeId::BlockAdded as i16)
 }
 
 #[tokio::test]
@@ -211,37 +207,28 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
-    assert!(db
-        .save_deploy_accepted(
-            deploy_accepted,
-            1,
-            "127.0.0.1".to_string(),
-            "1.5.5".to_string()
-        )
+    assert!(sqlite_db
+        .save_deploy_accepted(deploy_accepted, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let sql = Query::select()
         .column(tables::event_log::EventLog::EventTypeId)
-        .column(tables::event_log::EventLog::ApiVersion)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let row = db.fetch_one(&sql).await;
-    let event_type_id = row
+    let event_type_id = sqlite_db
+        .fetch_one(&sql)
+        .await
         .try_get::<i16, usize>(0)
         .expect("Error getting event_type_id from row");
-    let api_version = row
-        .try_get::<String, usize>(1)
-        .expect("Error getting api_version from row");
 
-    assert_eq!(event_type_id, EventTypeId::DeployAccepted as i16);
-    assert_eq!(api_version, "1.5.5".to_string());
+    assert_eq!(event_type_id, EventTypeId::DeployAccepted as i16)
 }
 
 #[tokio::test]
@@ -249,17 +236,12 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
-    assert!(db
-        .save_deploy_processed(
-            deploy_processed,
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+    assert!(sqlite_db
+        .save_deploy_processed(deploy_processed, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
@@ -267,9 +249,9 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
         .column(tables::event_log::EventLog::EventTypeId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let event_type_id = db
+    let event_type_id = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i16, usize>(0)
@@ -283,17 +265,12 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
-    assert!(db
-        .save_deploy_expired(
-            deploy_expired,
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+    assert!(sqlite_db
+        .save_deploy_expired(deploy_expired, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
@@ -301,9 +278,9 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
         .column(tables::event_log::EventLog::EventTypeId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let event_type_id = db
+    let event_type_id = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i16, usize>(0)
@@ -317,12 +294,12 @@ async fn should_save_fault_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let fault = Fault::random(&mut test_rng);
 
-    assert!(db
-        .save_fault(fault, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
+    assert!(sqlite_db
+        .save_fault(fault, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
@@ -330,9 +307,9 @@ async fn should_save_fault_with_correct_event_type_id() {
         .column(tables::event_log::EventLog::EventTypeId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let event_type_id = db
+    let event_type_id = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i16, usize>(0)
@@ -346,17 +323,12 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
-    assert!(db
-        .save_finality_signature(
-            finality_signature,
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+    assert!(sqlite_db
+        .save_finality_signature(finality_signature, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
@@ -364,9 +336,9 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
         .column(tables::event_log::EventLog::EventTypeId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let event_type_id = db
+    let event_type_id = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i16, usize>(0)
@@ -380,12 +352,12 @@ async fn should_save_step_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
+    let sqlite_db = &test_context.db;
 
     let step = Step::random(&mut test_rng);
 
-    assert!(db
-        .save_step(step, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
+    assert!(sqlite_db
+        .save_step(step, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
@@ -393,9 +365,9 @@ async fn should_save_step_with_correct_event_type_id() {
         .column(tables::event_log::EventLog::EventTypeId)
         .from(tables::event_log::EventLog::Table)
         .limit(1)
-        .to_string(PostgresQueryBuilder);
+        .to_string(SqliteQueryBuilder);
 
-    let event_type_id = db
+    let event_type_id = sqlite_db
         .fetch_one(&sql)
         .await
         .try_get::<i16, usize>(0)
@@ -407,17 +379,14 @@ async fn should_save_step_with_correct_event_type_id() {
 #[tokio::test]
 async fn should_save_and_retrieve_a_shutdown() {
     let test_context = build_postgres_database().await.unwrap();
-    let db = &test_context.db;
-    assert!(db
-        .save_shutdown(15, "xyz".to_string(), "1.1.1".to_string())
-        .await
-        .is_ok());
+    let sqlite_db = &test_context.db;
+    assert!(sqlite_db.save_shutdown(15, "xyz".to_string()).await.is_ok());
 
     let sql = Query::select()
         .expr(Expr::col(Asterisk))
         .from(tables::shutdown::Shutdown::Table)
-        .to_string(PostgresQueryBuilder);
-    let row = db.fetch_one(&sql).await;
+        .to_string(SqliteQueryBuilder);
+    let row = sqlite_db.fetch_one(&sql).await;
 
     assert_eq!(
         row.get::<String, &str>("event_source_address"),

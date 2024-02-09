@@ -9,14 +9,9 @@ pub async fn should_save_and_retrieve_block_added<DB: DatabaseReader + DatabaseW
     let mut test_rng = TestRng::new();
     let block_added = BlockAdded::random(&mut test_rng);
 
-    db.save_block_added(
-        block_added.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving block_added");
+    db.save_block_added(block_added.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving block_added");
 
     db.get_latest_block()
         .await
@@ -36,14 +31,9 @@ pub async fn should_save_and_retrieve_deploy_accepted<DB: DatabaseReader + Datab
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_accepted");
+    db.save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
 
     db.get_deploy_accepted_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
@@ -56,14 +46,9 @@ pub async fn should_save_and_retrieve_deploy_processed<DB: DatabaseReader + Data
     let mut test_rng = TestRng::new();
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
-    db.save_deploy_processed(
-        deploy_processed.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_processed");
+    db.save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
 
     db.get_deploy_processed_by_hash(&deploy_processed.hex_encoded_hash())
         .await
@@ -74,14 +59,9 @@ pub async fn should_save_and_retrieve_deploy_expired<DB: DatabaseReader + Databa
     let mut test_rng = TestRng::new();
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
-    db.save_deploy_expired(
-        deploy_expired.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_expired");
+    db.save_deploy_expired(deploy_expired.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_expired");
 
     db.get_deploy_expired_by_hash(&deploy_expired.hex_encoded_hash())
         .await
@@ -95,14 +75,9 @@ pub async fn should_retrieve_deploy_aggregate_of_accepted<DB: DatabaseReader + D
 
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_accepted");
+    db.save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
 
     db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
@@ -117,23 +92,13 @@ pub async fn should_retrieve_deploy_aggregate_of_processed<DB: DatabaseReader + 
     let deploy_processed =
         DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_accepted");
+    db.save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
 
-    db.save_deploy_processed(
-        deploy_processed,
-        2,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_processed");
+    db.save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_processed");
 
     db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
@@ -147,23 +112,13 @@ pub async fn should_retrieve_deploy_aggregate_of_expired<DB: DatabaseReader + Da
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
     let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
 
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_accepted");
+    db.save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_accepted");
 
-    db.save_deploy_expired(
-        deploy_expired,
-        2,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_expired");
+    db.save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving deploy_expired");
 
     db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
         .await
@@ -174,14 +129,9 @@ pub async fn should_save_and_retrieve_fault<DB: DatabaseReader + DatabaseWriter>
     let mut test_rng = TestRng::new();
     let fault = Fault::random(&mut test_rng);
 
-    db.save_fault(
-        fault.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving fault");
+    db.save_fault(fault.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving fault");
 
     db.get_faults_by_era(fault.era_id.value())
         .await
@@ -199,14 +149,9 @@ pub async fn should_save_and_retrieve_fault_with_a_u64max<DB: DatabaseReader + D
     let mut fault = Fault::random(&mut test_rng);
     fault.era_id = EraId::new(u64::MAX);
 
-    db.save_fault(
-        fault.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving fault with a u64::MAX era id");
+    db.save_fault(fault.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving fault with a u64::MAX era id");
 
     let faults = db
         .get_faults_by_era(u64::MAX)
@@ -229,14 +174,9 @@ pub async fn should_save_and_retrieve_finality_signature<DB: DatabaseReader + Da
     let mut test_rng = TestRng::new();
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
-    db.save_finality_signature(
-        finality_signature.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving finality_signature");
+    db.save_finality_signature(finality_signature.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving finality_signature");
 
     db.get_finality_signatures_by_block(&finality_signature.hex_encoded_block_hash())
         .await
@@ -247,14 +187,9 @@ pub async fn should_save_and_retrieve_step<DB: DatabaseReader + DatabaseWriter>(
     let mut test_rng = TestRng::new();
     let step = Step::random(&mut test_rng);
 
-    db.save_step(
-        step.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving step");
+    db.save_step(step.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving step");
 
     db.get_step_by_era(step.era_id.value())
         .await
@@ -270,14 +205,9 @@ pub async fn should_save_and_retrieve_a_step_with_u64_max_era<
     let mut step = Step::random(&mut test_rng);
     step.era_id = EraId::new(u64::MAX);
 
-    db.save_step(
-        step.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving Step with u64::MAX era id");
+    db.save_step(step.clone(), 1, "127.0.0.1".to_string())
+        .await
+        .expect("Error saving Step with u64::MAX era id");
 
     let retrieved_step = db
         .get_step_by_era(u64::MAX)
@@ -295,21 +225,11 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
     let block_added = BlockAdded::random(&mut test_rng);
 
     assert!(db
-        .save_block_added(
-            block_added.clone(),
-            event_id,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_block_added(block_added.clone(), event_id, "127.0.0.1".to_string())
         .await
         .is_ok());
     let res = db
-        .save_block_added(
-            block_added,
-            event_id,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_block_added(block_added, event_id, "127.0.0.1".to_string())
         .await;
     assert!(matches!(res, Err(DatabaseWriteError::UniqueConstraint(_))));
     // This check is to ensure that the UNIQUE constraint being broken is from the event_log table rather than from the raw event table.
@@ -325,17 +245,12 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
     let block_added = BlockAdded::random(&mut test_rng);
 
     assert!(db
-        .save_block_added(
-            block_added.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_block_added(block_added.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_block_added(block_added, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_block_added(block_added, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -356,22 +271,12 @@ pub async fn should_disallow_insert_of_existing_deploy_accepted<
     let deploy_accepted = DeployAccepted::random(&mut test_rng);
 
     assert!(db
-        .save_deploy_accepted(
-            deploy_accepted.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_deploy_accepted(deploy_accepted.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_deploy_accepted(
-            deploy_accepted,
-            2,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_deploy_accepted(deploy_accepted, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -392,22 +297,12 @@ pub async fn should_disallow_insert_of_existing_deploy_expired<
     let deploy_expired = DeployExpired::random(&mut test_rng, None);
 
     assert!(db
-        .save_deploy_expired(
-            deploy_expired.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_deploy_expired(deploy_expired.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_deploy_expired(
-            deploy_expired,
-            2,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_deploy_expired(deploy_expired, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -428,22 +323,12 @@ pub async fn should_disallow_insert_of_existing_deploy_processed<
     let deploy_processed = DeployProcessed::random(&mut test_rng, None);
 
     assert!(db
-        .save_deploy_processed(
-            deploy_processed.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_deploy_processed(deploy_processed.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_deploy_processed(
-            deploy_processed,
-            2,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_deploy_processed(deploy_processed, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -460,17 +345,12 @@ pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + Datab
     let fault = Fault::random(&mut test_rng);
 
     assert!(db
-        .save_fault(
-            fault.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_fault(fault.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_fault(fault, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_fault(fault, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -491,22 +371,12 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
     assert!(db
-        .save_finality_signature(
-            finality_signature.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_finality_signature(finality_signature.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_finality_signature(
-            finality_signature,
-            2,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_finality_signature(finality_signature, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -523,17 +393,12 @@ pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + Databa
     let step = Step::random(&mut test_rng);
 
     assert!(db
-        .save_step(
-            step.clone(),
-            1,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string()
-        )
+        .save_step(step.clone(), 1, "127.0.0.1".to_string())
         .await
         .is_ok());
 
     let db_err = db
-        .save_step(step, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_step(step, 2, "127.0.0.1".to_string())
         .await
         .unwrap_err();
 
@@ -558,7 +423,7 @@ pub async fn get_number_of_events_should_return_1_when_event_stored<
     let fault = Fault::random(&mut test_rng);
 
     assert!(db
-        .save_fault(fault, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_fault(fault, 1, "127.0.0.1".to_string())
         .await
         .is_ok());
     assert_eq!(db.get_number_of_events().await.unwrap(), 1);

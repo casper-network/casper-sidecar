@@ -16,21 +16,21 @@ pub enum EventLog {
     EventKey,
     InsertedTimestamp,
     EmittedTimestamp,
-    ApiVersion,
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn create_table_stmt() -> TableCreateStatement {
+pub fn create_table_stmt(is_big_integer_id: bool) -> TableCreateStatement {
+    let mut binding = ColumnDef::new(EventLog::EventLogId);
+    let mut event_log_id_col_definition = binding.auto_increment().not_null().primary_key();
+    if is_big_integer_id {
+        event_log_id_col_definition = event_log_id_col_definition.big_integer();
+    } else {
+        event_log_id_col_definition = event_log_id_col_definition.integer();
+    }
     Table::create()
         .table(EventLog::Table)
         .if_not_exists()
-        .col(
-            ColumnDef::new(EventLog::EventLogId)
-                .big_integer()
-                .auto_increment()
-                .not_null()
-                .primary_key(),
-        )
+        .col(event_log_id_col_definition)
         .col(
             ColumnDef::new(EventLog::EventTypeId)
                 .tiny_unsigned()
@@ -59,7 +59,6 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 // This can be replaced with better syntax when https://github.com/SeaQL/sea-query/pull/428 merges.
                 .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
         )
-        .col(ColumnDef::new(EventLog::ApiVersion).string().not_null())
         .foreign_key(
             ForeignKey::create()
                 .name("FK_event_type_id")
@@ -85,7 +84,6 @@ pub fn create_insert_stmt(
     event_source_address: &str,
     event_id: u32,
     event_key: &str,
-    api_version: &str,
 ) -> SqResult<InsertStatement> {
     let insert_stmt = Query::insert()
         .into_table(EventLog::Table)
@@ -94,14 +92,12 @@ pub fn create_insert_stmt(
             EventLog::EventSourceAddress,
             EventLog::EventId,
             EventLog::EventKey,
-            EventLog::ApiVersion,
         ])
         .values(vec![
             event_type_id.into(),
             event_source_address.into(),
             event_id.into(),
             event_key.into(),
-            api_version.into(),
         ])
         .map(|stmt| stmt.returning_col(EventLog::EventLogId).to_owned())?;
 
@@ -113,24 +109,4 @@ pub fn count() -> SelectStatement {
         .expr(Expr::col(Asterisk).count())
         .from(EventLog::Table)
         .to_owned()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sea_query::{PostgresQueryBuilder, SqliteQueryBuilder};
-
-    #[test]
-    fn should_prepare_create_stmt_for_sqlite() {
-        let expected_sql = r#"CREATE TABLE IF NOT EXISTS "event_log" ( "event_log_id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "event_type_id" integer NOT NULL, "event_source_address" text NOT NULL, "event_id" bigint NOT NULL, "event_key" text NOT NULL, "inserted_timestamp" text NOT NULL DEFAULT CURRENT_TIMESTAMP, "emitted_timestamp" text NOT NULL DEFAULT CURRENT_TIMESTAMP, "api_version" text NOT NULL, CONSTRAINT "UDX_event_log" UNIQUE ("event_source_address", "event_id", "event_type_id", "event_key"), FOREIGN KEY ("event_type_id") REFERENCES "event_type" ("event_type_id") ON DELETE RESTRICT ON UPDATE RESTRICT )"#;
-        let stmt = create_table_stmt().to_string(SqliteQueryBuilder);
-        assert_eq!(stmt.to_string(), expected_sql);
-    }
-
-    #[test]
-    fn should_prepare_create_stmt_for_postgres() {
-        let expected_sql = r#"CREATE TABLE IF NOT EXISTS "event_log" ( "event_log_id" bigserial NOT NULL PRIMARY KEY, "event_type_id" smallint NOT NULL, "event_source_address" varchar NOT NULL, "event_id" bigint NOT NULL, "event_key" varchar NOT NULL, "inserted_timestamp" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "emitted_timestamp" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "api_version" varchar NOT NULL, CONSTRAINT "UDX_event_log" UNIQUE ("event_source_address", "event_id", "event_type_id", "event_key"), CONSTRAINT "FK_event_type_id" FOREIGN KEY ("event_type_id") REFERENCES "event_type" ("event_type_id") ON DELETE RESTRICT ON UPDATE RESTRICT )"#;
-        let stmt = create_table_stmt().to_string(PostgresQueryBuilder);
-        assert_eq!(stmt.to_string(), expected_sql,);
-    }
 }

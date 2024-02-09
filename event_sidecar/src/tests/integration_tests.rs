@@ -464,12 +464,7 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
         .await
         .expect("database should start");
     sqlite_database
-        .save_fault(
-            Fault::random(&mut rng),
-            0,
-            "127.0.0.1".to_string(),
-            "1.1.1".to_string(),
-        )
+        .save_fault(Fault::random(&mut rng), 0, "127.0.0.1".to_string())
         .await
         .unwrap();
     let mut node_mock = MockNodeBuilder {
