@@ -34,7 +34,6 @@ impl FakeDatabase {
         &self,
     ) -> Result<IdentifiersForStoredEvents, DatabaseWriteError> {
         let mut rng = TestRng::new();
-
         let block_added = BlockAdded::random(&mut rng);
         let deploy_accepted = DeployAccepted::random(&mut rng);
         let deploy_processed = DeployProcessed::random(&mut rng, None);
@@ -55,22 +54,125 @@ impl FakeDatabase {
             step_era_id: step.era_id.value(),
         };
 
-        self.save_block_added(block_added, rng.gen(), "127.0.0.1".to_string())
+        self.save_block_added_with_event_log_data(block_added, &mut rng)
             .await?;
-        self.save_deploy_accepted(deploy_accepted, rng.gen(), "127.0.0.1".to_string())
+        self.save_deploy_accepted_with_event_log_data(deploy_accepted, &mut rng)
             .await?;
-        self.save_deploy_processed(deploy_processed, rng.gen(), "127.0.0.1".to_string())
+        self.save_deploy_processed_with_event_log_data(deploy_processed, &mut rng)
             .await?;
-        self.save_deploy_expired(deploy_expired, rng.gen(), "127.0.0.1".to_string())
+        self.save_deploy_expired_with_event_log_data(deploy_expired, &mut rng)
             .await?;
-        self.save_fault(fault, rng.gen(), "127.0.0.1".to_string())
+        self.save_fault_with_event_log_data(fault, &mut rng).await?;
+        self.save_finality_signature_with_event_log_data(finality_signature, &mut rng)
             .await?;
-        self.save_finality_signature(finality_signature, rng.gen(), "127.0.0.1".to_string())
-            .await?;
-        self.save_step(step, rng.gen(), "127.0.0.1".to_string())
-            .await?;
+        self.save_step_with_event_log_data(step, rng).await?;
 
         Ok(test_stored_keys)
+    }
+
+    async fn save_step_with_event_log_data(
+        &self,
+        step: Step,
+        mut rng: TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_step(
+            step,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_finality_signature_with_event_log_data(
+        &self,
+        finality_signature: FinalitySignature,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_finality_signature(
+            finality_signature,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_fault_with_event_log_data(
+        &self,
+        fault: Fault,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_fault(
+            fault,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_deploy_expired_with_event_log_data(
+        &self,
+        deploy_expired: DeployExpired,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_deploy_expired(
+            deploy_expired,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_deploy_processed_with_event_log_data(
+        &self,
+        deploy_processed: DeployProcessed,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_deploy_processed(
+            deploy_processed,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_deploy_accepted_with_event_log_data(
+        &self,
+        deploy_accepted: DeployAccepted,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_deploy_accepted(
+            deploy_accepted,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn save_block_added_with_event_log_data(
+        &self,
+        block_added: BlockAdded,
+        rng: &mut TestRng,
+    ) -> Result<(), DatabaseWriteError> {
+        self.save_block_added(
+            block_added,
+            rng.gen(),
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
+        .await?;
+        Ok(())
     }
 }
 
@@ -82,6 +184,7 @@ impl DatabaseWriter for FakeDatabase {
         block_added: BlockAdded,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -105,6 +208,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_accepted: DeployAccepted,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -125,6 +229,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_processed: DeployProcessed,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -145,6 +250,7 @@ impl DatabaseWriter for FakeDatabase {
         deploy_expired: DeployExpired,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -165,6 +271,7 @@ impl DatabaseWriter for FakeDatabase {
         fault: Fault,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -189,6 +296,7 @@ impl DatabaseWriter for FakeDatabase {
         finality_signature: FinalitySignature,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -207,6 +315,7 @@ impl DatabaseWriter for FakeDatabase {
         step: Step,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -223,6 +332,7 @@ impl DatabaseWriter for FakeDatabase {
         &self,
         event_id: u32,
         event_source_address: String,
+        api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
         let unix_timestamp = SystemTime::now()

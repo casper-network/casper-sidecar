@@ -3,13 +3,14 @@ use crate::{
     sse_connector::{EventResult, SseConnection, StreamConnector},
     SseEvent,
 };
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use casper_event_types::{
     metrics,
     sse_data::{deserialize, SseData},
     Filter,
 };
+use casper_types::ProtocolVersion;
 use eventsource_stream::Event;
 use futures_util::Stream;
 use reqwest::Url;
@@ -50,6 +51,7 @@ pub struct DefaultConnectionManager {
     maybe_tasks: Option<ConnectionTasks>,
     filter: Filter,
     current_event_id_sender: Sender<(Filter, u32)>,
+    api_version: Option<ProtocolVersion>,
 }
 
 #[derive(Debug)]
@@ -126,6 +128,7 @@ impl DefaultConnectionManagerBuilder {
             maybe_tasks: self.maybe_tasks,
             filter: self.filter,
             current_event_id_sender: self.current_event_id_sender,
+            api_version: None,
         }
     }
 }
@@ -236,12 +239,16 @@ impl DefaultConnectionManager {
                     raw_json_data = Some(event.data);
                 }
                 self.observe_bytes(payload_size);
+                let api_version = self.api_version.ok_or(anyhow!(
+                    "Expected ApiVersion to be present when handling messages."
+                ))?;
                 let sse_event = SseEvent::new(
                     event.id.parse().unwrap_or(0),
                     sse_data,
                     self.bind_address.clone(),
                     raw_json_data,
                     self.filter.clone(),
+                    api_version.to_string(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(SENDING_FAILED);
@@ -284,12 +291,14 @@ impl DefaultConnectionManager {
             //at this point we
             // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
             Ok((SseData::ApiVersion(semver), _)) => {
+                self.api_version = Some(semver);
                 let sse_event = SseEvent::new(
                     0,
                     SseData::ApiVersion(semver),
                     self.bind_address.clone(),
                     None,
                     self.filter.clone(),
+                    semver.to_string(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(API_VERSION_SENDING_FAILED);
@@ -486,6 +495,7 @@ pub mod tests {
             maybe_tasks: None,
             filter: Filter::Sigs,
             current_event_id_sender: event_id_tx,
+            api_version: None,
         };
         (manager, data_rx, event_id_rx)
     }
