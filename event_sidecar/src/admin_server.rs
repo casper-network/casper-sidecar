@@ -1,9 +1,10 @@
-use crate::types::config::AdminServerConfig;
+use crate::types::config::AdminApiServerConfig;
 use crate::utils::{resolve_address, root_filter, Unexpected};
 use anyhow::Error;
 use casper_event_types::metrics::metrics_summary;
 use hyper::Server;
 use std::net::TcpListener;
+use std::process::ExitCode;
 use std::time::Duration;
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use warp::Filter;
@@ -37,7 +38,7 @@ impl AdminServer {
     }
 }
 
-pub async fn run_server(config: AdminServerConfig) -> Result<(), Error> {
+pub async fn run_server(config: AdminApiServerConfig) -> Result<ExitCode, Error> {
     AdminServer {
         port: config.port,
         max_concurrent_requests: config.max_concurrent_requests,
@@ -45,6 +46,7 @@ pub async fn run_server(config: AdminServerConfig) -> Result<(), Error> {
     }
     .start()
     .await
+    .map(|_| ExitCode::SUCCESS)
 }
 
 /// Return metrics data at a given time.
@@ -65,7 +67,7 @@ async fn metrics_handler() -> Result<impl Reply, Rejection> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{admin_server::run_server, types::config::AdminServerConfig};
+    use crate::{admin_server::run_server, types::config::AdminApiServerConfig};
     use portpicker::pick_unused_port;
     use reqwest::Response;
 
@@ -73,7 +75,7 @@ mod tests {
     async fn given_config_should_start_admin_server() {
         let port = pick_unused_port().unwrap();
         let request_url = format!("http://localhost:{}/metrics", port);
-        let admin_config = AdminServerConfig {
+        let admin_config = AdminApiServerConfig {
             port,
             max_concurrent_requests: 1,
             max_requests_per_second: 1,

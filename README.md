@@ -98,7 +98,7 @@ sleep_between_keep_alive_checks_in_seconds = 30
 This directory stores the SSE cache and an SQLite database if the Sidecar is configured to use SQLite.
 
 ```
-[sse_server.storage]
+[storage]
 storage_path = "./target/storage"
 ```
 
@@ -111,7 +111,7 @@ The Sidecar can connect to different types of databases. The current options are
 This section includes configurations for the SQLite database.
 
 ```
-[sse_server.storage.sqlite_config]
+[storage.sqlite_config]
 file_name = "sqlite_database.db3"
 max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
@@ -167,7 +167,7 @@ If the DB environment variables and the Sidecar's configuration file have the sa
 It is possible to completely omit the PostgreSQL configuration from the Sidecar's configuration file. In this case, the Sidecar will attempt to connect to the PostgreSQL using the database environment variables or use some default values for non-critical variables.
 
 ```
-[sse_server.storage.postgresql_config]
+[storage.postgresql_config]
 database_name = "event_sidecar"
 host = "localhost"
 database_password = "p@$$w0rd"
@@ -180,7 +180,7 @@ max_connections_in_pool = 30
 This information determines outbound connection criteria for the Sidecar's `rest_server`.
 
 ```
-[sse_server.rest_server]
+[rest_api_server]
 port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
@@ -211,7 +211,7 @@ Additionally, there are the following two options:
 This optional section configures the Sidecar's administrative server. If this section is not specified, the Sidecar will not start an admin server.
 
 ```
-[admin_server]
+[admin_api_server]
 port = 18887
 max_concurrent_requests = 1
 max_requests_per_second = 1

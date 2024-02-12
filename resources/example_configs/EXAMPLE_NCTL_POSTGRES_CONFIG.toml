@@ -26,22 +26,22 @@ allow_partial_connection = false
 enable_logging = false
 connection_timeout_in_seconds = 3
 
-[sse_server.storage]
+[sse_server.event_stream_server]
+port = 19999
+max_concurrent_subscribers = 100
+event_stream_buffer_length = 5000
+
+[storage]
 storage_path = "./target/storage"
 
-[sse_server.storage.postgresql_config]
+[storage.postgresql_config]
 database_name = "event_sidecar"
 host = "localhost"
 database_password = "p@$$w0rd"
 database_username = "postgres"
 max_connections_in_pool = 30
 
-[sse_server.rest_server]
+[rest_api_server]
 port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
-
-[sse_server.event_stream_server]
-port = 19999
-max_concurrent_subscribers = 100
-event_stream_buffer_length = 5000

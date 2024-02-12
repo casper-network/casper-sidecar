@@ -631,7 +631,7 @@ mod tests {
             resp,
             GetDeployResult {
                 api_version: CURRENT_API_VERSION,
-                deploy: deploy,
+                deploy,
                 execution_info: Some(execution_info),
             }
         );

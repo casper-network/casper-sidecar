@@ -24,13 +24,13 @@ use crate::{
         testing_config::{prepare_config, TestingConfig},
     },
     types::{
-        database::DatabaseWriter,
+        database::{Database, DatabaseWriter},
         sse_events::{BlockAdded, Fault},
     },
     utils::tests::{
         any_string_contains, build_test_config, build_test_config_with_retries,
         build_test_config_without_connections, start_nodes_and_wait, start_sidecar,
-        stop_nodes_and_wait, wait_for_n_messages,
+        start_sidecar_with_rest_api, stop_nodes_and_wait, wait_for_n_messages,
     },
 };
 
@@ -43,10 +43,16 @@ async fn should_not_allow_zero_max_attempts() {
     let sse_port_for_node = testing_config.add_connection(None, None, None);
 
     testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
-
-    let shutdown_error = run(&testing_config.inner())
+    let sqlite_database = SqliteDatabase::new_from_config(&testing_config.storage_config)
         .await
-        .expect_err("Sidecar should return an Err on shutdown");
+        .expect("database should start");
+    let shutdown_error = run(
+        testing_config.inner(),
+        Database::SqliteDatabaseWrapper(sqlite_database),
+        testing_config.storage_config.get_storage_path().clone(),
+    )
+    .await
+    .expect_err("Sidecar should return an Err on shutdown");
 
     assert_eq!(
         shutdown_error.to_string(),
@@ -71,7 +77,7 @@ async fn given_sidecar_when_only_node_shuts_down_then_shut_down() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    let sidecar_join = start_sidecar(testing_config.inner()).await;
+    let sidecar_join = start_sidecar(testing_config).await;
     let (_, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -102,7 +108,7 @@ async fn should_allow_client_connection_to_sse() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -125,13 +131,13 @@ async fn should_respond_to_rest_query() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let sidecar_rest_server_port = testing_config.rest_server_port();
+    let sidecar_rest_server_port = testing_config.rest_api_server_config.port;
     let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar_with_rest_api(testing_config).await;
     let (_, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -167,7 +173,7 @@ async fn should_allow_partial_connection_on_one_filter() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
@@ -210,7 +216,7 @@ async fn should_fail_to_reconnect() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
@@ -257,7 +263,7 @@ async fn should_reconnect() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(31, receiver, Duration::from_secs(120)).await;
@@ -300,7 +306,7 @@ async fn shutdown_should_be_passed_through() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -331,7 +337,7 @@ async fn connecting_to_node_prior_to_1_5_2_should_fail() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, _) = fetch_data_from_endpoint_with_panic_flag(
         "/events/main?start_from=0",
         event_stream_server_port,
@@ -363,7 +369,7 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -400,7 +406,7 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
         node_port_for_rest_connection,
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/sidecar", event_stream_server_port).await;
     stop_nodes_and_wait(vec![&mut node_mock]).await;
@@ -437,7 +443,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -460,7 +466,7 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
         event_stream_server_port,
     ) = build_test_config();
     //Prepopulating database
-    let sqlite_database = SqliteDatabase::new_from_config(&testing_config.config.storage)
+    let sqlite_database = SqliteDatabase::new_from_config(&testing_config.storage_config)
         .await
         .expect("database should start");
     sqlite_database
@@ -481,7 +487,7 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
@@ -511,7 +517,7 @@ async fn sidecar_should_connect_to_multiple_nodes() {
             (sse_port_2, rest_port_2),
             (sse_port_3, rest_port_3),
         ]);
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(4, receiver, Duration::from_secs(120)).await;
@@ -547,7 +553,7 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
             (sse_port_1, rest_port_1),
             (sse_port_2, rest_port_2),
         ]);
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let receiver = wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -581,7 +587,7 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
             (sse_port_1, rest_port_1),
             (sse_port_2, rest_port_2),
         ]);
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -613,7 +619,7 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
             (sse_port_2, rest_port_2),
             (8888, 9999), //Ports which should be not occupied
         ]);
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     wait_for_n_messages(3, receiver, Duration::from_secs(120)).await;
@@ -646,7 +652,7 @@ async fn partial_connection_test(allow_partial_connection: bool) -> Vec<EventTyp
     start_nodes_and_wait(vec![&mut node_mock]).await;
 
     // Run the Sidecar in another task with the prepared config.
-    start_sidecar(testing_config.inner()).await;
+    start_sidecar(testing_config).await;
     let (join_handle, receiver) =
         fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
     let _ = wait_for_n_messages(1, receiver, Duration::from_secs(60)).await;

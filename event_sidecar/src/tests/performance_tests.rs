@@ -1,10 +1,11 @@
 use crate::{
     database::postgresql_database::PostgreSqlDatabase,
-    run,
     testing::fake_event_stream::Bound,
     tests::integration_tests::fetch_data_from_endpoint,
     types::database::DatabaseReader,
-    utils::tests::{build_postgres_based_test_config, wait_for_n_messages},
+    utils::tests::{
+        build_postgres_based_test_config, unpack_test_config_and_run, wait_for_n_messages,
+    },
 };
 use crate::{
     event_stream_server::Config as EssConfig,
@@ -105,10 +106,7 @@ async fn test_event_throughput() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     ));
-    tokio::spawn(async move {
-        let sse_config = testing_config.inner();
-        run(&sse_config).await
-    });
+    tokio::spawn(async move { unpack_test_config_and_run(testing_config, false).await });
 
     let handle =
         start_counting_outbound_events(cancellation_token.clone(), event_stream_server_port).await;
@@ -266,9 +264,18 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
     let mut testing_config = prepare_config(&temp_storage_dir);
     testing_config.add_connection(None, None, None);
-    let node_port_for_sse_connection = testing_config.config.connections.first().unwrap().sse_port;
-    let node_port_for_rest_connection =
-        testing_config.config.connections.first().unwrap().rest_port;
+    let node_port_for_sse_connection = testing_config
+        .event_server_config
+        .connections
+        .first()
+        .unwrap()
+        .sse_port;
+    let node_port_for_rest_connection = testing_config
+        .event_server_config
+        .connections
+        .first()
+        .unwrap()
+        .rest_port;
     let (_shutdown_tx, _after_shutdown_rx) =
         setup_mock_build_version_server(node_port_for_rest_connection).await;
 
@@ -276,10 +283,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     tokio::spawn(spin_up_fake_event_stream(test_rng, ess_config, scenario));
 
-    tokio::spawn(async move {
-        let sse_config = testing_config.inner();
-        run(&sse_config).await
-    });
+    tokio::spawn(async move { unpack_test_config_and_run(testing_config, false).await });
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     let ip_address = IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr");

@@ -16,6 +16,8 @@ anyhow = "1"
 async-stream = "0.3.4"
 casper-types = { path = "./casper_types", version = "4.0.1" }
 casper-types-ver-2_0 = { version = "3.0.0", path = "./casper_types_ver_2_0" }
+casper-event-sidecar = { path = "./event_sidecar", version = "1.0.0" }
+casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
 datasize = "0.2.11"
 futures = "0"
 futures-util = "0.3.28"

@@ -12,6 +12,7 @@ repository = "https://github.com/CasperLabs/event-sidecar"
 
 [features]
 additional-metrics = ["casper-event-types/additional-metrics"]
+testing = []
 
 [dependencies]
 anyhow = { workspace = true }

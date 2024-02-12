@@ -18,16 +18,9 @@ mod utils;
 
 use std::collections::HashMap;
 use std::process::ExitCode;
-use std::{
-    net::IpAddr,
-    path::{Path, PathBuf},
-    str::FromStr,
-    time::Duration,
-};
+use std::{net::IpAddr, path::PathBuf, str::FromStr, time::Duration};
 
 use crate::{
-    admin_server::run_server as start_admin_server,
-    database::sqlite_database::SqliteDatabase,
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
     types::{
@@ -41,7 +34,6 @@ use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
 use casper_event_types::{metrics, sse_data::SseData, Filter};
-use database::postgresql_database::PostgreSqlDatabase;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
@@ -50,28 +42,32 @@ use tokio::{
     time::sleep,
 };
 use tracing::{debug, error, info, trace, warn};
-use types::database::{Database, DatabaseReader};
+use types::database::DatabaseReader;
 #[cfg(feature = "additional-metrics")]
 use utils::start_metrics_thread;
 
+pub use admin_server::run_server as run_admin_server;
 pub use database::DatabaseConfigError;
 pub use types::config::{
-    Connection, SseEventServerConfig, SseEventServerConfigSerdeTarget, StorageConfig,
+    AdminApiServerConfig, Connection, RestApiServerConfig, SseEventServerConfig, StorageConfig,
+    StorageConfigSerdeTarget,
 };
+
+pub type Database = types::database::Database;
 
 const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
-pub async fn run(config: &SseEventServerConfig) -> Result<ExitCode, Error> {
-    validate_config(config)?;
-    let (event_listeners, sse_data_receivers) = build_event_listeners(config)?;
-    let admin_server_handle = build_and_start_admin_server(config);
+pub async fn run(
+    config: SseEventServerConfig,
+    database: Database,
+    storage_path: String,
+) -> Result<ExitCode, Error> {
+    validate_config(&config)?;
+    let (event_listeners, sse_data_receivers) = build_event_listeners(&config)?;
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
     let connection_configs = config.connections.clone();
-    let storage_config = config.storage.clone();
-    let database = build_database(&storage_config).await?;
-    let rest_server_handle = build_and_start_rest_server(config, database.clone());
 
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
@@ -83,23 +79,20 @@ pub async fn run(config: &SseEventServerConfig) -> Result<ExitCode, Error> {
     );
 
     let event_broadcasting_handle =
-        start_event_broadcasting(config, &storage_config, outbound_sse_data_receiver);
+        start_event_broadcasting(&config, storage_path, outbound_sse_data_receiver);
 
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
-        flatten_handle(rest_server_handle),
         flatten_handle(listening_task_handle),
-        flatten_handle(admin_server_handle),
     )
     .map(|_| Ok(ExitCode::SUCCESS))?
 }
 
 fn start_event_broadcasting(
     config: &SseEventServerConfig,
-    storage_config: &StorageConfig,
+    storage_path: String,
     mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>, Option<String>)>,
 ) -> JoinHandle<Result<(), Error>> {
-    let storage_path = storage_config.get_storage_path();
     let event_stream_server_port = config.event_stream_server.port;
     let buffer_length = config.event_stream_server.event_stream_buffer_length;
     let max_concurrent_subscribers = config.event_stream_server.max_concurrent_subscribers;
@@ -199,55 +192,15 @@ fn spawn_sse_processor(
     }
 }
 
-fn build_and_start_rest_server(
-    config: &SseEventServerConfig,
+pub async fn run_rest_server(
+    rest_server_config: RestApiServerConfig,
     database: Database,
-) -> JoinHandle<Result<(), Error>> {
-    let rest_server_config = config.rest_server.clone();
-    tokio::spawn(async move {
-        match database {
-            Database::SqliteDatabaseWrapper(db) => {
-                start_rest_server(rest_server_config, db.clone()).await
-            }
-            Database::PostgreSqlDatabaseWrapper(db) => {
-                start_rest_server(rest_server_config, db.clone()).await
-            }
-        }
-    })
-}
-
-fn build_and_start_admin_server(config: &SseEventServerConfig) -> JoinHandle<Result<(), Error>> {
-    let admin_server_config = config.admin_server.clone();
-    tokio::spawn(async move {
-        if let Some(config) = admin_server_config {
-            start_admin_server(config).await
-        } else {
-            Ok(())
-        }
-    })
-}
-
-async fn build_database(config: &StorageConfig) -> Result<Database, Error> {
-    match config {
-        StorageConfig::SqliteDbConfig {
-            storage_path,
-            sqlite_config,
-        } => {
-            let path_to_database_dir = Path::new(storage_path);
-            let sqlite_database = SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
-                .await
-                .context("Error instantiating sqlite database")?;
-            Ok(Database::SqliteDatabaseWrapper(sqlite_database))
-        }
-        StorageConfig::PostgreSqlDbConfig {
-            postgresql_config, ..
-        } => {
-            let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone())
-                .await
-                .context("Error instantiating postgres database")?;
-            Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
-        }
+) -> Result<ExitCode, Error> {
+    match database {
+        Database::SqliteDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
+        Database::PostgreSqlDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
     }
+    .map(|_| ExitCode::SUCCESS)
 }
 
 fn build_event_listeners(

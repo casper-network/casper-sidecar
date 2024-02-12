@@ -14,14 +14,14 @@ use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use warp::Filter;
 
 use crate::{
-    types::{config::RestServerConfig, database::DatabaseReader},
+    types::{config::RestApiServerConfig, database::DatabaseReader},
     utils::resolve_address,
 };
 
 const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 
 pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
-    config: RestServerConfig,
+    config: RestApiServerConfig,
     database: Db,
 ) -> Result<(), Error> {
     let api = filters::combined_filters(database);
