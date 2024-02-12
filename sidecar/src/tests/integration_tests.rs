@@ -308,7 +308,7 @@ async fn shutdown_should_be_passed_through() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
@@ -379,7 +379,7 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 5);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(3).unwrap().contains("\"1.5.3\""));
@@ -409,7 +409,7 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 2);
     assert!(events_received
-        .get(0)
+        .first()
         .unwrap()
         .contains("\"SidecarVersion\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
@@ -444,7 +444,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     stop_nodes_and_wait(vec![&mut node_mock]).await;
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
@@ -464,7 +464,12 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
         .await
         .expect("database should start");
     sqlite_database
-        .save_fault(Fault::random(&mut rng), 0, "127.0.0.1".to_string())
+        .save_fault(
+            Fault::random(&mut rng),
+            0,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+        )
         .await
         .unwrap();
     let mut node_mock = MockNodeBuilder {
@@ -484,7 +489,7 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
@@ -515,7 +520,7 @@ async fn sidecar_should_connect_to_multiple_nodes() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 4);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -553,7 +558,7 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -584,7 +589,7 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -617,7 +622,7 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.get(0).unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
