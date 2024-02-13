@@ -10,7 +10,6 @@ database_writer_implementation!(
     PgQueryResult,
     PostgresQueryBuilder,
     DDLConfiguration {
-        is_big_integer_id: true,
         db_supports_unsigned: false,
     }
 );
