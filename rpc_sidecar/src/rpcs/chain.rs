@@ -10,8 +10,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types_ver_2_0::{
-    Block, BlockHash, BlockHeaderV2, BlockIdentifier, Digest, JsonBlockWithSignatures, Key,
-    ProtocolVersion, StoredValue, Transfer,
+    BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest, GlobalStateIdentifier,
+    JsonBlockWithSignatures, Key, StoredValue, Transfer,
 };
 
 use super::{
@@ -145,23 +145,6 @@ pub struct GetBlockTransfersResult {
     pub transfers: Option<Vec<Transfer>>,
 }
 
-impl GetBlockTransfersResult {
-    /// Create an instance of GetBlockTransfersResult.
-    // TODO: will be used
-    #[allow(unused)]
-    pub fn new(
-        api_version: ProtocolVersion,
-        block_hash: Option<BlockHash>,
-        transfers: Option<Vec<Transfer>>,
-    ) -> Self {
-        GetBlockTransfersResult {
-            api_version: CURRENT_API_VERSION,
-            block_hash,
-            transfers,
-        }
-    }
-}
-
 impl DocExample for GetBlockTransfersResult {
     fn doc_example() -> &'static Self {
         &GET_BLOCK_TRANSFERS_RESULT
@@ -182,14 +165,14 @@ impl RpcWithOptionalParams for GetBlockTransfers {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
+        let header = common::get_block_header(&*node_client, identifier).await?;
         let transfers = node_client
-            .read_block_transfers(*signed_block.block().hash())
+            .read_block_transfers(header.block_hash())
             .await
             .map_err(|err| Error::NodeRequest("block transfers", err))?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
-            block_hash: Some(*signed_block.block().hash()),
+            block_hash: Some(header.block_hash()),
             transfers,
         })
     }
@@ -240,10 +223,10 @@ impl RpcWithOptionalParams for GetStateRootHash {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
+        let block_header = common::get_block_header(&*node_client, identifier).await?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
-            state_root_hash: Some(*signed_block.block().state_root_hash()),
+            state_root_hash: Some(*block_header.state_root_hash()),
         })
     }
 }
@@ -293,9 +276,9 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
-        let era_summary = if signed_block.block().is_switch_block() {
-            Some(get_era_summary_by_block(node_client, signed_block.block()).await?)
+        let block_header = common::get_block_header(&*node_client, identifier).await?;
+        let era_summary = if block_header.is_switch_block() {
+            Some(get_era_summary_by_block(node_client, &block_header).await?)
         } else {
             None
         };
@@ -352,8 +335,8 @@ impl RpcWithOptionalParams for GetEraSummary {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
-        let era_summary = get_era_summary_by_block(node_client, signed_block.block()).await?;
+        let block_header = common::get_block_header(&*node_client, identifier).await?;
+        let era_summary = get_era_summary_by_block(node_client, &block_header).await?;
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
@@ -364,56 +347,61 @@ impl RpcWithOptionalParams for GetEraSummary {
 
 async fn get_era_summary_by_block(
     node_client: Arc<dyn NodeClient>,
-    block: &Block,
+    block_header: &BlockHeader,
 ) -> Result<EraSummary, Error> {
     fn create_era_summary(
-        block: &Block,
+        block_header: &BlockHeader,
         stored_value: StoredValue,
         merkle_proof: String,
     ) -> EraSummary {
         EraSummary {
-            block_hash: *block.hash(),
-            era_id: block.era_id(),
+            block_hash: block_header.block_hash(),
+            era_id: block_header.era_id(),
             stored_value,
-            state_root_hash: *block.state_root_hash(),
+            state_root_hash: *block_header.state_root_hash(),
             merkle_proof,
         }
     }
 
-    let state_root_hash = *block.state_root_hash();
+    let state_identifier = GlobalStateIdentifier::StateRootHash(*block_header.state_root_hash());
     let result = node_client
-        .query_global_state(state_root_hash, Key::EraSummary, vec![])
+        .query_global_state(Some(state_identifier), Key::EraSummary, vec![])
         .await
         .map_err(|err| Error::NodeRequest("era summary", err))?;
 
     let era_summary = if let Some(result) = result {
         let (value, merkle_proof) = result.into_inner();
-        create_era_summary(block, value, merkle_proof)
+        create_era_summary(block_header, value, merkle_proof)
     } else {
         let (result, merkle_proof) = node_client
-            .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
+            .query_global_state(
+                Some(state_identifier),
+                Key::EraInfo(block_header.era_id()),
+                vec![],
+            )
             .await
             .map_err(|err| Error::NodeRequest("era info", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
             .into_inner();
 
-        create_era_summary(block, result, merkle_proof)
+        create_era_summary(block_header, result, merkle_proof)
     };
     Ok(era_summary)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
-            GlobalStateQueryResult, HighestBlockSequenceCheckResult, NonPersistedDataRequest,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
         },
         system::auction::EraInfo,
         testing::TestRng,
-        AvailableBlockRange, BlockHashAndHeight, BlockV1, DeployHash, TestBlockBuilder,
-        TestBlockV1Builder,
+        Block, BlockSignatures, DeployHash, SignedBlock, TestBlockBuilder, TestBlockV1Builder,
     };
     use rand::Rng;
 
@@ -426,8 +414,11 @@ mod tests {
         let block = Block::V2(TestBlockBuilder::new().build(rng));
 
         let resp = GetBlock::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
-                block: block.clone(),
+            Arc::new(ValidBlockMock {
+                block: SignedBlock::new(
+                    block.clone(),
+                    BlockSignatures::new(*block.hash(), block.era_id()),
+                ),
                 transfers: vec![],
             }),
             None,
@@ -446,79 +437,21 @@ mod tests {
 
     #[tokio::test]
     async fn should_read_block_v1() {
-        struct ClientMock(BlockV1);
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockBody) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                            DbId::BlockBody,
-                            self.0.body(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockHeader) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                            DbId::BlockHeader,
-                            self.0.header(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockMetadata) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::AvailableBlockRange,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            AvailableBlockRange::RANGE_0_0,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::CompletedBlocksContain { .. },
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            HighestBlockSequenceCheckResult::new(true),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::HighestCompleteBlock,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(*self.0.hash(), self.0.height()),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
         let rng = &mut TestRng::new();
         let block = TestBlockV1Builder::new().build(rng);
 
-        let resp = GetBlock::do_handle_request(Arc::new(ClientMock(block.clone())), None)
-            .await
-            .expect("should handle request");
+        let resp = GetBlock::do_handle_request(
+            Arc::new(ValidBlockMock {
+                block: SignedBlock::new(
+                    Block::V1(block.clone()),
+                    BlockSignatures::new(*block.hash(), block.era_id()),
+                ),
+                transfers: vec![],
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
 
         assert_eq!(
             resp,
@@ -549,8 +482,11 @@ mod tests {
         }
 
         let resp = GetBlockTransfers::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
-                block: Block::V2(block.clone()),
+            Arc::new(ValidBlockMock {
+                block: SignedBlock::new(
+                    Block::V2(block.clone()),
+                    BlockSignatures::new(*block.hash(), block.era_id()),
+                ),
                 transfers: transfers.clone(),
             }),
             None,
@@ -574,8 +510,11 @@ mod tests {
         let block = TestBlockBuilder::new().build(rng);
 
         let resp = GetStateRootHash::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
-                block: Block::V2(block.clone()),
+            Arc::new(ValidBlockMock {
+                block: SignedBlock::new(
+                    Block::V2(block.clone()),
+                    BlockSignatures::new(*block.hash(), block.era_id()),
+                ),
                 transfers: vec![],
             }),
             None,
@@ -598,9 +537,8 @@ mod tests {
         let block = TestBlockBuilder::new().build(rng);
 
         let resp = GetEraSummary::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
+            Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                transfers: vec![],
             }),
             None,
         )
@@ -628,9 +566,8 @@ mod tests {
         let block = TestBlockBuilder::new().switch_block(true).build(rng);
 
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
+            Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                transfers: vec![],
             }),
             None,
         )
@@ -658,9 +595,8 @@ mod tests {
         let block = TestBlockBuilder::new().switch_block(false).build(rng);
 
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
-            Arc::new(ValidBlockV2Mock {
+            Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                transfers: vec![],
             }),
             None,
         )
@@ -676,84 +612,80 @@ mod tests {
         );
     }
 
-    struct ValidBlockV2Mock {
-        block: Block,
+    struct ValidBlockMock {
+        block: SignedBlock,
         transfers: Vec<Transfer>,
     }
 
     #[async_trait]
-    impl NodeClient for ValidBlockV2Mock {
+    impl NodeClient for ValidBlockMock {
         async fn send_request(
             &self,
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockBody) =>
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::SignedBlock) =>
                 {
-                    Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockBody,
-                        &self.block.clone_body(),
-                        SUPPORTED_PROTOCOL_VERSION,
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(self.block.clone(), SUPPORTED_PROTOCOL_VERSION),
+                        &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockHeader) =>
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::BlockHeader) =>
                 {
-                    Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                        SUPPORTED_PROTOCOL_VERSION,
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            self.block.block().clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::Transfer) =>
-                {
+                BinaryRequest::Get(GetRequest::Record {
+                    record_type_tag, ..
+                }) if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
                     Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::Transfer,
+                        RecordId::Transfer,
                         &self.transfers,
                         SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockMetadata) =>
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct ValidEraSummaryMock {
+        block: Block,
+    }
+
+    #[async_trait]
+    impl NodeClient for ValidEraSummaryMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::BlockHeader) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                        BinaryResponse::from_value(
+                            self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::AvailableBlockRange,
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        AvailableBlockRange::RANGE_0_0,
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::CompletedBlocksContain { .. },
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        HighestBlockSequenceCheckResult::new(true),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::HighestCompleteBlock,
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::State {
+                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                     base_key: Key::EraSummary,
                     ..
-                }) => Ok(BinaryResponseAndRequest::new(
+                })) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
                         GlobalStateQueryResult::new(
                             StoredValue::EraInfo(EraInfo::new()),

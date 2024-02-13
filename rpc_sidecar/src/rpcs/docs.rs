@@ -522,17 +522,6 @@ mod doc_example_impls {
 mod tests {
     use super::*;
 
-    // TODO: fix test
-    // #[test]
-    // fn check_docs_example_version() {
-    //     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("production");
-    //     assert_eq!(
-    //         DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
-    //         "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
-    //         'resources/production/chainspec.toml'"
-    //     );
-    // }
-
     fn check_optional_params_fields<T: RpcWithOptionalParams>() -> Vec<SchemaParam> {
         let contact = OpenRpcContactField {
             name: "Casper Labs".to_string(),

@@ -1,21 +1,25 @@
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
-use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    future::Future,
+    net::SocketAddr,
+    sync::Arc,
+    time::Duration,
+};
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types_ver_2_0::{
     binary_port::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusValidatorChanges, DbId, ErrorCode as BinaryPortError, GetRequest,
-        GetTrieFullResult, GlobalStateQueryResult, HighestBlockSequenceCheckResult, NodeStatus,
-        NonPersistedDataRequest, PayloadEntity, SpeculativeExecutionResult,
+        ConsensusValidatorChanges, ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity,
+        RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    execution::{ExecutionResult, ExecutionResultV1},
-    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockHeaderV1, BlockIdentifier, BlockSignatures, ChainspecRawBytes, Deploy, Digest,
-    FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag, Peers, ProtocolVersion, StoredValue,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
+    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
     Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
@@ -37,55 +41,62 @@ use tracing::{error, info, warn};
 pub trait NodeClient: Send + Sync {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error>;
 
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error> {
-        let get = GetRequest::Db {
-            db_tag: db as u8,
+    async fn read_record(
+        &self,
+        record_id: RecordId,
+        key: &[u8],
+    ) -> Result<BinaryResponseAndRequest, Error> {
+        let get = GetRequest::Record {
+            record_type_tag: record_id.into(),
             key: key.to_vec(),
         };
         self.send_request(BinaryRequest::Get(get)).await
     }
 
-    async fn read_from_mem(
-        &self,
-        req: NonPersistedDataRequest,
-    ) -> Result<BinaryResponseAndRequest, Error> {
-        let get = GetRequest::NonPersistedData(req);
+    async fn read_info(&self, req: InformationRequest) -> Result<BinaryResponseAndRequest, Error> {
+        let get = req.try_into().expect("should always be able to convert");
         self.send_request(BinaryRequest::Get(get)).await
-    }
-
-    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
-        let get = GetRequest::Trie { trie_key };
-        let resp = self.send_request(BinaryRequest::Get(get)).await?;
-        let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
-        Ok(res.into_inner().map(<Vec<u8>>::from))
     }
 
     async fn query_global_state(
         &self,
-        state_root_hash: Digest,
+        state_identifier: Option<GlobalStateIdentifier>,
         base_key: Key,
         path: Vec<String>,
     ) -> Result<Option<GlobalStateQueryResult>, Error> {
-        let get = GetRequest::State {
-            state_root_hash,
+        let req = GlobalStateRequest::Item {
+            state_identifier,
             base_key,
             path,
         };
-        let resp = self.send_request(BinaryRequest::Get(get)).await?;
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(req)))
+            .await?;
         parse_response::<GlobalStateQueryResult>(&resp.into())
     }
 
     async fn query_global_state_by_tag(
         &self,
-        state_root_hash: Digest,
-        tag: KeyTag,
+        state_identifier: Option<GlobalStateIdentifier>,
+        key_tag: KeyTag,
     ) -> Result<Vec<StoredValue>, Error> {
-        let get = GetRequest::AllValues {
-            state_root_hash,
-            key_tag: tag,
+        let get = GlobalStateRequest::AllItems {
+            state_identifier,
+            key_tag,
         };
-        let resp = self.send_request(BinaryRequest::Get(get)).await?;
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(get)))
+            .await?;
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
+        let req = GlobalStateRequest::Trie { trie_key };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(req)))
+            .await?;
+        let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
+        Ok(res.into_inner().map(<Vec<u8>>::from))
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
@@ -118,120 +129,70 @@ pub trait NodeClient: Send + Sync {
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::Transaction, &key).await?;
-        parse_response_versioned::<Deploy, Transaction>(&resp.into())
-    }
-
-    async fn read_finalized_approvals(
-        &self,
-        hash: TransactionHash,
-    ) -> Result<Option<FinalizedApprovals>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self
-            .read_from_db(DbId::FinalizedTransactionApprovals, &key)
-            .await?;
-        parse_response_versioned::<FinalizedDeployApprovals, FinalizedApprovals>(&resp.into())
-    }
-
-    async fn read_block_header(&self, hash: BlockHash) -> Result<Option<BlockHeader>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::BlockHeader, &key).await?;
-        parse_response_versioned::<BlockHeaderV1, BlockHeader>(&resp.into())
-    }
-
-    async fn read_block_body(&self, hash: Digest) -> Result<Option<BlockBody>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::BlockBody, &key).await?;
-        parse_response_versioned::<BlockBodyV1, BlockBody>(&resp.into())
-    }
-
-    async fn read_block_signatures(
-        &self,
-        hash: BlockHash,
-    ) -> Result<Option<BlockSignatures>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::BlockMetadata, &key).await?;
-        parse_response_bincode::<BlockSignatures>(&resp.into())
-    }
-
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::Transfer, &key).await?;
+        let resp = self.read_record(RecordId::Transfer, &key).await?;
         parse_response_bincode::<Vec<Transfer>>(&resp.into())
     }
 
-    async fn read_execution_result(
+    async fn read_block_header(
         &self,
-        hash: TransactionHash,
-    ) -> Result<Option<ExecutionResult>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        let resp = self.read_from_db(DbId::ExecutionResult, &key).await?;
-        parse_response_versioned::<ExecutionResultV1, ExecutionResult>(&resp.into())
+        block_identifier: Option<BlockIdentifier>,
+    ) -> Result<Option<BlockHeader>, Error> {
+        let resp = self
+            .read_info(InformationRequest::BlockHeader(block_identifier))
+            .await?;
+        parse_response::<BlockHeader>(&resp.into())
     }
 
-    async fn read_transaction_block_info(
+    async fn read_signed_block(
+        &self,
+        block_identifier: Option<BlockIdentifier>,
+    ) -> Result<Option<SignedBlock>, Error> {
+        let resp = self
+            .read_info(InformationRequest::SignedBlock(block_identifier))
+            .await?;
+        parse_response::<SignedBlock>(&resp.into())
+    }
+
+    async fn read_transaction_with_execution_info(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<Option<BlockHashAndHeight>, Error> {
-        let req = NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash };
-        let resp = self.read_from_mem(req).await?;
-        parse_response::<BlockHashAndHeight>(&resp.into())
-    }
-
-    async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
+    ) -> Result<Option<TransactionWithExecutionInfo>, Error> {
         let resp = self
-            .read_from_mem(NonPersistedDataRequest::HighestCompleteBlock)
+            .read_info(InformationRequest::Transaction(transaction_hash))
             .await?;
-        parse_response::<BlockHashAndHeight>(&resp.into())
-    }
-
-    async fn read_block_hash_from_height(&self, height: u64) -> Result<Option<BlockHash>, Error> {
-        let req = NonPersistedDataRequest::BlockHeight2Hash { height };
-        let resp = self.read_from_mem(req).await?;
-        parse_response::<BlockHash>(&resp.into())
-    }
-
-    async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
-        let block_identifier = BlockIdentifier::Hash(block_hash);
-        let req = NonPersistedDataRequest::CompletedBlocksContain { block_identifier };
-        let resp = self.read_from_mem(req).await?;
-        parse_response::<HighestBlockSequenceCheckResult>(&resp.into())?
-            .map(bool::from)
-            .ok_or(Error::EmptyEnvelope)
+        parse_response::<TransactionWithExecutionInfo>(&resp.into())
     }
 
     async fn read_peers(&self) -> Result<Peers, Error> {
-        let resp = self.read_from_mem(NonPersistedDataRequest::Peers).await?;
+        let resp = self.read_info(InformationRequest::Peers).await?;
         parse_response::<Peers>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
         let resp = self
-            .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
+            .read_info(InformationRequest::AvailableBlockRange)
             .await?;
         parse_response::<AvailableBlockRange>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_chainspec_bytes(&self) -> Result<ChainspecRawBytes, Error> {
         let resp = self
-            .read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
+            .read_info(InformationRequest::ChainspecRawBytes)
             .await?;
         parse_response::<ChainspecRawBytes>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_validator_changes(&self) -> Result<ConsensusValidatorChanges, Error> {
         let resp = self
-            .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
+            .read_info(InformationRequest::ConsensusValidatorChanges)
             .await?;
         parse_response::<ConsensusValidatorChanges>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::NodeStatus)
-            .await?;
+        let resp = self.read_info(InformationRequest::NodeStatus).await?;
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
@@ -430,7 +391,7 @@ fn handle_response(
 }
 
 fn encode_request(req: &BinaryRequest) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION);
+    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag());
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;
@@ -449,31 +410,6 @@ where
     }
     match resp.returned_data_type_tag() {
         Some(found) if found == u8::from(A::PAYLOAD_TYPE) => {
-            bytesrepr::deserialize_from_slice(resp.payload())
-                .map(Some)
-                .map_err(|err| Error::Deserialization(err.to_string()))
-        }
-        Some(other) => Err(Error::UnexpectedVariantReceived(other)),
-        _ => Ok(None),
-    }
-}
-
-fn parse_response_versioned<V1, V2>(resp: &BinaryResponse) -> Result<Option<V2>, Error>
-where
-    V1: DeserializeOwned + PayloadEntity,
-    V2: FromBytes + PayloadEntity + From<V1>,
-{
-    if resp.is_not_found() {
-        return Ok(None);
-    }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    match resp.returned_data_type_tag() {
-        Some(found) if found == u8::from(V1::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
-            .map(|val| Some(V2::from(val)))
-            .map_err(|err| Error::Deserialization(err.to_string())),
-        Some(found) if found == u8::from(V2::PAYLOAD_TYPE) => {
             bytesrepr::deserialize_from_slice(resp.payload())
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
@@ -641,7 +577,11 @@ mod tests {
         let state_root_hash = Digest::random(rng);
         let base_key = Key::ChecksumRegistry;
         client
-            .query_global_state(state_root_hash, base_key, vec![])
+            .query_global_state(
+                Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                base_key,
+                vec![],
+            )
             .await?
             .ok_or(Error::NoResponseBody)
             .map(|query_res| query_res.into_inner().0)

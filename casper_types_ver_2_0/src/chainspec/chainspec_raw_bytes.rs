@@ -1,15 +1,13 @@
 use core::fmt::{self, Debug, Display, Formatter};
 
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 /// The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

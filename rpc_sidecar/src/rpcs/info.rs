@@ -11,13 +11,11 @@ use casper_types_ver_2_0::{
     binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockSynchronizerStatus, ChainspecRawBytes,
-    Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals, NextUpgrade, Peers,
-    ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    ValidatorChange,
+    Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers, ProtocolVersion,
+    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
 };
 
 use super::{
-    common,
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
     ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
 };
@@ -152,25 +150,17 @@ impl RpcWithParams for GetDeploy {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let hash = TransactionHash::from(params.deploy_hash);
-        let (transaction, approvals) = common::get_transaction_with_approvals(&*node_client, hash)
+        let (transaction, execution_info) = node_client
+            .read_transaction_with_execution_info(hash)
             .await
-            .map_err(|err| match err {
-                Error::NoTransactionWithHash(_) => Error::NoDeployWithHash(params.deploy_hash),
-                other => other,
-            })?;
+            .map_err(|err| Error::NodeRequest("transaction", err))?
+            .ok_or(Error::NoDeployWithHash(params.deploy_hash))?
+            .into_inner();
 
-        let deploy = match (transaction, approvals) {
-            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
-                if params.finalized_approvals =>
-            {
-                deploy.with_approvals(approvals.into_inner())
-            }
-            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => deploy,
-            (Transaction::V1(_), _) => return Err(Error::FoundTransactionInsteadOfDeploy.into()),
-            _ => return Err(Error::InconsistentTransactionVersions(hash).into()),
+        let deploy = match transaction {
+            Transaction::Deploy(deploy) => deploy,
+            Transaction::V1(_) => return Err(Error::FoundTransactionInsteadOfDeploy.into()),
         };
-
-        let execution_info = common::get_transaction_execution_info(&*node_client, hash).await?;
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
@@ -232,33 +222,12 @@ impl RpcWithParams for GetTransaction {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let (transaction, approvals) =
-            common::get_transaction_with_approvals(&*node_client, params.transaction_hash).await?;
-
-        let transaction = match (transaction, approvals) {
-            (Transaction::V1(txn), Some(FinalizedApprovals::V1(approvals)))
-                if params.finalized_approvals =>
-            {
-                Transaction::from(txn.with_approvals(approvals.into_inner()))
-            }
-            (Transaction::V1(txn), Some(FinalizedApprovals::V1(_)) | None) => {
-                Transaction::from(txn)
-            }
-            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
-                if params.finalized_approvals =>
-            {
-                Transaction::from(deploy.with_approvals(approvals.into_inner()))
-            }
-            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => {
-                Transaction::from(deploy)
-            }
-            _ => {
-                return Err(Error::InconsistentTransactionVersions(params.transaction_hash).into())
-            }
-        };
-
-        let execution_info =
-            common::get_transaction_execution_info(&*node_client, params.transaction_hash).await?;
+        let (transaction, execution_info) = node_client
+            .read_transaction_with_execution_info(params.transaction_hash)
+            .await
+            .map_err(|err| Error::NodeRequest("transaction", err))?
+            .ok_or(Error::NoTransactionWithHash(params.transaction_hash))?
+            .into_inner();
 
         Ok(Self::ResponseResult {
             transaction,
@@ -547,88 +516,38 @@ fn version_string() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
-            NonPersistedDataRequest,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+            InformationRequestTag, TransactionWithExecutionInfo,
         },
         testing::TestRng,
-        BlockHash, BlockHashAndHeight, FinalizedDeployApprovals, TransactionV1,
+        BlockHash, TransactionV1,
     };
     use pretty_assertions::assert_eq;
+    use rand::Rng;
 
     use super::*;
 
     #[tokio::test]
     async fn should_read_transaction() {
-        struct ClientMock {
-            transaction: Transaction,
-            approvals: FinalizedApprovals,
-            exec_result: ExecutionResult,
-            block_hash: BlockHash,
-        }
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::Transaction) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::Transaction,
-                            &self.transaction,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::FinalizedTransactionApprovals,
-                            &self.approvals,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::ExecutionResult) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::ExecutionResult,
-                            &self.exec_result,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(self.block_hash, 0),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
         let rng = &mut TestRng::new();
         let transaction = Transaction::from(TransactionV1::random(rng));
-        let approvals = FinalizedApprovals::new(&transaction);
-        let exec_result = ExecutionResult::random(rng);
-        let block_hash = BlockHash::random(rng);
+        let execution_info = ExecutionInfo {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen(),
+            execution_result: Some(ExecutionResult::random(rng)),
+        };
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(ClientMock {
-                transaction: transaction.clone(),
-                approvals: approvals.clone(),
-                exec_result: exec_result.clone(),
-                block_hash,
+            Arc::new(ValidTransactionMock {
+                transaction: TransactionWithExecutionInfo::new(
+                    transaction.clone(),
+                    Some(execution_info.clone()),
+                ),
             }),
             GetTransactionParams {
                 transaction_hash: transaction.hash(),
@@ -642,85 +561,28 @@ mod tests {
             resp,
             GetTransactionResult {
                 api_version: CURRENT_API_VERSION,
-                transaction: transaction.clone(),
-                execution_info: Some(ExecutionInfo {
-                    block_hash,
-                    block_height: 0,
-                    execution_result: Some(exec_result),
-                }),
+                transaction,
+                execution_info: Some(execution_info),
             }
         );
     }
 
     #[tokio::test]
-    async fn should_read_deploy() {
-        struct ClientMock {
-            deploy: Deploy,
-            approvals: FinalizedDeployApprovals,
-            exec_result: ExecutionResult,
-            block_hash: BlockHash,
-        }
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::Transaction) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                            DbId::Transaction,
-                            &self.deploy,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                            DbId::FinalizedTransactionApprovals,
-                            &self.approvals,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::ExecutionResult) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::ExecutionResult,
-                            &self.exec_result,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(self.block_hash, 0),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
+    async fn should_read_deploy_via_get_transaction() {
         let rng = &mut TestRng::new();
         let deploy = Deploy::random(rng);
-        let approvals = FinalizedDeployApprovals::new(deploy.approvals().clone());
-        let exec_result = ExecutionResult::random(rng);
-        let block_hash = BlockHash::random(rng);
+        let execution_info = ExecutionInfo {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen(),
+            execution_result: Some(ExecutionResult::random(rng)),
+        };
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(ClientMock {
-                deploy: deploy.clone(),
-                approvals: approvals.clone(),
-                exec_result: exec_result.clone(),
-                block_hash,
+            Arc::new(ValidTransactionMock {
+                transaction: TransactionWithExecutionInfo::new(
+                    Transaction::Deploy(deploy.clone()),
+                    Some(execution_info.clone()),
+                ),
             }),
             GetTransactionParams {
                 transaction_hash: deploy.hash().into(),
@@ -734,88 +596,66 @@ mod tests {
             resp,
             GetTransactionResult {
                 api_version: CURRENT_API_VERSION,
-                transaction: deploy.clone().into(),
-                execution_info: Some(ExecutionInfo {
-                    block_hash,
-                    block_height: 0,
-                    execution_result: Some(exec_result),
-                }),
+                transaction: deploy.into(),
+                execution_info: Some(execution_info),
             }
         );
     }
 
     #[tokio::test]
-    async fn should_reject_transaction_with_inconsistent_data() {
-        struct ClientMock {
-            transaction: Transaction,
-            approvals: FinalizedDeployApprovals,
-            exec_result: ExecutionResult,
-            block_hash: BlockHash,
-        }
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::Transaction) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::Transaction,
-                            &self.transaction,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                            DbId::FinalizedTransactionApprovals,
-                            &self.approvals,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::ExecutionResult) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::ExecutionResult,
-                            &self.exec_result,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(self.block_hash, 0),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
+    async fn should_read_deploy_via_get_deploy() {
         let rng = &mut TestRng::new();
-        let transaction = Transaction::from(TransactionV1::random(rng));
-        let approvals = FinalizedDeployApprovals::random(rng);
-        let exec_result = ExecutionResult::random(rng);
-        let block_hash = BlockHash::random(rng);
+        let deploy = Deploy::random(rng);
+        let execution_info = ExecutionInfo {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen(),
+            execution_result: Some(ExecutionResult::random(rng)),
+        };
 
-        let err = GetTransaction::do_handle_request(
-            Arc::new(ClientMock {
-                transaction: transaction.clone(),
-                approvals: approvals.clone(),
-                exec_result: exec_result.clone(),
-                block_hash,
+        let resp = GetDeploy::do_handle_request(
+            Arc::new(ValidTransactionMock {
+                transaction: TransactionWithExecutionInfo::new(
+                    Transaction::Deploy(deploy.clone()),
+                    Some(execution_info.clone()),
+                ),
             }),
-            GetTransactionParams {
-                transaction_hash: transaction.hash(),
+            GetDeployParams {
+                deploy_hash: *deploy.hash(),
+                finalized_approvals: true,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetDeployResult {
+                api_version: CURRENT_API_VERSION,
+                deploy: deploy,
+                execution_info: Some(execution_info),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_transaction_when_asking_for_deploy() {
+        let rng = &mut TestRng::new();
+        let transaction = TransactionV1::random(rng);
+        let execution_info = ExecutionInfo {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen(),
+            execution_result: Some(ExecutionResult::random(rng)),
+        };
+
+        let err = GetDeploy::do_handle_request(
+            Arc::new(ValidTransactionMock {
+                transaction: TransactionWithExecutionInfo::new(
+                    Transaction::V1(transaction.clone()),
+                    Some(execution_info.clone()),
+                ),
+            }),
+            GetDeployParams {
+                deploy_hash: DeployHash::new(*transaction.hash().inner()),
                 finalized_approvals: true,
             },
         )
@@ -823,5 +663,33 @@ mod tests {
         .expect_err("should reject request");
 
         assert_eq!(err.code(), ErrorCode::VariantMismatch as i64);
+    }
+
+    struct ValidTransactionMock {
+        transaction: TransactionWithExecutionInfo,
+    }
+
+    #[async_trait]
+    impl NodeClient for ValidTransactionMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::Transaction) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            self.transaction.clone(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    ))
+                }
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
     }
 }

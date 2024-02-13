@@ -26,7 +26,8 @@ use casper_types_ver_2_0::{
         AUCTION,
     },
     AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier,
-    BlockV2, CLValue, Digest, Key, KeyTag, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
+    BlockV2, CLValue, Digest, GlobalStateIdentifier, Key, KeyTag, PublicKey, SecretKey,
+    StoredValue, Tagged, URef, U512,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
@@ -173,8 +174,9 @@ impl RpcWithParams for GetItem {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
+        let state_identifier = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
         let (stored_value, merkle_proof) = node_client
-            .query_global_state(params.state_root_hash, params.key, params.path)
+            .query_global_state(Some(state_identifier), params.key, params.path)
             .await
             .map_err(|err| Error::NodeRequest("global state item", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -238,7 +240,8 @@ impl RpcWithParams for GetBalance {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_uref =
             URef::from_formatted_str(&params.purse_uref).map_err(Error::InvalidPurseURef)?;
-        let result = common::get_balance(&*node_client, purse_uref, params.state_root_hash).await?;
+        let state_identifier = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
+        let result = common::get_balance(&*node_client, purse_uref, Some(state_identifier)).await?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance_value: result.value,
@@ -291,12 +294,16 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         node_client: Arc<dyn NodeClient>,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let (state_root_hash, header) =
-            common::resolve_state_root_hash_by_block(&*node_client, maybe_block_id).await?;
+        let block_identifier = maybe_params.map(|params| params.block_identifier);
+        let block_header = node_client
+            .read_block_header(block_identifier)
+            .await
+            .map_err(|err| Error::NodeRequest("block header", err))?
+            .unwrap();
 
+        let state_identifier = block_identifier.map(GlobalStateIdentifier::from);
         let bid_stored_values = node_client
-            .query_global_state_by_tag(state_root_hash, KeyTag::Bid)
+            .query_global_state_by_tag(state_identifier, KeyTag::Bid)
             .await
             .map_err(|err| Error::NodeRequest("auction bids", err))?;
         let bids = bid_stored_values
@@ -305,7 +312,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .collect::<Result<Vec<_>, Error>>()?;
 
         let (registry_value, _) = node_client
-            .query_global_state(state_root_hash, Key::SystemContractRegistry, vec![])
+            .query_global_state(state_identifier, Key::SystemContractRegistry, vec![])
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -320,7 +327,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
         let (snapshot_value, _) = node_client
             .query_global_state(
-                state_root_hash,
+                state_identifier,
                 auction_key,
                 vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
             )
@@ -335,7 +342,12 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map_err(|_| Error::InvalidAuctionValidators)?;
 
         let validators = era_validators_from_snapshot(snapshot);
-        let auction_state = AuctionState::new(state_root_hash, header.height(), validators, bids);
+        let auction_state = AuctionState::new(
+            *block_header.state_root_hash(),
+            block_header.height(),
+            validators,
+            bids,
+        );
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
@@ -403,9 +415,7 @@ impl RpcWithParams for GetAccountInfo {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let (state_root_hash, _) =
-            common::resolve_state_root_hash_by_block(&*node_client, params.block_identifier)
-                .await?;
+        let maybe_state_identifier = params.block_identifier.map(GlobalStateIdentifier::from);
         let base_key = {
             let account_hash = match params.account_identifier {
                 AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
@@ -414,7 +424,7 @@ impl RpcWithParams for GetAccountInfo {
             Key::Account(account_hash)
         };
         let (account_value, merkle_proof) = node_client
-            .query_global_state(state_root_hash, base_key, vec![])
+            .query_global_state(maybe_state_identifier, base_key, vec![])
             .await
             .map_err(|err| Error::NodeRequest("account info", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -563,12 +573,13 @@ impl RpcWithParams for GetDictionaryItem {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
+        let state_identifier = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
         let dictionary_key = match params.dictionary_identifier {
             DictionaryIdentifier::AccountNamedKey { ref key, .. }
             | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
                 let base_key = Key::from_formatted_str(key).map_err(Error::InvalidDictionaryKey)?;
                 let (value, _) = node_client
-                    .query_global_state(params.state_root_hash, base_key, vec![])
+                    .query_global_state(Some(state_identifier), base_key, vec![])
                     .await
                     .map_err(|err| Error::NodeRequest("dictionary key", err))?
                     .ok_or(Error::GlobalStateEntryNotFound)?
@@ -582,7 +593,7 @@ impl RpcWithParams for GetDictionaryItem {
             }
         };
         let (stored_value, merkle_proof) = node_client
-            .query_global_state(params.state_root_hash, dictionary_key, vec![])
+            .query_global_state(Some(state_identifier), dictionary_key, vec![])
             .await
             .map_err(|err| Error::NodeRequest("dictionary item", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -594,29 +605,6 @@ impl RpcWithParams for GetDictionaryItem {
             stored_value,
             merkle_proof,
         })
-    }
-}
-
-/// Identifier for possible ways to query Global State
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
-#[serde(deny_unknown_fields)]
-pub enum GlobalStateIdentifier {
-    /// Query using a block hash.
-    BlockHash(BlockHash),
-    /// Query using a block height.
-    BlockHeight(u64),
-    /// Query using the state root hash.
-    StateRootHash(Digest),
-}
-
-impl From<BlockIdentifier> for GlobalStateIdentifier {
-    fn from(block_identifier: BlockIdentifier) -> Self {
-        match block_identifier {
-            BlockIdentifier::Hash(block_hash) => GlobalStateIdentifier::BlockHash(block_hash),
-            BlockIdentifier::Height(block_height) => {
-                GlobalStateIdentifier::BlockHeight(block_height)
-            }
-        }
     }
 }
 
@@ -673,11 +661,20 @@ impl RpcWithParams for QueryGlobalState {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let (state_root_hash, block_header) =
-            common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
+        let block_header = match params.state_identifier {
+            Some(GlobalStateIdentifier::BlockHash(block_hash)) => {
+                let identifier = BlockIdentifier::Hash(block_hash);
+                Some(common::get_block_header(&*node_client, Some(identifier)).await?)
+            }
+            Some(GlobalStateIdentifier::BlockHeight(block_height)) => {
+                let identifier = BlockIdentifier::Height(block_height);
+                Some(common::get_block_header(&*node_client, Some(identifier)).await?)
+            }
+            _ => None,
+        };
 
         let (stored_value, merkle_proof) = node_client
-            .query_global_state(state_root_hash, params.key, params.path)
+            .query_global_state(params.state_identifier, params.key, params.path)
             .await
             .map_err(|err| Error::NodeRequest("global state item", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -749,11 +746,13 @@ impl RpcWithParams for QueryBalance {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let (state_root_hash, _) =
-            common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
-        let purse =
-            common::get_main_purse(&*node_client, params.purse_identifier, state_root_hash).await?;
-        let balance = common::get_balance(&*node_client, purse, state_root_hash).await?;
+        let purse = common::get_main_purse(
+            &*node_client,
+            params.purse_identifier,
+            params.state_identifier,
+        )
+        .await?;
+        let balance = common::get_balance(&*node_client, purse, params.state_identifier).await?;
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
@@ -836,19 +835,19 @@ fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraV
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
+    use std::{convert::TryFrom, iter};
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types_ver_2_0::{
         addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys},
         binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
-            GlobalStateQueryResult, NonPersistedDataRequest,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         system::auction::BidKind,
         testing::TestRng,
-        AccessRights, AddressableEntity, AvailableBlockRange, Block, BlockHashAndHeight,
-        ByteCodeHash, EntryPoints, PackageHash, ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, Block, ByteCodeHash, EntryPoints, PackageHash,
+        ProtocolVersion, TestBlockBuilder,
     };
     use rand::Rng;
 
@@ -928,37 +927,22 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::AvailableBlockRange,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            AvailableBlockRange::RANGE_0_0,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::HighestCompleteBlock,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
                     {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::BlockHeader,
-                            &self.block.clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::AllValues {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
                         key_tag: KeyTag::Bid,
                         ..
-                    }) => {
+                    })) => {
                         let bids = self
                             .bids
                             .iter()
@@ -970,10 +954,10 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::SystemContractRegistry,
                         ..
-                    }) => {
+                    })) => {
                         let system_contracts =
                             iter::once((AUCTION.to_string(), self.contract_hash))
                                 .collect::<BTreeMap<_, _>>();
@@ -986,10 +970,10 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::AddressableEntity(_, _),
                         ..
-                    }) => {
+                    })) => {
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
                             String::default(),
@@ -1081,7 +1065,7 @@ mod tests {
                 result: expected.clone(),
             }),
             QueryGlobalStateParams {
-                state_identifier: None,
+                state_identifier: Some(GlobalStateIdentifier::BlockHash(*block.hash())),
                 key: rng.gen(),
                 path: vec![],
             },
@@ -1150,37 +1134,22 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::AvailableBlockRange,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            AvailableBlockRange::RANGE_0_0,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::HighestCompleteBlock,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
                     {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::BlockHeader,
-                            &self.block.clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::Account(_),
                         ..
-                    }) => Ok(BinaryResponseAndRequest::new(
+                    })) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::Account(self.account.clone()),
@@ -1190,10 +1159,10 @@ mod tests {
                         ),
                         &[],
                     )),
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::Balance(_),
                         ..
-                    }) => Ok(BinaryResponseAndRequest::new(
+                    })) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
@@ -1261,37 +1230,22 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::AvailableBlockRange,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            AvailableBlockRange::RANGE_0_0,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::HighestCompleteBlock,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
                     {
-                        Ok(BinaryResponseAndRequest::new_test_response(
-                            DbId::BlockHeader,
-                            &self.block.clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::Account(_),
                         ..
-                    }) => {
+                    })) => {
                         let key =
                             Key::addressable_entity_key(PackageKindTag::Account, self.entity_hash);
                         let value = CLValue::from_t(key).unwrap();
@@ -1306,10 +1260,10 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::AddressableEntity(_, _),
                         ..
-                    }) => Ok(BinaryResponseAndRequest::new(
+                    })) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::AddressableEntity(self.entity.clone()),
@@ -1319,10 +1273,10 @@ mod tests {
                         ),
                         &[],
                     )),
-                    BinaryRequest::Get(GetRequest::State {
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
                         base_key: Key::Balance(_),
                         ..
-                    }) => Ok(BinaryResponseAndRequest::new(
+                    })) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             GlobalStateQueryResult::new(
                                 StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
@@ -1402,38 +1356,22 @@ mod tests {
     }
 
     #[async_trait]
-    #[async_trait]
     impl NodeClient for ValidGlobalStateResultWithBlockMock {
         async fn send_request(
             &self,
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::AvailableBlockRange,
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        AvailableBlockRange::RANGE_0_0,
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::HighestCompleteBlock,
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        BlockHashAndHeight::new(*self.block.hash(), self.block.height()),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockHeader) =>
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::BlockHeader) =>
                 {
-                    Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                        SUPPORTED_PROTOCOL_VERSION,
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(

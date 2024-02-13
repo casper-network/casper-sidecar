@@ -127,13 +127,11 @@ async fn handle_request(
     identifier: Option<BlockIdentifier>,
     transaction: Transaction,
 ) -> Result<SpeculativeExecTxnResult, RpcError> {
-    let (block, _) = common::get_signed_block(&*node_client, identifier)
-        .await?
-        .into_inner();
-    let block_hash = *block.hash();
-    let state_root_hash = *block.state_root_hash();
-    let block_time = block.timestamp();
-    let protocol_version = block.protocol_version();
+    let block_header = common::get_block_header(&*node_client, identifier).await?;
+    let block_hash = block_header.block_hash();
+    let state_root_hash = *block_header.state_root_hash();
+    let block_time = block_header.timestamp();
+    let protocol_version = block_header.protocol_version();
 
     let (execution_result, messages) = node_client
         .exec_speculatively(
@@ -141,7 +139,7 @@ async fn handle_request(
             block_time,
             protocol_version,
             transaction,
-            block.take_header(),
+            block_header,
         )
         .await
         .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?
@@ -158,13 +156,15 @@ async fn handle_request(
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use casper_types_ver_2_0::{
         binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DbId, GetRequest,
-            HighestBlockSequenceCheckResult, NonPersistedDataRequest, SpeculativeExecutionResult,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+            InformationRequestTag, SpeculativeExecutionResult,
         },
         testing::TestRng,
-        AvailableBlockRange, Block, TestBlockBuilder,
+        Block, TestBlockBuilder,
     };
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
@@ -243,50 +243,18 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockBody) =>
-                {
-                    Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockBody,
-                        &self.block.clone_body(),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ))
-                }
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockHeader) =>
-                {
-                    Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ))
-                }
-                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
-                    if db_tag == u8::from(DbId::BlockMetadata) =>
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::BlockHeader) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                        BinaryResponse::from_value(
+                            self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::AvailableBlockRange,
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        AvailableBlockRange::RANGE_0_0,
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
-                BinaryRequest::Get(GetRequest::NonPersistedData(
-                    NonPersistedDataRequest::CompletedBlocksContain { .. },
-                )) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        HighestBlockSequenceCheckResult::new(true),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
                 BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
                         SpeculativeExecutionResult::new(Some((
@@ -297,7 +265,7 @@ mod tests {
                     ),
                     &[],
                 )),
-                _ => unimplemented!(),
+                req => unimplemented!("unexpected request: {:?}", req),
             }
         }
     }

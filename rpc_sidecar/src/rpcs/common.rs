@@ -4,14 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types_ver_2_0::{
-    account::AccountHash, AddressableEntity, AvailableBlockRange, Block, BlockHeader,
-    BlockIdentifier, BlockSignatures, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock,
-    StoredValue, Transaction, TransactionHash, URef, U512,
+    account::AccountHash, AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier,
+    GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
 };
 
 use crate::NodeClient;
 
-use super::state::{GlobalStateIdentifier, PurseIdentifier};
+use super::state::PurseIdentifier;
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -45,151 +44,50 @@ pub async fn get_signed_block(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
 ) -> Result<SignedBlock, Error> {
-    let available_block_range = node_client
-        .read_available_block_range()
+    match node_client
+        .read_signed_block(identifier)
         .await
-        .map_err(|err| Error::NodeRequest("available block range", err))?;
-    let hash = match identifier {
-        Some(BlockIdentifier::Hash(hash)) => hash,
-        Some(BlockIdentifier::Height(height)) => node_client
-            .read_block_hash_from_height(height)
-            .await
-            .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or(Error::NoBlockAtHeight(height, available_block_range))?,
-        None => *node_client
-            .read_highest_completed_block_info()
-            .await
-            .map_err(|err| Error::NodeRequest("highest completed block", err))?
-            .ok_or(Error::NoHighestBlock(available_block_range))?
-            .block_hash(),
-    };
-
-    let should_return_block = node_client
-        .does_exist_in_completed_blocks(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("completed block existence", err))?;
-
-    if !should_return_block {
-        return Err(Error::NoBlockWithHash(hash, available_block_range));
+        .map_err(|err| Error::NodeRequest("signed block", err))?
+    {
+        Some(block) => Ok(block),
+        None => {
+            let available_range = node_client
+                .read_available_block_range()
+                .await
+                .map_err(|err| Error::NodeRequest("available block range", err))?;
+            Err(Error::NoBlockFound(identifier, available_range))
+        }
     }
-
-    let header = node_client
-        .read_block_header(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
-
-    let body = node_client
-        .read_block_body(*header.body_hash())
-        .await
-        .map_err(|err| Error::NodeRequest("block body", err))?
-        .ok_or_else(|| Error::NoBlockBodyWithHash(*header.body_hash(), available_block_range))?;
-    let signatures = node_client
-        .read_block_signatures(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("block signatures", err))?
-        .unwrap_or_else(|| BlockSignatures::new(hash, header.era_id()));
-    let block = Block::new_from_header_and_body(header, body).unwrap();
-
-    if signatures.is_verified().is_err() {
-        return Err(Error::CouldNotVerifyBlock(hash));
-    };
-
-    Ok(SignedBlock::new(block, signatures))
 }
 
-pub async fn resolve_state_root_hash_by_block(
+pub async fn get_block_header(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
-) -> Result<(Digest, BlockHeader), Error> {
-    let available_block_range = node_client
-        .read_available_block_range()
-        .await
-        .map_err(|err| Error::NodeRequest("available block range", err))?;
-    let hash = match identifier {
-        None => *node_client
-            .read_highest_completed_block_info()
-            .await
-            .map_err(|err| Error::NodeRequest("highest completed block", err))?
-            .ok_or(Error::NoHighestBlock(available_block_range))?
-            .block_hash(),
-        Some(BlockIdentifier::Hash(hash)) => hash,
-        Some(BlockIdentifier::Height(height)) => node_client
-            .read_block_hash_from_height(height)
-            .await
-            .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or(Error::NoBlockAtHeight(height, available_block_range))?,
-    };
-    let header = node_client
-        .read_block_header(hash)
+) -> Result<BlockHeader, Error> {
+    match node_client
+        .read_block_header(identifier)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
-
-    Ok((*header.state_root_hash(), header))
-}
-
-pub async fn resolve_state_root_hash(
-    node_client: &dyn NodeClient,
-    identifier: Option<GlobalStateIdentifier>,
-) -> Result<(Digest, Option<BlockHeader>), Error> {
-    let block = match identifier {
-        Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
-        Some(GlobalStateIdentifier::BlockHash(hash)) => Some(BlockIdentifier::Hash(hash)),
-        Some(GlobalStateIdentifier::BlockHeight(height)) => Some(BlockIdentifier::Height(height)),
-        None => None,
-    };
-    let (state_root_hash, header) = resolve_state_root_hash_by_block(node_client, block).await?;
-    Ok((state_root_hash, Some(header)))
-}
-
-pub async fn get_transaction_with_approvals(
-    node_client: &dyn NodeClient,
-    hash: TransactionHash,
-) -> Result<(Transaction, Option<FinalizedApprovals>), Error> {
-    let txn = node_client
-        .read_transaction(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("transaction", err))?
-        .ok_or(Error::NoTransactionWithHash(hash))?;
-    let approvals = node_client
-        .read_finalized_approvals(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("finalized approvals", err))?;
-    Ok((txn, approvals))
-}
-
-pub async fn get_transaction_execution_info(
-    node_client: &dyn NodeClient,
-    hash: TransactionHash,
-) -> Result<Option<ExecutionInfo>, Error> {
-    let Some(block_hash_and_height) = node_client
-        .read_transaction_block_info(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("block of a transaction", err))?
-    else {
-        return Ok(None);
-    };
-    let execution_result = node_client
-        .read_execution_result(hash)
-        .await
-        .map_err(|err| Error::NodeRequest("block execution result", err))?;
-
-    Ok(Some(ExecutionInfo {
-        block_hash: *block_hash_and_height.block_hash(),
-        block_height: block_hash_and_height.block_height(),
-        execution_result,
-    }))
+    {
+        Some(header) => Ok(header),
+        None => {
+            let available_range = node_client
+                .read_available_block_range()
+                .await
+                .map_err(|err| Error::NodeRequest("available block range", err))?;
+            Err(Error::NoBlockFound(identifier, available_range))
+        }
+    }
 }
 
 pub async fn get_account(
     node_client: &dyn NodeClient,
     account_hash: AccountHash,
-    state_root_hash: Digest,
+    state_identifier: Option<GlobalStateIdentifier>,
 ) -> Result<AddressableEntity, Error> {
     let account_key = Key::Account(account_hash);
     let (value, _) = node_client
-        .query_global_state(state_root_hash, account_key, vec![])
+        .query_global_state(state_identifier, account_key, vec![])
         .await
         .map_err(|err| Error::NodeRequest("account stored value", err))?
         .ok_or(Error::GlobalStateEntryNotFound)?
@@ -202,7 +100,7 @@ pub async fn get_account(
                 .into_t()
                 .map_err(|_| Error::InvalidAccountInfo)?;
             let (value, _) = node_client
-                .query_global_state(state_root_hash, key, vec![])
+                .query_global_state(state_identifier, key, vec![])
                 .await
                 .map_err(|err| Error::NodeRequest("account owning a purse", err))?
                 .ok_or(Error::GlobalStateEntryNotFound)?
@@ -218,7 +116,7 @@ pub async fn get_account(
 pub async fn get_main_purse(
     node_client: &dyn NodeClient,
     identifier: PurseIdentifier,
-    state_root_hash: Digest,
+    state_identifier: Option<GlobalStateIdentifier>,
 ) -> Result<URef, Error> {
     let account_hash = match identifier {
         PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
@@ -227,7 +125,7 @@ pub async fn get_main_purse(
         PurseIdentifier::MainPurseUnderAccountHash(account_hash) => account_hash,
         PurseIdentifier::PurseUref(purse_uref) => return Ok(purse_uref),
     };
-    let account = get_account(node_client, account_hash, state_root_hash)
+    let account = get_account(node_client, account_hash, state_identifier)
         .await
         .map_err(|_| Error::InvalidMainPurse)?;
     Ok(account.main_purse())
@@ -236,11 +134,11 @@ pub async fn get_main_purse(
 pub async fn get_balance(
     node_client: &dyn NodeClient,
     uref: URef,
-    state_root_hash: Digest,
+    state_identifier: Option<GlobalStateIdentifier>,
 ) -> Result<SuccessfulQueryResult<U512>, Error> {
     let key = Key::Balance(uref.addr());
     let (value, merkle_proof) = node_client
-        .query_global_state(state_root_hash, key, vec![])
+        .query_global_state(state_identifier, key, vec![])
         .await
         .map_err(|err| Error::NodeRequest("balance by uref", err))?
         .ok_or(Error::GlobalStateEntryNotFound)?

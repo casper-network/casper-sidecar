@@ -1,7 +1,7 @@
 use crate::node_client::Error as NodeClientError;
-use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
+use casper_json_rpc::Error as RpcError;
 use casper_types_ver_2_0::{
-    AvailableBlockRange, BlockHash, DeployHash, Digest, KeyFromStrError, KeyTag, TransactionHash,
+    AvailableBlockRange, BlockIdentifier, DeployHash, KeyFromStrError, KeyTag, TransactionHash,
     URefFromStrError,
 };
 
@@ -11,22 +11,12 @@ use super::{ErrorCode, ErrorData};
 pub enum Error {
     #[error("request for {0} has failed: {1}")]
     NodeRequest(&'static str, NodeClientError),
-    #[error("no block for hash {0}")]
-    NoBlockWithHash(BlockHash, AvailableBlockRange),
-    #[error("no block body for hash {0}")]
-    NoBlockBodyWithHash(Digest, AvailableBlockRange),
-    #[error("no block at height {0}")]
-    NoBlockAtHeight(u64, AvailableBlockRange),
-    #[error("no highest block found")]
-    NoHighestBlock(AvailableBlockRange),
-    #[error("could not verify block with hash {0}")]
-    CouldNotVerifyBlock(BlockHash),
+    #[error("no block found for the provided identifier")]
+    NoBlockFound(Option<BlockIdentifier>, AvailableBlockRange),
     #[error("no transaction for hash {0}")]
     NoTransactionWithHash(TransactionHash),
     #[error("no deploy for hash {0}")]
     NoDeployWithHash(DeployHash),
-    #[error("transaction {0} and its approval versions are inconsistent")]
-    InconsistentTransactionVersions(TransactionHash),
     #[error("found a transaction when searching for a deploy")]
     FoundTransactionInsteadOfDeploy,
     #[error("value was not found in the global state")]
@@ -68,16 +58,10 @@ pub enum Error {
 impl Error {
     fn code(&self) -> ErrorCode {
         match self {
-            Error::NoBlockWithHash(_, _)
-            | Error::NoBlockAtHeight(_, _)
-            | Error::NoHighestBlock(_)
-            | Error::NoBlockBodyWithHash(_, _) => ErrorCode::NoSuchBlock,
-            Error::CouldNotVerifyBlock(_) => ErrorCode::InvalidBlock,
+            Error::NoBlockFound(_, _) => ErrorCode::NoSuchBlock,
             Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
             Error::NoDeployWithHash(_) => ErrorCode::NoSuchDeploy,
-            Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
-                ErrorCode::VariantMismatch
-            }
+            Error::FoundTransactionInsteadOfDeploy => ErrorCode::VariantMismatch,
             Error::NodeRequest(_, NodeClientError::UnknownStateRootHash) => {
                 ErrorCode::NoSuchStateRoot
             }
@@ -113,16 +97,7 @@ impl Error {
 impl From<Error> for RpcError {
     fn from(value: Error) -> Self {
         match value {
-            Error::NoHighestBlock(available_block_range) => RpcError::new(
-                ReservedErrorCode::InternalError,
-                ErrorData::MissingBlockOrStateRoot {
-                    message: value.to_string(),
-                    available_block_range,
-                },
-            ),
-            Error::NoBlockWithHash(_, available_block_range)
-            | Error::NoBlockBodyWithHash(_, available_block_range)
-            | Error::NoBlockAtHeight(_, available_block_range) => RpcError::new(
+            Error::NoBlockFound(_, available_block_range) => RpcError::new(
                 value.code(),
                 ErrorData::MissingBlockOrStateRoot {
                     message: value.to_string(),
