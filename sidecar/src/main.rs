@@ -2,11 +2,11 @@ mod config;
 
 use anyhow::{Context, Error};
 use backtrace::Backtrace;
-use casper_event_sidecar::run as run_sse_sidecar;
+use casper_event_sidecar::{run as run_sse_sidecar, run_admin_server, run_rest_server, Database};
 use casper_rpc_sidecar::start_rpc_server as run_rpc_sidecar;
 use clap::Parser;
 use config::{SidecarConfig, SidecarConfigTarget};
-use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::{
     env, fmt, io,
     panic::{self, PanicInfo},
@@ -69,16 +69,46 @@ pub fn read_config(config_path: &str) -> Result<SidecarConfigTarget, Error> {
 }
 
 async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
-    let sse_server = config.sse_server.as_ref().map_or_else(
-        || Box::pin(std::future::pending()) as BoxFuture<_>,
-        |conf| Box::pin(run_sse_sidecar(conf)),
-    );
+    let maybe_database = if let Some(storage_config) = config.storage.as_ref() {
+        Some(Database::build(storage_config).await?)
+    } else {
+        None
+    };
+    let admin_server = if let Some(config) = config.admin_api_server {
+        run_admin_server(config.clone()).boxed()
+    } else {
+        std::future::pending().boxed()
+    };
+    let rest_server = if let (Some(rest_config), Some(database)) =
+        (config.rest_api_server, maybe_database.clone())
+    {
+        run_rest_server(rest_config.clone(), database).boxed()
+    } else {
+        std::future::pending().boxed()
+    };
+
+    let sse_server = if let (Some(storage_config), Some(database), Some(sse_server_config)) =
+        (config.storage, maybe_database, config.sse_server)
+    {
+        // If sse server is configured, both storage config and database must be "Some" here. This should be ensured by prior validation.
+        run_sse_sidecar(
+            sse_server_config,
+            database.clone(),
+            storage_config.get_storage_path(),
+        )
+        .boxed()
+    } else {
+        std::future::pending().boxed()
+    };
+
     let rpc_server = config.rpc_server.as_ref().map_or_else(
-        || Box::pin(std::future::pending()) as BoxFuture<_>,
-        |conf| Box::pin(run_rpc_sidecar(conf)),
+        || std::future::pending().boxed(),
+        |conf| run_rpc_sidecar(conf).boxed(),
     );
 
     let result = tokio::select! {
+        result = admin_server => result,
+        result = rest_server => result,
         result = sse_server => result,
         result = rpc_server => result,
     };

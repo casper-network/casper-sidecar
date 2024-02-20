@@ -7,18 +7,45 @@ use crate::{
     types::sse_events::{
         BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
     },
+    StorageConfig,
 };
-use anyhow::Error;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_event_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use utoipa::ToSchema;
 
 #[derive(Clone)]
 pub enum Database {
     SqliteDatabaseWrapper(SqliteDatabase),
     PostgreSqlDatabaseWrapper(PostgreSqlDatabase),
+}
+
+impl Database {
+    pub async fn build(config: &StorageConfig) -> Result<Database, anyhow::Error> {
+        match config {
+            StorageConfig::SqliteDbConfig {
+                storage_path,
+                sqlite_config,
+            } => {
+                let path_to_database_dir = Path::new(storage_path);
+                let sqlite_database =
+                    SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
+                        .await
+                        .context("Error instantiating sqlite database")?;
+                Ok(Database::SqliteDatabaseWrapper(sqlite_database))
+            }
+            StorageConfig::PostgreSqlDbConfig {
+                postgresql_config, ..
+            } => {
+                let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone())
+                    .await
+                    .context("Error instantiating postgres database")?;
+                Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
+            }
+        }
+    }
 }
 
 /// Describes a reference for the writing interface of an 'Event Store' database.

@@ -3,11 +3,14 @@ use portpicker::Port;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
-use crate::types::config::{Connection, SseEventServerConfig, StorageConfig};
+use crate::types::config::{Connection, RestApiServerConfig, SseEventServerConfig, StorageConfig};
 
 /// A basic wrapper with helper methods for constructing and tweaking [Config]s for use in tests.
+#[derive(Clone)]
 pub struct TestingConfig {
-    pub(crate) config: SseEventServerConfig,
+    pub(crate) event_server_config: SseEventServerConfig,
+    pub(crate) storage_config: StorageConfig,
+    pub(crate) rest_api_server_config: RestApiServerConfig,
 }
 
 #[cfg(test)]
@@ -50,19 +53,24 @@ pub(crate) fn prepare_config(temp_storage: &TempDir) -> TestingConfig {
 impl TestingConfig {
     /// Creates a Default instance of TestingConfig which contains a Default instance of [Config]
     pub(crate) fn default() -> Self {
-        let config = SseEventServerConfig::default();
-
-        Self { config }
+        let event_server_config = SseEventServerConfig::default();
+        let storage_config = StorageConfig::default();
+        let rest_api_server_config = RestApiServerConfig::default();
+        Self {
+            event_server_config,
+            storage_config,
+            rest_api_server_config,
+        }
     }
 
     /// Specify where test storage (database, sse cache) should be located.
     /// By default it is set to `/target/test_storage` however it is recommended to overwrite this with a `TempDir` path for testing purposes.
     pub(crate) fn set_storage_path(&mut self, path: String) {
-        self.config.storage.set_storage_path(path);
+        self.storage_config.set_storage_path(path);
     }
 
     pub(crate) fn set_storage(&mut self, storage: StorageConfig) {
-        self.config.storage = storage;
+        self.storage_config = storage;
     }
 
     pub(crate) fn add_connection(
@@ -85,7 +93,7 @@ impl TestingConfig {
             sleep_between_keep_alive_checks_in_seconds: Some(100),
             no_message_timeout_in_seconds: Some(100),
         };
-        self.config.connections.push(connection);
+        self.event_server_config.connections.push(connection);
         random_port_for_sse
     }
 
@@ -95,7 +103,7 @@ impl TestingConfig {
         port_of_node: u16,
         allow_partial_connection: bool,
     ) {
-        for connection in &mut self.config.connections {
+        for connection in &mut self.event_server_config.connections {
             if connection.sse_port == port_of_node {
                 connection.allow_partial_connection = allow_partial_connection;
                 break;
@@ -112,7 +120,7 @@ impl TestingConfig {
         max_attempts: usize,
         delay_between_retries_in_seconds: usize,
     ) {
-        for connection in &mut self.config.connections {
+        for connection in &mut self.event_server_config.connections {
             if connection.sse_port == port_of_node {
                 connection.max_attempts = max_attempts;
                 connection.delay_between_retries_in_seconds = delay_between_retries_in_seconds;
@@ -129,22 +137,17 @@ impl TestingConfig {
     pub(crate) fn allocate_available_ports(&mut self) {
         let rest_server_port = get_port();
         let sse_server_port = get_port();
-        self.config.rest_server.port = rest_server_port;
-        self.config.event_stream_server.port = sse_server_port;
+        self.rest_api_server_config.port = rest_server_port;
+        self.event_server_config.event_stream_server.port = sse_server_port;
     }
 
     /// Returns the inner [Config]
     pub(crate) fn inner(&self) -> SseEventServerConfig {
-        self.config.clone()
-    }
-
-    /// Returns the port that the sidecar REST server is bound to.
-    pub(crate) fn rest_server_port(&self) -> u16 {
-        self.config.rest_server.port
+        self.event_server_config.clone()
     }
 
     /// Returns the port that the sidecar SSE server is bound to.
     pub(crate) fn event_stream_server_port(&self) -> u16 {
-        self.config.event_stream_server.port
+        self.event_server_config.event_stream_server.port
     }
 }

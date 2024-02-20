@@ -148,12 +148,14 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
 #[cfg(test)]
 pub mod tests {
     use crate::database::postgresql_database::PostgreSqlDatabase;
+    use crate::database::sqlite_database::SqliteDatabase;
     use crate::run;
+    use crate::run_rest_server;
     use crate::testing::mock_node::tests::MockNode;
     use crate::testing::testing_config::get_port;
     use crate::testing::testing_config::prepare_config;
     use crate::testing::testing_config::TestingConfig;
-    use crate::SseEventServerConfig;
+    use crate::Database;
     use anyhow::Error;
     use anyhow::Error as AnyhowError;
     use pg_embed::pg_enums::PgAuthMethod;
@@ -247,7 +249,7 @@ pub mod tests {
         node_mock.set_sse_port(node_port_for_sse_connection);
         node_mock.set_rest_port(node_port_for_rest_connection);
         start_nodes_and_wait(vec![node_mock]).await;
-        start_sidecar(testing_config.inner()).await;
+        start_sidecar(testing_config.clone()).await;
         MockNodeTestProperties {
             testing_config,
             temp_storage_dir,
@@ -256,10 +258,19 @@ pub mod tests {
             event_stream_server_port,
         }
     }
-    pub async fn start_sidecar(
-        config: SseEventServerConfig,
+
+    pub async fn start_sidecar_with_rest_api(
+        config: TestingConfig,
     ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
-        tokio::spawn(async move { run(&config).await }) // starting event sidecar
+        tokio::spawn(async move { unpack_test_config_and_run(config, true).await })
+        // starting event sidecar
+    }
+
+    pub async fn start_sidecar(
+        config: TestingConfig,
+    ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
+        tokio::spawn(async move { unpack_test_config_and_run(config, false).await })
+        // starting event sidecar
     }
 
     pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
@@ -279,10 +290,18 @@ pub mod tests {
         let (mut testing_config, temp_storage_dir, event_stream_server_port) =
             build_test_config_without_connections();
         testing_config.add_connection(None, None, None);
-        let node_port_for_sse_connection =
-            testing_config.config.connections.first().unwrap().sse_port;
-        let node_port_for_rest_connection =
-            testing_config.config.connections.first().unwrap().rest_port;
+        let node_port_for_sse_connection = testing_config
+            .event_server_config
+            .connections
+            .first()
+            .unwrap()
+            .sse_port;
+        let node_port_for_rest_connection = testing_config
+            .event_server_config
+            .connections
+            .first()
+            .unwrap()
+            .rest_port;
         testing_config.set_retries_for_node(
             node_port_for_sse_connection,
             max_attempts,
@@ -383,10 +402,18 @@ pub mod tests {
         let event_stream_server_port = testing_config.event_stream_server_port();
         testing_config.set_storage(StorageConfig::postgres_with_port(context.port));
         testing_config.add_connection(None, None, None);
-        let node_port_for_sse_connection =
-            testing_config.config.connections.first().unwrap().sse_port;
-        let node_port_for_rest_connection =
-            testing_config.config.connections.first().unwrap().rest_port;
+        let node_port_for_sse_connection = testing_config
+            .event_server_config
+            .connections
+            .first()
+            .unwrap()
+            .sse_port;
+        let node_port_for_rest_connection = testing_config
+            .event_server_config
+            .connections
+            .first()
+            .unwrap()
+            .rest_port;
         testing_config.set_retries_for_node(
             node_port_for_sse_connection,
             max_attempts,
@@ -401,5 +428,25 @@ pub mod tests {
             event_stream_server_port,
             context,
         )
+    }
+
+    pub async fn unpack_test_config_and_run(
+        testing_config: TestingConfig,
+        spin_up_rest_api: bool,
+    ) -> Result<ExitCode, Error> {
+        let sse_config = testing_config.inner();
+        let storage_config = testing_config.storage_config;
+        let sqlite_database = SqliteDatabase::new_from_config(&storage_config)
+            .await
+            .unwrap();
+        let database = Database::SqliteDatabaseWrapper(sqlite_database);
+        if spin_up_rest_api {
+            let rest_api_server_config = testing_config.rest_api_server_config;
+            let database_for_rest_api = database.clone();
+            tokio::spawn(async move {
+                run_rest_server(rest_api_server_config, database_for_rest_api).await
+            });
+        }
+        run(sse_config, database, storage_config.get_storage_path()).await
     }
 }

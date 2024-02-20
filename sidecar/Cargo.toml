@@ -12,8 +12,8 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = { workspace = true }
 backtrace = "0.3.69"
-casper-event-sidecar = { path = "../event_sidecar", version = "1.0.0" }
-casper-rpc-sidecar = { path = "../rpc_sidecar", version = "1.0.0" }
+casper-event-sidecar = { workspace = true }
+casper-rpc-sidecar = { workspace = true }
 clap = { version = "4.0.32", features = ["derive"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
@@ -24,6 +24,10 @@ toml = { workspace = true }
 tracing = { workspace = true, default-features = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+casper-event-sidecar = { workspace = true, features = ["testing"] }
+casper-rpc-sidecar = { workspace = true, features = ["testing"] }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5"

@@ -59,6 +59,7 @@ pub enum FieldParseError {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
+#[cfg_attr(any(feature = "testing", test), derive(Default))]
 pub struct RpcServerConfig {
     pub main_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,

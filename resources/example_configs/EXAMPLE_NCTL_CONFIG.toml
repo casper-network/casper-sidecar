@@ -26,21 +26,26 @@ allow_partial_connection = false
 enable_logging = false
 connection_timeout_in_seconds = 3
 
-[sse_server.storage]
+[sse_server.event_stream_server]
+port = 19999
+max_concurrent_subscribers = 100
+event_stream_buffer_length = 5000
+
+[storage]
 storage_path = "./target/storage"
 
-[sse_server.storage.sqlite_config]
+[storage.sqlite_config]
 file_name = "sqlite_database.db3"
 max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 
-[sse_server.rest_server]
+[rest_api_server]
 port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
 
-[sse_server.event_stream_server]
-port = 19999
-max_concurrent_subscribers = 100
-event_stream_buffer_length = 5000
+[admin_api_server]
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 1

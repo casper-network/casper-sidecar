@@ -24,40 +24,22 @@ pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
 
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct SseEventServerConfig {
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
-    pub storage: StorageConfig,
-    pub rest_server: RestServerConfig,
     pub event_stream_server: EventStreamServerConfig,
-    pub admin_server: Option<AdminServerConfig>,
 }
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(Default))]
-pub struct SseEventServerConfigSerdeTarget {
-    pub inbound_channel_size: Option<usize>,
-    pub outbound_channel_size: Option<usize>,
-    pub connections: Vec<Connection>,
-    pub storage: Option<StorageConfigSerdeTarget>,
-    pub rest_server: RestServerConfig,
-    pub event_stream_server: EventStreamServerConfig,
-    pub admin_server: Option<AdminServerConfig>,
-}
-impl TryFrom<SseEventServerConfigSerdeTarget> for SseEventServerConfig {
-    type Error = DatabaseConfigError;
 
-    fn try_from(value: SseEventServerConfigSerdeTarget) -> Result<Self, Self::Error> {
-        Ok(SseEventServerConfig {
-            inbound_channel_size: value.inbound_channel_size,
-            outbound_channel_size: value.outbound_channel_size,
-            connections: value.connections,
-            storage: value.storage.unwrap_or_default().try_into()?,
-            rest_server: value.rest_server,
-            event_stream_server: value.event_stream_server,
-            admin_server: value.admin_server,
-        })
+#[cfg(any(feature = "testing", test))]
+impl Default for SseEventServerConfig {
+    fn default() -> Self {
+        Self {
+            inbound_channel_size: Some(100),
+            outbound_channel_size: Some(100),
+            connections: vec![],
+            event_stream_server: EventStreamServerConfig::default(),
+        }
     }
 }
 
@@ -241,7 +223,7 @@ impl TryFrom<PostgresqlConfigSerdeTarget> for PostgresqlConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct RestServerConfig {
+pub struct RestApiServerConfig {
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
@@ -255,13 +237,13 @@ pub struct EventStreamServerConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct AdminServerConfig {
+pub struct AdminApiServerConfig {
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 mod tests {
     use super::*;
 
@@ -348,7 +330,7 @@ mod tests {
         }
     }
 
-    impl Default for RestServerConfig {
+    impl Default for RestApiServerConfig {
         fn default() -> Self {
             Self {
                 port: 17777,
