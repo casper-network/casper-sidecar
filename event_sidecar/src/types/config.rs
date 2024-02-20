@@ -37,7 +37,7 @@ impl Default for SseEventServerConfig {
         Self {
             inbound_channel_size: Some(100),
             outbound_channel_size: Some(100),
-            connections: vec![Connection::default()],
+            connections: vec![],
             event_stream_server: EventStreamServerConfig::default(),
         }
     }
