@@ -11,7 +11,7 @@ use anyhow::Error;
 use casper_types_ver_2_0::ProtocolVersion;
 pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 pub use config::{NodeClientConfig, RpcConfig};
-use futures::future::BoxFuture;
+use futures::FutureExt;
 pub use http_server::run as run_rpc_server;
 use hyper::{
     server::{conn::AddrIncoming, Builder as ServerBuilder},
@@ -37,19 +37,19 @@ pub async fn start_rpc_server(config: &RpcServerConfig) -> Result<ExitCode, Erro
     let (node_client, client_loop) = JulietNodeClient::new(config.node_client.clone()).await?;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
-    let rpc_server: BoxFuture<anyhow::Result<()>> = config
+    let rpc_server = config
         .main_server
         .enable_server
-        .then(|| Box::pin(run_rpc(&config.main_server, node_client.clone())) as BoxFuture<_>)
-        .unwrap_or_else(|| Box::pin(std::future::pending()));
+        .then(|| run_rpc(&config.main_server, node_client.clone()).boxed())
+        .unwrap_or_else(|| std::future::pending().boxed());
 
     let spec_exec_server = config
         .speculative_exec_server
         .as_ref()
         .filter(|conf| conf.enable_server)
         .map_or_else(
-            || Box::pin(std::future::pending()) as BoxFuture<_>,
-            |conf| Box::pin(run_speculative_exec(conf, node_client.clone())),
+            || std::future::pending().boxed(),
+            |conf| run_speculative_exec(conf, node_client.clone()).boxed(),
         );
 
     tokio::select! {
