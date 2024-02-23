@@ -13,9 +13,12 @@ use hex_fmt::HexFmt;
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use casper_types::checksummed_hex;
 #[cfg(feature = "sse-data-testing")]
-use casper_types::bytesrepr::{self, ToBytes};
-use casper_types::{checksummed_hex, testing::TestRng};
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    testing::TestRng,
+};
 use utoipa::ToSchema;
 
 /// The output of the hash function.
@@ -95,7 +98,6 @@ impl Digest {
     }
 }
 
-#[cfg(feature = "sse-data-testing")]
 impl AsRef<[u8]> for Digest {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
