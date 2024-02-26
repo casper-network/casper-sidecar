@@ -14,10 +14,10 @@ use super::{
     ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
     CURRENT_API_VERSION,
 };
-use casper_types_ver_2_0::{
+use casper_types::{
     account::{Account, AccountHash},
+    addressable_entity::EntityKindTag,
     bytesrepr::Bytes,
-    package::PackageKindTag,
     system::{
         auction::{
             EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
@@ -312,7 +312,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .collect::<Result<Vec<_>, Error>>()?;
 
         let (registry_value, _) = node_client
-            .query_global_state(state_identifier, Key::SystemContractRegistry, vec![])
+            .query_global_state(state_identifier, Key::SystemEntityRegistry, vec![])
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -324,7 +324,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map_err(|_| Error::InvalidAuctionContract)?;
 
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionContract)?;
-        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+        let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
         let (snapshot_value, _) = node_client
             .query_global_state(
                 state_identifier,
@@ -491,7 +491,7 @@ impl DictionaryIdentifier {
             } => {
                 let named_keys = match &maybe_stored_value {
                     Some(StoredValue::Account(account)) => account.named_keys(),
-                    Some(StoredValue::AddressableEntity(contract)) => contract.named_keys(),
+                    Some(StoredValue::Contract(contract)) => contract.named_keys(),
                     Some(other) => {
                         return Err(Error::InvalidTypeUnderDictionaryKey(other.type_name()))
                     }
@@ -838,15 +838,17 @@ mod tests {
     use std::{convert::TryFrom, iter};
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
-    use casper_types_ver_2_0::{
-        addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys},
+    use casper_types::{
+        addressable_entity::{
+            ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
+        },
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         system::auction::BidKind,
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntryPoints, PackageHash,
+        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
         ProtocolVersion, TestBlockBuilder,
     };
     use rand::Rng;
@@ -955,7 +957,7 @@ mod tests {
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::SystemContractRegistry,
+                        base_key: Key::SystemEntityRegistry,
                         ..
                     })) => {
                         let system_contracts =
@@ -971,7 +973,7 @@ mod tests {
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_, _),
+                        base_key: Key::AddressableEntity(_),
                         ..
                     })) => {
                         let result = GlobalStateQueryResult::new(
@@ -1119,7 +1121,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_read_query_balance_by_account_result() {
-        use casper_types_ver_2_0::account::{ActionThresholds, AssociatedKeys};
+        use casper_types::account::{ActionThresholds, AssociatedKeys};
 
         struct ClientMock {
             block: Block,
@@ -1247,7 +1249,7 @@ mod tests {
                         ..
                     })) => {
                         let key =
-                            Key::addressable_entity_key(PackageKindTag::Account, self.entity_hash);
+                            Key::addressable_entity_key(EntityKindTag::Account, self.entity_hash);
                         let value = CLValue::from_t(key).unwrap();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(
@@ -1261,7 +1263,7 @@ mod tests {
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_, _),
+                        base_key: Key::AddressableEntity(_),
                         ..
                     })) => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
@@ -1296,13 +1298,13 @@ mod tests {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            NamedKeys::default(),
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
+            EntityKind::default(),
         );
 
         let balance: U512 = rng.gen();

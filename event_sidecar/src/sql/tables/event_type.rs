@@ -13,9 +13,9 @@ pub(super) enum EventType {
 
 pub enum EventTypeId {
     BlockAdded = 1,
-    DeployAccepted = 2,
-    DeployExpired = 3,
-    DeployProcessed = 4,
+    TransactionAccepted = 2,
+    TransactionExpired = 3,
+    TransactionProcessed = 4,
     Fault = 5,
     FinalitySignature = 6,
     Step = 7,
@@ -50,16 +50,16 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
             "BlockAdded".into(),
         ])?
         .values(vec![
-            (EventTypeId::DeployAccepted as u8).into(),
-            "DeployAccepted".into(),
+            (EventTypeId::TransactionAccepted as u8).into(),
+            "TransactionAccepted".into(),
         ])?
         .values(vec![
-            (EventTypeId::DeployExpired as u8).into(),
-            "DeployExpired".into(),
+            (EventTypeId::TransactionExpired as u8).into(),
+            "TransactionExpired".into(),
         ])?
         .values(vec![
-            (EventTypeId::DeployProcessed as u8).into(),
-            "DeployProcessed".into(),
+            (EventTypeId::TransactionProcessed as u8).into(),
+            "TransactionProcessed".into(),
         ])?
         .values(vec![(EventTypeId::Fault as u8).into(), "Fault".into()])?
         .values(vec![
@@ -82,7 +82,7 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
 #[test]
 fn create_initialise_stmt_sql() {
     use sea_query::SqliteQueryBuilder;
-    let expected_sql = "INSERT INTO \"event_type\" (\"event_type_id\", \"event_type_name\") VALUES (1, 'BlockAdded'), (2, 'DeployAccepted'), (3, 'DeployExpired'), (4, 'DeployProcessed'), (5, 'Fault'), (6, 'FinalitySignature'), (7, 'Step'), (8, 'Shutdown') ON CONFLICT (\"event_type_id\") DO NOTHING";
+    let expected_sql = "INSERT INTO \"event_type\" (\"event_type_id\", \"event_type_name\") VALUES (1, 'BlockAdded'), (2, 'TransactionAccepted'), (3, 'TransactionExpired'), (4, 'TransactionProcessed'), (5, 'Fault'), (6, 'FinalitySignature'), (7, 'Step'), (8, 'Shutdown') ON CONFLICT (\"event_type_id\") DO NOTHING";
 
     let got_sql = create_initialise_stmt()
         .unwrap()

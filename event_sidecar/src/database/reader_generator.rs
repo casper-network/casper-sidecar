@@ -5,14 +5,16 @@ macro_rules! database_reader_implementation {
      $query_materializer_expr:expr) => {
         use anyhow::Error;
         use async_trait::async_trait;
-        use casper_event_types::FinalitySignature as FinSig;
+        use casper_types::FinalitySignature as FinSig;
         use serde::Deserialize;
         use sqlx::{Executor, Row};
         use $crate::{
             database::errors::{wrap_query_error, DbError},
             sql::tables,
             types::{
-                database::{DatabaseReadError, DatabaseReader, DeployAggregate},
+                database::{
+                    DatabaseReadError, DatabaseReader, TransactionAggregate, TransactionTypeId,
+                },
                 sse_events::*,
             },
         };
@@ -59,43 +61,52 @@ macro_rules! database_reader_implementation {
                     })
             }
 
-            async fn get_deploy_aggregate_by_hash(
+            async fn get_transaction_aggregate_by_identifier(
                 &self,
+                transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<DeployAggregate, DatabaseReadError> {
+            ) -> Result<TransactionAggregate, DatabaseReadError> {
                 // We may return here with NotFound because if there's no accepted record then theoretically there should be no other records for the given hash.
-                let deploy_accepted = self.get_deploy_accepted_by_hash(hash).await?;
+                let transaction_accepted = self
+                    .get_transaction_accepted_by_hash(transaction_type.clone(), hash)
+                    .await?;
 
-                // However we handle the Err case for DeployProcessed explicitly as we don't want to return NotFound when we've got a DeployAccepted to return
-                match self.get_deploy_processed_by_hash(hash).await {
-                    Ok(deploy_processed) => Ok(DeployAggregate {
-                        deploy_hash: hash.to_string(),
-                        deploy_accepted: Some(deploy_accepted),
-                        deploy_processed: Some(deploy_processed),
-                        deploy_expired: false,
+                // However we handle the Err case for TransactionProcessed explicitly as we don't want to return NotFound when we've got a TransactionAccepted to return
+                match self
+                    .get_transaction_processed_by_hash(transaction_type, hash)
+                    .await
+                {
+                    Ok(transaction_processed) => Ok(TransactionAggregate {
+                        transaction_hash: hash.to_string(),
+                        transaction_accepted: Some(transaction_accepted),
+                        transaction_processed: Some(transaction_processed),
+                        transaction_expired: false,
                     }),
                     Err(err) => {
                         // If the error is anything other than NotFound return the error.
                         if !matches!(DatabaseReadError::NotFound, _err) {
                             return Err(err);
                         }
-                        match self.get_deploy_expired_by_hash(hash).await {
-                            Ok(_) => Ok(DeployAggregate {
-                                deploy_hash: hash.to_string(),
-                                deploy_accepted: Some(deploy_accepted),
-                                deploy_processed: None,
-                                deploy_expired: true,
+                        match self
+                            .get_transaction_expired_by_hash(transaction_type, hash)
+                            .await
+                        {
+                            Ok(_) => Ok(TransactionAggregate {
+                                transaction_hash: hash.to_string(),
+                                transaction_accepted: Some(transaction_accepted),
+                                transaction_processed: None,
+                                transaction_expired: true,
                             }),
                             Err(err) => {
                                 // If the error is anything other than NotFound return the error.
                                 if !matches!(DatabaseReadError::NotFound, _err) {
                                     return Err(err);
                                 }
-                                Ok(DeployAggregate {
-                                    deploy_hash: hash.to_string(),
-                                    deploy_accepted: Some(deploy_accepted),
-                                    deploy_processed: None,
-                                    deploy_expired: false,
+                                Ok(TransactionAggregate {
+                                    transaction_hash: hash.to_string(),
+                                    transaction_accepted: Some(transaction_accepted),
+                                    transaction_processed: None,
+                                    transaction_expired: false,
                                 })
                             }
                         }
@@ -103,14 +114,18 @@ macro_rules! database_reader_implementation {
                 }
             }
 
-            async fn get_deploy_accepted_by_hash(
+            async fn get_transaction_accepted_by_hash(
                 &self,
+                transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<DeployAccepted, DatabaseReadError> {
+            ) -> Result<TransactionAccepted, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
-                let stmt = tables::deploy_accepted::create_get_by_hash_stmt(hash.to_string())
-                    .to_string($query_materializer_expr);
+                let stmt = tables::transaction_accepted::create_get_by_hash_stmt(
+                    transaction_type.into(),
+                    hash.to_string(),
+                )
+                .to_string($query_materializer_expr);
 
                 db_connection
                     .fetch_optional(stmt.as_str())
@@ -122,19 +137,23 @@ macro_rules! database_reader_implementation {
                             let raw = row
                                 .try_get::<String, &str>("raw")
                                 .map_err(|error| wrap_query_error(error.into()))?;
-                            deserialize_data::<DeployAccepted>(&raw).map_err(wrap_query_error)
+                            deserialize_data::<TransactionAccepted>(&raw).map_err(wrap_query_error)
                         }
                     })
             }
 
-            async fn get_deploy_processed_by_hash(
+            async fn get_transaction_processed_by_hash(
                 &self,
+                transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<DeployProcessed, DatabaseReadError> {
+            ) -> Result<TransactionProcessed, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
-                let stmt = tables::deploy_processed::create_get_by_hash_stmt(hash.to_string())
-                    .to_string($query_materializer_expr);
+                let stmt = tables::transaction_processed::create_get_by_hash_stmt(
+                    transaction_type.into(),
+                    hash.to_string(),
+                )
+                .to_string($query_materializer_expr);
 
                 db_connection
                     .fetch_optional(stmt.as_str())
@@ -146,19 +165,23 @@ macro_rules! database_reader_implementation {
                             let raw = row
                                 .try_get::<String, &str>("raw")
                                 .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                            deserialize_data::<DeployProcessed>(&raw).map_err(wrap_query_error)
+                            deserialize_data::<TransactionProcessed>(&raw).map_err(wrap_query_error)
                         }
                     })
             }
 
-            async fn get_deploy_expired_by_hash(
+            async fn get_transaction_expired_by_hash(
                 &self,
+                transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<DeployExpired, DatabaseReadError> {
+            ) -> Result<TransactionExpired, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
-                let stmt = tables::deploy_expired::create_get_by_hash_stmt(hash.to_string())
-                    .to_string($query_materializer_expr);
+                let stmt = tables::transaction_expired::create_get_by_hash_stmt(
+                    transaction_type.into(),
+                    hash.to_string(),
+                )
+                .to_string($query_materializer_expr);
 
                 db_connection
                     .fetch_optional(stmt.as_str())
@@ -170,7 +193,7 @@ macro_rules! database_reader_implementation {
                             let raw = row
                                 .try_get::<String, &str>("raw")
                                 .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                            deserialize_data::<DeployExpired>(&raw).map_err(wrap_query_error)
+                            deserialize_data::<TransactionExpired>(&raw).map_err(wrap_query_error)
                         }
                     })
             }

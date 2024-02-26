@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types_ver_2_0::{
+use casper_types::{
     BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest, GlobalStateIdentifier,
     JsonBlockWithSignatures, Key, StoredValue, Transfer,
 };
@@ -394,14 +394,11 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
-    use casper_types_ver_2_0::{
+    use casper_types::{
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
-        },
-        system::auction::EraInfo,
-        testing::TestRng,
-        Block, BlockSignatures, DeployHash, SignedBlock, TestBlockBuilder, TestBlockV1Builder,
+        }, system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, SignedBlock, TestBlockBuilder, TestBlockV1Builder
     };
     use rand::Rng;
 
@@ -412,12 +409,12 @@ mod tests {
     async fn should_read_block_v2() {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-
+        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
         let resp = GetBlock::do_handle_request(
             Arc::new(ValidBlockMock {
                 block: SignedBlock::new(
                     block.clone(),
-                    BlockSignatures::new(*block.hash(), block.era_id()),
+                    signatures.into(),
                 ),
                 transfers: vec![],
             }),
@@ -444,7 +441,7 @@ mod tests {
             Arc::new(ValidBlockMock {
                 block: SignedBlock::new(
                     Block::V1(block.clone()),
-                    BlockSignatures::new(*block.hash(), block.era_id()),
+                    BlockSignaturesV1::new(*block.hash(), block.era_id()).into(),
                 ),
                 transfers: vec![],
             }),
@@ -480,12 +477,12 @@ mod tests {
                 Some(rng.gen()),
             ));
         }
-
+        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
         let resp = GetBlockTransfers::do_handle_request(
             Arc::new(ValidBlockMock {
                 block: SignedBlock::new(
                     Block::V2(block.clone()),
-                    BlockSignatures::new(*block.hash(), block.era_id()),
+                    signatures.into(),
                 ),
                 transfers: transfers.clone(),
             }),
@@ -509,11 +506,12 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
 
+        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
         let resp = GetStateRootHash::do_handle_request(
             Arc::new(ValidBlockMock {
                 block: SignedBlock::new(
                     Block::V2(block.clone()),
-                    BlockSignatures::new(*block.hash(), block.era_id()),
+                    signatures.into(),
                 ),
                 transfers: vec![],
             }),

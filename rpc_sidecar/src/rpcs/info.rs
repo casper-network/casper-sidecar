@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types_ver_2_0::{
+use casper_types::{
     binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockSynchronizerStatus, ChainspecRawBytes,
@@ -519,11 +519,12 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
-    use casper_types_ver_2_0::{
+    use casper_types::{
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             InformationRequestTag, TransactionWithExecutionInfo,
         },
+        bytesrepr::{FromBytes, ToBytes},
         testing::TestRng,
         BlockHash, TransactionV1,
     };
@@ -543,12 +544,12 @@ mod tests {
         };
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(ValidTransactionMock {
-                transaction: TransactionWithExecutionInfo::new(
+            Arc::new(ValidTransactionMock::new(
+                TransactionWithExecutionInfo::new(
                     transaction.clone(),
                     Some(execution_info.clone()),
                 ),
-            }),
+            )),
             GetTransactionParams {
                 transaction_hash: transaction.hash(),
                 finalized_approvals: true,
@@ -578,12 +579,12 @@ mod tests {
         };
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(ValidTransactionMock {
-                transaction: TransactionWithExecutionInfo::new(
+            Arc::new(ValidTransactionMock::new(
+                TransactionWithExecutionInfo::new(
                     Transaction::Deploy(deploy.clone()),
                     Some(execution_info.clone()),
                 ),
-            }),
+            )),
             GetTransactionParams {
                 transaction_hash: deploy.hash().into(),
                 finalized_approvals: true,
@@ -613,12 +614,12 @@ mod tests {
         };
 
         let resp = GetDeploy::do_handle_request(
-            Arc::new(ValidTransactionMock {
-                transaction: TransactionWithExecutionInfo::new(
+            Arc::new(ValidTransactionMock::new(
+                TransactionWithExecutionInfo::new(
                     Transaction::Deploy(deploy.clone()),
                     Some(execution_info.clone()),
                 ),
-            }),
+            )),
             GetDeployParams {
                 deploy_hash: *deploy.hash(),
                 finalized_approvals: true,
@@ -648,12 +649,12 @@ mod tests {
         };
 
         let err = GetDeploy::do_handle_request(
-            Arc::new(ValidTransactionMock {
-                transaction: TransactionWithExecutionInfo::new(
+            Arc::new(ValidTransactionMock::new(
+                TransactionWithExecutionInfo::new(
                     Transaction::V1(transaction.clone()),
                     Some(execution_info.clone()),
                 ),
-            }),
+            )),
             GetDeployParams {
                 deploy_hash: DeployHash::new(*transaction.hash().inner()),
                 finalized_approvals: true,
@@ -666,7 +667,14 @@ mod tests {
     }
 
     struct ValidTransactionMock {
-        transaction: TransactionWithExecutionInfo,
+        transaction_bytes: Vec<u8>,
+    }
+
+    impl ValidTransactionMock {
+        fn new(info: TransactionWithExecutionInfo) -> Self {
+            let transaction_bytes = info.to_bytes().expect("should serialize transaction");
+            ValidTransactionMock { transaction_bytes }
+        }
     }
 
     #[async_trait]
@@ -680,11 +688,11 @@ mod tests {
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Transaction) =>
                 {
+                    let (transaction, _) =
+                        TransactionWithExecutionInfo::from_bytes(&self.transaction_bytes)
+                            .expect("should deserialize transaction");
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            self.transaction.clone(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
+                        BinaryResponse::from_value(transaction, SUPPORTED_PROTOCOL_VERSION),
                         &[],
                     ))
                 }

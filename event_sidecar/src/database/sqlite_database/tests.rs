@@ -50,39 +50,39 @@ async fn should_save_and_retrieve_block_added() {
 }
 
 #[tokio::test]
-async fn should_save_and_retrieve_deploy_accepted() {
+async fn should_save_and_retrieve_transaction_accepted() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_save_and_retrieve_deploy_accepted(sqlite_db).await;
+    crate::database::tests::should_save_and_retrieve_transaction_accepted(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_save_and_retrieve_deploy_processed() {
+async fn should_save_and_retrieve_transaction_processed() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_save_and_retrieve_deploy_processed(sqlite_db).await;
+    crate::database::tests::should_save_and_retrieve_transaction_processed(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_save_and_retrieve_deploy_expired() {
+async fn should_save_and_retrieve_transaction_expired() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_save_and_retrieve_deploy_expired(sqlite_db).await;
+    crate::database::tests::should_save_and_retrieve_transaction_expired(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_retrieve_deploy_aggregate_of_accepted() {
+async fn should_retrieve_transaction_aggregate_of_accepted() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_retrieve_deploy_aggregate_of_accepted(sqlite_db).await;
+    crate::database::tests::should_retrieve_transaction_aggregate_of_accepted(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_retrieve_deploy_aggregate_of_processed() {
+async fn should_retrieve_transaction_aggregate_of_processed() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_retrieve_deploy_aggregate_of_processed(sqlite_db).await;
+    crate::database::tests::should_retrieve_transaction_aggregate_of_processed(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_retrieve_deploy_aggregate_of_expired() {
+async fn should_retrieve_transaction_aggregate_of_expired() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_retrieve_deploy_aggregate_of_expired(sqlite_db).await;
+    crate::database::tests::should_retrieve_transaction_aggregate_of_expired(sqlite_db).await;
 }
 
 #[tokio::test]
@@ -128,21 +128,23 @@ async fn should_disallow_insert_of_existing_block_added() {
 }
 
 #[tokio::test]
-async fn should_disallow_insert_of_existing_deploy_accepted() {
+async fn should_disallow_insert_of_existing_transaction_accepted() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_disallow_insert_of_existing_deploy_accepted(sqlite_db).await;
+    crate::database::tests::should_disallow_insert_of_existing_transaction_accepted(sqlite_db)
+        .await;
 }
 
 #[tokio::test]
-async fn should_disallow_insert_of_existing_deploy_expired() {
+async fn should_disallow_insert_of_existing_transaction_expired() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_disallow_insert_of_existing_deploy_expired(sqlite_db).await;
+    crate::database::tests::should_disallow_insert_of_existing_transaction_expired(sqlite_db).await;
 }
 
 #[tokio::test]
-async fn should_disallow_insert_of_existing_deploy_processed() {
+async fn should_disallow_insert_of_existing_transaction_processed() {
     let sqlite_db = build_database().await;
-    crate::database::tests::should_disallow_insert_of_existing_deploy_processed(sqlite_db).await;
+    crate::database::tests::should_disallow_insert_of_existing_transaction_processed(sqlite_db)
+        .await;
 }
 
 #[tokio::test]
@@ -192,16 +194,16 @@ async fn should_save_block_added_with_correct_event_type_id() {
 }
 
 #[tokio::test]
-async fn should_save_deploy_accepted_with_correct_event_type_id() {
+async fn should_save_transaction_accepted_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let sqlite_db = build_database().await;
 
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
 
     assert!(sqlite_db
-        .save_deploy_accepted(
-            deploy_accepted,
+        .save_transaction_accepted(
+            transaction_accepted,
             1,
             "127.0.0.1".to_string(),
             "1.5.5".to_string()
@@ -224,21 +226,21 @@ async fn should_save_deploy_accepted_with_correct_event_type_id() {
         .try_get::<String, usize>(1)
         .expect("Error getting api_version from row");
 
-    assert_eq!(event_type_id, EventTypeId::DeployAccepted as i16);
+    assert_eq!(event_type_id, EventTypeId::TransactionAccepted as i16);
     assert_eq!(api_version, "1.5.5".to_string());
 }
 
 #[tokio::test]
-async fn should_save_deploy_processed_with_correct_event_type_id() {
+async fn should_save_transaction_processed_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let sqlite_db = build_database().await;
 
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
 
     assert!(sqlite_db
-        .save_deploy_processed(
-            deploy_processed,
+        .save_transaction_processed(
+            transaction_processed,
             1,
             "127.0.0.1".to_string(),
             "1.1.1".to_string()
@@ -258,20 +260,20 @@ async fn should_save_deploy_processed_with_correct_event_type_id() {
         .try_get::<i16, usize>(0)
         .expect("Error getting event_type_id from row");
 
-    assert_eq!(event_type_id, EventTypeId::DeployProcessed as i16)
+    assert_eq!(event_type_id, EventTypeId::TransactionProcessed as i16)
 }
 
 #[tokio::test]
-async fn should_save_deploy_expired_with_correct_event_type_id() {
+async fn should_save_transaction_expired_with_correct_event_type_id() {
     let mut test_rng = TestRng::new();
 
     let sqlite_db = build_database().await;
 
-    let deploy_expired = DeployExpired::random(&mut test_rng, None);
+    let transaction_expired = TransactionExpired::random(&mut test_rng, None);
 
     assert!(sqlite_db
-        .save_deploy_expired(
-            deploy_expired,
+        .save_transaction_expired(
+            transaction_expired,
             1,
             "127.0.0.1".to_string(),
             "1.1.1".to_string()
@@ -291,7 +293,7 @@ async fn should_save_deploy_expired_with_correct_event_type_id() {
         .try_get::<i16, usize>(0)
         .expect("Error getting event_type_id from row");
 
-    assert_eq!(event_type_id, EventTypeId::DeployExpired as i16)
+    assert_eq!(event_type_id, EventTypeId::TransactionExpired as i16)
 }
 
 #[tokio::test]

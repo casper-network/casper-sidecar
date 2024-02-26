@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types_ver_2_0::{
+use casper_types::{
     contract_messages::Messages, execution::ExecutionResultV2, BlockHash, BlockIdentifier, Deploy,
     Transaction,
 };
@@ -158,7 +158,7 @@ async fn handle_request(
 mod tests {
     use std::convert::TryFrom;
 
-    use casper_types_ver_2_0::{
+    use casper_types::{
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             InformationRequestTag, SpeculativeExecutionResult,

@@ -1,20 +1,11 @@
 mod schema_transformation_visitor;
 use crate::types::{
-    database::DeployAggregate,
-    sse_events::{BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, Step},
-};
-use casper_event_types::{
-    block::json_compatibility::{
-        JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, Reward,
-        ValidatorWeight,
+    database::TransactionAggregate,
+    sse_events::{
+        BlockAdded, Fault, Step, TransactionAccepted, TransactionExpired, TransactionProcessed,
     },
-    deploy::{Approval, DeployHeader},
-    BlockHash, Deploy, DeployHash, Digest, ExecutableDeployItem, FinalitySignature, JsonBlock,
 };
-use casper_types::{
-    ContractHash, ContractPackageHash, ContractVersion, ExecutionEffect, ExecutionResult,
-    RuntimeArgs,
-};
+use casper_types::RuntimeArgs;
 use http::Uri;
 use schemars::{schema::SchemaObject, schema_for, visit::Visitor};
 use serde::{Deserialize, Serialize};
@@ -38,10 +29,10 @@ use self::schema_transformation_visitor::SchemaTransformationVisitor;
         paths(crate::rest_server::filters::latest_block,
             crate::rest_server::filters::block_by_hash,
             crate::rest_server::filters::block_by_height,
-            crate::rest_server::filters::deploy_by_hash,
-            crate::rest_server::filters::deploy_accepted_by_hash,
-            crate::rest_server::filters::deploy_expired_by_hash,
-            crate::rest_server::filters::deploy_processed_by_hash,
+            crate::rest_server::filters::transaction_by_hash,
+            crate::rest_server::filters::transaction_accepted_by_hash,
+            crate::rest_server::filters::transaction_expired_by_hash,
+            crate::rest_server::filters::transaction_processed_by_hash,
             crate::rest_server::filters::faults_by_public_key,
             crate::rest_server::filters::faults_by_era,
             crate::rest_server::filters::finality_signatures_by_block,
@@ -50,7 +41,7 @@ use self::schema_transformation_visitor::SchemaTransformationVisitor;
 
         ),
         components(
-            schemas(Step, FinalitySignature, Fault, DeployExpired, Deploy, DeployHeader, ExecutableDeployItem, Approval, DeployAggregate, DeployAccepted, DeployProcessed, BlockAdded, JsonBlock, BlockHash, JsonEraEnd, JsonEraReport, JsonBlockBody, JsonBlockHeader, JsonProof, Digest, DeployHash, ValidatorWeight, Reward)
+            schemas(Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
         ),
         tags(
             (name = "event-sidecar", description = "Event-sidecar rest API")
@@ -89,15 +80,15 @@ pub fn build_open_api_filters(
     extend_open_api_with_schemars_schemas(
         &mut components,
         vec![
-            ("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
+            //("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
             ("RuntimeArgs".to_string(), schema_for!(RuntimeArgs)),
-            ("ContractHash".to_string(), schema_for!(ContractHash)),
-            (
+            //("ContractHash".to_string(), schema_for!(ContractHash)),
+            /*(
                 "ContractPackageHash".to_string(),
                 schema_for!(ContractPackageHash),
             ),
             ("ContractVersion".to_string(), schema_for!(ContractVersion)),
-            ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),
+            ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),*/
         ],
     );
     doc.components = Some(components);

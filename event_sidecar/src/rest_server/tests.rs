@@ -1,17 +1,17 @@
-use casper_event_types::FinalitySignature as FinSig;
 use casper_types::AsymmetricType;
+use casper_types::FinalitySignature as FinSig;
 use http::StatusCode;
 use warp::test::request;
 
 use super::filters;
 use crate::{
     testing::fake_database::FakeDatabase,
-    types::{database::DeployAggregate, sse_events::*},
+    types::{database::TransactionAggregate, sse_events::*},
 };
 
 // Path elements
 const BLOCK: &str = "block";
-const DEPLOY: &str = "deploy";
+const TRANSACTION: &str = "transaction";
 const FAULTS: &str = "faults";
 const SIGNATURES: &str = "signatures";
 const STEP: &str = "step";
@@ -43,9 +43,13 @@ async fn root_should_return_400() {
 
 #[tokio::test]
 async fn root_with_invalid_path_should_return_400() {
-    should_respond_to_path_with("/not_block_or_deploy".to_string(), StatusCode::BAD_REQUEST).await;
     should_respond_to_path_with(
-        "/not_block_or_deploy/extra".to_string(),
+        "/not_block_or_transaction".to_string(),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    should_respond_to_path_with(
+        "/not_block_or_transaction/extra".to_string(),
         StatusCode::BAD_REQUEST,
     )
     .await;
@@ -118,7 +122,7 @@ async fn block_by_height_should_return_valid_data() {
 }
 
 #[tokio::test]
-async fn deploy_by_hash_should_return_valid_data() {
+async fn transaction_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
     let identifiers = database
@@ -128,24 +132,22 @@ async fn deploy_by_hash_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", DEPLOY, identifiers.deploy_accepted_hash);
+    let (transaction_hash, transaction_type) = identifiers.transaction_accepted_info;
+    let request_path = format!("/{}/{}/{}", TRANSACTION, transaction_type, transaction_hash);
 
     let response = request().path(&request_path).reply(&api).await;
 
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    let deploy_aggregate = serde_json::from_slice::<DeployAggregate>(&body)
-        .expect("Error parsing AggregateDeployInfo from response");
+    let transaction_aggregate = serde_json::from_slice::<TransactionAggregate>(&body)
+        .expect("Error parsing AggregateTransactionInfo from response");
 
-    assert_eq!(
-        deploy_aggregate.deploy_hash,
-        identifiers.deploy_accepted_hash
-    );
+    assert_eq!(transaction_aggregate.transaction_hash, transaction_hash);
 }
 
 #[tokio::test]
-async fn deploy_accepted_by_hash_should_return_valid_data() {
+async fn transaction_accepted_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
     let identifiers = database
@@ -155,9 +157,10 @@ async fn deploy_accepted_by_hash_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
+    let (transaction_hash, transaction_type) = identifiers.transaction_accepted_info;
     let request_path = format!(
-        "/{}/{}/{}",
-        DEPLOY, ACCEPTED, identifiers.deploy_accepted_hash
+        "/{}/{}/{}/{}",
+        TRANSACTION, transaction_type, ACCEPTED, transaction_hash
     );
 
     let response = request().path(&request_path).reply(&api).await;
@@ -165,17 +168,14 @@ async fn deploy_accepted_by_hash_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    let deploy_accepted = serde_json::from_slice::<DeployAccepted>(&body)
-        .expect("Error parsing DeployAccepted from response");
+    let transaction_accepted = serde_json::from_slice::<TransactionAccepted>(&body)
+        .expect("Error parsing TransactionAccepted from response");
 
-    assert_eq!(
-        deploy_accepted.hex_encoded_hash(),
-        identifiers.deploy_accepted_hash
-    );
+    assert_eq!(transaction_accepted.hex_encoded_hash(), transaction_hash);
 }
 
 #[tokio::test]
-async fn deploy_processed_by_hash_should_return_valid_data() {
+async fn transaction_processed_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
     let identifiers = database
@@ -184,10 +184,10 @@ async fn deploy_processed_by_hash_should_return_valid_data() {
         .expect("Error populating FakeDatabase");
 
     let api = filters::combined_filters(database);
-
+    let (transaction_hash, transaction_type) = identifiers.transaction_processed_info;
     let request_path = format!(
-        "/{}/{}/{}",
-        DEPLOY, PROCESSED, identifiers.deploy_processed_hash
+        "/{}/{}/{}/{}",
+        TRANSACTION, transaction_type, PROCESSED, transaction_hash
     );
 
     let response = request().path(&request_path).reply(&api).await;
@@ -195,17 +195,14 @@ async fn deploy_processed_by_hash_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    let deploy_processed = serde_json::from_slice::<DeployProcessed>(&body)
-        .expect("Error parsing DeployProcessed from response");
+    let transaction_processed = serde_json::from_slice::<TransactionProcessed>(&body)
+        .expect("Error parsing TransactionProcessed from response");
 
-    assert_eq!(
-        deploy_processed.hex_encoded_hash(),
-        identifiers.deploy_processed_hash
-    );
+    assert_eq!(transaction_processed.hex_encoded_hash(), transaction_hash);
 }
 
 #[tokio::test]
-async fn deploy_expired_by_hash_should_return_valid_data() {
+async fn transaction_expired_by_hash_should_return_valid_data() {
     let database = FakeDatabase::new();
 
     let identifiers = database
@@ -214,10 +211,10 @@ async fn deploy_expired_by_hash_should_return_valid_data() {
         .expect("Error populating FakeDatabase");
 
     let api = filters::combined_filters(database);
-
+    let (transaction_hash, transaction_type) = identifiers.transaction_expired_info;
     let request_path = format!(
-        "/{}/{}/{}",
-        DEPLOY, EXPIRED, identifiers.deploy_expired_hash
+        "/{}/{}/{}/{}",
+        TRANSACTION, transaction_type, EXPIRED, transaction_hash
     );
 
     let response = request().path(&request_path).reply(&api).await;
@@ -225,13 +222,10 @@ async fn deploy_expired_by_hash_should_return_valid_data() {
     assert!(response.status().is_success());
 
     let body = response.into_body();
-    let deploy_expired = serde_json::from_slice::<DeployExpired>(&body)
-        .expect("Error parsing DeployExpired from response");
+    let transaction_expired = serde_json::from_slice::<TransactionExpired>(&body)
+        .expect("Error parsing TransactionExpired from response");
 
-    assert_eq!(
-        deploy_expired.hex_encoded_hash(),
-        identifiers.deploy_expired_hash
-    );
+    assert_eq!(transaction_expired.hex_encoded_hash(), transaction_hash);
 }
 
 #[tokio::test]
@@ -350,29 +344,28 @@ async fn block_by_height_of_not_stored_should_return_404() {
 }
 
 #[tokio::test]
-async fn deploy_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", DEPLOY, VALID_HASH);
+async fn transaction_by_hash_of_not_stored_should_return_404() {
+    let request_path = format!("/{}/deploy/{}", TRANSACTION, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
 #[tokio::test]
-async fn deploy_accepted_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, ACCEPTED, VALID_HASH);
+async fn transaction_accepted_by_hash_of_not_stored_should_return_404() {
+    let request_path = format!("/{}/version1/{}/{}", TRANSACTION, ACCEPTED, VALID_HASH);
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+}
+
+#[tokio::test]
+async fn transaction_processed_by_hash_of_not_stored_should_return_404() {
+    let request_path = format!("/{}/deploy/{}/{}", TRANSACTION, PROCESSED, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
 
 #[tokio::test]
-async fn deploy_processed_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, PROCESSED, VALID_HASH);
-
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
-}
-
-#[tokio::test]
-async fn deploy_expired_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, EXPIRED, VALID_HASH);
+async fn transaction_expired_by_hash_of_not_stored_should_return_404() {
+    let request_path = format!("/{}/deploy/{}/{}", TRANSACTION, EXPIRED, VALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
 }
@@ -413,29 +406,29 @@ async fn block_by_invalid_hash_should_return_400() {
 }
 
 #[tokio::test]
-async fn deploy_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}", DEPLOY, INVALID_HASH);
+async fn transaction_by_hash_of_invalid_should_return_400() {
+    let request_path = format!("/{}/{}", TRANSACTION, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
 #[tokio::test]
-async fn deploy_accepted_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, ACCEPTED, INVALID_HASH);
+async fn transaction_accepted_by_hash_of_invalid_should_return_400() {
+    let request_path = format!("/{}/{}/{}", TRANSACTION, ACCEPTED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
 #[tokio::test]
-async fn deploy_processed_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, PROCESSED, INVALID_HASH);
+async fn transaction_processed_by_hash_of_invalid_should_return_400() {
+    let request_path = format!("/{}/{}/{}", TRANSACTION, PROCESSED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }
 
 #[tokio::test]
-async fn deploy_expired_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/{}", DEPLOY, EXPIRED, INVALID_HASH);
+async fn transaction_expired_by_hash_of_invalid_should_return_400() {
+    let request_path = format!("/{}/deploy/{}/{}", TRANSACTION, EXPIRED, INVALID_HASH);
 
     should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
 }

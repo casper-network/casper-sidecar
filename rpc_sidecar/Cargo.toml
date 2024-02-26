@@ -17,7 +17,7 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 bincode = "1"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-casper-types-ver-2_0 = { workspace = true, features = ["datasize", "json-schema", "std"] }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 http = "0.2.1"
@@ -41,7 +41,7 @@ warp = { version = "0.3.6", features = ["compression"] }
 [dev-dependencies]
 assert-json-diff = "2"
 bytes = "1.5.0"
-casper-types-ver-2_0 = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
 portpicker = "0.1.1"
 pretty_assertions = "0.7.2"
 regex = "1"
@@ -55,7 +55,7 @@ vergen = { version = "8.2.1", default-features = false, features = [
 ] }
 
 [features]
-testing = ["casper-types-ver-2_0/testing"]
+testing = ["casper-types/testing"]
 
 [package.metadata.deb]
 revision = "0"

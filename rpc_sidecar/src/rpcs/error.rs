@@ -1,6 +1,6 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
-use casper_types_ver_2_0::{
+use casper_types::{
     AvailableBlockRange, BlockIdentifier, DeployHash, KeyFromStrError, KeyTag, TransactionHash,
     URefFromStrError,
 };

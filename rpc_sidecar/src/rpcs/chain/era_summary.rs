@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types_ver_2_0::{
+use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
     AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, StoredValue, U512,
 };

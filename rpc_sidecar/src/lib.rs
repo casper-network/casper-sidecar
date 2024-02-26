@@ -8,7 +8,7 @@ mod speculative_exec_server;
 pub(crate) mod testing;
 
 use anyhow::Error;
-use casper_types_ver_2_0::ProtocolVersion;
+use casper_types::ProtocolVersion;
 pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 pub use config::{NodeClientConfig, RpcConfig};
 use futures::FutureExt;

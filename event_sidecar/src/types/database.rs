@@ -3,18 +3,46 @@ use crate::{
         postgresql_database::PostgreSqlDatabase, sqlite_database::SqliteDatabase,
         types::DDLConfiguration,
     },
-    sql::tables,
+    sql::{tables, tables::transaction_type::TransactionTypeId as SqlTransactionTypeId},
     types::sse_events::{
-        BlockAdded, DeployAccepted, DeployExpired, DeployProcessed, Fault, FinalitySignature, Step,
+        BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
+        TransactionProcessed,
     },
     StorageConfig,
 };
 use anyhow::{Context, Error};
 use async_trait::async_trait;
-use casper_event_types::FinalitySignature as FinSig;
+use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::fmt::{Display, Formatter};
 use std::{path::Path, sync::Arc};
 use utoipa::ToSchema;
+
+pub enum TransactionTypeId {
+    Deploy,
+    Version1,
+}
+
+impl From<&TransactionTypeId> for u8 {
+    fn from(transaction_type: &TransactionTypeId) -> u8 {
+        let sql_transaction_type = match transaction_type {
+            TransactionTypeId::Deploy => SqlTransactionTypeId::Deploy,
+            TransactionTypeId::Version1 => SqlTransactionTypeId::Version1,
+        };
+        sql_transaction_type as u8
+    }
+}
+
+#[cfg(test)]
+impl Display for TransactionTypeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransactionTypeId::Deploy => write!(f, "deploy"),
+            TransactionTypeId::Version1 => write!(f, "version1"),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum Database {
@@ -69,36 +97,36 @@ pub trait DatabaseWriter {
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployAccepted event to the database.
     ///
-    /// * `deploy_accepted`: the [DeployAccepted] from the `data` field.
+    /// * `transaction_accepted`: the [DeployAccepted] from the `data` field.
     /// * `event_id`: the node-specific assigned `id`.
     /// * `event_source_address`: the IP address of the source node.
-    async fn save_deploy_accepted(
+    async fn save_transaction_accepted(
         &self,
-        deploy_accepted: DeployAccepted,
+        transaction_accepted: TransactionAccepted,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployProcessed event to the database.
     ///
-    /// * `deploy_accepted`: the [DeployProcessed] from the `data` field.
+    /// * `transaction_accepted`: the [DeployProcessed] from the `data` field.
     /// * `event_id`: the node-specific assigned `id`.
     /// * `event_source_address`: the IP address of the source node.
-    async fn save_deploy_processed(
+    async fn save_transaction_processed(
         &self,
-        deploy_processed: DeployProcessed,
+        transaction_processed: TransactionProcessed,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployExpired event to the database.
     ///
-    /// * `deploy_expired`: the [DeployExpired] from the `data` field.
+    /// * `transaction_expired`: the [DeployExpired] from the `data` field.
     /// * `event_id`: the node-specific assigned `id`.
     /// * `event_source_address`: the IP address of the source node.
-    async fn save_deploy_expired(
+    async fn save_transaction_expired(
         &self,
-        deploy_expired: DeployExpired,
+        transaction_expired: TransactionExpired,
         event_id: u32,
         event_source_address: String,
         api_version: String,
@@ -211,7 +239,7 @@ impl From<sqlx::Error> for DatabaseWriteError {
                     }
                     "1555" | "2067" => {
                         // The message looks something like this:
-                        // UNIQUE constraint failed: DeployProcessed.deploy_hash
+                        // UNIQUE constraint failed: DeployProcessed.transaction_hash
 
                         let table = db_err.message().split(':').collect::<Vec<&str>>()[1]
                             .split('.')
@@ -252,35 +280,39 @@ pub trait DatabaseReader {
     ///
     /// * `hash` - hash which identifies the block
     async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
-    /// Returns an aggregate of the deploy's events corresponding to the given hex-encoded `hash`
+    /// Returns an aggregate of the transaction's events corresponding to the given hex-encoded `hash`
     ///
-    /// * `hash` - deploy hash of which the aggregate data should be fetched
-    async fn get_deploy_aggregate_by_hash(
+    /// * `hash` - transaction hash of which the aggregate data should be fetched
+    async fn get_transaction_aggregate_by_identifier(
         &self,
+        transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployAggregate, DatabaseReadError>;
+    ) -> Result<TransactionAggregate, DatabaseReadError>;
     /// Returns the [DeployAccepted] corresponding to the given hex-encoded `hash`
     ///
-    /// * `hash` - deploy hash which identifies the deploy accepted
-    async fn get_deploy_accepted_by_hash(
+    /// * `hash` - transaction hash which identifies the transaction accepted
+    async fn get_transaction_accepted_by_hash(
         &self,
+        transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployAccepted, DatabaseReadError>;
+    ) -> Result<TransactionAccepted, DatabaseReadError>;
     /// Returns the [DeployProcessed] corresponding to the given hex-encoded `hash`
     ///
-    /// * `hash` - deploy hash which identifies the deploy pocessed
-    async fn get_deploy_processed_by_hash(
+    /// * `hash` - transaction hash which identifies the transaction pocessed
+    async fn get_transaction_processed_by_hash(
         &self,
+        transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployProcessed, DatabaseReadError>;
+    ) -> Result<TransactionProcessed, DatabaseReadError>;
 
     /// Returns the [DeployExpired] corresponding to the given hex-encoded `hash`
     ///
-    /// * `hash` - deploy hash which identifies the deploy expired
-    async fn get_deploy_expired_by_hash(
+    /// * `hash` - transaction hash which identifies the transaction expired
+    async fn get_transaction_expired_by_hash(
         &self,
+        transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployExpired, DatabaseReadError>;
+    ) -> Result<TransactionExpired, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded `public_key`
     ///
     /// * `public_key` - key which identifies the fault
@@ -323,11 +355,11 @@ pub enum DatabaseReadError {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
-pub struct DeployAggregate {
-    pub(crate) deploy_hash: String,
-    pub(crate) deploy_accepted: Option<DeployAccepted>,
-    pub(crate) deploy_processed: Option<DeployProcessed>,
-    pub(crate) deploy_expired: bool,
+pub struct TransactionAggregate {
+    pub(crate) transaction_hash: String,
+    pub(crate) transaction_accepted: Option<TransactionAccepted>,
+    pub(crate) transaction_processed: Option<TransactionProcessed>,
+    pub(crate) transaction_expired: bool,
 }
 
 #[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs
@@ -392,11 +424,25 @@ impl Migration {
         Migration {
             version: Some(1),
             statement_producers: |config: DDLConfiguration| {
-                let insert_types_stmt =
-                    tables::event_type::create_initialise_stmt().map_err(|err| {
-                        Error::msg(format!("Error building create_initialise_stmt: {:?}", err))
+                let insert_event_types_stmt = tables::event_type::create_initialise_stmt()
+                    .map_err(|err| {
+                        Error::msg(format!(
+                            "Error building event types insert statement: {:?}",
+                            err
+                        ))
                     })?;
-                Ok(migration_1_ddl_statements(config, insert_types_stmt))
+                let insert_transaction_types_stmt =
+                    tables::transaction_type::create_initialise_stmt().map_err(|err| {
+                        Error::msg(format!(
+                            "Error building transaction types insert statement: {:?}",
+                            err
+                        ))
+                    })?;
+                Ok(migration_1_ddl_statements(
+                    config,
+                    insert_event_types_stmt,
+                    insert_transaction_types_stmt,
+                ))
             },
             script_executor: None,
         }
@@ -416,24 +462,29 @@ impl Migration {
 
 fn migration_1_ddl_statements(
     config: DDLConfiguration,
-    insert_types_stmt: sea_query::InsertStatement,
+    insert_event_types_stmt: sea_query::InsertStatement,
+    insert_transaction_types_stmt: sea_query::InsertStatement,
 ) -> Vec<StatementWrapper> {
-    let init_stmt = StatementWrapper::InsertStatement(insert_types_stmt);
     vec![
         // Synthetic tables
         StatementWrapper::TableCreateStatement(Box::new(tables::event_type::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::transaction_type::create_table_stmt(),
+        )),
         StatementWrapper::TableCreateStatement(Box::new(tables::event_log::create_table_stmt())),
-        StatementWrapper::TableCreateStatement(Box::new(tables::deploy_event::create_table_stmt())),
+        StatementWrapper::TableCreateStatement(Box::new(
+            tables::transaction_event::create_table_stmt(),
+        )),
         // Raw Event tables
         StatementWrapper::TableCreateStatement(Box::new(tables::block_added::create_table_stmt())),
         StatementWrapper::TableCreateStatement(Box::new(
-            tables::deploy_accepted::create_table_stmt(),
+            tables::transaction_accepted::create_table_stmt(),
         )),
         StatementWrapper::TableCreateStatement(Box::new(
-            tables::deploy_processed::create_table_stmt(),
+            tables::transaction_processed::create_table_stmt(),
         )),
         StatementWrapper::TableCreateStatement(Box::new(
-            tables::deploy_expired::create_table_stmt(),
+            tables::transaction_expired::create_table_stmt(),
         )),
         StatementWrapper::TableCreateStatement(Box::new(tables::fault::create_table_stmt(
             config.db_supports_unsigned,
@@ -445,6 +496,7 @@ fn migration_1_ddl_statements(
             config.db_supports_unsigned,
         ))),
         StatementWrapper::TableCreateStatement(Box::new(tables::shutdown::create_table_stmt())),
-        init_stmt,
+        StatementWrapper::InsertStatement(insert_event_types_stmt),
+        StatementWrapper::InsertStatement(insert_transaction_types_stmt),
     ]
 }

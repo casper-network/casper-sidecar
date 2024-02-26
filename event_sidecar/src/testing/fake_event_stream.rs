@@ -20,17 +20,17 @@ use crate::{
     utils::tests::display_duration,
 };
 use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-use casper_types::{testing::TestRng, ProtocolVersion};
+use casper_types::{testing::TestRng, ProtocolVersion, Transaction};
 use warp::{path::end, Filter};
 
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
 const NUMBER_OF_VALIDATORS: u16 = 100;
-const NUMBER_OF_DEPLOYS_PER_BLOCK: u16 = 20;
+const NUMBER_OF_TRANSACTIONS_PER_BLOCK: u16 = 20;
 const API_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 2);
 
 type FrequencyOfStepEvents = u8;
-type NumberOfDeployEventsInBurst = u64;
+type NumberOftransactionEventsInBurst = u64;
 
 #[derive(Clone)]
 pub enum Bound {
@@ -61,7 +61,7 @@ pub struct Restart {
 pub enum Scenario {
     Realistic(GenericScenarioSettings),
     LoadTestingStep(GenericScenarioSettings, FrequencyOfStepEvents),
-    LoadTestingDeploy(GenericScenarioSettings, NumberOfDeployEventsInBurst),
+    LoadTestingTransaction(GenericScenarioSettings, NumberOftransactionEventsInBurst),
     Spam(Bound),
 }
 
@@ -72,8 +72,8 @@ impl Display for Scenario {
             Scenario::LoadTestingStep(_, _) => {
                 write!(f, "Load Testing [Step]")
             }
-            Scenario::LoadTestingDeploy(_, _) => {
-                write!(f, "Load Testing [Deploy]")
+            Scenario::LoadTestingTransaction(_, _) => {
+                write!(f, "Load Testing [transaction]")
             }
             Scenario::Spam(_) => {
                 write!(f, "Spam")
@@ -112,8 +112,8 @@ async fn execute_scenario(
             )
             .await
         }
-        Scenario::LoadTestingDeploy(settings, num_in_burst) => {
-            do_load_testing_deploy(
+        Scenario::LoadTestingTransaction(settings, num_in_burst) => {
+            do_load_testing_transaction(
                 test_rng,
                 events_sender,
                 events_receiver,
@@ -187,13 +187,13 @@ async fn do_spam_testing(
     bound: Bound,
 ) -> TestRng {
     let scenario_task = tokio::spawn(async move {
-        spam_deploy(&mut test_rng, events_sender.clone(), bound).await;
+        spam_transaction(&mut test_rng, events_sender.clone(), bound).await;
         test_rng
     });
 
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
         }
     });
 
@@ -201,7 +201,7 @@ async fn do_spam_testing(
     test_rng.expect("Should have returned TestRng for re-use")
 }
 
-async fn do_load_testing_deploy(
+async fn do_load_testing_transaction(
     mut test_rng: TestRng,
     events_sender: Sender<SseData>,
     mut events_receiver: Receiver<SseData>,
@@ -210,7 +210,7 @@ async fn do_load_testing_deploy(
     num_in_burst: u64,
 ) -> TestRng {
     let scenario_task = tokio::spawn(async move {
-        load_testing_deploy(
+        load_testing_transaction(
             &mut test_rng,
             events_sender.clone(),
             settings.initial_phase,
@@ -226,17 +226,17 @@ async fn do_load_testing_deploy(
             events_sender
                 .send(SseData::Shutdown)
                 .await
-                .expect("Scenario::LoadTestingDeploy failed sending shutdown message!");
+                .expect("Scenario::LoadTestingtransaction failed sending shutdown message!");
 
             tokio::time::sleep(delay_before_restart).await;
-            load_testing_deploy(&mut test_rng, events_sender, final_phase, num_in_burst).await;
+            load_testing_transaction(&mut test_rng, events_sender, final_phase, num_in_burst).await;
         }
         test_rng
     });
 
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
         }
     });
 
@@ -278,7 +278,7 @@ async fn do_load_testing_step(
     });
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
         }
     });
     let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
@@ -313,7 +313,7 @@ async fn handle_realistic_scenario(
     });
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Main), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
         }
     });
     let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
@@ -349,7 +349,7 @@ async fn realistic_event_streaming(
 
 type RealisticScenarioData = (
     Vec<SseData>,
-    Vec<(SseData, casper_event_types::Deploy)>,
+    Vec<(SseData, Transaction)>,
     Vec<SseData>,
     Vec<SseData>,
     Vec<SseData>,
@@ -360,22 +360,25 @@ type RealisticScenarioData = (
 fn prepare_data(test_rng: &mut TestRng, loops_in_duration: u64) -> RealisticScenarioData {
     let finality_signatures_per_loop = NUMBER_OF_VALIDATORS as u64;
     let total_finality_signature_events = finality_signatures_per_loop * loops_in_duration;
-    let deploy_events_per_loop = NUMBER_OF_DEPLOYS_PER_BLOCK as u64;
-    let total_deploy_events = deploy_events_per_loop * loops_in_duration;
+    let transaction_events_per_loop = NUMBER_OF_TRANSACTIONS_PER_BLOCK as u64;
+    let total_transaction_events = transaction_events_per_loop * loops_in_duration;
     let total_block_added_events = loops_in_duration;
     let total_step_events = loops_in_duration / BLOCKS_IN_ERA;
     let block_added_events = iter::repeat_with(|| SseData::random_block_added(test_rng))
         .take(plus_twenty_percent(total_block_added_events) as usize)
         .collect_vec();
-    let deploy_accepted_events = iter::repeat_with(|| SseData::random_deploy_accepted(test_rng))
-        .take(plus_twenty_percent(total_deploy_events) as usize)
-        .collect_vec();
-    let deploy_expired_events = iter::repeat_with(|| SseData::random_deploy_expired(test_rng))
-        .take((loops_in_duration / 2 + 1) as usize)
-        .collect_vec();
-    let deploy_processed_events = iter::repeat_with(|| SseData::random_deploy_processed(test_rng))
-        .take(plus_twenty_percent(total_deploy_events) as usize)
-        .collect_vec();
+    let transaction_accepted_events =
+        iter::repeat_with(|| SseData::random_transaction_accepted(test_rng))
+            .take(plus_twenty_percent(total_transaction_events) as usize)
+            .collect_vec();
+    let transaction_expired_events =
+        iter::repeat_with(|| SseData::random_transaction_expired(test_rng))
+            .take((loops_in_duration / 2 + 1) as usize)
+            .collect_vec();
+    let transaction_processed_events =
+        iter::repeat_with(|| SseData::random_transaction_processed(test_rng))
+            .take(plus_twenty_percent(total_transaction_events) as usize)
+            .collect_vec();
     let fault_events = iter::repeat_with(|| SseData::random_fault(test_rng))
         .take((loops_in_duration / 2 + 1) as usize)
         .collect_vec();
@@ -388,9 +391,9 @@ fn prepare_data(test_rng: &mut TestRng, loops_in_duration: u64) -> RealisticScen
         .collect_vec();
     (
         block_added_events,
-        deploy_accepted_events,
-        deploy_expired_events,
-        deploy_processed_events,
+        transaction_accepted_events,
+        transaction_expired_events,
+        transaction_processed_events,
         fault_events,
         finality_signature_events,
         step_events,
@@ -407,9 +410,9 @@ async fn do_stream(
 ) {
     let (
         mut block_added_events,
-        mut deploy_accepted_events,
-        mut deploy_expired_events,
-        mut deploy_processed_events,
+        mut transaction_accepted_events,
+        mut transaction_expired_events,
+        mut transaction_processed_events,
         mut fault_events,
         mut finality_signature_events,
         mut step_events,
@@ -428,17 +431,17 @@ async fn do_stream(
             emit_events(
                 &events_sender,
                 &mut finality_signature_events,
-                &mut deploy_processed_events,
+                &mut transaction_processed_events,
                 &mut block_added_events,
-                &mut deploy_accepted_events,
+                &mut transaction_accepted_events,
             )
             .await;
         }
         if era_counter % 2 == 0 {
             events_sender
-                .send(deploy_expired_events.pop().unwrap())
+                .send(transaction_expired_events.pop().unwrap())
                 .await
-                .expect("Failed sending deploy_expired_event");
+                .expect("Failed sending transaction_expired_event");
         } else {
             events_sender
                 .send(fault_events.pop().unwrap())
@@ -453,14 +456,14 @@ async fn do_stream(
 async fn emit_events(
     events_sender: &Sender<SseData>,
     finality_signature_events: &mut Vec<SseData>,
-    deploy_processed_events: &mut Vec<SseData>,
+    transaction_processed_events: &mut Vec<SseData>,
     block_added_events: &mut Vec<SseData>,
-    deploy_accepted_events: &mut Vec<(SseData, casper_event_types::Deploy)>,
+    transaction_accepted_events: &mut Vec<(SseData, casper_types::Transaction)>,
 ) {
     emit_sig_events(events_sender, finality_signature_events).await;
-    emit_deploy_processed_events(events_sender, deploy_processed_events).await;
+    emit_transaction_processed_events(events_sender, transaction_processed_events).await;
     emit_block_added_events(events_sender, block_added_events).await;
-    emit_deploy_accepted_events(events_sender, deploy_accepted_events).await;
+    emit_transaction_accepted_events(events_sender, transaction_accepted_events).await;
 }
 
 async fn emit_block_added_events(
@@ -473,15 +476,15 @@ async fn emit_block_added_events(
         .expect("Failed sending block_added_event");
 }
 
-async fn emit_deploy_accepted_events(
+async fn emit_transaction_accepted_events(
     events_sender: &Sender<SseData>,
-    deploy_accepted_events: &mut Vec<(SseData, casper_event_types::Deploy)>,
+    transaction_accepted_events: &mut Vec<(SseData, casper_types::Transaction)>,
 ) {
-    for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
+    for _ in 0..NUMBER_OF_TRANSACTIONS_PER_BLOCK {
         events_sender
-            .send(deploy_accepted_events.pop().unwrap().0)
+            .send(transaction_accepted_events.pop().unwrap().0)
             .await
-            .expect("Failed sending deploy_accepted_event");
+            .expect("Failed sending transaction_accepted_event");
     }
 }
 
@@ -492,15 +495,15 @@ async fn emit_step(events_sender: &Sender<SseData>, step_events: &mut Vec<SseDat
         .expect("Failed sending step_event");
 }
 
-async fn emit_deploy_processed_events(
+async fn emit_transaction_processed_events(
     events_sender: &Sender<SseData>,
-    deploy_processed_events: &mut Vec<SseData>,
+    transaction_processed_events: &mut Vec<SseData>,
 ) {
-    for _ in 0..NUMBER_OF_DEPLOYS_PER_BLOCK {
+    for _ in 0..NUMBER_OF_TRANSACTIONS_PER_BLOCK {
         events_sender
-            .send(deploy_processed_events.pop().unwrap())
+            .send(transaction_processed_events.pop().unwrap())
             .await
-            .expect("Failed sending deploy_processed_events");
+            .expect("Failed sending transaction_processed_events");
     }
 }
 
@@ -540,7 +543,7 @@ async fn load_testing_step(
     }
 }
 
-async fn spam_deploy(test_rng: &mut TestRng, events_sender: Sender<SseData>, bound: Bound) {
+async fn spam_transaction(test_rng: &mut TestRng, events_sender: Sender<SseData>, bound: Bound) {
     let start_time = Instant::now();
     events_sender
         .send(SseData::ApiVersion(API_VERSION))
@@ -551,16 +554,16 @@ async fn spam_deploy(test_rng: &mut TestRng, events_sender: Sender<SseData>, bou
             while start_time.elapsed() < duration {
                 for _ in 0..100 {
                     events_sender
-                        .send(SseData::random_deploy_accepted(test_rng).0)
+                        .send(SseData::random_transaction_accepted(test_rng).0)
                         .await
-                        .expect("failed sending random_deploy_accepted");
+                        .expect("failed sending random_transaction_accepted");
                 }
             }
         }
     }
 }
 
-async fn load_testing_deploy(
+async fn load_testing_transaction(
     test_rng: &mut TestRng,
     events_sender: Sender<SseData>,
     bound: Bound,
@@ -577,16 +580,16 @@ async fn load_testing_deploy(
             while start_time.elapsed() < duration {
                 for _ in 0..burst_size {
                     events_sender
-                        .send(SseData::random_deploy_accepted(test_rng).0)
+                        .send(SseData::random_transaction_accepted(test_rng).0)
                         .await
-                        .expect("failed sending random_deploy_accepted");
+                        .expect("failed sending random_transaction_accepted");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 for _ in 0..burst_size {
                     events_sender
-                        .send(SseData::random_deploy_processed(test_rng))
+                        .send(SseData::random_transaction_processed(test_rng))
                         .await
-                        .expect("failed sending random_deploy_processed");
+                        .expect("failed sending random_transaction_processed");
                 }
             }
         }

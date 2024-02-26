@@ -3,8 +3,8 @@
 use super::endpoint::Endpoint;
 #[cfg(feature = "additional-metrics")]
 use crate::utils::start_metrics_thread;
-use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Deploy, Filter as SseFilter};
-use casper_types::ProtocolVersion;
+use casper_event_types::{sse_data::EventFilter, sse_data::SseData, Filter as SseFilter};
+use casper_types::{ProtocolVersion, Transaction};
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
@@ -35,41 +35,24 @@ use warp::{
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
-/// The URL path part to subscribe to all events other than `DeployAccepted`s and
+/// The URL path part to subscribe to all events other than `TransactionAccepted`s and
 /// `FinalitySignature`s.
-pub const SSE_API_MAIN_PATH: &str = "main";
-/// The URL path part to subscribe to only `DeployAccepted` events.
-pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
-/// The URL path part to subscribe to only `FinalitySignature` events.
-pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 /// The URL path part to subscribe to sidecar specific events.
 pub const SSE_API_SIDECAR_PATH: &str = "sidecar";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
 
 /// The filter associated with `/events` path.
-const EVENTS_FILTER: [EventFilter; 5] = [
+const EVENTS_FILTER: [EventFilter; 8] = [
     EventFilter::ApiVersion,
     EventFilter::BlockAdded,
-    EventFilter::DeployProcessed,
+    EventFilter::TransactionAccepted,
+    EventFilter::TransactionProcessed,
+    EventFilter::TransactionExpired,
     EventFilter::Fault,
     EventFilter::FinalitySignature,
-];
-
-/// The filter associated with `/events/main` path.
-const MAIN_FILTER: [EventFilter; 6] = [
-    EventFilter::ApiVersion,
-    EventFilter::BlockAdded,
-    EventFilter::DeployProcessed,
-    EventFilter::DeployExpired,
-    EventFilter::Fault,
     EventFilter::Step,
 ];
-/// The filter associated with `/events/deploys` path.
-const DEPLOYS_FILTER: [EventFilter; 2] = [EventFilter::ApiVersion, EventFilter::DeployAccepted];
-/// The filter associated with `/events/sigs` path.
-const SIGNATURES_FILTER: [EventFilter; 2] =
-    [EventFilter::ApiVersion, EventFilter::FinalitySignature];
 /// The filter associated with `/events/sidecar` path.
 const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 /// The "id" field of the events sent on the event stream to clients.
@@ -78,8 +61,8 @@ type UrlProps = (&'static [EventFilter], &'static Endpoint, Option<u32>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub(super) struct DeployAccepted {
-    pub(super) deploy_accepted: Arc<Deploy>,
+pub(super) struct TransactionAccepted {
+    pub(super) transaction_accepted: Arc<Transaction>,
 }
 
 /// The components of a single SSE.
@@ -173,15 +156,17 @@ async fn filter_map_server_sent_event(
             Some(Ok(warp_event))
         }
         &SseData::BlockAdded { .. }
-        | &SseData::DeployProcessed { .. }
-        | &SseData::DeployExpired { .. }
+        | &SseData::TransactionProcessed { .. }
+        | &SseData::TransactionExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_) => {
             let warp_event = event_to_warp_event(event).id(id);
             Some(Ok(warp_event))
         }
-        SseData::DeployAccepted { deploy } => handle_deploy_accepted(event, deploy, &id),
+        SseData::TransactionAccepted(transaction) => {
+            handle_transaction_accepted(event, transaction, &id)
+        }
         &SseData::Shutdown => {
             if should_send_shutdown(event, stream_filter) {
                 build_event_for_outbound(event, id)
@@ -195,19 +180,14 @@ async fn filter_map_server_sent_event(
 fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bool {
     match (&event.inbound_filter, stream_filter) {
         (None, Endpoint::Sidecar) => true,
+        (Some(_), _) => true,
         (None, _) => false,
-        (Some(SseFilter::Main), Endpoint::Events) => true, //If this filter handles the `/events` endpoint
-        // then it should also propagate from inbounds `/events/main`
-        (Some(SseFilter::Events), Endpoint::Main) => true, //If we are connected to a legacy node
-        // and the client is listening to /events/main we want to get shutdown from that
-        (Some(a), b) if b.is_corresponding_to(a) => true,
-        _ => false,
     }
 }
 
-fn handle_deploy_accepted(
+fn handle_transaction_accepted(
     event: &ServerSentEvent,
-    deploy: &Arc<Deploy>,
+    transaction: &Arc<Transaction>,
     id: &String,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     let maybe_value = event
@@ -217,10 +197,10 @@ fn handle_deploy_accepted(
     let warp_event = match maybe_value {
         Some(json_data) => WarpServerSentEvent::default().json_data(json_data),
         None => {
-            let deploy_accepted = &DeployAccepted {
-                deploy_accepted: deploy.clone(),
+            let transaction_accepted = &TransactionAccepted {
+                transaction_accepted: transaction.clone(),
             };
-            WarpServerSentEvent::default().json_data(deploy_accepted)
+            WarpServerSentEvent::default().json_data(transaction_accepted)
         }
     }
     .unwrap_or_else(|error| {
@@ -274,9 +254,6 @@ fn build_event_for_outbound(
 pub(super) fn path_to_filter(path_param: &str) -> Option<&'static Endpoint> {
     match path_param {
         SSE_API_ROOT_PATH => Some(&Endpoint::Events),
-        SSE_API_MAIN_PATH => Some(&Endpoint::Main),
-        SSE_API_DEPLOYS_PATH => Some(&Endpoint::Deploys),
-        SSE_API_SIGNATURES_PATH => Some(&Endpoint::Sigs),
         SSE_API_SIDECAR_PATH => Some(&Endpoint::Sidecar),
         _ => None,
     }
@@ -285,9 +262,6 @@ pub(super) fn path_to_filter(path_param: &str) -> Option<&'static Endpoint> {
 pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
     match path_param {
         SSE_API_ROOT_PATH => Some(&EVENTS_FILTER[..]),
-        SSE_API_MAIN_PATH => Some(&MAIN_FILTER[..]),
-        SSE_API_DEPLOYS_PATH => Some(&DEPLOYS_FILTER[..]),
-        SSE_API_SIGNATURES_PATH => Some(&SIGNATURES_FILTER[..]),
         SSE_API_SIDECAR_PATH => Some(&SIDECAR_FILTER[..]),
         _ => None,
     }
@@ -318,11 +292,9 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
 /// Creates a 404 response with a useful error message in the body.
 fn create_404() -> Response {
     let mut response = Response::new(Body::from(format!(
-        "invalid path: expected '/{root}/{main}', '/{root}/{deploys}' or '/{root}/{sigs}'\n",
+        "invalid path: expected '/{root}' or '/{root}/{sidecar}'\n",
         root = SSE_API_ROOT_PATH,
-        main = SSE_API_MAIN_PATH,
-        deploys = SSE_API_DEPLOYS_PATH,
-        sigs = SSE_API_SIGNATURES_PATH
+        sidecar = SSE_API_SIDECAR_PATH,
     )));
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
@@ -596,8 +568,7 @@ fn handle_sse_event(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_event_types::DeployHash;
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, TransactionHash};
     use rand::Rng;
     use regex::Regex;
     use std::iter;
@@ -611,7 +582,7 @@ mod tests {
 
     async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &Endpoint::Main, filter)
+            filter_map_server_sent_event(event, &Endpoint::Events, filter)
                 .await
                 .is_none(),
             "should filter out {:?} with {:?}",
@@ -622,7 +593,7 @@ mod tests {
 
     async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &Endpoint::Main, filter)
+            filter_map_server_sent_event(event, &Endpoint::Events, filter)
                 .await
                 .is_some(),
             "should not filter out {:?} with {:?}",
@@ -650,24 +621,24 @@ mod tests {
             json_data: None,
             inbound_filter: None,
         };
-        let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
-        let deploy_accepted = ServerSentEvent {
+        let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
+        let transaction_accepted = ServerSentEvent {
             id: Some(rng.gen()),
             data: sse_data,
             json_data: None,
             inbound_filter: None,
         };
-        let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
-        let deploy_processed = ServerSentEvent {
+        let mut transactions = HashMap::new();
+        let _ = transactions.insert(transaction.hash(), transaction);
+        let transaction_processed = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_deploy_processed(&mut rng),
+            data: SseData::random_transaction_processed(&mut rng),
             json_data: None,
             inbound_filter: None,
         };
-        let deploy_expired = ServerSentEvent {
+        let transaction_expired = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_deploy_expired(&mut rng),
+            data: SseData::random_transaction_expired(&mut rng),
             json_data: None,
             inbound_filter: None,
         };
@@ -693,48 +664,42 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::Shutdown,
             json_data: None,
-            inbound_filter: Some(SseFilter::Main),
+            inbound_filter: Some(SseFilter::Events),
             //For shutdown we need to provide the inbound
             //filter because we send shutdowns only to corresponding outbounds to prevent duplicates
         };
+        let sidecar_api_version = ServerSentEvent {
+            id: Some(rng.gen()),
+            data: SseData::random_sidecar_version(&mut rng),
+            json_data: None,
+            inbound_filter: None,
+        };
 
-        // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
-        should_not_filter_out(&api_version, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&block_added, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&deploy_processed, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&fault, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&step, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &MAIN_FILTER).await;
+        // `EventFilter::Events` should only filter out `SidecarApiVersions`s.
+        should_not_filter_out(&api_version, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&block_added, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&transaction_accepted, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&transaction_processed, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&transaction_expired, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&fault, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&step, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &EVENTS_FILTER).await;
+        should_not_filter_out(&api_version, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&finality_signature, &EVENTS_FILTER[..]).await;
+        should_filter_out(&sidecar_api_version, &EVENTS_FILTER[..]).await;
 
-        should_filter_out(&deploy_accepted, &MAIN_FILTER[..]).await;
-        should_filter_out(&finality_signature, &MAIN_FILTER[..]).await;
-
-        // `EventFilter::DeployAccepted` should filter out everything except `ApiVersion`s and
-        // `DeployAccepted`s.
-        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]).await;
-
-        should_filter_out(&block_added, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&fault, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&step, &DEPLOYS_FILTER[..]).await;
-
-        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s and
-        // `FinalitySignature`s.
-        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]).await;
-
-        should_filter_out(&block_added, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&fault, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&step, &SIGNATURES_FILTER[..]).await;
+        // `EventFilter::Events` should only filter out `SidecarApiVersions`s.
+        should_filter_out(&api_version, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&block_added, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&transaction_accepted, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&transaction_processed, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&transaction_expired, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&fault, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&step, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&api_version, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&finality_signature, &SIDECAR_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &SIDECAR_FILTER).await;
+        should_not_filter_out(&sidecar_api_version, &SIDECAR_FILTER[..]).await;
     }
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
@@ -756,24 +721,24 @@ mod tests {
             json_data: None,
             inbound_filter: None,
         };
-        let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
-        let malformed_deploy_accepted = ServerSentEvent {
+        let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
+        let malformed_transaction_accepted = ServerSentEvent {
             id: None,
             data: sse_data,
             json_data: None,
             inbound_filter: None,
         };
-        let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
-        let malformed_deploy_processed = ServerSentEvent {
+        let mut transactions = HashMap::new();
+        let _ = transactions.insert(transaction.hash(), transaction);
+        let malformed_transaction_processed = ServerSentEvent {
             id: None,
-            data: SseData::random_deploy_processed(&mut rng),
+            data: SseData::random_transaction_processed(&mut rng),
             json_data: None,
             inbound_filter: None,
         };
-        let malformed_deploy_expired = ServerSentEvent {
+        let malformed_transaction_expired = ServerSentEvent {
             id: None,
-            data: SseData::random_deploy_expired(&mut rng),
+            data: SseData::random_transaction_expired(&mut rng),
             json_data: None,
             inbound_filter: None,
         };
@@ -802,16 +767,12 @@ mod tests {
             inbound_filter: None,
         };
 
-        for filter in &[
-            &MAIN_FILTER[..],
-            &DEPLOYS_FILTER[..],
-            &SIGNATURES_FILTER[..],
-        ] {
+        for filter in &[&EVENTS_FILTER[..], &SIDECAR_FILTER[..]] {
             should_filter_out(&malformed_api_version, filter).await;
             should_filter_out(&malformed_block_added, filter).await;
-            should_filter_out(&malformed_deploy_accepted, filter).await;
-            should_filter_out(&malformed_deploy_processed, filter).await;
-            should_filter_out(&malformed_deploy_expired, filter).await;
+            should_filter_out(&malformed_transaction_accepted, filter).await;
+            should_filter_out(&malformed_transaction_processed, filter).await;
+            should_filter_out(&malformed_transaction_expired, filter).await;
             should_filter_out(&malformed_fault, filter).await;
             should_filter_out(&malformed_finality_signature, filter).await;
             should_filter_out(&malformed_step, filter).await;
@@ -820,10 +781,10 @@ mod tests {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn should_filter_duplicate_events(path_filter: &str) {
+    async fn should_filter_duplicate_events() {
         let mut rng = TestRng::new();
 
-        let mut deploys = HashMap::new();
+        let mut transactions = HashMap::new();
 
         let initial_events: Vec<ServerSentEvent> =
             iter::once(ServerSentEvent::initial_event(ProtocolVersion::V1_0_0))
@@ -831,8 +792,7 @@ mod tests {
                     &mut rng,
                     0,
                     NUM_INITIAL_EVENTS,
-                    path_filter,
-                    &mut deploys,
+                    &mut transactions,
                 ))
                 .collect();
 
@@ -844,8 +804,7 @@ mod tests {
                 &mut rng,
                 *duplicate_count,
                 &initial_events,
-                path_filter,
-                &mut deploys,
+                &mut transactions,
             );
 
             let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
@@ -865,7 +824,7 @@ mod tests {
             drop(initial_events_sender);
             drop(ongoing_events_sender);
 
-            let stream_filter = path_to_filter(path_filter).unwrap();
+            let stream_filter = path_to_filter(SSE_API_ROOT_PATH).unwrap();
             #[cfg(feature = "additional-metrics")]
             let (tx, rx) = channel(1000);
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
@@ -873,7 +832,7 @@ mod tests {
                 initial_events_receiver,
                 ongoing_events_receiver,
                 stream_filter,
-                get_filter(path_filter).unwrap(),
+                get_filter(SSE_API_ROOT_PATH).unwrap(),
                 #[cfg(feature = "additional-metrics")]
                 tx,
             )
@@ -925,45 +884,32 @@ mod tests {
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
-    async fn should_filter_duplicate_main_events() {
-        should_filter_duplicate_events(SSE_API_MAIN_PATH).await
+    async fn should_filter_duplicate_firehose_events() {
+        should_filter_duplicate_events().await
     }
 
-    /// This test checks that deploy-accepted events from the initial stream which are duplicated in
-    /// the ongoing stream are filtered out.
-    #[tokio::test]
-    async fn should_filter_duplicate_deploys_events() {
-        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
-    }
-
-    /// This test checks that signature events from the initial stream which are duplicated in the
-    /// ongoing stream are filtered out.
-    #[tokio::test]
-    async fn should_filter_duplicate_signature_events() {
-        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
-    }
-
-    // Returns `count` random SSE events, all of a single variant defined by `path_filter`.  The
-    // events will have sequential IDs starting from `start_id`, and if the path filter
-    // indicates the events should be deploy-accepted ones, the corresponding random deploys
-    // will be inserted into `deploys`.
+    // Returns `count` random SSE events.  The events will have sequential IDs starting from `start_id`, and if the path filter
+    // indicates the events should be transaction-accepted ones, the corresponding random transactions
+    // will be inserted into `transactions`.
     fn make_random_events(
         rng: &mut TestRng,
         start_id: Id,
         count: usize,
-        path_filter: &str,
-        deploys: &mut HashMap<DeployHash, Deploy>,
+        transactions: &mut HashMap<TransactionHash, Transaction>,
     ) -> Vec<ServerSentEvent> {
         (start_id..(start_id + count as u32))
             .map(|id| {
-                let data = match path_filter {
-                    SSE_API_MAIN_PATH => SseData::random_block_added(rng),
-                    SSE_API_DEPLOYS_PATH => {
-                        let (event, deploy) = SseData::random_deploy_accepted(rng);
-                        assert!(deploys.insert(*deploy.hash(), deploy).is_none());
+                let discriminator = id % 3;
+                let data = match discriminator {
+                    0 => SseData::random_block_added(rng),
+                    1 => {
+                        let (event, transaction) = SseData::random_transaction_accepted(rng);
+                        assert!(transactions
+                            .insert(transaction.hash(), transaction)
+                            .is_none());
                         event
                     }
-                    SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
+                    2 => SseData::random_finality_signature(rng),
                     _ => unreachable!(),
                 };
                 ServerSentEvent {
@@ -983,8 +929,7 @@ mod tests {
         rng: &mut TestRng,
         duplicate_count: usize,
         initial_events: &[ServerSentEvent],
-        path_filter: &str,
-        deploys: &mut HashMap<DeployHash, Deploy>,
+        transactions: &mut HashMap<TransactionHash, Transaction>,
     ) -> Vec<ServerSentEvent> {
         assert!(duplicate_count < initial_events.len());
         let initial_skip_count = initial_events.len() - duplicate_count;
@@ -998,8 +943,7 @@ mod tests {
                 rng,
                 unique_start_id,
                 unique_count,
-                path_filter,
-                deploys,
+                transactions,
             ))
             .collect()
     }

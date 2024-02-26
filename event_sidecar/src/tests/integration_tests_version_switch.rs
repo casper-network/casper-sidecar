@@ -15,11 +15,9 @@ pub mod tests {
     async fn should_successfully_switch_api_versions() {
         let mut node_mock = MockNodeBuilder::build_example_node_with_version(None, None, "1.5.2");
         let properties = prepare_one_node_and_start(&mut node_mock).await;
-        let (join_handle, receiver) = fetch_data_from_endpoint(
-            "/events/main?start_from=0",
-            properties.event_stream_server_port,
-        )
-        .await;
+        let (join_handle, receiver) =
+            fetch_data_from_endpoint("/events?start_from=0", properties.event_stream_server_port)
+                .await;
         let receiver = wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
         stop_nodes_and_wait(vec![&mut node_mock]).await;
 

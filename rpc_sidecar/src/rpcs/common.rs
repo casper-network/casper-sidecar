@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
-use casper_types_ver_2_0::{
+use casper_types::{
     account::AccountHash, AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier,
     GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
 };

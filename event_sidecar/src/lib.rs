@@ -34,6 +34,7 @@ use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
 use casper_event_types::{metrics, sse_data::SseData, Filter};
+use casper_types::ProtocolVersion;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use tokio::{
@@ -375,107 +376,108 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             )
             .await;
         }
-        SseData::DeployAccepted { deploy } => {
+        SseData::TransactionAccepted(transaction) => {
+            let transaction_accepted = TransactionAccepted::new(transaction.clone());
+            let entity_identifier = transaction_accepted.identifier();
             if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy.hash().inner());
-                info!("Deploy Accepted: {:18}", hex_deploy_hash);
-                debug!("Deploy Accepted: {}", hex_deploy_hash);
+                info!("Transaction Accepted: {:18}", entity_identifier);
+                debug!("Transaction Accepted: {}", entity_identifier);
             }
-            let deploy_accepted = DeployAccepted::new(deploy.clone());
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_deploy_accepted(
-                    deploy_accepted,
+                .save_transaction_accepted(
+                    transaction_accepted,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                 )
                 .await;
             handle_database_save_result(
-                "DeployAccepted",
-                HexFmt(deploy.hash().inner()).to_string().as_str(),
+                "TransactionAccepted",
+                &entity_identifier,
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
                 sse_event.json_data,
-                || SseData::DeployAccepted { deploy },
+                || SseData::TransactionAccepted(transaction),
             )
             .await;
         }
-        SseData::DeployExpired { deploy_hash } => {
+        SseData::TransactionExpired { transaction_hash } => {
+            let transaction_expired = TransactionExpired::new(transaction_hash);
+            let entity_identifier = transaction_expired.identifier();
             if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy_hash.inner());
-                info!("Deploy Expired: {:18}", hex_deploy_hash);
-                debug!("Deploy Expired: {}", hex_deploy_hash);
+                info!("Transaction Expired: {:18}", entity_identifier);
+                debug!("Transaction Expired: {}", entity_identifier);
             }
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_deploy_expired(
-                    DeployExpired::new(deploy_hash),
+                .save_transaction_expired(
+                    transaction_expired,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                 )
                 .await;
             handle_database_save_result(
-                "DeployExpired",
-                HexFmt(deploy_hash.inner()).to_string().as_str(),
+                "TransactionExpired",
+                &entity_identifier,
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
                 sse_event.json_data,
-                || SseData::DeployExpired { deploy_hash },
+                || SseData::TransactionExpired { transaction_hash },
             )
             .await;
         }
-        SseData::DeployProcessed {
-            deploy_hash,
-            account,
+        SseData::TransactionProcessed {
+            transaction_hash,
+            initiator_addr,
             timestamp,
             ttl,
-            dependencies,
             block_hash,
             execution_result,
+            messages,
         } => {
-            if enable_event_logging {
-                let hex_deploy_hash = HexFmt(deploy_hash.inner());
-                info!("Deploy Processed: {:18}", hex_deploy_hash);
-                debug!("Deploy Processed: {}", hex_deploy_hash);
-            }
-            let deploy_processed = DeployProcessed::new(
-                deploy_hash.clone(),
-                account.clone(),
+            //TODO fix all these clones
+            let transaction_processed = TransactionProcessed::new(
+                transaction_hash.clone(),
+                initiator_addr.clone(),
                 timestamp,
                 ttl,
-                dependencies.clone(),
                 block_hash.clone(),
                 execution_result.clone(),
+                messages.clone(),
             );
+            let entity_identifier = transaction_processed.identifier();
+            if enable_event_logging {
+                info!("Transaction Processed: {:18}", entity_identifier);
+                debug!("Transaction Processed: {}", entity_identifier);
+            }
             count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
-                .save_deploy_processed(
-                    deploy_processed.clone(),
+                .save_transaction_processed(
+                    transaction_processed,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                 )
                 .await;
-
             handle_database_save_result(
-                "DeployProcessed",
-                HexFmt(deploy_hash.inner()).to_string().as_str(),
+                "TransactionProcessed",
+                &entity_identifier,
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
                 sse_event.json_data,
-                || SseData::DeployProcessed {
-                    deploy_hash,
-                    account,
+                || SseData::TransactionProcessed {
+                    transaction_hash,
+                    initiator_addr,
                     timestamp,
                     ttl,
-                    dependencies,
                     block_hash,
                     execution_result,
+                    messages,
                 },
             )
             .await;
@@ -543,9 +545,9 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
         }
         SseData::Step {
             era_id,
-            execution_effect,
+            execution_effects,
         } => {
-            let step = Step::new(era_id, execution_effect.clone());
+            let step = Step::new(era_id, execution_effects.clone());
             if enable_event_logging {
                 info!("Step at era: {}", era_id.value());
             }
@@ -567,7 +569,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 sse_event.json_data,
                 || SseData::Step {
                     era_id,
-                    execution_effect,
+                    execution_effects,
                 },
             )
             .await;
@@ -617,7 +619,7 @@ async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sy
 
 async fn handle_api_version(
     api_version_manager: std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
-    version: casper_types::ProtocolVersion,
+    version: ProtocolVersion,
     outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
     filter: Filter,
     enable_event_logging: bool,
@@ -704,10 +706,7 @@ fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + 
 
 fn build_queues(cache_size: usize) -> HashMap<Filter, (Sender<SseEvent>, Receiver<SseEvent>)> {
     let mut map = HashMap::new();
-    map.insert(Filter::Deploys, mpsc_channel(cache_size));
     map.insert(Filter::Events, mpsc_channel(cache_size));
-    map.insert(Filter::Main, mpsc_channel(cache_size));
-    map.insert(Filter::Sigs, mpsc_channel(cache_size));
     map
 }
 
