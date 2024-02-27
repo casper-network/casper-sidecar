@@ -166,6 +166,7 @@ mod tests {
         testing::TestRng,
         Block, TestBlockBuilder,
     };
+    use pretty_assertions::assert_eq;
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
 

@@ -10,8 +10,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest, GlobalStateIdentifier,
-    JsonBlockWithSignatures, Key, StoredValue, Transfer,
+    global_state::TrieMerkleProof, BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest,
+    GlobalStateIdentifier, JsonBlockWithSignatures, Key, StoredValue, Transfer,
 };
 
 use super::{
@@ -352,15 +352,15 @@ async fn get_era_summary_by_block(
     fn create_era_summary(
         block_header: &BlockHeader,
         stored_value: StoredValue,
-        merkle_proof: String,
-    ) -> EraSummary {
-        EraSummary {
+        merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
+    ) -> Result<EraSummary, Error> {
+        Ok(EraSummary {
             block_hash: block_header.block_hash(),
             era_id: block_header.era_id(),
             stored_value,
             state_root_hash: *block_header.state_root_hash(),
-            merkle_proof,
-        }
+            merkle_proof: common::encode_proof(&merkle_proof)?,
+        })
     }
 
     let state_identifier = GlobalStateIdentifier::StateRootHash(*block_header.state_root_hash());
@@ -371,7 +371,7 @@ async fn get_era_summary_by_block(
 
     let era_summary = if let Some(result) = result {
         let (value, merkle_proof) = result.into_inner();
-        create_era_summary(block_header, value, merkle_proof)
+        create_era_summary(block_header, value, merkle_proof)?
     } else {
         let (result, merkle_proof) = node_client
             .query_global_state(
@@ -384,7 +384,7 @@ async fn get_era_summary_by_block(
             .ok_or(Error::GlobalStateEntryNotFound)?
             .into_inner();
 
-        create_era_summary(block_header, result, merkle_proof)
+        create_era_summary(block_header, result, merkle_proof)?
     };
     Ok(era_summary)
 }
@@ -398,24 +398,30 @@ mod tests {
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
             GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
-        }, system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, SignedBlock, TestBlockBuilder, TestBlockV1Builder
+        },
+        system::auction::EraInfo,
+        testing::TestRng,
+        Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, SignedBlock,
+        TestBlockBuilder, TestBlockV1Builder,
     };
+    use pretty_assertions::assert_eq;
     use rand::Rng;
 
     use super::*;
-    use pretty_assertions::assert_eq;
 
     #[tokio::test]
     async fn should_read_block_v2() {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
+        let signatures = BlockSignaturesV2::new(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            ChainNameDigest::random(rng),
+        );
         let resp = GetBlock::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(
-                    block.clone(),
-                    signatures.into(),
-                ),
+                block: SignedBlock::new(block.clone(), signatures.into()),
                 transfers: vec![],
             }),
             None,
@@ -477,13 +483,15 @@ mod tests {
                 Some(rng.gen()),
             ));
         }
-        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
+        let signatures = BlockSignaturesV2::new(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            ChainNameDigest::random(rng),
+        );
         let resp = GetBlockTransfers::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(
-                    Block::V2(block.clone()),
-                    signatures.into(),
-                ),
+                block: SignedBlock::new(Block::V2(block.clone()), signatures.into()),
                 transfers: transfers.clone(),
             }),
             None,
@@ -506,13 +514,15 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
 
-        let signatures = BlockSignaturesV2::new(*block.hash(), block.height(), block.era_id(), ChainNameDigest::random(rng));
+        let signatures = BlockSignaturesV2::new(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            ChainNameDigest::random(rng),
+        );
         let resp = GetStateRootHash::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(
-                    Block::V2(block.clone()),
-                    signatures.into(),
-                ),
+                block: SignedBlock::new(Block::V2(block.clone()), signatures.into()),
                 transfers: vec![],
             }),
             None,
@@ -552,7 +562,7 @@ mod tests {
                     era_id: block.era_id(),
                     stored_value: StoredValue::EraInfo(EraInfo::new()),
                     state_root_hash: *block.state_root_hash(),
-                    merkle_proof: String::new(),
+                    merkle_proof: String::from("00000000"),
                 }
             }
         );
@@ -581,7 +591,7 @@ mod tests {
                     era_id: block.era_id(),
                     stored_value: StoredValue::EraInfo(EraInfo::new()),
                     state_root_hash: *block.state_root_hash(),
-                    merkle_proof: String::new(),
+                    merkle_proof: String::from("00000000"),
                 })
             }
         );
@@ -685,10 +695,7 @@ mod tests {
                     ..
                 })) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
-                        GlobalStateQueryResult::new(
-                            StoredValue::EraInfo(EraInfo::new()),
-                            String::new(),
-                        ),
+                        GlobalStateQueryResult::new(StoredValue::EraInfo(EraInfo::new()), vec![]),
                         SUPPORTED_PROTOCOL_VERSION,
                     ),
                     &[],
