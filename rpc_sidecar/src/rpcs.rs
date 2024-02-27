@@ -29,7 +29,7 @@ use casper_json_rpc::{
     CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
     ReservedErrorCode,
 };
-use casper_types_ver_2_0::SemVer;
+use casper_types::SemVer;
 
 pub use common::ErrorData;
 use docs::DocExample;
@@ -392,7 +392,7 @@ mod tests {
     use warp::{filters::BoxedFilter, Filter, Reply};
 
     use casper_json_rpc::{filters, Response};
-    use casper_types_ver_2_0::DeployHash;
+    use casper_types::DeployHash;
 
     use super::*;
 
@@ -544,7 +544,7 @@ mod tests {
     }
 
     mod rpc_with_optional_params {
-        use casper_types_ver_2_0::BlockIdentifier;
+        use casper_types::BlockIdentifier;
 
         use crate::rpcs::chain::{GetBlock, GetBlockParams, GetBlockResult};
 

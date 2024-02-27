@@ -1,8 +1,6 @@
 [workspace]
 resolver = "1"
 members = [
-    "casper_types",
-    "casper_types_ver_2_0",
     "event_sidecar",
     "json_rpc",
     "listener",
@@ -14,8 +12,7 @@ members = [
 [workspace.dependencies]
 anyhow = "1"
 async-stream = "0.3.4"
-casper-types = { path = "./casper_types", version = "4.0.1" }
-casper-types-ver-2_0 = { version = "3.0.0", path = "./casper_types_ver_2_0" }
+casper-types = { git = "https://github.com/jacek-casper/casper-node", branch="sidecar-extracted" }
 casper-event-sidecar = { path = "./event_sidecar", version = "1.0.0" }
 casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
 datasize = "0.2.11"

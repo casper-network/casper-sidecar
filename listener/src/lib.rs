@@ -207,8 +207,9 @@ impl EventListener {
                     match err {
                         ConnectionManagerError::NonRecoverableError { error } => {
                             error!(
-                                "Restarting event listener {} because of NonRecoverableError: {}",
+                                "Restarting event listener {}:{} because of NonRecoverableError: {}",
                                 self.node.ip_address.to_string(),
+                                self.node.sse_port,
                                 error
                             );
                             log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
@@ -217,7 +218,7 @@ impl EventListener {
                         ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
-                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
+                                error!("Restarting event listener {}:{} because of no more active connections left: {}", self.node.ip_address.to_string(), self.node.sse_port, error);
                                 log_status_for_event_listener(
                                     EventListenerStatus::Reconnecting,
                                     self,
@@ -356,21 +357,8 @@ mod tests {
         let err = run_event_listener(2, version_fetcher, connections_builder.clone(), true).await;
 
         let received_data = connections_builder.get_received_data().await;
-        assert_eq!(received_data.len(), 2);
-        assert!(set_contains(received_data, vec!["main-1", "events-1"],));
-        assert!(err.to_string().contains("Max connection attempts reached"));
-    }
-
-    #[tokio::test]
-    async fn given_event_listener_should_fail_when_one_connection_manager_fails_other_does_not() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
-        let connections_builder = Arc::new(MockConnectionsBuilder::one_fails_immediatly());
-
-        let err = run_event_listener(1, version_fetcher, connections_builder.clone(), true).await;
-
-        let received_data = connections_builder.get_received_data().await;
         assert_eq!(received_data.len(), 1);
-        assert!(set_contains(received_data, vec!["main-1"],));
+        assert!(set_contains(received_data, vec!["events-1"],));
         assert!(err.to_string().contains("Max connection attempts reached"));
     }
 
@@ -388,14 +376,14 @@ mod tests {
 
     #[tokio::test]
     async fn given_event_listener_should_fetch_data_if_enough_reconnections() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
+        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("2.0.0");
         let connections_builder = Arc::new(MockConnectionsBuilder::ok_after_two_fails());
 
         let err = run_event_listener(3, version_fetcher, connections_builder.clone(), true).await;
 
         let received_data = connections_builder.get_received_data().await;
-        assert_eq!(received_data.len(), 2);
-        assert!(set_contains(received_data, vec!["main-2", "events-2"],));
+        assert_eq!(received_data.len(), 1);
+        assert!(set_contains(received_data, vec!["events-2"],));
         assert!(err.to_string().contains("Max connection attempts reached"));
     }
 

@@ -86,32 +86,34 @@ impl DatabaseWriter for $extended_type {
         res
     }
 
-    async fn save_deploy_accepted(
+    async fn save_transaction_accepted(
         &self,
-        deploy_accepted: DeployAccepted,
+        transaction_accepted: TransactionAccepted,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
+        let transaction_type_id = transaction_accepted.transaction_type_id();
         let mut transaction = self.get_transaction().await?;
-        let json = serde_json::to_string(&deploy_accepted)?;
-        let encoded_hash = deploy_accepted.hex_encoded_hash();
+        let json = serde_json::to_string(&transaction_accepted)?;
+        let transaction_identifier = transaction_accepted.identifier();
 
         let event_log_id = save_event_log(
-                EventTypeId::DeployAccepted as u8,
+                EventTypeId::TransactionAccepted as u8,
                 &event_source_address,
                 event_id,
-                &encoded_hash,
+                &transaction_identifier,
                 &api_version,
                 &mut transaction,
             )
             .await?;
 
+        let transaction_type_id_raw = transaction_type_id as u8;
         let batched_insert_stmts = vec![
-            tables::deploy_accepted::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::transaction_accepted::create_insert_stmt(transaction_type_id_raw, transaction_identifier.clone(), json, event_log_id)?,
+            tables::transaction_event::create_insert_stmt(event_log_id, transaction_type_id_raw, transaction_identifier)?,
         ]
         .iter()
         .map(|stmt| stmt.to_string($query_materializer_expr))
@@ -122,35 +124,37 @@ impl DatabaseWriter for $extended_type {
             transaction.commit().await?;
         }
         #[cfg(feature = "additional-metrics")]
-        observe_db_operation_time("save_deploy_accepted", start);
+        observe_db_operation_time("save_transaction_accepted", start);
         res
     }
 
-    async fn save_deploy_processed(
+    async fn save_transaction_processed(
         &self,
-        deploy_processed: DeployProcessed,
+        transaction_processed: TransactionProcessed,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
+        let transaction_type_id = transaction_processed.transaction_type_id();
         let mut transaction = self.get_transaction().await?;
-        let json = serde_json::to_string(&deploy_processed)?;
-        let encoded_hash = deploy_processed.hex_encoded_hash();
+        let json = serde_json::to_string(&transaction_processed)?;
+        let identifier = transaction_processed.identifier();
         let event_log_id = save_event_log(
-                EventTypeId::DeployProcessed as u8,
+                EventTypeId::TransactionProcessed as u8,
                 &event_source_address,
                 event_id,
-                &encoded_hash,
+                &identifier,
                 &api_version,
                 &mut transaction,
             )
             .await?;
 
+        let transaction_type_id_raw = transaction_type_id as u8;
         let batched_insert_stmts = vec![
-            tables::deploy_processed::create_insert_stmt(encoded_hash.clone(), json, event_log_id)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::transaction_processed::create_insert_stmt(transaction_type_id_raw, identifier.clone(), json, event_log_id)?,
+            tables::transaction_event::create_insert_stmt(event_log_id, transaction_type_id_raw, identifier)?,
         ]
         .iter()
         .map(|stmt| stmt.to_string($query_materializer_expr))
@@ -161,35 +165,37 @@ impl DatabaseWriter for $extended_type {
             transaction.commit().await?;
         }
         #[cfg(feature = "additional-metrics")]
-        observe_db_operation_time("save_deploy_processed", start);
+        observe_db_operation_time("save_transaction_processed", start);
         res
     }
 
-    async fn save_deploy_expired(
+    async fn save_transaction_expired(
         &self,
-        deploy_expired: DeployExpired,
+        transaction_expired: TransactionExpired,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();
+        let transaction_type_id = transaction_expired.transaction_type_id();
         let mut transaction = self.get_transaction().await?;
-        let json = serde_json::to_string(&deploy_expired)?;
-        let encoded_hash = deploy_expired.hex_encoded_hash();
+        let json = serde_json::to_string(&transaction_expired)?;
+        let transaction_identifier = transaction_expired.identifier();
         let event_log_id = save_event_log(
-                EventTypeId::DeployExpired as u8,
+                EventTypeId::TransactionExpired as u8,
                 &event_source_address,
                 event_id,
-                &encoded_hash,
+                &transaction_identifier,
                 &api_version,
                 &mut transaction,
             )
             .await?;
 
+        let transaction_type_id_raw = transaction_type_id as u8;
         let batched_insert_stmts = vec![
-            tables::deploy_expired::create_insert_stmt(encoded_hash.clone(), event_log_id, json)?,
-            tables::deploy_event::create_insert_stmt(event_log_id, encoded_hash)?,
+            tables::transaction_expired::create_insert_stmt(transaction_type_id_raw, transaction_identifier.clone(), event_log_id, json)?,
+            tables::transaction_event::create_insert_stmt(event_log_id, transaction_type_id_raw, transaction_identifier)?,
         ]
         .iter()
         .map(|stmt| stmt.to_string($query_materializer_expr))
@@ -200,7 +206,7 @@ impl DatabaseWriter for $extended_type {
             transaction.commit().await?;
         }
         #[cfg(feature = "additional-metrics")]
-        observe_db_operation_time("save_deploy_expired", start);
+        observe_db_operation_time("save_transaction_expired", start);
         res
     }
 

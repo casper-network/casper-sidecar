@@ -71,11 +71,11 @@ async fn check_latency_on_load_testing_step_scenario() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-async fn check_latency_on_load_testing_deploys_scenario() {
+async fn check_latency_on_load_testing_transactions_scenario() {
     let duration = Duration::from_secs(60);
 
     performance_check(
-        Scenario::LoadTestingDeploy(
+        Scenario::LoadTestingTransaction(
             GenericScenarioSettings::new(Bound::Timed(duration), None),
             20,
         ),
@@ -151,9 +151,9 @@ pub(crate) enum EventType {
     ApiVersion,
     SidecarVersion,
     BlockAdded,
-    DeployAccepted,
-    DeployExpired,
-    DeployProcessed,
+    TransactionAccepted,
+    TransactionExpired,
+    TransactionProcessed,
     Fault,
     FinalitySignature,
     Step,
@@ -166,9 +166,9 @@ impl From<SseData> for EventType {
             SseData::ApiVersion(_) => EventType::ApiVersion,
             SseData::SidecarVersion(_) => EventType::SidecarVersion,
             SseData::BlockAdded { .. } => EventType::BlockAdded,
-            SseData::DeployAccepted { .. } => EventType::DeployAccepted,
-            SseData::DeployProcessed { .. } => EventType::DeployProcessed,
-            SseData::DeployExpired { .. } => EventType::DeployExpired,
+            SseData::TransactionAccepted { .. } => EventType::TransactionAccepted,
+            SseData::TransactionProcessed { .. } => EventType::TransactionProcessed,
+            SseData::TransactionExpired { .. } => EventType::TransactionExpired,
             SseData::Fault { .. } => EventType::Fault,
             SseData::FinalitySignature(_) => EventType::FinalitySignature,
             SseData::Step { .. } => EventType::Step,
@@ -183,9 +183,9 @@ impl Display for EventType {
             EventType::ApiVersion => "ApiVersion",
             EventType::SidecarVersion => "SidecarVersion",
             EventType::BlockAdded => "BlockAdded",
-            EventType::DeployAccepted => "DeployAccepted",
-            EventType::DeployExpired => "DeployExpired",
-            EventType::DeployProcessed => "DeployProcessed",
+            EventType::TransactionAccepted => "TransactionAccepted",
+            EventType::TransactionExpired => "TransactionExpired",
+            EventType::TransactionProcessed => "TransactionProcessed",
             EventType::Fault => "Fault",
             EventType::FinalitySignature => "FinalitySignature",
             EventType::Step => "Step",
@@ -205,9 +205,11 @@ impl TimestampedEvent {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
             SseData::SidecarVersion(_) => "SidecarVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
-            SseData::DeployAccepted { deploy } => deploy.hash().to_string(),
-            SseData::DeployProcessed { deploy_hash, .. } => deploy_hash.to_string(),
-            SseData::DeployExpired { deploy_hash } => deploy_hash.to_string(),
+            SseData::TransactionAccepted(transaction) => transaction.hash().to_string(),
+            SseData::TransactionProcessed {
+                transaction_hash, ..
+            } => transaction_hash.to_string(),
+            SseData::TransactionExpired { transaction_hash } => transaction_hash.to_string(),
             SseData::Fault {
                 era_id, public_key, ..
             } => format!("{}-{}", era_id.value(), public_key.to_hex()),
@@ -225,9 +227,9 @@ impl TimestampedEvent {
         match (&self.event, &other.event) {
             (SseData::ApiVersion(_), SseData::ApiVersion(_))
             | (SseData::BlockAdded { .. }, SseData::BlockAdded { .. })
-            | (SseData::DeployAccepted { .. }, SseData::DeployAccepted { .. })
-            | (SseData::DeployProcessed { .. }, SseData::DeployProcessed { .. })
-            | (SseData::DeployExpired { .. }, SseData::DeployExpired { .. })
+            | (SseData::TransactionAccepted { .. }, SseData::TransactionAccepted { .. })
+            | (SseData::TransactionProcessed { .. }, SseData::TransactionProcessed { .. })
+            | (SseData::TransactionExpired { .. }, SseData::TransactionExpired { .. })
             | (SseData::Fault { .. }, SseData::Fault { .. })
             | (SseData::FinalitySignature(_), SseData::FinalitySignature(_))
             | (SseData::Step { .. }, SseData::Step { .. })
@@ -356,11 +358,11 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     let event_types_ordered_for_efficiency = vec![
         EventType::FinalitySignature,
-        EventType::DeployAccepted,
-        EventType::DeployProcessed,
+        EventType::TransactionAccepted,
+        EventType::TransactionProcessed,
         EventType::BlockAdded,
         EventType::Step,
-        EventType::DeployExpired,
+        EventType::TransactionExpired,
         EventType::Fault,
     ];
 
@@ -431,11 +433,11 @@ async fn live_performance_check(
 
     let event_types_ordered_for_efficiency = vec![
         EventType::FinalitySignature,
-        EventType::DeployAccepted,
-        EventType::DeployProcessed,
+        EventType::TransactionAccepted,
+        EventType::TransactionProcessed,
         EventType::BlockAdded,
         EventType::Step,
-        EventType::DeployExpired,
+        EventType::TransactionExpired,
         EventType::Fault,
     ];
 
@@ -457,9 +459,9 @@ fn check_latencies_are_acceptable(
 ) {
     let event_types = vec![
         EventType::BlockAdded,
-        EventType::DeployAccepted,
-        EventType::DeployExpired,
-        EventType::DeployProcessed,
+        EventType::TransactionAccepted,
+        EventType::TransactionExpired,
+        EventType::TransactionProcessed,
         EventType::Fault,
         EventType::FinalitySignature,
         EventType::Step,
@@ -486,9 +488,9 @@ fn create_results_from_data(
 ) -> Vec<Results> {
     let event_types_ordered_for_display = vec![
         EventType::BlockAdded,
-        EventType::DeployAccepted,
-        EventType::DeployExpired,
-        EventType::DeployProcessed,
+        EventType::TransactionAccepted,
+        EventType::TransactionExpired,
+        EventType::TransactionProcessed,
         EventType::Fault,
         EventType::FinalitySignature,
         EventType::Step,
@@ -675,8 +677,11 @@ async fn start_counting_outbound_events(
     cancellation_token: CancellationToken,
     event_stream_server_port: u16,
 ) -> JoinHandle<u32> {
-    let (_, receiver) =
-        fetch_data_from_endpoint("/events/deploys?start_from=0", event_stream_server_port).await;
+    let (_, receiver) = fetch_data_from_endpoint(
+        "/events/Transactions?start_from=0",
+        event_stream_server_port,
+    )
+    .await;
     let mut receiver = wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
     tokio::spawn(async move {
         let mut counter = 0;

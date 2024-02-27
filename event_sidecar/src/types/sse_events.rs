@@ -1,12 +1,19 @@
-#[cfg(test)]
-use casper_event_types::Digest;
-use casper_event_types::{BlockHash, Deploy, DeployHash, FinalitySignature as FinSig, JsonBlock};
-#[cfg(test)]
-use casper_types::testing::TestRng;
+use casper_types::FinalitySignature as FinSig;
 use casper_types::{
-    AsymmetricType, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    contract_messages::Messages, execution::ExecutionResult, AsymmetricType, Block, BlockHash,
+    EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
+};
+#[cfg(test)]
+use casper_types::ChainNameDigest;
+#[cfg(test)]
+use casper_types::{
+    execution::{execution_result_v1::ExecutionResultV1, Effects, ExecutionResultV2},
+    testing::TestRng,
+    TestBlockBuilder, TestBlockV1Builder,
 };
 use derive_new::new;
+use hex::ToHex;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -17,6 +24,8 @@ use std::{
 };
 use utoipa::ToSchema;
 
+use crate::sql::tables::transaction_type::TransactionTypeId;
+
 /// The version of this node's API server.  This event will always be the first sent to a new
 /// client, and will have no associated event ID provided.
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
@@ -26,15 +35,40 @@ pub struct ApiVersion(ProtocolVersion);
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct BlockAdded {
     block_hash: BlockHash,
-    block: Box<JsonBlock>,
+    block: Box<Block>,
+}
+
+#[cfg(test)]
+pub fn random_execution_result(rng: &mut TestRng) -> ExecutionResult {
+    match rng.gen_range(0..2) {
+        0 => {
+            let result_v1: ExecutionResultV1 = rng.gen();
+            ExecutionResult::V1(result_v1)
+        }
+        1 => {
+            let result_v2: ExecutionResultV2 = rng.gen();
+            ExecutionResult::V2(result_v2)
+        }
+        _ => panic!("Unexpected value"),
+    }
 }
 
 #[cfg(test)]
 impl BlockAdded {
     pub fn random(rng: &mut TestRng) -> Self {
-        let block = JsonBlock::random(rng);
+        let block = match rng.gen_range(0..2) {
+            0 => {
+                let block_v1 = TestBlockV1Builder::default().build(rng);
+                Block::V1(block_v1)
+            }
+            1 => {
+                let block_v2 = TestBlockBuilder::default().build(rng);
+                Block::V2(block_v2)
+            }
+            _ => panic!("Unexpected value"),
+        };
         Self {
-            block_hash: block.hash,
+            block_hash: *block.hash(),
             block: Box::new(block),
         }
     }
@@ -46,86 +80,163 @@ impl BlockAdded {
     }
 
     pub fn get_height(&self) -> u64 {
-        self.block.header.height
+        self.block.height()
     }
 }
 
-/// The given deploy has been newly-accepted by this node.
+/// The given transaction has been newly-accepted by this node.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
-pub struct DeployAccepted {
-    // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
-    deploy: Arc<Deploy>,
+pub struct TransactionAccepted {
+    // It's an Arc to not create multiple copies of the same transaction for multiple subscribers.
+    transaction: Arc<Transaction>,
 }
 
-impl DeployAccepted {
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        Self {
-            deploy: Arc::new(Deploy::random(rng)),
+impl TransactionAccepted {
+    pub fn identifier(&self) -> String {
+        transaction_hash_to_identifier(&self.transaction.hash())
+    }
+
+    pub fn transaction_type_id(&self) -> TransactionTypeId {
+        match *self.transaction {
+            Transaction::Deploy(_) => TransactionTypeId::Deploy,
+            Transaction::V1(_) => TransactionTypeId::Version1,
         }
     }
 
     #[cfg(test)]
-    pub fn deploy_hash(&self) -> DeployHash {
-        self.deploy.hash().to_owned()
+    pub fn api_transaction_type_id(&self) -> crate::types::database::TransactionTypeId {
+        match *self.transaction {
+            Transaction::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
+            Transaction::V1(_) => crate::types::database::TransactionTypeId::Version1,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            transaction: Arc::new(Transaction::random(rng)),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn transaction_hash(&self) -> TransactionHash {
+        self.transaction.hash().to_owned()
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy.hash().inner())
+        let hex_fmt: String = match self.transaction.hash() {
+            TransactionHash::Deploy(deploy) => deploy.encode_hex(),
+            TransactionHash::V1(transaction) => transaction.encode_hex(),
+        };
+        hex_fmt
     }
 }
 
-/// The given deploy has been executed, committed and forms part of the given block.
+/// The given transaction has been executed, committed and forms part of the given block.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
-pub struct DeployProcessed {
-    deploy_hash: Box<DeployHash>,
+pub struct TransactionProcessed {
+    transaction_hash: Box<TransactionHash>,
     #[schema(value_type = String)]
-    account: Box<PublicKey>,
+    initiator_addr: Box<InitiatorAddr>,
     #[schema(value_type = String)]
     timestamp: Timestamp,
     #[schema(value_type = String)]
     ttl: TimeDiff,
-    dependencies: Vec<DeployHash>,
     block_hash: Box<BlockHash>,
+    //#[data_size(skip)]
     execution_result: Box<ExecutionResult>,
+    messages: Messages,
 }
 
-impl DeployProcessed {
+impl TransactionProcessed {
+    pub fn identifier(&self) -> String {
+        transaction_hash_to_identifier(&self.transaction_hash)
+    }
+
+    pub fn transaction_type_id(&self) -> TransactionTypeId {
+        match *self.transaction_hash.as_ref() {
+            TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
+            TransactionHash::V1(_) => TransactionTypeId::Version1,
+        }
+    }
+
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
-        let deploy = Deploy::random(rng);
+    pub fn api_transaction_type_id(&self) -> crate::types::database::TransactionTypeId {
+        match *self.transaction_hash.as_ref() {
+            TransactionHash::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
+            TransactionHash::V1(_) => crate::types::database::TransactionTypeId::Version1,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng, with_transaction_hash: Option<TransactionHash>) -> Self {
+        let transaction = Transaction::random(rng);
+        let ttl = match &transaction {
+            Transaction::Deploy(deploy) => deploy.ttl(),
+            Transaction::V1(transaction) => transaction.ttl(),
+        };
+        let timestamp = match &transaction {
+            Transaction::Deploy(deploy) => deploy.timestamp(),
+            Transaction::V1(transaction) => transaction.timestamp(),
+        };
+        let initiator_addr = Box::new(transaction.initiator_addr());
         Self {
-            deploy_hash: Box::new(with_deploy_hash.unwrap_or(*deploy.hash())),
-            account: Box::new(deploy.header().account().clone()),
-            timestamp: deploy.header().timestamp(),
-            ttl: deploy.header().ttl(),
-            dependencies: deploy.header().dependencies().clone(),
+            transaction_hash: Box::new(with_transaction_hash.unwrap_or(transaction.hash())),
+            initiator_addr,
+            timestamp,
+            ttl,
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(rng.gen()),
+            execution_result: Box::new(random_execution_result(rng)),
+            messages: rng.random_vec(1..5),
         }
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy_hash.inner())
+        match *self.transaction_hash.as_ref() {
+            TransactionHash::Deploy(deploy_hash) => deploy_hash.encode_hex(),
+            TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
+        }
     }
 }
 
-/// The given deploy has expired.
+/// The given transaction has expired.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
-pub struct DeployExpired {
-    deploy_hash: DeployHash,
+pub struct TransactionExpired {
+    transaction_hash: TransactionHash,
 }
 
-impl DeployExpired {
+impl TransactionExpired {
+    pub fn identifier(&self) -> String {
+        transaction_hash_to_identifier(&self.transaction_hash)
+    }
+
+    pub fn transaction_type_id(&self) -> TransactionTypeId {
+        match self.transaction_hash {
+            TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
+            TransactionHash::V1(_) => TransactionTypeId::Version1,
+        }
+    }
+
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng, with_deploy_hash: Option<DeployHash>) -> Self {
+    pub fn api_transaction_type_id(&self) -> crate::types::database::TransactionTypeId {
+        match self.transaction_hash {
+            TransactionHash::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
+            TransactionHash::V1(_) => crate::types::database::TransactionTypeId::Version1,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng, with_transaction_hash: Option<TransactionHash>) -> Self {
         Self {
-            deploy_hash: with_deploy_hash.unwrap_or_else(|| DeployHash::new(Digest::random(rng))),
+            transaction_hash: with_transaction_hash.unwrap_or_else(|| TransactionHash::random(rng)),
         }
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        hex::encode(self.deploy_hash.inner())
+        match self.transaction_hash {
+            TransactionHash::Deploy(deploy_hash) => deploy_hash.encode_hex(),
+            TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
+        }
     }
 }
 
@@ -162,12 +273,24 @@ impl Display for Fault {
 #[derive(Clone, Debug, Serialize, Deserialize, new)]
 pub struct FinalitySignature(Box<FinSig>);
 
+impl From<FinalitySignature> for FinSig {
+    fn from(val: FinalitySignature) -> Self {
+        *val.0
+    }
+}
+
 impl FinalitySignature {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        let block_hash = BlockHash::random(rng);
+        let block_height = rng.gen::<u64>();
+        let era_id = EraId::random(rng);
+        let chain_name_digest = ChainNameDigest::random(rng);
         Self(Box::new(FinSig::random_for_block(
-            BlockHash::random(rng),
-            rng.gen(),
+            block_hash,
+            block_height,
+            era_id,
+            chain_name_digest,
             rng,
         )))
     }
@@ -200,14 +323,17 @@ impl Step {
     pub fn random(rng: &mut TestRng) -> Self {
         use serde_json::value::to_raw_value;
 
-        let execution_effect = match rng.gen::<ExecutionResult>() {
-            ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
-                effect
-            }
-        };
+        let execution_effect = Effects::random(rng);
         Self {
             era_id: EraId::new(rng.gen()),
             execution_effect: to_raw_value(&execution_effect).unwrap(),
         }
+    }
+}
+
+fn transaction_hash_to_identifier(transaction_hash: &TransactionHash) -> String {
+    match transaction_hash {
+        TransactionHash::Deploy(deploy) => hex::encode(deploy.inner()),
+        TransactionHash::V1(transaction) => hex::encode(transaction.inner()),
     }
 }

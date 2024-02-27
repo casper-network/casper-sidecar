@@ -1,10 +1,36 @@
 use super::{errors::handle_rejection, handlers, openapi::build_open_api_filters};
 use crate::{
-    types::database::DatabaseReader,
+    types::database::{DatabaseReader, TransactionTypeId},
     utils::{root_filter, InvalidPath},
 };
-use std::convert::Infallible;
+use std::{convert::Infallible, str::FromStr};
 use warp::Filter;
+
+pub enum TransactionTypeIdFilter {
+    Deploy,
+    Version1,
+}
+
+impl From<TransactionTypeIdFilter> for TransactionTypeId {
+    fn from(val: TransactionTypeIdFilter) -> Self {
+        match val {
+            TransactionTypeIdFilter::Deploy => TransactionTypeId::Deploy,
+            TransactionTypeIdFilter::Version1 => TransactionTypeId::Version1,
+        }
+    }
+}
+
+impl FromStr for TransactionTypeIdFilter {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "deploy" => Ok(TransactionTypeIdFilter::Deploy),
+            "version1" => Ok(TransactionTypeIdFilter::Version1),
+            _ => Err(format!("Invalid transaction type id: {}", s)),
+        }
+    }
+}
 
 /// Helper function to specify available filters.
 /// Input: the database with data to be filtered.
@@ -15,7 +41,7 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
     root_filter()
         .or(root_and_invalid_path())
         .or(block_filters(db.clone()))
-        .or(deploy_filters(db.clone()))
+        .or(transaction_filters(db.clone()))
         .or(step_by_era(db.clone()))
         .or(faults_by_public_key(db.clone()))
         .or(faults_by_era(db.clone()))
@@ -46,16 +72,16 @@ fn block_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(block_by_height(db))
 }
 
-/// Helper function to specify available filters for deploy information.
+/// Helper function to specify available filters for transaction information.
 /// Input: the database with data to be filtered.
 /// Return: the filtered data.
-fn deploy_filters<Db: DatabaseReader + Clone + Send + Sync>(
+fn transaction_filters<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    deploy_by_hash(db.clone())
-        .or(deploy_accepted_by_hash(db.clone()))
-        .or(deploy_processed_by_hash(db.clone()))
-        .or(deploy_expired_by_hash(db))
+    transaction_by_hash(db.clone())
+        .or(transaction_accepted_by_hash(db.clone()))
+        .or(transaction_processed_by_hash(db.clone()))
+        .or(transaction_expired_by_hash(db))
 }
 
 /// Return information about the last block added to the linear chain.
@@ -127,101 +153,101 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_height)
 }
 
-/// Return an aggregate of the different states for the given deploy. This is a synthetic JSON not emitted by the node.
-/// The output differs depending on the deploy's status, which changes over time as the deploy goes through its lifecycle.
+/// Return an aggregate of the different states for the given transaction. This is a synthetic JSON not emitted by the node.
+/// The output differs depending on the transaction's status, which changes over time as the transaction goes through its lifecycle.
 /// Input: the database with data to be filtered.
-/// Return: data about the deploy specified.
-/// Path URL: deploy/<deploy-hash>
-/// Example: curl http://127.0.0.1:18888/deploy/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+/// Return: data about the transaction specified.
+/// Path URL: transaction/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 #[utoipa::path(
     get,
-    path = "/deploy/{deploy_hash}",
+    path = "/transaction/{transaction_hash}",
     params(
-        ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy")
+        ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction")
     ),
     responses(
-        (status = 200, description = "fetch aggregate data for deploy events", body = DeployAggregate)
+        (status = 200, description = "fetch aggregate data for transaction events", body = TreansactionAggregate)
     )
 )]
-fn deploy_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn transaction_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("deploy" / String)
+    warp::path!("transaction" / TransactionTypeIdFilter / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(handlers::get_deploy_by_hash)
+        .and_then(handlers::get_transaction_by_identifier)
 }
 
-/// Return information about an accepted deploy given its deploy hash.
+/// Return information about an accepted transaction given its transaction hash.
 /// Input: the database with data to be filtered.
-/// Return: data about the accepted deploy.
-/// Path URL: deploy/accepted/<deploy-hash>
-/// Example: curl http://127.0.0.1:18888/deploy/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+/// Return: data about the accepted transaction.
+/// Path URL: transaction/accepted/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 #[utoipa::path(
     get,
-    path = "/deploy/accepted/{deploy_hash}",
+    path = "/transaction/accepted/{transaction_hash}",
     params(
-        ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy accepted")
+        ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction accepted")
     ),
     responses(
-        (status = 200, description = "fetch stored deploy", body = DeployAccepted)
+        (status = 200, description = "fetch stored transaction", body = TransactionAccepted)
     )
 )]
-fn deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("deploy" / "accepted" / String)
+    warp::path!("transaction" / TransactionTypeIdFilter / "accepted" / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(handlers::get_deploy_accepted_by_hash)
-}
-
-#[utoipa::path(
-    get,
-    path = "/deploy/expired/{deploy_hash}",
-    params(
-        ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy expired")
-    ),
-    responses(
-        (status = 200, description = "fetch stored deploy", body = DeployExpired)
-    )
-)]
-/// Return information about a deploy that expired given its deploy hash.
-/// Input: the database with data to be filtered.
-/// Return: data about the expired deploy.
-/// Path URL: deploy/expired/<deploy-hash>
-/// Example: curl http://127.0.0.1:18888/deploy/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
-fn deploy_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
-    db: Db,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("deploy" / "expired" / String)
-        .and(warp::get())
-        .and(with_db(db))
-        .and_then(handlers::get_deploy_expired_by_hash)
+        .and_then(handlers::get_transaction_accepted_by_hash)
 }
 
 #[utoipa::path(
     get,
-    path = "/deploy/processed/{deploy_hash}",
+    path = "/transaction/expired/{transaction_hash}",
     params(
-        ("deploy_hash" = String, Path, description = "Base64 encoded deploy hash of requested deploy processed")
+        ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction expired")
     ),
     responses(
-        (status = 200, description = "fetch stored deploy", body = DeployProcessed)
+        (status = 200, description = "fetch stored transaction", body = TransactionExpired)
     )
 )]
-/// Return information about a deploy that was processed given its deploy hash.
+/// Return information about a transaction that expired given its transaction hash.
 /// Input: the database with data to be filtered.
-/// Return: data about the processed deploy.
-/// Path URL: deploy/processed/<deploy-hash>
-/// Example: curl http://127.0.0.1:18888/deploy/processed/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
-fn deploy_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+/// Return: data about the expired transaction.
+/// Path URL: transaction/expired/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("deploy" / "processed" / String)
+    warp::path!("transaction" / TransactionTypeIdFilter / "expired" / String)
         .and(warp::get())
         .and(with_db(db))
-        .and_then(handlers::get_deploy_processed_by_hash)
+        .and_then(handlers::get_transaction_expired_by_hash)
+}
+
+#[utoipa::path(
+    get,
+    path = "/transaction/processed/{transaction_hash}",
+    params(
+        ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction processed")
+    ),
+    responses(
+        (status = 200, description = "fetch stored transaction", body = TransactionProcessed)
+    )
+)]
+/// Return information about a transaction that was processed given its transaction hash.
+/// Input: the database with data to be filtered.
+/// Return: data about the processed transaction.
+/// Path URL: transaction/processed/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/processed/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
+fn transaction_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
+    db: Db,
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::path!("transaction" / TransactionTypeIdFilter / "processed" / String)
+        .and(warp::get())
+        .and(with_db(db))
+        .and_then(handlers::get_transaction_processed_by_hash)
 }
 
 #[utoipa::path(

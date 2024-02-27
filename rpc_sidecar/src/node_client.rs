@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
-use casper_types_ver_2_0::{
+use casper_types::{
     binary_port::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
         ConsensusValidatorChanges, ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult,
@@ -443,8 +443,8 @@ mod tests {
     use crate::testing::BinaryPortMock;
 
     use super::*;
-    use casper_types_ver_2_0::testing::TestRng;
-    use casper_types_ver_2_0::{CLValue, SemVer};
+    use casper_types::testing::TestRng;
+    use casper_types::{CLValue, SemVer};
     use futures::FutureExt;
     use tokio::task::JoinHandle;
     use tokio::time::sleep;

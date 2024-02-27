@@ -1,5 +1,5 @@
 use crate::types::{
-    database::{DatabaseReader, DatabaseWriteError, DatabaseWriter},
+    database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
     sse_events::*,
 };
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
@@ -31,143 +31,217 @@ pub async fn should_save_and_retrieve_block_added<DB: DatabaseReader + DatabaseW
         .expect("Error getting block_added by height");
 }
 
-pub async fn should_save_and_retrieve_deploy_accepted<DB: DatabaseReader + DatabaseWriter>(db: DB) {
-    let mut test_rng = TestRng::new();
-
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
-
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_accepted");
-
-    db.get_deploy_accepted_by_hash(&deploy_accepted.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy_accepted by hash");
-}
-
-pub async fn should_save_and_retrieve_deploy_processed<DB: DatabaseReader + DatabaseWriter>(
-    db: DB,
-) {
-    let mut test_rng = TestRng::new();
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
-
-    db.save_deploy_processed(
-        deploy_processed.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_processed");
-
-    db.get_deploy_processed_by_hash(&deploy_processed.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy_processed by hash");
-}
-
-pub async fn should_save_and_retrieve_deploy_expired<DB: DatabaseReader + DatabaseWriter>(db: DB) {
-    let mut test_rng = TestRng::new();
-    let deploy_expired = DeployExpired::random(&mut test_rng, None);
-
-    db.save_deploy_expired(
-        deploy_expired.clone(),
-        1,
-        "127.0.0.1".to_string(),
-        "1.1.1".to_string(),
-    )
-    .await
-    .expect("Error saving deploy_expired");
-
-    db.get_deploy_expired_by_hash(&deploy_expired.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy_expired by hash");
-}
-
-pub async fn should_retrieve_deploy_aggregate_of_accepted<DB: DatabaseReader + DatabaseWriter>(
+pub async fn should_save_and_retrieve_transaction_accepted<DB: DatabaseReader + DatabaseWriter>(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
 
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
-
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
+    let transaction_type_id = match transaction_accepted.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
+    db.save_transaction_accepted(
+        transaction_accepted.clone(),
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
     )
     .await
-    .expect("Error saving deploy_accepted");
+    .expect("Error saving transaction_accepted");
 
-    db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy aggregate by hash");
+    db.get_transaction_accepted_by_hash(
+        &transaction_type_id,
+        &transaction_accepted.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction_accepted by hash");
 }
 
-pub async fn should_retrieve_deploy_aggregate_of_processed<DB: DatabaseReader + DatabaseWriter>(
+pub async fn should_save_and_retrieve_transaction_processed<DB: DatabaseReader + DatabaseWriter>(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
-    let deploy_processed =
-        DeployProcessed::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
-
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
+    let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
+    let transaction_type_id = match transaction_processed.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
+    db.save_transaction_processed(
+        transaction_processed.clone(),
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
     )
     .await
-    .expect("Error saving deploy_accepted");
+    .expect("Error saving transaction_processed");
 
-    db.save_deploy_processed(
-        deploy_processed,
+    db.get_transaction_processed_by_hash(
+        &transaction_type_id,
+        &transaction_processed.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction_processed by hash");
+}
+
+pub async fn should_save_and_retrieve_transaction_expired<DB: DatabaseReader + DatabaseWriter>(
+    db: DB,
+) {
+    let mut test_rng = TestRng::new();
+    let transaction_expired = TransactionExpired::random(&mut test_rng, None);
+    let transaction_type_id = match transaction_expired.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
+    db.save_transaction_expired(
+        transaction_expired.clone(),
+        1,
+        "127.0.0.1".to_string(),
+        "1.1.1".to_string(),
+    )
+    .await
+    .expect("Error saving transaction_expired");
+
+    db.get_transaction_expired_by_hash(
+        &transaction_type_id,
+        &transaction_expired.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction_expired by hash");
+}
+
+pub async fn should_retrieve_transaction_aggregate_of_accepted<
+    DB: DatabaseReader + DatabaseWriter,
+>(
+    db: DB,
+) {
+    let mut test_rng = TestRng::new();
+
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
+    let transaction_type_id = match transaction_accepted.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
+
+    db.save_transaction_accepted(
+        transaction_accepted.clone(),
+        1,
+        "127.0.0.1".to_string(),
+        "1.1.1".to_string(),
+    )
+    .await
+    .expect("Error saving transaction_accepted");
+
+    db.get_transaction_aggregate_by_identifier(
+        &transaction_type_id,
+        &transaction_accepted.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction aggregate by hash");
+}
+
+pub async fn should_retrieve_transaction_aggregate_of_processed<
+    DB: DatabaseReader + DatabaseWriter,
+>(
+    db: DB,
+) {
+    let mut test_rng = TestRng::new();
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
+    let transaction_processed =
+        TransactionProcessed::random(&mut test_rng, Some(transaction_accepted.transaction_hash()));
+    let transaction_type_id = match transaction_accepted.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
+
+    db.save_transaction_accepted(
+        transaction_accepted.clone(),
+        1,
+        "127.0.0.1".to_string(),
+        "1.1.1".to_string(),
+    )
+    .await
+    .expect("Error saving transaction_accepted");
+
+    db.save_transaction_processed(
+        transaction_processed,
         2,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
     )
     .await
-    .expect("Error saving deploy_processed");
+    .expect("Error saving transaction_processed");
 
-    db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy aggregate by hash");
+    db.get_transaction_aggregate_by_identifier(
+        &transaction_type_id,
+        &transaction_accepted.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction aggregate by hash");
 }
 
-pub async fn should_retrieve_deploy_aggregate_of_expired<DB: DatabaseReader + DatabaseWriter>(
+pub async fn should_retrieve_transaction_aggregate_of_expired<
+    DB: DatabaseReader + DatabaseWriter,
+>(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
-    let deploy_expired = DeployExpired::random(&mut test_rng, Some(deploy_accepted.deploy_hash()));
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
+    let transaction_expired =
+        TransactionExpired::random(&mut test_rng, Some(transaction_accepted.transaction_hash()));
+    let transaction_type_id = match transaction_accepted.transaction_type_id() {
+        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
+            TransactionTypeId::Deploy
+        }
+        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
+            TransactionTypeId::Version1
+        }
+    };
 
-    db.save_deploy_accepted(
-        deploy_accepted.clone(),
+    db.save_transaction_accepted(
+        transaction_accepted.clone(),
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
     )
     .await
-    .expect("Error saving deploy_accepted");
+    .expect("Error saving transaction_accepted");
 
-    db.save_deploy_expired(
-        deploy_expired,
+    db.save_transaction_expired(
+        transaction_expired,
         2,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
     )
     .await
-    .expect("Error saving deploy_expired");
+    .expect("Error saving transaction_expired");
 
-    db.get_deploy_aggregate_by_hash(&deploy_accepted.hex_encoded_hash())
-        .await
-        .expect("Error getting deploy aggregate by hash");
+    db.get_transaction_aggregate_by_identifier(
+        &transaction_type_id,
+        &transaction_accepted.hex_encoded_hash(),
+    )
+    .await
+    .expect("Error getting transaction aggregate by hash");
 }
 
 pub async fn should_save_and_retrieve_fault<DB: DatabaseReader + DatabaseWriter>(db: DB) {
@@ -347,17 +421,17 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
     }
 }
 
-pub async fn should_disallow_insert_of_existing_deploy_accepted<
+pub async fn should_disallow_insert_of_existing_transaction_accepted<
     DB: DatabaseReader + DatabaseWriter,
 >(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let deploy_accepted = DeployAccepted::random(&mut test_rng);
+    let transaction_accepted = TransactionAccepted::random(&mut test_rng);
 
     assert!(db
-        .save_deploy_accepted(
-            deploy_accepted.clone(),
+        .save_transaction_accepted(
+            transaction_accepted.clone(),
             1,
             "127.0.0.1".to_string(),
             "1.1.1".to_string()
@@ -366,8 +440,8 @@ pub async fn should_disallow_insert_of_existing_deploy_accepted<
         .is_ok());
 
     let db_err = db
-        .save_deploy_accepted(
-            deploy_accepted,
+        .save_transaction_accepted(
+            transaction_accepted,
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -379,21 +453,21 @@ pub async fn should_disallow_insert_of_existing_deploy_accepted<
 
     // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
     if let DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
-        assert_eq!(uc_err.table, "DeployAccepted")
+        assert_eq!(uc_err.table, "TransactionAccepted")
     }
 }
 
-pub async fn should_disallow_insert_of_existing_deploy_expired<
+pub async fn should_disallow_insert_of_existing_transaction_expired<
     DB: DatabaseReader + DatabaseWriter,
 >(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let deploy_expired = DeployExpired::random(&mut test_rng, None);
+    let transaction_expired = TransactionExpired::random(&mut test_rng, None);
 
     assert!(db
-        .save_deploy_expired(
-            deploy_expired.clone(),
+        .save_transaction_expired(
+            transaction_expired.clone(),
             1,
             "127.0.0.1".to_string(),
             "1.1.1".to_string()
@@ -402,8 +476,8 @@ pub async fn should_disallow_insert_of_existing_deploy_expired<
         .is_ok());
 
     let db_err = db
-        .save_deploy_expired(
-            deploy_expired,
+        .save_transaction_expired(
+            transaction_expired,
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -415,21 +489,21 @@ pub async fn should_disallow_insert_of_existing_deploy_expired<
 
     // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
     if let DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
-        assert_eq!(uc_err.table, "DeployExpired")
+        assert_eq!(uc_err.table, "TransactionExpired")
     }
 }
 
-pub async fn should_disallow_insert_of_existing_deploy_processed<
+pub async fn should_disallow_insert_of_existing_transaction_processed<
     DB: DatabaseReader + DatabaseWriter,
 >(
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let deploy_processed = DeployProcessed::random(&mut test_rng, None);
+    let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
 
     assert!(db
-        .save_deploy_processed(
-            deploy_processed.clone(),
+        .save_transaction_processed(
+            transaction_processed.clone(),
             1,
             "127.0.0.1".to_string(),
             "1.1.1".to_string()
@@ -438,8 +512,8 @@ pub async fn should_disallow_insert_of_existing_deploy_processed<
         .is_ok());
 
     let db_err = db
-        .save_deploy_processed(
-            deploy_processed,
+        .save_transaction_processed(
+            transaction_processed,
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -451,7 +525,7 @@ pub async fn should_disallow_insert_of_existing_deploy_processed<
 
     // This check is to ensure that the UNIQUE constraint error is originating from the raw event table rather than the event_log
     if let DatabaseWriteError::UniqueConstraint(uc_err) = db_err {
-        assert_eq!(uc_err.table, "DeployProcessed")
+        assert_eq!(uc_err.table, "TransactionProcessed")
     }
 }
 

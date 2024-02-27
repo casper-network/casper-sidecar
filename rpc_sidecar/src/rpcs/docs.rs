@@ -462,7 +462,7 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use casper_types_ver_2_0::{
+    use casper_types::{
         account::Account, AuctionState, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey,
         Timestamp, Transaction,
     };

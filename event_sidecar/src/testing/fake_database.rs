@@ -7,12 +7,13 @@ use casper_types::testing::TestRng;
 use casper_types::AsymmetricType;
 use rand::Rng;
 
-use casper_event_types::FinalitySignature as FinSig;
+use casper_types::FinalitySignature as FinSig;
 
+use crate::types::database::TransactionTypeId;
 use crate::types::{
     database::{
-        DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, DeployAggregate,
-        Migration,
+        DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, Migration,
+        TransactionAggregate,
     },
     sse_events::*,
 };
@@ -29,15 +30,17 @@ impl FakeDatabase {
         }
     }
 
+    
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
+    #[allow(clippy::too_many_lines)]
     pub(crate) async fn populate_with_events(
         &self,
     ) -> Result<IdentifiersForStoredEvents, DatabaseWriteError> {
         let mut rng = TestRng::new();
         let block_added = BlockAdded::random(&mut rng);
-        let deploy_accepted = DeployAccepted::random(&mut rng);
-        let deploy_processed = DeployProcessed::random(&mut rng, None);
-        let deploy_expired = DeployExpired::random(&mut rng, None);
+        let transaction_accepted = TransactionAccepted::random(&mut rng);
+        let transaction_processed = TransactionProcessed::random(&mut rng, None);
+        let transaction_expired = TransactionExpired::random(&mut rng, None);
         let fault = Fault::random(&mut rng);
         let finality_signature = FinalitySignature::random(&mut rng);
         let step = Step::random(&mut rng);
@@ -45,9 +48,18 @@ impl FakeDatabase {
         let test_stored_keys = IdentifiersForStoredEvents {
             block_added_hash: block_added.hex_encoded_hash(),
             block_added_height: block_added.get_height(),
-            deploy_accepted_hash: deploy_accepted.hex_encoded_hash(),
-            deploy_processed_hash: deploy_processed.hex_encoded_hash(),
-            deploy_expired_hash: deploy_expired.hex_encoded_hash(),
+            transaction_accepted_info: (
+                transaction_accepted.hex_encoded_hash(),
+                transaction_accepted.api_transaction_type_id(),
+            ),
+            transaction_processed_info: (
+                transaction_processed.hex_encoded_hash(),
+                transaction_processed.api_transaction_type_id(),
+            ),
+            transaction_expired_info: (
+                transaction_expired.hex_encoded_hash(),
+                transaction_expired.api_transaction_type_id(),
+            ),
             fault_era_id: fault.era_id.value(),
             fault_public_key: fault.public_key.to_hex(),
             finality_signatures_block_hash: finality_signature.hex_encoded_block_hash(),
@@ -56,11 +68,11 @@ impl FakeDatabase {
 
         self.save_block_added_with_event_log_data(block_added, &mut rng)
             .await?;
-        self.save_deploy_accepted_with_event_log_data(deploy_accepted, &mut rng)
+        self.save_transaction_accepted_with_event_log_data(transaction_accepted, &mut rng)
             .await?;
-        self.save_deploy_processed_with_event_log_data(deploy_processed, &mut rng)
+        self.save_transaction_processed_with_event_log_data(transaction_processed, &mut rng)
             .await?;
-        self.save_deploy_expired_with_event_log_data(deploy_expired, &mut rng)
+        self.save_transaction_expired_with_event_log_data(transaction_expired, &mut rng)
             .await?;
         self.save_fault_with_event_log_data(fault, &mut rng).await?;
         self.save_finality_signature_with_event_log_data(finality_signature, &mut rng)
@@ -115,13 +127,13 @@ impl FakeDatabase {
         Ok(())
     }
 
-    async fn save_deploy_expired_with_event_log_data(
+    async fn save_transaction_expired_with_event_log_data(
         &self,
-        deploy_expired: DeployExpired,
+        transaction_expired: TransactionExpired,
         rng: &mut TestRng,
     ) -> Result<(), DatabaseWriteError> {
-        self.save_deploy_expired(
-            deploy_expired,
+        self.save_transaction_expired(
+            transaction_expired,
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -130,13 +142,13 @@ impl FakeDatabase {
         Ok(())
     }
 
-    async fn save_deploy_processed_with_event_log_data(
+    async fn save_transaction_processed_with_event_log_data(
         &self,
-        deploy_processed: DeployProcessed,
+        transaction_processed: TransactionProcessed,
         rng: &mut TestRng,
     ) -> Result<(), DatabaseWriteError> {
-        self.save_deploy_processed(
-            deploy_processed,
+        self.save_transaction_processed(
+            transaction_processed,
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -145,13 +157,13 @@ impl FakeDatabase {
         Ok(())
     }
 
-    async fn save_deploy_accepted_with_event_log_data(
+    async fn save_transaction_accepted_with_event_log_data(
         &self,
-        deploy_accepted: DeployAccepted,
+        transaction_accepted: TransactionAccepted,
         rng: &mut TestRng,
     ) -> Result<(), DatabaseWriteError> {
-        self.save_deploy_accepted(
-            deploy_accepted,
+        self.save_transaction_accepted(
+            transaction_accepted,
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
@@ -203,20 +215,20 @@ impl DatabaseWriter for FakeDatabase {
     }
 
     #[allow(unused)]
-    async fn save_deploy_accepted(
+    async fn save_transaction_accepted(
         &self,
-        deploy_accepted: DeployAccepted,
+        transaction_accepted: TransactionAccepted,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
-        let hash = deploy_accepted.hex_encoded_hash();
-        // This is suffixed to allow storage of each deploy state event without overwriting.
+        let hash = transaction_accepted.hex_encoded_hash();
+        // This is suffixed to allow storage of each transaction state event without overwriting.
         let identifier = format!("{}-accepted", hash);
         let stringified_event =
-            serde_json::to_string(&deploy_accepted).expect("Error serialising event data");
+            serde_json::to_string(&transaction_accepted).expect("Error serialising event data");
 
         data.insert(identifier, stringified_event);
 
@@ -224,20 +236,20 @@ impl DatabaseWriter for FakeDatabase {
     }
 
     #[allow(unused)]
-    async fn save_deploy_processed(
+    async fn save_transaction_processed(
         &self,
-        deploy_processed: DeployProcessed,
+        transaction_processed: TransactionProcessed,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
-        let hash = deploy_processed.hex_encoded_hash();
-        // This is suffixed to allow storage of each deploy state event without overwriting.
+        let hash = transaction_processed.hex_encoded_hash();
+        // This is suffixed to allow storage of each transaction state event without overwriting.
         let identifier = format!("{}-processed", hash);
         let stringified_event =
-            serde_json::to_string(&deploy_processed).expect("Error serialising event data");
+            serde_json::to_string(&transaction_processed).expect("Error serialising event data");
 
         data.insert(identifier, stringified_event);
 
@@ -245,20 +257,20 @@ impl DatabaseWriter for FakeDatabase {
     }
 
     #[allow(unused)]
-    async fn save_deploy_expired(
+    async fn save_transaction_expired(
         &self,
-        deploy_expired: DeployExpired,
+        transaction_expired: TransactionExpired,
         event_id: u32,
         event_source_address: String,
         api_version: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
-        let hash = deploy_expired.hex_encoded_hash();
-        // This is suffixed to allow storage of each deploy state event without overwriting.
+        let hash = transaction_expired.hex_encoded_hash();
+        // This is suffixed to allow storage of each transaction state event without overwriting.
         let identifier = format!("{}-expired", hash);
         let stringified_event =
-            serde_json::to_string(&deploy_expired).expect("Error serialising event data");
+            serde_json::to_string(&transaction_expired).expect("Error serialising event data");
 
         data.insert(identifier, stringified_event);
 
@@ -382,10 +394,11 @@ impl DatabaseReader for FakeDatabase {
         };
     }
 
-    async fn get_deploy_aggregate_by_hash(
+    async fn get_transaction_aggregate_by_identifier(
         &self,
+        _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployAggregate, DatabaseReadError> {
+    ) -> Result<TransactionAggregate, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         let accepted_key = format!("{}-accepted", hash);
@@ -393,39 +406,39 @@ impl DatabaseReader for FakeDatabase {
         let expired_key = format!("{}-expired", hash);
 
         return if let Some(accepted) = data.get(&accepted_key) {
-            let deploy_accepted = serde_json::from_str::<DeployAccepted>(accepted)
+            let transaction_accepted = serde_json::from_str::<TransactionAccepted>(accepted)
                 .map_err(DatabaseReadError::Serialisation)?;
 
             if let Some(processed) = data.get(&processed_key) {
-                let deploy_processed = serde_json::from_str::<DeployProcessed>(processed)
+                let transaction_processed = serde_json::from_str::<TransactionProcessed>(processed)
                     .map_err(DatabaseReadError::Serialisation)?;
 
-                Ok(DeployAggregate {
-                    deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: Some(deploy_processed),
-                    deploy_expired: false,
+                Ok(TransactionAggregate {
+                    transaction_hash: hash.to_string(),
+                    transaction_accepted: Some(transaction_accepted),
+                    transaction_processed: Some(transaction_processed),
+                    transaction_expired: false,
                 })
             } else if data.get(&expired_key).is_some() {
-                let deploy_expired = match data.get(&expired_key) {
+                let transaction_expired = match data.get(&expired_key) {
                     None => None,
                     Some(raw) => Some(
-                        serde_json::from_str::<DeployExpired>(raw)
+                        serde_json::from_str::<TransactionExpired>(raw)
                             .map_err(DatabaseReadError::Serialisation)?,
                     ),
                 };
-                Ok(DeployAggregate {
-                    deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: None,
-                    deploy_expired: deploy_expired.is_some(),
+                Ok(TransactionAggregate {
+                    transaction_hash: hash.to_string(),
+                    transaction_accepted: Some(transaction_accepted),
+                    transaction_processed: None,
+                    transaction_expired: transaction_expired.is_some(),
                 })
             } else {
-                Ok(DeployAggregate {
-                    deploy_hash: hash.to_string(),
-                    deploy_accepted: Some(deploy_accepted),
-                    deploy_processed: None,
-                    deploy_expired: false,
+                Ok(TransactionAggregate {
+                    transaction_hash: hash.to_string(),
+                    transaction_accepted: Some(transaction_accepted),
+                    transaction_processed: None,
+                    transaction_expired: false,
                 })
             }
         } else {
@@ -433,46 +446,52 @@ impl DatabaseReader for FakeDatabase {
         };
     }
 
-    async fn get_deploy_accepted_by_hash(
+    async fn get_transaction_accepted_by_hash(
         &self,
+        _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployAccepted, DatabaseReadError> {
+    ) -> Result<TransactionAccepted, DatabaseReadError> {
         let identifier = format!("{}-accepted", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<DeployAccepted>(event).map_err(DatabaseReadError::Serialisation)
+            serde_json::from_str::<TransactionAccepted>(event)
+                .map_err(DatabaseReadError::Serialisation)
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
-    async fn get_deploy_processed_by_hash(
+    async fn get_transaction_processed_by_hash(
         &self,
+        _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployProcessed, DatabaseReadError> {
+    ) -> Result<TransactionProcessed, DatabaseReadError> {
         let identifier = format!("{}-processed", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<DeployProcessed>(event).map_err(DatabaseReadError::Serialisation)
+            serde_json::from_str::<TransactionProcessed>(event)
+                .map_err(DatabaseReadError::Serialisation)
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
-    async fn get_deploy_expired_by_hash(
+    async fn get_transaction_expired_by_hash(
         &self,
+        _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<DeployExpired, DatabaseReadError> {
+    ) -> Result<TransactionExpired, DatabaseReadError> {
         let identifier = format!("{}-expired", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<DeployExpired>(event).map_err(DatabaseReadError::Serialisation)
+            serde_json::from_str::<TransactionExpired>(event)
+                .map_err(DatabaseReadError::Serialisation)
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -542,9 +561,9 @@ impl DatabaseReader for FakeDatabase {
 pub struct IdentifiersForStoredEvents {
     pub block_added_hash: String,
     pub block_added_height: u64,
-    pub deploy_accepted_hash: String,
-    pub deploy_processed_hash: String,
-    pub deploy_expired_hash: String,
+    pub transaction_accepted_info: (String, TransactionTypeId),
+    pub transaction_processed_info: (String, TransactionTypeId),
+    pub transaction_expired_info: (String, TransactionTypeId),
     pub fault_public_key: String,
     pub fault_era_id: u64,
     pub finality_signatures_block_hash: String,

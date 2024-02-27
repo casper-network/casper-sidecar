@@ -95,7 +95,7 @@ impl DefaultConnectionsBuilder {
 }
 
 fn filters_from_version(_build_version: ProtocolVersion) -> Vec<Filter> {
-    vec![Filter::Main, Filter::Sigs, Filter::Deploys]
+    vec![Filter::Events]
 }
 
 pub struct ConnectionConfig {
@@ -219,15 +219,7 @@ pub mod tests {
             tx.clone(),
             Some(events_msg.as_str()),
         ));
-        let main_msg = format!("main-{}", msg_postfix);
-        let main: Box<dyn ConnectionManager> = Box::new(MockConnectionManager::ok_long(
-            tx.clone(),
-            Some(main_msg.as_str()),
-        ));
-        Ok(HashMap::from([
-            (Filter::Events, events),
-            (Filter::Main, main),
-        ]))
+        Ok(HashMap::from([(Filter::Events, events)]))
     }
 
     fn response_with_failing_events(
@@ -235,16 +227,8 @@ pub mod tests {
         tx: &Sender<String>,
     ) -> Result<HashMap<Filter, Box<dyn ConnectionManager>>, Error> {
         let events: Box<dyn ConnectionManager> =
-            Box::new(MockConnectionManager::fail_fast(tx.clone()));
-        let main_msg = format!("main-{}", msg_postfix);
-        let main: Box<dyn ConnectionManager> = Box::new(MockConnectionManager::ok_long(
-            tx.clone(),
-            Some(main_msg.as_str()),
-        ));
-        Ok(HashMap::from([
-            (Filter::Events, events),
-            (Filter::Main, main),
-        ]))
+            Box::new(MockConnectionManager::fail_fast(msg_postfix, tx.clone()));
+        Ok(HashMap::from([(Filter::Events, events)]))
     }
 
     #[async_trait]

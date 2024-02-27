@@ -375,7 +375,7 @@ pub mod tests {
         sse_connector::{tests::MockSseConnection, StreamConnector},
         SseEvent,
     };
-    use anyhow::Error;
+    use anyhow::anyhow;
     use casper_event_types::{sse_data::test_support::*, Filter};
     use std::time::Duration;
     use tokio::{
@@ -411,8 +411,8 @@ pub mod tests {
     #[tokio::test]
     async fn given_data_without_api_version_should_fail() {
         let data = vec![
-            example_block_added_1_5_2(BLOCK_HASH_1, "1"),
-            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_1, "1"),
+            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, _, _) = build_manager(connector);
@@ -430,8 +430,8 @@ pub mod tests {
     async fn given_data_should_pass_data() {
         let data = vec![
             example_api_version(),
-            example_block_added_1_5_2(BLOCK_HASH_1, "1"),
-            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_1, "1"),
+            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, event_ids) = build_manager(connector);
@@ -449,7 +449,7 @@ pub mod tests {
         let data = vec![
             example_api_version(),
             "XYZ".to_string(),
-            example_block_added_1_5_2(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, _event_ids) = build_manager(connector);
@@ -493,7 +493,7 @@ pub mod tests {
             current_event_id: None,
             sse_event_sender: data_tx,
             maybe_tasks: None,
-            filter: Filter::Sigs,
+            filter: Filter::Events,
             current_event_id_sender: event_id_tx,
             api_version: None,
         };
@@ -521,8 +521,8 @@ pub mod tests {
                 msg,
             }
         }
-        pub fn fail_fast(sender: Sender<String>) -> Self {
-            let error = Error::msg("xyz");
+        pub fn fail_fast(msg_postfix: &str, sender: Sender<String>) -> Self {
+            let error = anyhow!("xyz-{}", msg_postfix);
             let a = Err(ConnectionManagerError::NonRecoverableError { error });
             Self::new(Duration::from_millis(1), a, sender, None)
         }

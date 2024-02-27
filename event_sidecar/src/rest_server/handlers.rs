@@ -1,4 +1,4 @@
-use super::errors::StorageError;
+use super::{errors::StorageError, filters::TransactionTypeIdFilter};
 use crate::{
     rest_server::errors::InvalidParam,
     types::database::{DatabaseReadError, DatabaseReader},
@@ -32,39 +32,51 @@ pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
     format_or_reject_storage_result(db_result)
 }
 
-pub(super) async fn get_deploy_by_hash<Db: DatabaseReader + Clone + Send>(
+pub(super) async fn get_transaction_by_identifier<Db: DatabaseReader + Clone + Send>(
+    transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
     check_hash_is_correct_format(&hash)?;
-    let db_result = db.get_deploy_aggregate_by_hash(&hash).await;
+    let db_result = db
+        .get_transaction_aggregate_by_identifier(&transaction_type.into(), &hash)
+        .await;
     format_or_reject_storage_result(db_result)
 }
 
-pub(super) async fn get_deploy_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
+pub(super) async fn get_transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send>(
+    transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
     check_hash_is_correct_format(&hash)?;
-    let db_result = db.get_deploy_accepted_by_hash(&hash).await;
+    let db_result = db
+        .get_transaction_accepted_by_hash(&transaction_type.into(), &hash)
+        .await;
     format_or_reject_storage_result(db_result)
 }
 
-pub(super) async fn get_deploy_processed_by_hash<Db: DatabaseReader + Clone + Send>(
+pub(super) async fn get_transaction_processed_by_hash<Db: DatabaseReader + Clone + Send>(
+    transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
     check_hash_is_correct_format(&hash)?;
-    let db_result = db.get_deploy_processed_by_hash(&hash).await;
+    let db_result = db
+        .get_transaction_processed_by_hash(&transaction_type.into(), &hash)
+        .await;
     format_or_reject_storage_result(db_result)
 }
 
-pub(super) async fn get_deploy_expired_by_hash<Db: DatabaseReader + Clone + Send>(
+pub(super) async fn get_transaction_expired_by_hash<Db: DatabaseReader + Clone + Send>(
+    transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
 ) -> Result<impl Reply, Rejection> {
     check_hash_is_correct_format(&hash)?;
-    let db_result = db.get_deploy_expired_by_hash(&hash).await;
+    let db_result = db
+        .get_transaction_expired_by_hash(&transaction_type.into(), &hash)
+        .await;
     format_or_reject_storage_result(db_result)
 }
 

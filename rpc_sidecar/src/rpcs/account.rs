@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types_ver_2_0::{Deploy, DeployHash, Transaction, TransactionHash};
+use casper_types::{Deploy, DeployHash, Transaction, TransactionHash};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
@@ -151,7 +151,7 @@ impl RpcWithParams for PutTransaction {
 
 #[cfg(test)]
 mod tests {
-    use casper_types_ver_2_0::{
+    use casper_types::{
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
             ErrorCode as BinaryPortErrorCode,
