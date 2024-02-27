@@ -5,7 +5,10 @@ use hyper::server::{conn::AddrIncoming, Builder};
 use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 
 use crate::{
-    rpcs::info::{GetPeers, GetStatus, GetTransaction},
+    rpcs::{
+        info::{GetPeers, GetStatus, GetTransaction},
+        state::GetAddressableEntity,
+    },
     NodeClient,
 };
 
@@ -46,6 +49,7 @@ pub async fn run(
     QueryGlobalState::register_as_handler(node.clone(), &mut handlers);
     GetBalance::register_as_handler(node.clone(), &mut handlers);
     GetAccountInfo::register_as_handler(node.clone(), &mut handlers);
+    GetAddressableEntity::register_as_handler(node.clone(), &mut handlers);
     GetDeploy::register_as_handler(node.clone(), &mut handlers);
     GetTransaction::register_as_handler(node.clone(), &mut handlers);
     GetPeers::register_as_handler(node.clone(), &mut handlers);

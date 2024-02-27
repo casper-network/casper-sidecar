@@ -8,12 +8,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    common,
-    common::MERKLE_PROOF,
+    common::{self, EntityOrAccount, MERKLE_PROOF},
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
     ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
     CURRENT_API_VERSION,
 };
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
@@ -25,10 +26,12 @@ use casper_types::{
         },
         AUCTION,
     },
-    AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier,
-    BlockV2, CLValue, Digest, GlobalStateIdentifier, Key, KeyTag, PublicKey, SecretKey,
-    StoredValue, Tagged, URef, U512,
+    AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
+    BlockIdentifier, BlockV2, CLValue, Digest, GlobalStateIdentifier, Key, KeyTag, PublicKey,
+    SecretKey, StoredValue, Tagged, URef, U512,
 };
+#[cfg(test)]
+use rand::Rng;
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     state_root_hash: *BlockHeaderV2::example().state_root_hash(),
@@ -73,6 +76,19 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
     account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
+static GET_ADDRESSABLE_ENTITY_PARAMS: Lazy<GetAddressableEntityParams> =
+    Lazy::new(|| GetAddressableEntityParams {
+        entity_identifier: EntityIdentifier::EntityHashForAccount(AddressableEntityHash::new(
+            [0; 32],
+        )),
+        block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
+    });
+static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
+    Lazy::new(|| GetAddressableEntityResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        merkle_proof: MERKLE_PROOF.clone(),
+        entity: EntityOrAccount::AddressableEntity(AddressableEntity::example().clone()),
+    });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
         state_root_hash: *BlockHeaderV2::example().state_root_hash(),
@@ -366,6 +382,17 @@ pub enum AccountIdentifier {
     AccountHash(AccountHash),
 }
 
+impl AccountIdentifier {
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..2) {
+            0 => AccountIdentifier::PublicKey(PublicKey::random(rng)),
+            1 => AccountIdentifier::AccountHash(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// Params for "state_get_account_info" RPC request
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -431,11 +458,132 @@ impl RpcWithParams for GetAccountInfo {
             .into_inner();
         let account = account_value
             .into_account()
-            .ok_or(Error::InvalidAccountInfo)?;
+            .ok_or(Error::AccountMigratedToEntity)?;
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             account,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
+        })
+    }
+}
+
+/// Identifier of an addressable entity.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub enum EntityIdentifier {
+    /// The public key of an account.
+    PublicKey(PublicKey),
+    /// The account hash of an account.
+    AccountHash(AccountHash),
+    /// The hash of an addressable entity representing an account.
+    EntityHashForAccount(AddressableEntityHash),
+    /// The hash of an addressable entity representing a contract.
+    EntityHashForContract(AddressableEntityHash),
+}
+
+impl EntityIdentifier {
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..4) {
+            0 => EntityIdentifier::PublicKey(PublicKey::random(rng)),
+            1 => EntityIdentifier::AccountHash(rng.gen()),
+            2 => EntityIdentifier::EntityHashForAccount(rng.gen()),
+            3 => EntityIdentifier::EntityHashForContract(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// Params for "state_get_entity" RPC request
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetAddressableEntityParams {
+    /// The identifier of the entity.
+    pub entity_identifier: EntityIdentifier,
+    /// The block identifier.
+    pub block_identifier: Option<BlockIdentifier>,
+}
+
+impl DocExample for GetAddressableEntityParams {
+    fn doc_example() -> &'static Self {
+        &GET_ADDRESSABLE_ENTITY_PARAMS
+    }
+}
+
+/// Result for "state_get_entity" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetAddressableEntityResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ApiVersion,
+    /// The addressable entity or a legacy account.
+    pub entity: EntityOrAccount,
+    /// The Merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for GetAddressableEntityResult {
+    fn doc_example() -> &'static Self {
+        &GET_ADDRESSABLE_ENTITY_RESULT
+    }
+}
+
+/// "state_get_entity" RPC.
+pub struct GetAddressableEntity {}
+
+#[async_trait]
+impl RpcWithParams for GetAddressableEntity {
+    const METHOD: &'static str = "state_get_entity";
+    type RequestParams = GetAddressableEntityParams;
+    type ResponseResult = GetAddressableEntityResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let state_identifier = params.block_identifier.map(GlobalStateIdentifier::from);
+        let (entity, merkle_proof) = match params.entity_identifier {
+            EntityIdentifier::EntityHashForAccount(hash) => {
+                let tag = EntityKindTag::Account;
+                let result =
+                    common::resolve_entity_hash(&*node_client, tag, hash, state_identifier)
+                        .await?
+                        .ok_or(Error::AddressableEntityNotFound)?;
+                (
+                    EntityOrAccount::AddressableEntity(result.value),
+                    result.merkle_proof,
+                )
+            }
+            EntityIdentifier::EntityHashForContract(hash) => {
+                let tag = EntityKindTag::SmartContract;
+                let result =
+                    common::resolve_entity_hash(&*node_client, tag, hash, state_identifier)
+                        .await?
+                        .ok_or(Error::AddressableEntityNotFound)?;
+                (
+                    EntityOrAccount::AddressableEntity(result.value),
+                    result.merkle_proof,
+                )
+            }
+            EntityIdentifier::PublicKey(public_key) => {
+                let account_hash = public_key.to_account_hash();
+                common::resolve_account_hash(&*node_client, account_hash, state_identifier)
+                    .await?
+                    .ok_or(Error::AddressableEntityNotFound)?
+                    .into_inner()
+            }
+            EntityIdentifier::AccountHash(account_hash) => {
+                common::resolve_account_hash(&*node_client, account_hash, state_identifier)
+                    .await?
+                    .ok_or(Error::AddressableEntityNotFound)?
+                    .into_inner()
+            }
+        };
+        Ok(Self::ResponseResult {
+            api_version: CURRENT_API_VERSION,
+            entity,
             merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
@@ -843,7 +991,7 @@ mod tests {
         },
     };
 
-    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_types::{
         addressable_entity::{
             ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
@@ -1029,6 +1177,365 @@ mod tests {
                 ),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn should_read_entity() {
+        use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys};
+
+        struct ClientMock {
+            block: Block,
+            entity: AddressableEntity,
+            entity_hash: AddressableEntityHash,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                        base_key: Key::Account(_),
+                        ..
+                    })) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::CLValue(
+                                    CLValue::from_t(Key::contract_entity_key(self.entity_hash))
+                                        .unwrap(),
+                                ),
+                                vec![],
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                        base_key: Key::AddressableEntity(_),
+                        ..
+                    })) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::AddressableEntity(self.entity.clone()),
+                                vec![],
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let entity = AddressableEntity::new(
+            PackageHash::new(rng.gen()),
+            ByteCodeHash::new(rng.gen()),
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::SmartContract,
+        );
+        let entity_hash: AddressableEntityHash = rng.gen();
+        let entity_identifier = EntityIdentifier::random(rng);
+
+        let resp = GetAddressableEntity::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+                entity: entity.clone(),
+                entity_hash,
+            }),
+            GetAddressableEntityParams {
+                block_identifier: None,
+                entity_identifier,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAddressableEntityResult {
+                api_version: CURRENT_API_VERSION,
+                entity: EntityOrAccount::AddressableEntity(entity),
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_entity_legacy_account() {
+        use casper_types::account::{ActionThresholds, AssociatedKeys};
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let account = Account::new(
+            rng.gen(),
+            NamedKeys::default(),
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        );
+        let entity_identifier = EntityIdentifier::AccountHash(rng.gen());
+
+        let resp = GetAddressableEntity::do_handle_request(
+            Arc::new(ValidLegacyAccountMock {
+                block: block.clone(),
+                account: account.clone(),
+            }),
+            GetAddressableEntityParams {
+                block_identifier: None,
+                entity_identifier,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAddressableEntityResult {
+                api_version: CURRENT_API_VERSION,
+                entity: EntityOrAccount::LegacyAccount(account),
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_read_entity_when_non_existent() {
+        struct ClientMock {
+            block: Block,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                        base_key: Key::AddressableEntity(_),
+                        ..
+                    })) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let entity_identifier = EntityIdentifier::EntityHashForAccount(rng.gen());
+
+        let err = GetAddressableEntity::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+            }),
+            GetAddressableEntityParams {
+                block_identifier: None,
+                entity_identifier,
+            },
+        )
+        .await
+        .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::NoSuchAddressableEntity as i64);
+    }
+
+    #[tokio::test]
+    async fn should_read_account_info() {
+        use casper_types::account::{ActionThresholds, AssociatedKeys};
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let account = Account::new(
+            rng.gen(),
+            NamedKeys::default(),
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        );
+        let account_identifier = AccountIdentifier::random(rng);
+
+        let resp = GetAccountInfo::do_handle_request(
+            Arc::new(ValidLegacyAccountMock {
+                block: block.clone(),
+                account: account.clone(),
+            }),
+            GetAccountInfoParams {
+                block_identifier: None,
+                account_identifier,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAccountInfoResult {
+                api_version: CURRENT_API_VERSION,
+                account,
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_read_account_info_when_migrated() {
+        struct ClientMock {
+            block: Block,
+            entity_hash: AddressableEntityHash,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                        base_key: Key::Account(_),
+                        ..
+                    })) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::CLValue(
+                                    CLValue::from_t(Key::contract_entity_key(self.entity_hash))
+                                        .unwrap(),
+                                ),
+                                vec![],
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let entity_hash: AddressableEntityHash = rng.gen();
+        let account_identifier = AccountIdentifier::random(rng);
+
+        let err = GetAccountInfo::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+                entity_hash,
+            }),
+            GetAccountInfoParams {
+                block_identifier: None,
+                account_identifier,
+            },
+        )
+        .await
+        .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::AccountMigratedToEntity as i64);
+    }
+
+    #[tokio::test]
+    async fn should_reject_read_account_info_when_non_existent() {
+        struct ClientMock {
+            block: Block,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                        base_key: Key::Account(_),
+                        ..
+                    })) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let account_identifier = AccountIdentifier::random(rng);
+
+        let err = GetAccountInfo::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+            }),
+            GetAccountInfoParams {
+                block_identifier: None,
+                account_identifier,
+            },
+        )
+        .await
+        .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::NoSuchAccount as i64);
     }
 
     #[tokio::test]
@@ -1385,6 +1892,48 @@ mod tests {
                 }
                 BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
+                    &[],
+                )),
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct ValidLegacyAccountMock {
+        block: Block,
+        account: Account,
+    }
+
+    #[async_trait]
+    impl NodeClient for ValidLegacyAccountMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::BlockHeader) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            self.block.clone_header(),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+                    base_key: Key::Account(_),
+                    ..
+                })) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(
+                        GlobalStateQueryResult::new(
+                            StoredValue::Account(self.account.clone()),
+                            vec![],
+                        ),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),

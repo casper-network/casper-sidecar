@@ -709,6 +709,128 @@
       ]
     },
     {
+      "name": "state_get_entity",
+      "summary": "returns an AddressableEntity from the network",
+      "params": [
+        {
+          "name": "entity_identifier",
+          "schema": {
+            "description": "The identifier of the entity.",
+            "$ref": "#/components/schemas/EntityIdentifier"
+          },
+          "required": true
+        },
+        {
+          "name": "block_identifier",
+          "schema": {
+            "description": "The block identifier.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockIdentifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "state_get_entity_result",
+        "schema": {
+          "description": "Result for \"state_get_entity\" RPC response.",
+          "type": "object",
+          "required": [
+            "api_version",
+            "entity",
+            "merkle_proof"
+          ],
+          "properties": {
+            "api_version": {
+              "description": "The RPC API version.",
+              "type": "string"
+            },
+            "entity": {
+              "description": "The addressable entity or a legacy account.",
+              "$ref": "#/components/schemas/EntityOrAccount"
+            },
+            "merkle_proof": {
+              "description": "The Merkle proof.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "examples": [
+        {
+          "name": "state_get_entity_example",
+          "params": [
+            {
+              "name": "entity_identifier",
+              "value": {
+                "EntityHashForAccount": "addressable-entity-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            },
+            {
+              "name": "block_identifier",
+              "value": {
+                "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_entity_example_result",
+            "value": {
+              "api_version": "1.5.3",
+              "entity": {
+                "AddressableEntity": {
+                  "protocol_version": "2.0.0",
+                  "entity_kind": {
+                    "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
+                  },
+                  "package_hash": "contract-package-0000000000000000000000000000000000000000000000000000000000000000",
+                  "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
+                  "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                  "entry_points": [
+                    {
+                      "name": "call",
+                      "entry_point": {
+                        "name": "call",
+                        "args": [],
+                        "ret": "Unit",
+                        "access": "Public",
+                        "entry_point_type": "Session"
+                      }
+                    }
+                  ],
+                  "associated_keys": [
+                    {
+                      "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                      "weight": 1
+                    }
+                  ],
+                  "action_thresholds": {
+                    "deployment": 1,
+                    "upgrade_management": 1,
+                    "key_management": 1
+                  },
+                  "message_topics": [
+                    {
+                      "topic_name": "topic",
+                      "topic_name_hash": "topic-name-0000000000000000000000000000000000000000000000000000000000000000"
+                    }
+                  ]
+                }
+              },
+              "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "state_get_dictionary_item",
       "summary": "returns an item from a Dictionary",
       "params": [
@@ -6001,6 +6123,94 @@
                 "type": "integer",
                 "format": "uint64",
                 "minimum": 0.0
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EntityIdentifier": {
+        "description": "Identifier of an addressable entity.",
+        "oneOf": [
+          {
+            "description": "The public key of an account.",
+            "type": "object",
+            "required": [
+              "PublicKey"
+            ],
+            "properties": {
+              "PublicKey": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The account hash of an account.",
+            "type": "object",
+            "required": [
+              "AccountHash"
+            ],
+            "properties": {
+              "AccountHash": {
+                "$ref": "#/components/schemas/AccountHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The hash of an addressable entity representing an account.",
+            "type": "object",
+            "required": [
+              "EntityHashForAccount"
+            ],
+            "properties": {
+              "EntityHashForAccount": {
+                "$ref": "#/components/schemas/AddressableEntityHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The hash of an addressable entity representing a contract.",
+            "type": "object",
+            "required": [
+              "EntityHashForContract"
+            ],
+            "properties": {
+              "EntityHashForContract": {
+                "$ref": "#/components/schemas/AddressableEntityHash"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EntityOrAccount": {
+        "description": "An addressable entity or a legacy account.",
+        "oneOf": [
+          {
+            "description": "An addressable entity.",
+            "type": "object",
+            "required": [
+              "AddressableEntity"
+            ],
+            "properties": {
+              "AddressableEntity": {
+                "$ref": "#/components/schemas/AddressableEntity"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A legacy account.",
+            "type": "object",
+            "required": [
+              "LegacyAccount"
+            ],
+            "properties": {
+              "LegacyAccount": {
+                "$ref": "#/components/schemas/Account"
               }
             },
             "additionalProperties": false

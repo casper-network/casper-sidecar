@@ -35,6 +35,10 @@ pub enum Error {
     MainPurseNotFound,
     #[error("the requested account was not found")]
     AccountNotFound,
+    #[error("the requested addressable entity was not found")]
+    AddressableEntityNotFound,
+    #[error("the requested account has been migrated to an addressable entity")]
+    AccountMigratedToEntity,
     #[error("the provided dictionary value is {0} instead of a URef")]
     DictionaryValueIsNotAUref(KeyTag),
     #[error("the provided dictionary key could not be parsed: {0}")]
@@ -47,6 +51,8 @@ pub enum Error {
     InvalidPurseBalance,
     #[error("the requested account info could not be parsed")]
     InvalidAccountInfo,
+    #[error("the requested addressable entity could not be parsed")]
+    InvalidAddressableEntity,
     #[error("the auction state was invalid")]
     InvalidAuctionState,
     #[error("speculative execution returned nothing")]
@@ -76,6 +82,8 @@ impl Error {
             Error::InvalidDictionaryKey(_) => Some(ErrorCode::FailedToParseQueryKey),
             Error::MainPurseNotFound => Some(ErrorCode::NoSuchMainPurse),
             Error::AccountNotFound => Some(ErrorCode::NoSuchAccount),
+            Error::AddressableEntityNotFound => Some(ErrorCode::NoSuchAddressableEntity),
+            Error::AccountMigratedToEntity => Some(ErrorCode::AccountMigratedToEntity),
             Error::InvalidTypeUnderDictionaryKey(_)
             | Error::DictionaryKeyNotFound
             | Error::DictionaryNameNotFound
@@ -87,9 +95,10 @@ impl Error {
             | Error::SpecExecReturnedNothing => Some(ErrorCode::InvalidDeploy),
             Error::NodeRequest(_, _) => Some(ErrorCode::NodeRequestFailed),
             Error::InvalidPurseBalance => Some(ErrorCode::FailedToGetBalance),
-            Error::InvalidAccountInfo | Error::InvalidAuctionState | Error::BytesreprFailure(_) => {
-                None
-            }
+            Error::InvalidAccountInfo
+            | Error::InvalidAddressableEntity
+            | Error::InvalidAuctionState
+            | Error::BytesreprFailure(_) => None,
         }
     }
 }
