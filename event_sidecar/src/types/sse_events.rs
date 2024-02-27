@@ -1,11 +1,11 @@
+#[cfg(test)]
+use casper_types::ChainNameDigest;
 use casper_types::FinalitySignature as FinSig;
 use casper_types::{
     contract_messages::Messages, execution::ExecutionResult, AsymmetricType, Block, BlockHash,
     EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
     TransactionHash,
 };
-#[cfg(test)]
-use casper_types::ChainNameDigest;
 #[cfg(test)]
 use casper_types::{
     execution::{execution_result_v1::ExecutionResultV1, Effects, ExecutionResultV2},

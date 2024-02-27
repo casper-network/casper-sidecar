@@ -10,9 +10,9 @@ pub(crate) mod tests {
 
     pub type EventsWithIds = Vec<(Option<String>, String)>;
 
-    pub fn example_data_1_5_3() -> EventsWithIds {
+    pub fn example_data_2_0_1() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"1.5.3\"}".to_string()),
+            (None, "{\"ApiVersion\":\"2.0.1\"}".to_string()),
             (
                 Some("0".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, "3"),
@@ -20,9 +20,9 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn sse_server_shutdown_1_5_2_data() -> EventsWithIds {
+    pub fn sse_server_shutdown_2_0_0_data() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"1.5.2\"}".to_string()),
+            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (Some("0".to_string()), shutdown()),
             (
                 Some("1".to_string()),
@@ -38,7 +38,7 @@ pub(crate) mod tests {
     ) -> (EventsWithIds, TestRng) {
         let (blocks_added, rng) =
             generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
-        let data = vec![(None, "{\"ApiVersion\":\"1.5.2\"}".to_string())];
+        let data = vec![(None, "{\"ApiVersion\":\"2.0.0\"}".to_string())];
         let mut data: EventsWithIds = data.into_iter().chain(blocks_added).collect();
         let shutdown_index: u32 = start_index + 31;
         data.push((Some(shutdown_index.to_string()), shutdown()));
@@ -55,9 +55,9 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn sse_server_example_1_5_2_data() -> EventsWithIds {
+    pub fn sse_server_example_2_0_0_data() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"1.5.2\"}".to_string()),
+            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_2, "2"),
@@ -65,9 +65,9 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn sse_server_example_1_5_2_data_second() -> EventsWithIds {
+    pub fn sse_server_example_2_0_0_data_second() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"1.5.2\"}".to_string()),
+            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("3".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, "3"),
@@ -75,9 +75,9 @@ pub(crate) mod tests {
         ]
     }
 
-    pub fn sse_server_example_1_5_2_data_third() -> EventsWithIds {
+    pub fn sse_server_example_2_0_0_data_third() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"1.5.2\"}".to_string()),
+            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("1".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, "3"),

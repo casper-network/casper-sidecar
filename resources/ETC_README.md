@@ -25,7 +25,7 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 ### Node Connections
 
-The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node.
 

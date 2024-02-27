@@ -16,9 +16,9 @@ use crate::{
     testing::{
         mock_node::tests::{MockNode, MockNodeBuilder},
         raw_sse_events_utils::tests::{
-            random_n_block_added, sse_server_example_1_5_2_data,
-            sse_server_example_1_5_2_data_second, sse_server_example_1_5_2_data_third,
-            sse_server_shutdown_1_5_2_data, EventsWithIds,
+            random_n_block_added, sse_server_example_2_0_0_data,
+            sse_server_example_2_0_0_data_second, sse_server_example_2_0_0_data_third,
+            sse_server_shutdown_2_0_0_data, EventsWithIds,
         },
         testing_config::{prepare_config, TestingConfig},
     },
@@ -71,7 +71,7 @@ async fn given_sidecar_when_only_node_shuts_down_then_shut_down() {
 
     //MockNode::new should only have /events and /events sse endpoints,
     // simulating a situation when a node doesn't expose all endpoints.
-    let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
@@ -102,7 +102,7 @@ async fn should_allow_client_connection_to_sse() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
@@ -131,7 +131,7 @@ async fn should_respond_to_rest_query() {
         event_stream_server_port,
     ) = build_test_config();
     let sidecar_rest_server_port = testing_config.rest_api_server_config.port;
-    let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
@@ -167,7 +167,7 @@ async fn should_allow_partial_connection_on_one_filter() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
@@ -194,7 +194,8 @@ async fn should_fail_to_reconnect() {
     ) = build_test_config_with_retries(2, 2);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
@@ -212,7 +213,8 @@ async fn should_fail_to_reconnect() {
 
     let (data_of_node, _) = random_n_block_added(30, 31, test_rng);
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
@@ -241,7 +243,8 @@ async fn should_reconnect() {
     ) = build_test_config_with_retries(10, 1);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
@@ -257,7 +260,8 @@ async fn should_reconnect() {
 
     let (data_of_node, _) = random_n_block_added(30, 31, test_rng);
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
@@ -284,8 +288,9 @@ async fn shutdown_should_be_passed_through() {
         event_stream_server_port,
     ) = build_test_config();
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
-        data_of_node: sse_server_shutdown_1_5_2_data(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
+        data_of_node: sse_server_shutdown_2_0_0_data(),
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
         rest_port: Some(node_port_for_rest_connection),
@@ -300,13 +305,13 @@ async fn shutdown_should_be_passed_through() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-async fn connecting_to_node_prior_to_1_5_2_should_fail() {
+async fn connecting_to_node_prior_to_2_0_0_should_fail() {
     let (
         testing_config,
         _temp_storage_dir,
@@ -315,8 +320,9 @@ async fn connecting_to_node_prior_to_1_5_2_should_fail() {
         event_stream_server_port,
     ) = build_test_config();
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.1".to_string(),
-        data_of_node: sse_server_shutdown_1_5_2_data(),
+        version: "1.9.9".to_string(),
+        network_name: "network-1".to_string(),
+        data_of_node: sse_server_shutdown_2_0_0_data(),
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
         rest_port: Some(node_port_for_rest_connection),
@@ -347,8 +353,9 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
         event_stream_server_port,
     ) = build_test_config();
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
-        data_of_node: sse_server_shutdown_1_5_2_data(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
+        data_of_node: sse_server_shutdown_2_0_0_data(),
         cache_of_node: None,
         sse_port: Some(node_port_for_sse_connection),
         rest_port: Some(node_port_for_rest_connection),
@@ -363,7 +370,8 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
     let mut node_mock = MockNodeBuilder::build_example_node_with_version(
         Some(node_port_for_sse_connection),
         Some(node_port_for_rest_connection),
-        "1.5.3",
+        "2.0.1",
+        "network-1",
     );
     start_nodes_and_wait(vec![&mut node_mock]).await;
     wait_for_n_messages(2, receiver, Duration::from_secs(120)).await;
@@ -371,10 +379,10 @@ async fn shutdown_should_be_passed_through_when_versions_change() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 5);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
-    assert!(events_received.get(3).unwrap().contains("\"1.5.3\""));
+    assert!(events_received.get(3).unwrap().contains("\"2.0.1\""));
     assert!(events_received.get(4).unwrap().contains("\"BlockAdded\""));
 }
 
@@ -387,7 +395,7 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
-    let mut node_mock = MockNodeBuilder::build_example_1_5_2_node(
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
     );
@@ -421,9 +429,10 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
         example_block_added_2_0_0(BLOCK_HASH_3, "3"),
     )];
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
-        cache_of_node: Some(sse_server_example_1_5_2_data()),
+        cache_of_node: Some(sse_server_example_2_0_0_data()),
         sse_port: Some(node_port_for_sse_connection),
         rest_port: Some(node_port_for_rest_connection),
     }
@@ -436,7 +445,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     stop_nodes_and_wait(vec![&mut node_mock]).await;
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
@@ -461,13 +470,15 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
             0,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .unwrap();
     let mut node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
-        data_of_node: sse_server_example_1_5_2_data_second(),
-        cache_of_node: Some(sse_server_example_1_5_2_data()),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
+        data_of_node: sse_server_example_2_0_0_data_second(),
+        cache_of_node: Some(sse_server_example_2_0_0_data()),
         sse_port: Some(node_port_for_sse_connection),
         rest_port: Some(node_port_for_rest_connection),
     }
@@ -481,7 +492,7 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(events_received.get(1).unwrap().contains("\"BlockAdded\""));
     assert!(events_received.get(2).unwrap().contains("\"BlockAdded\""));
 }
@@ -489,13 +500,13 @@ async fn sidecar_should_use_start_from_if_database_is_not_empty() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn sidecar_should_connect_to_multiple_nodes() {
     let (sse_port_1, rest_port_1, mut mock_node_1) =
-        build_1_5_2(sse_server_example_1_5_2_data()).await;
+        build_2_0_0(sse_server_example_2_0_0_data()).await;
     mock_node_1.start().await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
-        build_1_5_2(sse_server_example_1_5_2_data_second()).await;
+        build_2_0_0(sse_server_example_2_0_0_data_second()).await;
     mock_node_2.start().await;
     let (sse_port_3, rest_port_3, mut mock_node_3) =
-        build_1_5_2(sse_server_example_1_5_2_data_third()).await;
+        build_2_0_0(sse_server_example_2_0_0_data_third()).await;
     mock_node_3.start().await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
@@ -512,7 +523,7 @@ async fn sidecar_should_connect_to_multiple_nodes() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 4);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -530,10 +541,10 @@ async fn sidecar_should_connect_to_multiple_nodes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
     let (sse_port_1, rest_port_1, mut mock_node_1) =
-        build_1_5_2(sse_server_example_1_5_2_data()).await;
+        build_2_0_0(sse_server_example_2_0_0_data()).await;
     mock_node_1.start().await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
-        build_1_5_2(sse_server_example_1_5_2_data_second()).await;
+        build_2_0_0(sse_server_example_2_0_0_data_second()).await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
             (sse_port_1, rest_port_1),
@@ -550,7 +561,7 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -564,9 +575,9 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
     let (sse_port_1, rest_port_1, mut mock_node_1) =
-        build_1_5_2(sse_server_example_1_5_2_data()).await;
+        build_2_0_0(sse_server_example_2_0_0_data()).await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
-        build_1_5_2(sse_server_example_1_5_2_data_second()).await;
+        build_2_0_0(sse_server_example_2_0_0_data_second()).await;
     start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
@@ -581,7 +592,7 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -595,9 +606,9 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_respond() {
     let (sse_port_1, rest_port_1, mut mock_node_1) =
-        build_1_5_2(sse_server_example_1_5_2_data()).await;
+        build_2_0_0(sse_server_example_2_0_0_data()).await;
     let (sse_port_2, rest_port_2, mut mock_node_2) =
-        build_1_5_2(sse_server_example_1_5_2_data_second()).await;
+        build_2_0_0(sse_server_example_2_0_0_data_second()).await;
     start_nodes_and_wait(vec![&mut mock_node_1, &mut mock_node_2]).await;
     let (testing_config, event_stream_server_port, _temp_storage_dir) =
         build_testing_config_based_on_ports(vec![
@@ -614,7 +625,7 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
     let events_received = tokio::join!(join_handle).0.unwrap();
     let length = events_received.len();
     assert_eq!(length, 3);
-    assert!(events_received.first().unwrap().contains("\"1.5.2\""));
+    assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
         format!("\"{BLOCK_HASH_2}\"")
@@ -694,9 +705,10 @@ pub async fn fetch_data_from_endpoint_with_panic_flag(
     (join, receiver)
 }
 
-pub async fn build_1_5_2(data_of_node: EventsWithIds) -> (u16, u16, MockNode) {
+pub async fn build_2_0_0(data_of_node: EventsWithIds) -> (u16, u16, MockNode) {
     let node_mock = MockNodeBuilder {
-        version: "1.5.2".to_string(),
+        version: "2.0.0".to_string(),
+        network_name: "network-1".to_string(),
         data_of_node,
         cache_of_node: None,
         sse_port: None,

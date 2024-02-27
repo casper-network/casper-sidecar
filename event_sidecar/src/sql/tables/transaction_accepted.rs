@@ -35,15 +35,9 @@ pub fn create_table_stmt() -> TableCreateStatement {
                 .big_unsigned()
                 .not_null(),
         )
-        .index(
-            &mut primary_key(),
-        )
-        .foreign_key(
-            &mut event_log_fk(),
-        )
-        .foreign_key(
-            &mut transaction_type_fk(),
-        )
+        .index(&mut primary_key())
+        .foreign_key(&mut event_log_fk())
+        .foreign_key(&mut transaction_type_fk())
         .to_owned()
 }
 

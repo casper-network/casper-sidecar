@@ -30,7 +30,6 @@ impl FakeDatabase {
         }
     }
 
-    
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn populate_with_events(
@@ -92,6 +91,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -107,6 +107,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -122,6 +123,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -137,6 +139,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -152,6 +155,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -167,6 +171,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -182,6 +187,7 @@ impl FakeDatabase {
             rng.gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await?;
         Ok(())
@@ -197,6 +203,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -221,6 +228,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -242,6 +250,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -263,6 +272,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -284,6 +294,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -309,6 +320,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -328,6 +340,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -345,6 +358,7 @@ impl DatabaseWriter for FakeDatabase {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         let mut data = self.data.lock().expect("Error acquiring lock on data");
         let unix_timestamp = SystemTime::now()
