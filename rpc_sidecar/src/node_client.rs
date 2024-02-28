@@ -157,10 +157,14 @@ pub trait NodeClient: Send + Sync {
 
     async fn read_transaction_with_execution_info(
         &self,
-        transaction_hash: TransactionHash,
+        hash: TransactionHash,
+        with_finalized_approvals: bool,
     ) -> Result<Option<TransactionWithExecutionInfo>, Error> {
         let resp = self
-            .read_info(InformationRequest::Transaction(transaction_hash))
+            .read_info(InformationRequest::Transaction {
+                hash,
+                with_finalized_approvals,
+            })
             .await?;
         parse_response::<TransactionWithExecutionInfo>(&resp.into())
     }
