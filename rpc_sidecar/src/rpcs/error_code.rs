@@ -49,6 +49,10 @@ pub enum ErrorCode {
     NodeRequestFailed = -32018,
     /// The request could not be satisfied because an underlying function is disabled.
     FunctionIsDisabled = -32019,
+    /// The requested addressable entity was not found.
+    NoSuchAddressableEntity = -32020,
+    /// The requested account has been migrated to an addressable entity.
+    AccountMigratedToEntity = -32021,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -82,6 +86,11 @@ impl From<ErrorCode> for (i64, &'static str) {
             ErrorCode::FunctionIsDisabled => (
                 error_code as i64,
                 "Function needed to execute this request is disabled",
+            ),
+            ErrorCode::NoSuchAddressableEntity => (error_code as i64, "No such addressable entity"),
+            ErrorCode::AccountMigratedToEntity => (
+                error_code as i64,
+                "Account migrated to an addressable entity",
             ),
         }
     }
