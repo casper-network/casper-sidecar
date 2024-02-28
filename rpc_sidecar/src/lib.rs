@@ -28,7 +28,7 @@ use std::{
 use tracing::warn;
 
 /// Minimal casper protocol version supported by this sidecar.
-pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 4);
+pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
 /// The exit code is used to indicate that the client has shut down due to version mismatch.
 pub const CLIENT_SHUTDOWN_EXIT_CODE: u8 = 0x3;
