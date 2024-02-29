@@ -690,7 +690,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "3.0.0"
-source = "git+https://github.com/jacek-casper/casper-node?branch=sidecar-extracted#81258ce965abc04c2436f4bb852185adec449921"
+source = "git+https://github.com/jacek-casper/casper-node?branch=sidecar-extracted#4dd510d7a9f7ea713160e89021ddd22c02de5892"
 dependencies = [
  "base16",
  "base64 0.13.1",
