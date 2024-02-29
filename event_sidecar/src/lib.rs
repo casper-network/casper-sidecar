@@ -363,6 +363,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -390,6 +391,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -417,6 +419,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -461,6 +464,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -496,6 +500,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
 
@@ -530,6 +535,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -558,6 +564,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
+                    sse_event.network_name,
                 )
                 .await;
             handle_database_save_result(
@@ -589,6 +596,7 @@ async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sy
             sse_event.id,
             sse_event.source.to_string(),
             sse_event.api_version,
+            sse_event.network_name,
         )
         .await;
     match res {

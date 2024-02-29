@@ -39,6 +39,8 @@ pub struct SseEvent {
     pub inbound_filter: Filter,
     /// Api version which was reported for the node from which the event was received.
     pub api_version: String,
+    /// Network name of the node from which the event was received.
+    pub network_name: String,
 }
 
 impl SseEvent {
@@ -49,6 +51,7 @@ impl SseEvent {
         json_data: Option<String>,
         inbound_filter: Filter,
         api_version: String,
+        network_name: String,
     ) -> Self {
         // This is to remove the path e.g. /events/main
         // Leaving just the IP and port
@@ -60,6 +63,7 @@ impl SseEvent {
             json_data,
             inbound_filter,
             api_version,
+            network_name,
         }
     }
 }

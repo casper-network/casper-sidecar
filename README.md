@@ -40,7 +40,7 @@ Once you create the configuration file and are ready to run the Sidecar service,
 
 ### Node Connections
 
-The Sidecar can connect to Casper nodes with versions greater or equal to `1.5.2`.
+The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[sse_server.connections]]` sections.
 

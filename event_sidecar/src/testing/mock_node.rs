@@ -4,7 +4,7 @@ pub mod tests {
 
     use crate::testing::fake_event_stream::setup_mock_build_version_server_with_version;
     use crate::testing::raw_sse_events_utils::tests::{
-        example_data_1_5_3, simple_sse_server, sse_server_example_data, EventsWithIds,
+        example_data_2_0_1, simple_sse_server, sse_server_example_data, EventsWithIds,
     };
     use crate::testing::testing_config::get_port;
     use futures::join;
@@ -13,6 +13,7 @@ pub mod tests {
 
     pub struct MockNodeBuilder {
         pub version: String,
+        pub network_name: String,
         pub data_of_node: EventsWithIds,
         pub cache_of_node: Option<EventsWithIds>,
         pub sse_port: Option<u16>,
@@ -20,13 +21,14 @@ pub mod tests {
     }
 
     impl MockNodeBuilder {
-        pub fn build_example_1_5_3_node(
+        pub fn build_example_2_0_1_node(
             node_port_for_sse_connection: u16,
             node_port_for_rest_connection: u16,
         ) -> MockNode {
             MockNodeBuilder {
-                version: "1.5.3".to_string(),
-                data_of_node: example_data_1_5_3(),
+                version: "2.0.1".to_string(),
+                network_name: "network1".to_string(),
+                data_of_node: example_data_2_0_1(),
                 cache_of_node: None,
                 sse_port: Some(node_port_for_sse_connection),
                 rest_port: Some(node_port_for_rest_connection),
@@ -34,14 +36,15 @@ pub mod tests {
             .build()
         }
 
-        pub fn build_example_1_5_2_node(
+        pub fn build_example_2_0_0_node(
             node_port_for_sse_connection: u16,
             node_port_for_rest_connection: u16,
         ) -> MockNode {
             Self::build_example_node_with_version(
                 Some(node_port_for_sse_connection),
                 Some(node_port_for_rest_connection),
-                "1.5.2",
+                "2.0.0",
+                "network1",
             )
         }
 
@@ -49,9 +52,11 @@ pub mod tests {
             node_port_for_sse_connection: Option<u16>,
             node_port_for_rest_connection: Option<u16>,
             version: &str,
+            network_name: &str,
         ) -> MockNode {
             MockNodeBuilder {
                 version: version.to_string(),
+                network_name: network_name.to_string(),
                 data_of_node: sse_server_example_data(version),
                 cache_of_node: None,
                 sse_port: node_port_for_sse_connection,
@@ -69,12 +74,14 @@ pub mod tests {
                 cache_of_node,
                 sse_port,
                 rest_port,
+                self.network_name.clone(),
             )
         }
     }
 
     pub struct MockNode {
         version: String,
+        network_name: String,
         data_of_node: EventsWithIds,
         cache_of_node: EventsWithIds,
         sse_port: u16,
@@ -108,9 +115,11 @@ pub mod tests {
             cache_of_node: EventsWithIds,
             sse_port: u16,
             rest_port: u16,
+            network_name: String,
         ) -> MockNode {
             MockNode {
                 version,
+                network_name,
                 data_of_node,
                 cache_of_node,
                 sse_port,
@@ -126,6 +135,7 @@ pub mod tests {
             let data_of_node_clone = self.data_of_node.clone();
             let cache_of_node = self.cache_of_node.clone();
             let version = self.version.clone();
+            let network_name = self.network_name.clone();
             let sse_port = self.sse_port;
             let rest_port = self.rest_port;
 
@@ -136,7 +146,7 @@ pub mod tests {
                 });
             //Spin up rest server
             let rest_server_join = tokio::spawn(async move {
-                setup_mock_build_version_server_with_version(rest_port, version).await
+                setup_mock_build_version_server_with_version(rest_port, version, network_name).await
             });
             //Get handles to stop the above servers, store them in the structure
             let sse_and_rest_joins = join!(sse_server_join, rest_server_join);

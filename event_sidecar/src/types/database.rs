@@ -94,6 +94,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployAccepted event to the database.
     ///
@@ -106,6 +107,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployProcessed event to the database.
     ///
@@ -118,6 +120,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a DeployExpired event to the database.
     ///
@@ -130,6 +133,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a Fault event to the database.
     ///
@@ -142,6 +146,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a FinalitySignature event to the database.
     ///
@@ -154,6 +159,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
     /// Save a Step event to the database.
     ///
@@ -166,6 +172,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
 
     // Save data about shutdown to the database
@@ -174,6 +181,7 @@ pub trait DatabaseWriter {
         event_id: u32,
         event_source_address: String,
         api_version: String,
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError>;
 
     /// Executes migration and stores current migration version

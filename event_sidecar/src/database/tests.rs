@@ -1,9 +1,13 @@
-use crate::types::{
-    database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
-    sse_events::*,
+use crate::{
+    sql::tables,
+    types::{
+        database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
+        sse_events::*,
+    },
 };
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
 use rand::Rng;
+use sea_query::{Query, SelectStatement};
 
 pub async fn should_save_and_retrieve_block_added<DB: DatabaseReader + DatabaseWriter>(db: DB) {
     let mut test_rng = TestRng::new();
@@ -14,6 +18,7 @@ pub async fn should_save_and_retrieve_block_added<DB: DatabaseReader + DatabaseW
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving block_added");
@@ -50,6 +55,7 @@ pub async fn should_save_and_retrieve_transaction_accepted<DB: DatabaseReader + 
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_accepted");
@@ -80,6 +86,7 @@ pub async fn should_save_and_retrieve_transaction_processed<DB: DatabaseReader +
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_processed");
@@ -110,6 +117,7 @@ pub async fn should_save_and_retrieve_transaction_expired<DB: DatabaseReader + D
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_expired");
@@ -144,6 +152,7 @@ pub async fn should_retrieve_transaction_aggregate_of_accepted<
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_accepted");
@@ -179,6 +188,7 @@ pub async fn should_retrieve_transaction_aggregate_of_processed<
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_accepted");
@@ -188,6 +198,7 @@ pub async fn should_retrieve_transaction_aggregate_of_processed<
         2,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_processed");
@@ -223,6 +234,7 @@ pub async fn should_retrieve_transaction_aggregate_of_expired<
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_accepted");
@@ -232,6 +244,7 @@ pub async fn should_retrieve_transaction_aggregate_of_expired<
         2,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving transaction_expired");
@@ -253,6 +266,7 @@ pub async fn should_save_and_retrieve_fault<DB: DatabaseReader + DatabaseWriter>
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving fault");
@@ -278,6 +292,7 @@ pub async fn should_save_and_retrieve_fault_with_a_u64max<DB: DatabaseReader + D
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving fault with a u64::MAX era id");
@@ -308,6 +323,7 @@ pub async fn should_save_and_retrieve_finality_signature<DB: DatabaseReader + Da
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving finality_signature");
@@ -326,6 +342,7 @@ pub async fn should_save_and_retrieve_step<DB: DatabaseReader + DatabaseWriter>(
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving step");
@@ -349,6 +366,7 @@ pub async fn should_save_and_retrieve_a_step_with_u64_max_era<
         1,
         "127.0.0.1".to_string(),
         "1.1.1".to_string(),
+        "network-1".to_string(),
     )
     .await
     .expect("Error saving Step with u64::MAX era id");
@@ -373,7 +391,8 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
             block_added.clone(),
             event_id,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
@@ -383,6 +402,7 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
             event_id,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await;
     assert!(matches!(res, Err(DatabaseWriteError::UniqueConstraint(_))));
@@ -403,13 +423,20 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
             block_added.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
 
     let db_err = db
-        .save_block_added(block_added, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_block_added(
+            block_added,
+            2,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+            "network-1".to_string(),
+        )
         .await
         .unwrap_err();
 
@@ -434,7 +461,8 @@ pub async fn should_disallow_insert_of_existing_transaction_accepted<
             transaction_accepted.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
@@ -445,6 +473,7 @@ pub async fn should_disallow_insert_of_existing_transaction_accepted<
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .unwrap_err();
@@ -470,7 +499,8 @@ pub async fn should_disallow_insert_of_existing_transaction_expired<
             transaction_expired.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
@@ -481,6 +511,7 @@ pub async fn should_disallow_insert_of_existing_transaction_expired<
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .unwrap_err();
@@ -506,7 +537,8 @@ pub async fn should_disallow_insert_of_existing_transaction_processed<
             transaction_processed.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
@@ -517,6 +549,7 @@ pub async fn should_disallow_insert_of_existing_transaction_processed<
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .unwrap_err();
@@ -538,13 +571,20 @@ pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + Datab
             fault.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
 
     let db_err = db
-        .save_fault(fault, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_fault(
+            fault,
+            2,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+            "network-1".to_string(),
+        )
         .await
         .unwrap_err();
 
@@ -569,7 +609,8 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
             finality_signature.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
@@ -580,6 +621,7 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
             2,
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .unwrap_err();
@@ -601,13 +643,20 @@ pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + Databa
             step.clone(),
             1,
             "127.0.0.1".to_string(),
-            "1.1.1".to_string()
+            "1.1.1".to_string(),
+            "network-1".to_string(),
         )
         .await
         .is_ok());
 
     let db_err = db
-        .save_step(step, 2, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_step(
+            step,
+            2,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+            "network-1".to_string(),
+        )
         .await
         .unwrap_err();
 
@@ -632,8 +681,25 @@ pub async fn get_number_of_events_should_return_1_when_event_stored<
     let fault = Fault::random(&mut test_rng);
 
     assert!(db
-        .save_fault(fault, 1, "127.0.0.1".to_string(), "1.1.1".to_string())
+        .save_fault(
+            fault,
+            1,
+            "127.0.0.1".to_string(),
+            "1.1.1".to_string(),
+            "network-1".to_string(),
+        )
         .await
         .is_ok());
     assert_eq!(db.get_number_of_events().await.unwrap(), 1);
+}
+
+pub fn fetch_event_log_data_query() -> SelectStatement {
+    let mut select = Query::select();
+    select
+        .column(tables::event_log::EventLog::EventTypeId)
+        .column(tables::event_log::EventLog::ApiVersion)
+        .column(tables::event_log::EventLog::NetworkName)
+        .column(tables::event_log::EventLog::EventSourceAddress)
+        .from(tables::event_log::EventLog::Table);
+    select
 }

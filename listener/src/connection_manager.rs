@@ -52,6 +52,7 @@ pub struct DefaultConnectionManager {
     filter: Filter,
     current_event_id_sender: Sender<(Filter, u32)>,
     api_version: Option<ProtocolVersion>,
+    network_name: String,
 }
 
 #[derive(Debug)]
@@ -101,6 +102,8 @@ pub struct DefaultConnectionManagerBuilder {
     pub(super) sleep_between_keep_alive_checks: Duration,
     /// Time of inactivity of a node connection that is allowed by KeepAliveMonitor
     pub(super) no_message_timeout: Duration,
+    /// Name of the network to which the node is connected to
+    pub(super) network_name: String,
 }
 
 #[async_trait::async_trait]
@@ -129,6 +132,7 @@ impl DefaultConnectionManagerBuilder {
             filter: self.filter,
             current_event_id_sender: self.current_event_id_sender,
             api_version: None,
+            network_name: self.network_name,
         }
     }
 }
@@ -249,6 +253,7 @@ impl DefaultConnectionManager {
                     raw_json_data,
                     self.filter.clone(),
                     api_version.to_string(),
+                    self.network_name.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(SENDING_FAILED);
@@ -299,6 +304,7 @@ impl DefaultConnectionManager {
                     None,
                     self.filter.clone(),
                     semver.to_string(),
+                    self.network_name.clone(),
                 );
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(API_VERSION_SENDING_FAILED);
@@ -387,7 +393,7 @@ pub mod tests {
     #[tokio::test]
     async fn given_connection_fail_should_return_error() {
         let connector = Box::new(MockSseConnection::build_failing_on_connection());
-        let (mut connection_manager, _, _) = build_manager(connector);
+        let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
             assert_eq!(error.to_string(), "Some error on connection");
@@ -399,7 +405,7 @@ pub mod tests {
     #[tokio::test]
     async fn given_failure_on_message_should_return_error() {
         let connector = Box::new(MockSseConnection::build_failing_on_message());
-        let (mut connection_manager, _, _) = build_manager(connector);
+        let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::InitialConnectionError { error }) = res {
             assert_eq!(error.to_string(), FIRST_EVENT_EMPTY);
@@ -415,7 +421,7 @@ pub mod tests {
             example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
-        let (mut connection_manager, _, _) = build_manager(connector);
+        let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
             assert!(error
@@ -434,7 +440,8 @@ pub mod tests {
             example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
-        let (mut connection_manager, data_tx, event_ids) = build_manager(connector);
+        let (mut connection_manager, data_tx, event_ids) =
+            build_manager(connector, "test".to_string());
         let events_join = tokio::spawn(async move { poll_events(data_tx).await });
         let event_ids_join = tokio::spawn(async move { poll_events(event_ids).await });
         tokio::spawn(async move { connection_manager.do_start_handling().await });
@@ -452,7 +459,8 @@ pub mod tests {
             example_block_added_2_0_0(BLOCK_HASH_2, "2"),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
-        let (mut connection_manager, data_tx, _event_ids) = build_manager(connector);
+        let (mut connection_manager, data_tx, _event_ids) =
+            build_manager(connector, "test".to_string());
         let events_join = tokio::spawn(async move { poll_events(data_tx).await });
         let connection_manager_joiner =
             tokio::spawn(async move { connection_manager.do_start_handling().await });
@@ -479,6 +487,7 @@ pub mod tests {
 
     fn build_manager(
         connector: Box<dyn StreamConnector + Send + Sync>,
+        network_name: String,
     ) -> (
         DefaultConnectionManager,
         Receiver<SseEvent>,
@@ -496,6 +505,7 @@ pub mod tests {
             filter: Filter::Events,
             current_event_id_sender: event_id_tx,
             api_version: None,
+            network_name,
         };
         (manager, data_rx, event_id_rx)
     }

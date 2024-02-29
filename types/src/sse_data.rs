@@ -1,5 +1,5 @@
 //! Common types used when dealing with serialization/deserialization of data from nodes,
-//! also a "contemporary" data model which is based on 1.4.x node specification
+//! also a "contemporary" data model which is based on 2.0.x node specification
 
 /// A filter for event types a client has subscribed to receive.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -19,11 +19,11 @@ pub enum EventFilter {
 use super::testing;
 use casper_types::{
     contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, ChainNameDigest,
-    EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TestBlockBuilder,
-    TimeDiff, Timestamp, Transaction, TransactionHash,
+    EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash,
 };
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng};
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ pub(crate) fn to_error(msg: String) -> SseDataDeserializeError {
     SseDataDeserializeError::DeserializationError(msg)
 }
 
-/// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.4.x compliant) or an SseDataDeserializeError
+/// Deserializes a string which should contain json data and returns a result of either SseData (which is 2.0.x compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
 pub fn deserialize(json_raw: &str) -> Result<(SseData, bool), SseDataDeserializeError> {
@@ -79,7 +79,6 @@ pub enum SseData {
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
-        //#[data_size(skip)]
         execution_result: Box<ExecutionResult>,
         messages: Messages,
     },
@@ -251,7 +250,7 @@ pub mod test_support {
     }
 
     pub fn example_block_added_2_0_0(hash: &str, height: &str) -> String {
-        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{hash}\",\"block\":{{\"Version2\":{{\"hash\":\"{hash}\",\"header\":{{\"parent_hash\":\"e38f28265439296d106cf111869cd17a3ca114707ae2c82b305bf830f90a36a5\",\"state_root_hash\":\"e7ec15c0700717850febb2a0a67ee5d3a55ddb121b1fc70e5bcf154e327fe6c6\",\"body_hash\":\"5ad04cda6912de119d776045d44a4266e05eb768d4c1652825cc19bce7030d2c\",\"random_bit\":false,\"accumulated_seed\":\"bbcabbb76ac8714a37e928b7f0bde4caeddf5e446e51a36ceab9a34f5e983b92\",\"era_end\":null,\"timestamp\":\"2024-02-22T08:18:44.352Z\",\"era_id\":2,\"height\":{height},\"protocol_version\":\"1.5.3\"}},\"body\":{{\"proposer\":\"01302f30e5a5a00b2a0afbfbe9e63b3a9feb278d5f1944ba5efffa15fbb2e8a2e6\",\"transfer\":[],\"staking\":[],\"install_upgrade\":[],\"standard\":[{{\"Deploy\":\"2e3083dbf5344c82efeac5e1a079bfd94acc1dfb454da0d92970f2e18e3afa9f\"}}],\"rewarded_signatures\":[[248],[0],[0]]}}}}}}}}}}");
+        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{hash}\",\"block\":{{\"Version2\":{{\"hash\":\"{hash}\",\"header\":{{\"parent_hash\":\"e38f28265439296d106cf111869cd17a3ca114707ae2c82b305bf830f90a36a5\",\"state_root_hash\":\"e7ec15c0700717850febb2a0a67ee5d3a55ddb121b1fc70e5bcf154e327fe6c6\",\"body_hash\":\"5ad04cda6912de119d776045d44a4266e05eb768d4c1652825cc19bce7030d2c\",\"random_bit\":false,\"accumulated_seed\":\"bbcabbb76ac8714a37e928b7f0bde4caeddf5e446e51a36ceab9a34f5e983b92\",\"era_end\":null,\"timestamp\":\"2024-02-22T08:18:44.352Z\",\"era_id\":2,\"height\":{height},\"protocol_version\":\"2.0.0\"}},\"body\":{{\"proposer\":\"01302f30e5a5a00b2a0afbfbe9e63b3a9feb278d5f1944ba5efffa15fbb2e8a2e6\",\"transfer\":[],\"staking\":[],\"install_upgrade\":[],\"standard\":[{{\"Deploy\":\"2e3083dbf5344c82efeac5e1a079bfd94acc1dfb454da0d92970f2e18e3afa9f\"}}],\"rewarded_signatures\":[[248],[0],[0]]}}}}}}}}}}");
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }

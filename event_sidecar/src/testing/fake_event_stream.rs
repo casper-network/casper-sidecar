@@ -27,7 +27,7 @@ const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;
 const NUMBER_OF_VALIDATORS: u16 = 100;
 const NUMBER_OF_TRANSACTIONS_PER_BLOCK: u16 = 20;
-const API_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 2);
+const API_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
 type FrequencyOfStepEvents = u8;
 type NumberOftransactionEventsInBurst = u64;
@@ -597,19 +597,22 @@ async fn load_testing_transaction(
 }
 
 pub async fn setup_mock_build_version_server(port: u16) -> (Sender<()>, Receiver<()>) {
-    setup_mock_build_version_server_with_version(port, "1.5.2".to_string()).await
+    setup_mock_build_version_server_with_version(port, "2.0.0".to_string(), "network-1".to_string())
+        .await
 }
 
 pub async fn setup_mock_build_version_server_with_version(
     port: u16,
     version: String,
+    network_name: String,
 ) -> (Sender<()>, Receiver<()>) {
     let (shutdown_tx, mut shutdown_rx) = mpsc_channel(10);
     let (after_shutdown_tx, after_shutdown_rx) = mpsc_channel(10);
     let api = warp::path!("status")
         .and(warp::get())
         .map(move || {
-            let result = json!({ "build_version": version.clone() });
+            let result =
+                json!({ "build_version": version.clone(), "chainspec_name": network_name.clone()});
             warp::reply::json(&result)
         })
         .and(end());
