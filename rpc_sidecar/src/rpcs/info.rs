@@ -151,7 +151,7 @@ impl RpcWithParams for GetDeploy {
     ) -> Result<Self::ResponseResult, RpcError> {
         let hash = TransactionHash::from(params.deploy_hash);
         let (transaction, execution_info) = node_client
-            .read_transaction_with_execution_info(hash)
+            .read_transaction_with_execution_info(hash, params.finalized_approvals)
             .await
             .map_err(|err| Error::NodeRequest("transaction", err))?
             .ok_or(Error::NoDeployWithHash(params.deploy_hash))?
@@ -223,7 +223,10 @@ impl RpcWithParams for GetTransaction {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let (transaction, execution_info) = node_client
-            .read_transaction_with_execution_info(params.transaction_hash)
+            .read_transaction_with_execution_info(
+                params.transaction_hash,
+                params.finalized_approvals,
+            )
             .await
             .map_err(|err| Error::NodeRequest("transaction", err))?
             .ok_or(Error::NoTransactionWithHash(params.transaction_hash))?
@@ -522,7 +525,7 @@ mod tests {
     use casper_types::{
         binary_port::{
             BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            InformationRequestTag, TransactionWithExecutionInfo,
+            InformationRequest, InformationRequestTag, TransactionWithExecutionInfo,
         },
         bytesrepr::{FromBytes, ToBytes},
         testing::TestRng,
@@ -542,6 +545,7 @@ mod tests {
             block_height: rng.gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
+        let finalized_approvals = rng.gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -549,10 +553,11 @@ mod tests {
                     transaction.clone(),
                     Some(execution_info.clone()),
                 ),
+                finalized_approvals,
             )),
             GetTransactionParams {
                 transaction_hash: transaction.hash(),
-                finalized_approvals: true,
+                finalized_approvals,
             },
         )
         .await
@@ -577,6 +582,7 @@ mod tests {
             block_height: rng.gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
+        let finalized_approvals = rng.gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -584,10 +590,11 @@ mod tests {
                     Transaction::Deploy(deploy.clone()),
                     Some(execution_info.clone()),
                 ),
+                finalized_approvals,
             )),
             GetTransactionParams {
                 transaction_hash: deploy.hash().into(),
-                finalized_approvals: true,
+                finalized_approvals,
             },
         )
         .await
@@ -612,6 +619,7 @@ mod tests {
             block_height: rng.gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
+        let finalized_approvals = rng.gen();
 
         let resp = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -619,10 +627,11 @@ mod tests {
                     Transaction::Deploy(deploy.clone()),
                     Some(execution_info.clone()),
                 ),
+                finalized_approvals,
             )),
             GetDeployParams {
                 deploy_hash: *deploy.hash(),
-                finalized_approvals: true,
+                finalized_approvals,
             },
         )
         .await
@@ -647,6 +656,7 @@ mod tests {
             block_height: rng.gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
+        let finalized_approvals = rng.gen();
 
         let err = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -654,10 +664,11 @@ mod tests {
                     Transaction::V1(transaction.clone()),
                     Some(execution_info.clone()),
                 ),
+                finalized_approvals,
             )),
             GetDeployParams {
                 deploy_hash: DeployHash::new(*transaction.hash().inner()),
-                finalized_approvals: true,
+                finalized_approvals,
             },
         )
         .await
@@ -668,12 +679,16 @@ mod tests {
 
     struct ValidTransactionMock {
         transaction_bytes: Vec<u8>,
+        should_request_approvals: bool,
     }
 
     impl ValidTransactionMock {
-        fn new(info: TransactionWithExecutionInfo) -> Self {
+        fn new(info: TransactionWithExecutionInfo, should_request_approvals: bool) -> Self {
             let transaction_bytes = info.to_bytes().expect("should serialize transaction");
-            ValidTransactionMock { transaction_bytes }
+            ValidTransactionMock {
+                transaction_bytes,
+                should_request_approvals,
+            }
         }
     }
 
@@ -684,10 +699,20 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, key })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Transaction) =>
                 {
+                    let req = InformationRequest::try_from((
+                        InformationRequestTag::try_from(info_type_tag).unwrap(),
+                        &key[..],
+                    ))
+                    .unwrap();
+                    assert!(matches!(
+                        req,
+                        InformationRequest::Transaction { with_finalized_approvals, .. }
+                            if with_finalized_approvals == self.should_request_approvals
+                    ));
                     let (transaction, _) =
                         TransactionWithExecutionInfo::from_bytes(&self.transaction_bytes)
                             .expect("should deserialize transaction");

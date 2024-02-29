@@ -19,8 +19,8 @@ pub enum EventFilter {
 use super::testing;
 use casper_types::{
     contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, ChainNameDigest,
-    EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash,
+    EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TestBlockBuilder,
+    TimeDiff, Timestamp, Transaction, TransactionHash,
 };
 #[cfg(feature = "sse-data-testing")]
 use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
