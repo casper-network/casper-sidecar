@@ -157,10 +157,14 @@ pub trait NodeClient: Send + Sync {
 
     async fn read_transaction_with_execution_info(
         &self,
-        transaction_hash: TransactionHash,
+        hash: TransactionHash,
+        with_finalized_approvals: bool,
     ) -> Result<Option<TransactionWithExecutionInfo>, Error> {
         let resp = self
-            .read_info(InformationRequest::Transaction(transaction_hash))
+            .read_info(InformationRequest::Transaction {
+                hash,
+                with_finalized_approvals,
+            })
             .await?;
         parse_response::<TransactionWithExecutionInfo>(&resp.into())
     }
@@ -590,7 +594,7 @@ mod tests {
     async fn start_mock_binary_port_responding_with_stored_value(port: u16) -> JoinHandle<()> {
         let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
         let data = GlobalStateQueryResult::new(value, vec![]);
-        let protocol_version = ProtocolVersion::from_parts(1, 5, 4);
+        let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
         let val = BinaryResponse::from_value(data, protocol_version);
         let request = [];
         let response = BinaryResponseAndRequest::new(val, &request);

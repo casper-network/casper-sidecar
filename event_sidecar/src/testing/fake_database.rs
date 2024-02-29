@@ -30,7 +30,6 @@ impl FakeDatabase {
         }
     }
 
-    
     /// Creates random SSE event data and saves them, returning the identifiers for each record.
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn populate_with_events(
