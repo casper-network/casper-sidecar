@@ -1,7 +1,10 @@
-use crate::{sql::tables, types::{
-    database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
-    sse_events::*,
-}};
+use crate::{
+    sql::tables,
+    types::{
+        database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
+        sse_events::*,
+    },
+};
 use casper_types::{testing::TestRng, AsymmetricType, EraId};
 use rand::Rng;
 use sea_query::{Query, SelectStatement};
