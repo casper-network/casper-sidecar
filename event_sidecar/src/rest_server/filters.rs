@@ -196,7 +196,7 @@ fn transaction_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("transaction" / TransactionTypeIdFilter / "accepted" / String)
+    warp::path!("transaction" / "accepted" / TransactionTypeIdFilter / String)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_transaction_accepted_by_hash)
@@ -220,7 +220,7 @@ fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("transaction" / TransactionTypeIdFilter / "expired" / String)
+    warp::path!("transaction" / "expired" / TransactionTypeIdFilter / String)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_transaction_expired_by_hash)
@@ -244,7 +244,7 @@ fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 fn transaction_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::path!("transaction" / TransactionTypeIdFilter / "processed" / String)
+    warp::path!("transaction" / "processed" / TransactionTypeIdFilter / String)
         .and(warp::get())
         .and(with_db(db))
         .and_then(handlers::get_transaction_processed_by_hash)

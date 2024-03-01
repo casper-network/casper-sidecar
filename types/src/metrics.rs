@@ -47,7 +47,7 @@ pub static INTERNAL_EVENTS: Lazy<IntCounterVec> = Lazy::new(|| {
 });
 pub static NODE_STATUSES: Lazy<GaugeVec> = Lazy::new(|| {
     let counter = GaugeVec::new(
-        Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct -> used up all connection attempts ; -2 - defunct -> node is in an incompatible version"),
+        Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - connections_exhausted -> used up all connection attempts ; -2 - incompatible -> node is in an incompatible version"),
         &["node"]
     )
     .expect("metric can't be created");

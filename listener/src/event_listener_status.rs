@@ -14,7 +14,7 @@ pub(super) enum EventListenerStatus {
     /// If Event Listener reports this state it means that it was unable to establish a connection
     /// with node and there are no more `max_connection_attempts` left. There will be no futhrer
     /// tries to establish the connection.
-    Defunct,
+    ReconnectionsExhausted,
     /// If Event Listener reports this state it means that the node it was trying to connect to has a
     /// version which sidecar can't work with
     IncompatibleVersion,
@@ -27,7 +27,7 @@ impl EventListenerStatus {
             EventListenerStatus::Connecting => 1,
             EventListenerStatus::Connected => 2,
             EventListenerStatus::Reconnecting => 3,
-            EventListenerStatus::Defunct => -1,
+            EventListenerStatus::ReconnectionsExhausted => -1,
             EventListenerStatus::IncompatibleVersion => -2,
         } as f64;
         let node_label = format!("{}:{}", node_address, sse_port);

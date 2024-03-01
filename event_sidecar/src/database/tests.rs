@@ -302,14 +302,14 @@ pub async fn should_save_and_retrieve_fault_with_a_u64max<DB: DatabaseReader + D
         .await
         .expect("Error getting faults by era with u64::MAX era id");
 
-    assert_eq!(faults[0].era_id.value(), u64::MAX);
+    assert_eq!(faults[0].payload().era_id.value(), u64::MAX);
 
     let faults = db
         .get_faults_by_public_key(&fault.public_key.to_hex())
         .await
         .expect("Error getting faults by public key with u64::MAX era id");
 
-    assert_eq!(faults[0].era_id.value(), u64::MAX);
+    assert_eq!(faults[0].payload().era_id.value(), u64::MAX);
 }
 
 pub async fn should_save_and_retrieve_finality_signature<DB: DatabaseReader + DatabaseWriter>(
@@ -376,7 +376,7 @@ pub async fn should_save_and_retrieve_a_step_with_u64_max_era<
         .await
         .expect("Error retrieving Step with u64::MAX era id");
 
-    assert_eq!(retrieved_step.era_id.value(), u64::MAX)
+    assert_eq!(retrieved_step.payload().era_id.value(), u64::MAX)
 }
 
 pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader + DatabaseWriter>(

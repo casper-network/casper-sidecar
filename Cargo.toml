@@ -12,7 +12,7 @@ members = [
 [workspace.dependencies]
 anyhow = "1"
 async-stream = "0.3.4"
-casper-types = { git = "https://github.com/jacek-casper/casper-node", branch="sidecar-extracted" }
+casper-types = { git = "https://github.com/casper-network/casper-node", branch="feat-2.0" }
 casper-event-sidecar = { path = "./event_sidecar", version = "1.0.0" }
 casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
 datasize = "0.2.11"

@@ -98,7 +98,14 @@ pub fn create_insert_stmt(
 pub fn create_get_by_hash_stmt(transaction_type: u8, transaction_hash: String) -> SelectStatement {
     Query::select()
         .column(TransactionExpired::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(TransactionExpired::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((TransactionExpired::Table, TransactionExpired::EventLogId)),
+        )
         .and_where(Expr::col(TransactionExpired::TransactionTypeId).eq(transaction_type))
         .and_where(Expr::col(TransactionExpired::TransactionHash).eq(transaction_hash))
         .to_owned()

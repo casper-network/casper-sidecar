@@ -227,11 +227,11 @@ pub mod tests {
         assert!(ret.is_err());
     }
 
-    fn build_server_mock(
+    async fn build_server_mock(
         build_version: Option<&str>,
         network_name: Option<&str>,
     ) -> (Mock, String, ServerGuard) {
-        let mut server = Server::new();
+        let mut server = Server::new_async().await;
         let url = format!("{}/status", server.url());
         let mut m = Map::new();
         if let Some(version) = build_version {
@@ -256,7 +256,7 @@ pub mod tests {
         build_version: Option<&str>,
         network_name: Option<&str>,
     ) -> Result<NodeMetadata, BuildVersionFetchError> {
-        let (mock, url, _server) = build_server_mock(build_version, network_name);
+        let (mock, url, _server) = build_server_mock(build_version, network_name).await;
         let result = for_status_endpoint(Url::parse(&url).unwrap()).fetch().await;
         mock.assert();
         result

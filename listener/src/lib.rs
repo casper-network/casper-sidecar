@@ -115,9 +115,7 @@ impl EventListener {
         log_status_for_event_listener(EventListenerStatus::Connecting, self);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
-            if current_attempt > 1 {
-                sleep(self.delay_between_attempts).await;
-            }
+            self.delay_if_needed(current_attempt).await;
             match self.get_metadata(current_attempt).await {
                 GetNodeMetadataResult::Ok(Some(node_metadata)) => {
                     self.node_metadata = node_metadata;
@@ -125,9 +123,7 @@ impl EventListener {
                 }
                 GetNodeMetadataResult::Retry => {
                     current_attempt += 1;
-                    if current_attempt >= self.max_connection_attempts {
-                        log_status_for_event_listener(EventListenerStatus::Defunct, self);
-                    }
+                    self.log_connections_exhausted_if_needed(current_attempt);
                     continue;
                 }
                 GetNodeMetadataResult::Error(e) => return Err(e),
@@ -144,8 +140,22 @@ impl EventListener {
             }
             current_attempt += 1;
         }
-        log_status_for_event_listener(EventListenerStatus::Defunct, self);
+        log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
         Err(Error::msg(MAX_CONNECTION_ATTEMPTS_REACHED))
+    }
+
+    #[inline(always)]
+    async fn delay_if_needed(&mut self, current_attempt: usize) {
+        if current_attempt > 1 {
+            sleep(self.delay_between_attempts).await;
+        }
+    }
+
+    #[inline(always)]
+    fn log_connections_exhausted_if_needed(&mut self, current_attempt: usize) {
+        if current_attempt >= self.max_connection_attempts {
+            log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
+        }
     }
 
     async fn do_connect(

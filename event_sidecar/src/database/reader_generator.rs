@@ -9,7 +9,10 @@ macro_rules! database_reader_implementation {
         use serde::Deserialize;
         use sqlx::{Executor, Row};
         use $crate::{
-            database::errors::{wrap_query_error, DbError},
+            database::{
+                errors::{wrap_query_error, DbError},
+                types::SseEnvelope,
+            },
             sql::tables,
             types::{
                 database::{
@@ -21,7 +24,7 @@ macro_rules! database_reader_implementation {
 
         #[async_trait]
         impl DatabaseReader for $extended_type {
-            async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError> {
+            async fn get_latest_block(&self) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::block_added::create_get_latest_stmt()
@@ -34,7 +37,7 @@ macro_rules! database_reader_implementation {
             async fn get_block_by_height(
                 &self,
                 height: u64,
-            ) -> Result<BlockAdded, DatabaseReadError> {
+            ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::block_added::create_get_by_height_stmt(height)
@@ -45,7 +48,10 @@ macro_rules! database_reader_implementation {
                 parse_block_from_row(row)
             }
 
-            async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError> {
+            async fn get_block_by_hash(
+                &self,
+                hash: &str,
+            ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::block_added::create_get_by_hash_stmt(hash.to_string())
@@ -118,7 +124,7 @@ macro_rules! database_reader_implementation {
                 &self,
                 transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<TransactionAccepted, DatabaseReadError> {
+            ) -> Result<SseEnvelope<TransactionAccepted>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::transaction_accepted::create_get_by_hash_stmt(
@@ -134,10 +140,11 @@ macro_rules! database_reader_implementation {
                     .and_then(|maybe_row| match maybe_row {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
-                            let raw = row
-                                .try_get::<String, &str>("raw")
-                                .map_err(|error| wrap_query_error(error.into()))?;
-                            deserialize_data::<TransactionAccepted>(&raw).map_err(wrap_query_error)
+                            let (raw, api_version, network_name) =
+                                fetch_envelope_data_from_row(row)?;
+                            let sse_event = deserialize_data::<TransactionAccepted>(&raw)
+                                .map_err(wrap_query_error)?;
+                            Ok(SseEnvelope::new(sse_event, api_version, network_name))
                         }
                     })
             }
@@ -146,7 +153,7 @@ macro_rules! database_reader_implementation {
                 &self,
                 transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<TransactionProcessed, DatabaseReadError> {
+            ) -> Result<SseEnvelope<TransactionProcessed>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::transaction_processed::create_get_by_hash_stmt(
@@ -162,10 +169,11 @@ macro_rules! database_reader_implementation {
                     .and_then(|maybe_row| match maybe_row {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
-                            let raw = row
-                                .try_get::<String, &str>("raw")
-                                .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                            deserialize_data::<TransactionProcessed>(&raw).map_err(wrap_query_error)
+                            let (raw, api_version, network_name) =
+                                fetch_envelope_data_from_row(row)?;
+                            let sse_event = deserialize_data::<TransactionProcessed>(&raw)
+                                .map_err(wrap_query_error)?;
+                            Ok(SseEnvelope::new(sse_event, api_version, network_name))
                         }
                     })
             }
@@ -174,7 +182,7 @@ macro_rules! database_reader_implementation {
                 &self,
                 transaction_type: &TransactionTypeId,
                 hash: &str,
-            ) -> Result<TransactionExpired, DatabaseReadError> {
+            ) -> Result<SseEnvelope<TransactionExpired>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::transaction_expired::create_get_by_hash_stmt(
@@ -190,10 +198,11 @@ macro_rules! database_reader_implementation {
                     .and_then(|maybe_row| match maybe_row {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
-                            let raw = row
-                                .try_get::<String, &str>("raw")
-                                .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                            deserialize_data::<TransactionExpired>(&raw).map_err(wrap_query_error)
+                            let (raw, api_version, network_name) =
+                                fetch_envelope_data_from_row(row)?;
+                            let sse_event = deserialize_data::<TransactionExpired>(&raw)
+                                .map_err(wrap_query_error)?;
+                            Ok(SseEnvelope::new(sse_event, api_version, network_name))
                         }
                     })
             }
@@ -201,7 +210,7 @@ macro_rules! database_reader_implementation {
             async fn get_faults_by_public_key(
                 &self,
                 public_key: &str,
-            ) -> Result<Vec<Fault>, DatabaseReadError> {
+            ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt =
@@ -215,7 +224,10 @@ macro_rules! database_reader_implementation {
                     .and_then(parse_faults_from_rows)
             }
 
-            async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError> {
+            async fn get_faults_by_era(
+                &self,
+                era: u64,
+            ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt = tables::fault::create_get_faults_by_era_stmt(era)
@@ -231,7 +243,7 @@ macro_rules! database_reader_implementation {
             async fn get_finality_signatures_by_block(
                 &self,
                 block_hash: &str,
-            ) -> Result<Vec<FinSig>, DatabaseReadError> {
+            ) -> Result<Vec<SseEnvelope<FinSig>>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt =
@@ -247,7 +259,10 @@ macro_rules! database_reader_implementation {
                     .and_then(parse_finality_signatures_from_rows)
             }
 
-            async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
+            async fn get_step_by_era(
+                &self,
+                era: u64,
+            ) -> Result<SseEnvelope<Step>, DatabaseReadError> {
                 let db_connection = &self.connection_pool;
 
                 let stmt =
@@ -260,10 +275,11 @@ macro_rules! database_reader_implementation {
                     .and_then(|maybe_row| match maybe_row {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
-                            let raw = row
-                                .try_get::<String, &str>("raw")
-                                .map_err(|sqlx_error| wrap_query_error(sqlx_error.into()))?;
-                            deserialize_data::<Step>(&raw).map_err(wrap_query_error)
+                            let (raw, api_version, network_name) =
+                                fetch_envelope_data_from_row(row)?;
+                            let sse_event =
+                                deserialize_data::<Step>(&raw).map_err(wrap_query_error)?;
+                            Ok(SseEnvelope::new(sse_event, api_version, network_name))
                         }
                     })
             }
@@ -304,25 +320,27 @@ macro_rules! database_reader_implementation {
             serde_json::from_str::<T>(data).map_err(DbError::SerdeJson)
         }
 
-        fn parse_block_from_row(row: $row_type) -> Result<BlockAdded, DatabaseReadError> {
-            let raw_data = row
-                .try_get::<String, &str>("raw")
-                .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
-            deserialize_data::<BlockAdded>(&raw_data).map_err(wrap_query_error)
+        fn parse_block_from_row(
+            row: $row_type,
+        ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
+            let (raw_data, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+            let sse_event = deserialize_data::<BlockAdded>(&raw_data).map_err(wrap_query_error)?;
+            Ok(SseEnvelope::new(sse_event, api_version, network_name))
         }
 
         fn parse_finality_signatures_from_rows(
             rows: Vec<$row_type>,
-        ) -> Result<Vec<FinSig>, DatabaseReadError> {
+        ) -> Result<Vec<SseEnvelope<FinSig>>, DatabaseReadError> {
             let mut finality_signatures = Vec::new();
             for row in rows {
-                let raw = row
-                    .try_get::<String, &str>("raw")
-                    .map_err(|err| wrap_query_error(err.into()))?;
-
-                let finality_signature =
+                let (raw, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+                let sse_event =
                     deserialize_data::<FinalitySignature>(&raw).map_err(wrap_query_error)?;
-                finality_signatures.push(finality_signature.inner());
+                finality_signatures.push(SseEnvelope::new(
+                    sse_event.inner(),
+                    api_version,
+                    network_name,
+                ));
             }
 
             if finality_signatures.is_empty() {
@@ -331,21 +349,35 @@ macro_rules! database_reader_implementation {
             Ok(finality_signatures)
         }
 
-        fn parse_faults_from_rows(rows: Vec<$row_type>) -> Result<Vec<Fault>, DatabaseReadError> {
+        fn parse_faults_from_rows(
+            rows: Vec<$row_type>,
+        ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
             let mut faults = Vec::new();
             for row in rows {
-                let raw = row
-                    .try_get::<String, &str>("raw")
-                    .map_err(|err| wrap_query_error(err.into()))?;
-
-                let fault = deserialize_data::<Fault>(&raw).map_err(wrap_query_error)?;
-                faults.push(fault);
+                let (raw, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+                let sse_event = deserialize_data::<Fault>(&raw).map_err(wrap_query_error)?;
+                faults.push(SseEnvelope::new(sse_event, api_version, network_name));
             }
 
             if faults.is_empty() {
                 return Err(DatabaseReadError::NotFound);
             }
             Ok(faults)
+        }
+
+        fn fetch_envelope_data_from_row(
+            row: $row_type,
+        ) -> Result<(String, String, String), DatabaseReadError> {
+            let raw_data = row
+                .try_get::<String, &str>("raw")
+                .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
+            let api_version = row
+                .try_get::<String, &str>("api_version")
+                .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
+            let network_name = row
+                .try_get::<String, &str>("network_name")
+                .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
+            Ok((raw_data, api_version, network_name))
         }
     };
 }

@@ -99,7 +99,14 @@ pub fn create_insert_stmt(
 pub fn create_get_by_hash_stmt(transaction_type: u8, transaction_hash: String) -> SelectStatement {
     Query::select()
         .column(TransactionAccepted::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(TransactionAccepted::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((TransactionAccepted::Table, TransactionAccepted::EventLogId)),
+        )
         .and_where(Expr::col(TransactionAccepted::TransactionTypeId).eq(transaction_type))
         .and_where(Expr::col(TransactionAccepted::TransactionHash).eq(transaction_hash))
         .to_owned()

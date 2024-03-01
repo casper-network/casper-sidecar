@@ -76,7 +76,14 @@ pub fn create_insert_stmt(
 pub fn create_get_by_hash_stmt(block_hash: String) -> SelectStatement {
     Query::select()
         .column(BlockAdded::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(BlockAdded::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((BlockAdded::Table, BlockAdded::EventLogId)),
+        )
         .and_where(Expr::col(BlockAdded::BlockHash).eq(block_hash))
         .to_owned()
 }
@@ -84,7 +91,14 @@ pub fn create_get_by_hash_stmt(block_hash: String) -> SelectStatement {
 pub fn create_get_by_height_stmt(height: u64) -> SelectStatement {
     Query::select()
         .column(BlockAdded::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(BlockAdded::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((BlockAdded::Table, BlockAdded::EventLogId)),
+        )
         .and_where(Expr::col(BlockAdded::Height).eq(height))
         .to_owned()
 }
@@ -96,7 +110,14 @@ pub fn create_get_latest_stmt() -> SelectStatement {
         .to_owned();
     Query::select()
         .column(BlockAdded::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(BlockAdded::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((BlockAdded::Table, BlockAdded::EventLogId)),
+        )
         .and_where(Expr::col(BlockAdded::Height).in_subquery(select_max))
         .to_owned()
 }

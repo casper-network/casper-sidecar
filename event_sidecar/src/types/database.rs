@@ -1,9 +1,10 @@
 use crate::{
     database::{
-        postgresql_database::PostgreSqlDatabase, sqlite_database::SqliteDatabase,
-        types::DDLConfiguration,
+        postgresql_database::PostgreSqlDatabase,
+        sqlite_database::SqliteDatabase,
+        types::{DDLConfiguration, SseEnvelope},
     },
-    sql::{tables, tables::transaction_type::TransactionTypeId as SqlTransactionTypeId},
+    sql::tables::{self, transaction_type::TransactionTypeId as SqlTransactionTypeId},
     types::sse_events::{
         BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
         TransactionProcessed,
@@ -279,15 +280,21 @@ impl From<anyhow::Error> for DatabaseWriteError {
 #[async_trait]
 pub trait DatabaseReader {
     /// Returns the latest [BlockAdded] by height from the database.
-    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError>;
+    async fn get_latest_block(&self) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided `height`.
     ///
     /// * `height` - Height of the block which should be retrieved
-    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError>;
+    async fn get_block_by_height(
+        &self,
+        height: u64,
+    ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError>;
     /// Returns the [BlockAdded] corresponding to the provided hex-encoded `hash`.
     ///
     /// * `hash` - hash which identifies the block
-    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError>;
+    async fn get_block_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError>;
     /// Returns an aggregate of the transaction's events corresponding to the given hex-encoded `hash`
     ///
     /// * `hash` - transaction hash of which the aggregate data should be fetched
@@ -303,7 +310,7 @@ pub trait DatabaseReader {
         &self,
         transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionAccepted, DatabaseReadError>;
+    ) -> Result<SseEnvelope<TransactionAccepted>, DatabaseReadError>;
     /// Returns the [DeployProcessed] corresponding to the given hex-encoded `hash`
     ///
     /// * `hash` - transaction hash which identifies the transaction pocessed
@@ -311,7 +318,7 @@ pub trait DatabaseReader {
         &self,
         transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionProcessed, DatabaseReadError>;
+    ) -> Result<SseEnvelope<TransactionProcessed>, DatabaseReadError>;
 
     /// Returns the [DeployExpired] corresponding to the given hex-encoded `hash`
     ///
@@ -320,29 +327,32 @@ pub trait DatabaseReader {
         &self,
         transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionExpired, DatabaseReadError>;
+    ) -> Result<SseEnvelope<TransactionExpired>, DatabaseReadError>;
     /// Returns all [Fault]s that correspond to the given hex-encoded `public_key`
     ///
     /// * `public_key` - key which identifies the fault
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Vec<Fault>, DatabaseReadError>;
+    ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError>;
     /// Returns all [Fault]s that occurred in the given `era`
     ///
     /// * `era` - number of era for which faults should be fetched
-    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError>;
+    async fn get_faults_by_era(
+        &self,
+        era: u64,
+    ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError>;
     /// Returns all [FinalitySignature](casper_event_types::FinalitySignature)s for the given hex-encoded `block_hash`.
     ///
     /// * `block_hash` - block hash for which finality signatures should be fetched
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
-    ) -> Result<Vec<FinSig>, DatabaseReadError>;
+    ) -> Result<Vec<SseEnvelope<FinSig>>, DatabaseReadError>;
     /// Returns the [Step] event for the given era.
     ///
     /// * `era` - identifier of era
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError>;
+    async fn get_step_by_era(&self, era: u64) -> Result<SseEnvelope<Step>, DatabaseReadError>;
 
     /// Returns number of events stored in db.
     async fn get_number_of_events(&self) -> Result<u64, DatabaseReadError>;
@@ -365,8 +375,8 @@ pub enum DatabaseReadError {
 #[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
 pub struct TransactionAggregate {
     pub(crate) transaction_hash: String,
-    pub(crate) transaction_accepted: Option<TransactionAccepted>,
-    pub(crate) transaction_processed: Option<TransactionProcessed>,
+    pub(crate) transaction_accepted: Option<SseEnvelope<TransactionAccepted>>,
+    pub(crate) transaction_processed: Option<SseEnvelope<TransactionProcessed>>,
     pub(crate) transaction_expired: bool,
 }
 
