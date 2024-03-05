@@ -69,7 +69,14 @@ pub fn create_insert_stmt(
 pub fn create_get_faults_by_public_key_stmt(public_key: String) -> SelectStatement {
     Query::select()
         .column(Fault::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(Fault::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((Fault::Table, Fault::EventLogId)),
+        )
         .and_where(Expr::col(Fault::PublicKey).eq(public_key))
         .to_owned()
 }
@@ -77,7 +84,14 @@ pub fn create_get_faults_by_public_key_stmt(public_key: String) -> SelectStateme
 pub fn create_get_faults_by_era_stmt(era: u64) -> SelectStatement {
     Query::select()
         .column(Fault::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(Fault::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((Fault::Table, Fault::EventLogId)),
+        )
         .and_where(Expr::col(Fault::Era).eq(era))
         .to_owned()
 }

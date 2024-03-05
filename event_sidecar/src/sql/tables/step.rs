@@ -51,7 +51,14 @@ pub fn create_insert_stmt(era: u64, raw: String, event_log_id: u64) -> SqResult<
 pub fn create_get_by_era_stmt(era: u64) -> SelectStatement {
     Query::select()
         .column(Step::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(Step::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((Step::Table, Step::EventLogId)),
+        )
         .and_where(Expr::col(Step::Era).eq(era))
         .to_owned()
 }

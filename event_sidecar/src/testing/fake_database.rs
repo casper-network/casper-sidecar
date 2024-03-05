@@ -9,6 +9,7 @@ use rand::Rng;
 
 use casper_types::FinalitySignature as FinSig;
 
+use crate::database::types::SseEnvelope;
 use crate::types::database::TransactionTypeId;
 use crate::types::{
     database::{
@@ -380,34 +381,57 @@ impl DatabaseWriter for FakeDatabase {
 
 #[async_trait]
 impl DatabaseReader for FakeDatabase {
-    async fn get_latest_block(&self) -> Result<BlockAdded, DatabaseReadError> {
+    async fn get_latest_block(&self) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
         let mut test_rng = TestRng::new();
 
         let block_added = BlockAdded::random(&mut test_rng);
 
-        Ok(block_added)
+        Ok(SseEnvelope::new(
+            block_added,
+            "2.0.0".to_string(),
+            "network-1".to_string(),
+        ))
     }
 
-    async fn get_block_by_height(&self, height: u64) -> Result<BlockAdded, DatabaseReadError> {
+    async fn get_block_by_height(
+        &self,
+        height: u64,
+    ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&height.to_string()) {
-            serde_json::from_str::<BlockAdded>(event).map_err(DatabaseReadError::Serialisation)
+            let entity = serde_json::from_str::<BlockAdded>(event)
+                .map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
-    async fn get_block_by_hash(&self, hash: &str) -> Result<BlockAdded, DatabaseReadError> {
+    async fn get_block_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(hash) {
-            serde_json::from_str::<BlockAdded>(event).map_err(DatabaseReadError::Serialisation)
+            let entity = serde_json::from_str::<BlockAdded>(event)
+                .map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_transaction_aggregate_by_identifier(
         &self,
         _transaction_type: &TransactionTypeId,
@@ -429,8 +453,16 @@ impl DatabaseReader for FakeDatabase {
 
                 Ok(TransactionAggregate {
                     transaction_hash: hash.to_string(),
-                    transaction_accepted: Some(transaction_accepted),
-                    transaction_processed: Some(transaction_processed),
+                    transaction_accepted: Some(SseEnvelope::new(
+                        transaction_accepted,
+                        "2.0.0".to_string(),
+                        "network-1".to_string(),
+                    )),
+                    transaction_processed: Some(SseEnvelope::new(
+                        transaction_processed,
+                        "2.0.0".to_string(),
+                        "network-1".to_string(),
+                    )),
                     transaction_expired: false,
                 })
             } else if data.get(&expired_key).is_some() {
@@ -443,14 +475,22 @@ impl DatabaseReader for FakeDatabase {
                 };
                 Ok(TransactionAggregate {
                     transaction_hash: hash.to_string(),
-                    transaction_accepted: Some(transaction_accepted),
+                    transaction_accepted: Some(SseEnvelope::new(
+                        transaction_accepted,
+                        "2.0.0".to_string(),
+                        "network-1".to_string(),
+                    )),
                     transaction_processed: None,
                     transaction_expired: transaction_expired.is_some(),
                 })
             } else {
                 Ok(TransactionAggregate {
                     transaction_hash: hash.to_string(),
-                    transaction_accepted: Some(transaction_accepted),
+                    transaction_accepted: Some(SseEnvelope::new(
+                        transaction_accepted,
+                        "2.0.0".to_string(),
+                        "network-1".to_string(),
+                    )),
                     transaction_processed: None,
                     transaction_expired: false,
                 })
@@ -464,14 +504,19 @@ impl DatabaseReader for FakeDatabase {
         &self,
         _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionAccepted, DatabaseReadError> {
+    ) -> Result<SseEnvelope<TransactionAccepted>, DatabaseReadError> {
         let identifier = format!("{}-accepted", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<TransactionAccepted>(event)
-                .map_err(DatabaseReadError::Serialisation)
+            let entity = serde_json::from_str::<TransactionAccepted>(event)
+                .map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -481,14 +526,19 @@ impl DatabaseReader for FakeDatabase {
         &self,
         _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionProcessed, DatabaseReadError> {
+    ) -> Result<SseEnvelope<TransactionProcessed>, DatabaseReadError> {
         let identifier = format!("{}-processed", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<TransactionProcessed>(event)
-                .map_err(DatabaseReadError::Serialisation)
+            let entity = serde_json::from_str::<TransactionProcessed>(event)
+                .map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -498,14 +548,19 @@ impl DatabaseReader for FakeDatabase {
         &self,
         _transaction_type: &TransactionTypeId,
         hash: &str,
-    ) -> Result<TransactionExpired, DatabaseReadError> {
+    ) -> Result<SseEnvelope<TransactionExpired>, DatabaseReadError> {
         let identifier = format!("{}-expired", hash);
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&identifier) {
-            serde_json::from_str::<TransactionExpired>(event)
-                .map_err(DatabaseReadError::Serialisation)
+            let entity = serde_json::from_str::<TransactionExpired>(event)
+                .map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -514,25 +569,36 @@ impl DatabaseReader for FakeDatabase {
     async fn get_faults_by_public_key(
         &self,
         public_key: &str,
-    ) -> Result<Vec<Fault>, DatabaseReadError> {
+    ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(public_key) {
             let fault =
                 serde_json::from_str::<Fault>(event).map_err(DatabaseReadError::Serialisation)?;
-            Ok(vec![fault])
+            Ok(vec![SseEnvelope::new(
+                fault,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            )])
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
-    async fn get_faults_by_era(&self, era: u64) -> Result<Vec<Fault>, DatabaseReadError> {
+    async fn get_faults_by_era(
+        &self,
+        era: u64,
+    ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&era.to_string()) {
             let fault =
                 serde_json::from_str::<Fault>(event).map_err(DatabaseReadError::Serialisation)?;
-            Ok(vec![fault])
+            Ok(vec![SseEnvelope::new(
+                fault,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            )])
         } else {
             Err(DatabaseReadError::NotFound)
         };
@@ -541,23 +607,33 @@ impl DatabaseReader for FakeDatabase {
     async fn get_finality_signatures_by_block(
         &self,
         block_hash: &str,
-    ) -> Result<Vec<FinSig>, DatabaseReadError> {
+    ) -> Result<Vec<SseEnvelope<FinSig>>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(block_hash) {
             let finality_signature =
                 serde_json::from_str::<FinSig>(event).map_err(DatabaseReadError::Serialisation)?;
-            Ok(vec![finality_signature])
+            Ok(vec![SseEnvelope::new(
+                finality_signature,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            )])
         } else {
             Err(DatabaseReadError::NotFound)
         };
     }
 
-    async fn get_step_by_era(&self, era: u64) -> Result<Step, DatabaseReadError> {
+    async fn get_step_by_era(&self, era: u64) -> Result<SseEnvelope<Step>, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
         return if let Some(event) = data.get(&era.to_string()) {
-            serde_json::from_str::<Step>(event).map_err(DatabaseReadError::Serialisation)
+            let entity =
+                serde_json::from_str::<Step>(event).map_err(DatabaseReadError::Serialisation)?;
+            Ok(SseEnvelope::new(
+                entity,
+                "2.0.0".to_string(),
+                "network-1".to_string(),
+            ))
         } else {
             Err(DatabaseReadError::NotFound)
         };

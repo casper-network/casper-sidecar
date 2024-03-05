@@ -11,7 +11,7 @@ use tempfile::{tempdir, TempDir};
 use tokio::{sync::mpsc, time::sleep};
 
 use crate::{
-    database::sqlite_database::SqliteDatabase,
+    database::{sqlite_database::SqliteDatabase, types::SseEnvelope},
     run,
     testing::{
         mock_node::tests::{MockNode, MockNodeBuilder},
@@ -154,7 +154,7 @@ async fn should_respond_to_rest_query() {
         .bytes()
         .await
         .expect("Should have got bytes from response");
-    serde_json::from_slice::<BlockAdded>(&response_bytes)
+    serde_json::from_slice::<SseEnvelope<BlockAdded>>(&response_bytes)
         .expect("Should have parsed BlockAdded from bytes");
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use casper_types::{testing::TestRng, ProtocolVersion};
-use futures::{join, StreamExt};
+use futures::{join, Stream, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
@@ -12,7 +12,9 @@ use sse_server::{
 use std::{
     collections::HashMap,
     error::Error,
-    fs, io, iter, str,
+    fs, io, iter,
+    pin::Pin,
+    str,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -477,18 +479,28 @@ async fn subscribe_slow(
     timeout(Duration::from_secs(60), barrier.wait())
         .await
         .unwrap();
-
     time::sleep(Duration::from_secs(5)).await;
 
     let mut stream = response.bytes_stream();
+
     let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
+    let mut bytes_buf: Vec<u8> = vec![];
     while let Some(item) = stream.next().await {
         // The function is expected to exit here with an `UnexpectedEof` error.
         let bytes = item?;
-        let chunk = str::from_utf8(bytes.as_ref()).unwrap();
-        if chunk.lines().any(|line| line == ":") {
-            debug!("{} received keepalive: exiting", client_id);
-            break;
+        // We fetch bytes untill we get a chunk that can be fully interpreted as utf-8
+        let res: Vec<u8> = [bytes_buf.as_slice(), bytes.as_ref()].concat();
+        match str::from_utf8(res.as_slice()) {
+            Ok(chunk) => {
+                if chunk.lines().any(|line| line == ":") {
+                    debug!("{} received keepalive: exiting", client_id);
+                    break;
+                }
+                bytes_buf = vec![];
+            }
+            Err(_) => {
+                bytes_buf = res;
+            }
         }
         time::sleep(pause_between_events).await;
     }
@@ -529,34 +541,62 @@ async fn handle_response(
         return Ok(Vec::new());
     }
 
-    // The stream from the server is not always chunked into events, so gather the stream into a
-    // single `String` until we receive a keepalive.
-    let mut response_text = String::new();
-    let mut stream = response.bytes_stream();
+    let stream = response.bytes_stream();
     let final_id_line = format!("id:{}", final_event_id);
     let keepalive = ":";
-    while let Some(item) = stream.next().await {
-        // If the server crashes or returns an error in the stream, it is caught here as `item` will
-        // be an `Err`.
-        let bytes = item?;
-        let chunk = str::from_utf8(bytes.as_ref()).unwrap();
-        response_text.push_str(chunk);
-        if let Some(line) = response_text
-            .lines()
-            .find(|&line| line == final_id_line || line == keepalive)
-        {
-            if line == keepalive {
-                panic!("{} received keepalive", client_id);
-            }
-            debug!(
-                "{} received final event ID {}: exiting",
-                client_id, final_event_id
-            );
-            break;
-        }
-    }
+
+    let response_text = fetch_text(
+        Box::pin(stream),
+        final_id_line,
+        keepalive,
+        client_id,
+        final_event_id,
+    )
+    .await?;
 
     Ok(parse_response(response_text, client_id))
+}
+
+async fn fetch_text(
+    mut stream: Pin<Box<dyn Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static>>,
+    final_id_line: String,
+    keepalive: &str,
+    client_id: &str,
+    final_event_id: u32,
+) -> Result<String, reqwest::Error> {
+    let mut bytes_buf: Vec<u8> = vec![];
+    let mut response_text = String::new();
+    // The stream from the server is not always chunked into events, so gather the stream into a
+    // single `String` until we receive a keepalive. Furthermore - a chunk of bytes can even split a utf8 character in half
+    // which makes it impossible to interpret it as utf8. We need to fetch bytes untill we get a chunk that can be fully interpreted as utf-8
+    while let Some(item) = stream.next().await {
+        let bytes = item?;
+        // We fetch bytes untill we get a chunk that can be fully interpreted as utf-8
+        let res: Vec<u8> = [bytes_buf.as_slice(), bytes.as_ref()].concat();
+        match str::from_utf8(res.as_slice()) {
+            Ok(chunk) => {
+                response_text.push_str(chunk);
+                if let Some(line) = response_text
+                    .lines()
+                    .find(|&line| line == final_id_line || line == keepalive)
+                {
+                    if line == keepalive {
+                        panic!("{} received keepalive", client_id);
+                    }
+                    debug!(
+                        "{} received final event ID {}: exiting",
+                        client_id, final_event_id
+                    );
+                    return Ok(response_text);
+                }
+                bytes_buf = vec![];
+            }
+            Err(_) => {
+                bytes_buf = res;
+            }
+        }
+    }
+    Ok(response_text)
 }
 
 /// Iterate the lines of the response body.  Each line should be one of

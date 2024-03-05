@@ -79,7 +79,14 @@ pub fn create_insert_stmt(
 pub fn create_get_finality_signatures_by_block_stmt(block_hash: String) -> SelectStatement {
     Query::select()
         .column(FinalitySignature::Raw)
+        .column(EventLog::ApiVersion)
+        .column(EventLog::NetworkName)
         .from(FinalitySignature::Table)
+        .left_join(
+            EventLog::Table,
+            Expr::col((EventLog::Table, EventLog::EventLogId))
+                .equals((FinalitySignature::Table, FinalitySignature::EventLogId)),
+        )
         .and_where(Expr::col(FinalitySignature::BlockHash).eq(block_hash))
         .to_owned()
 }

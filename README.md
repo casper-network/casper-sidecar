@@ -308,7 +308,7 @@ curl http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics
 **Sample output**:
 
 ```
-# HELP node_statuses Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - defunct -> used up all connection attempts ; -2 - defunct -> node is in an incompatible version
+# HELP node_statuses Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - connections_exhausted -> used up all connection attempts ; -2 - incompatible -> node is in an incompatible version
 # TYPE node_statuses gauge
 node_statuses{node="35.180.42.211:9999"} 2
 node_statuses{node="69.197.42.27:9999"} 2
