@@ -16,6 +16,7 @@ async-trait = "0.1.50"
 backtrace = "0.3.50"
 base16 = "0.2.1"
 bincode = "1"
+casper-event-types = { path = "../types", version = "1.0.0" }
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
 casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }

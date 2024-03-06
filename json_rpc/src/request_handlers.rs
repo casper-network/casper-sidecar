@@ -1,6 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use futures::FutureExt;
+use metrics::rpc::{inc_method_call, inc_result, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error};
@@ -32,10 +33,12 @@ impl RequestHandlers {
     /// [`Response::Failure`].
     ///
     /// Otherwise a [`Response::Success`] is returned.
-    pub(crate) async fn handle_request(&self, request: Request) -> Response {
-        let handler = match self.0.get(request.method.as_str()) {
+    pub(crate) async fn handle_request(&self, request: Request, request_size: usize) -> Response {
+        let request_method = request.method.as_str();
+        let handler = match self.0.get(request_method) {
             Some(handler) => Arc::clone(handler),
             None => {
+                inc_result("unknown-handler", "unknown-handler");
                 debug!(requested_method = %request.method.as_str(), "failed to get handler");
                 let error = Error::new(
                     ReservedErrorCode::MethodNotFound,
@@ -47,10 +50,18 @@ impl RequestHandlers {
                 return Response::new_failure(request.id, error);
             }
         };
+        inc_method_call(request_method);
+        register_request_size(request_method, request_size as f64);
 
         match handler(request.params).await {
-            Ok(result) => Response::new_success(request.id, result),
-            Err(error) => Response::new_failure(request.id, error),
+            Ok(result) => {
+                inc_result(request_method, "success");
+                Response::new_success(request.id, result)
+            }
+            Err(error) => {
+                inc_result(request_method, &error.code().to_string());
+                Response::new_failure(request.id, error)
+            }
         }
     }
 }

@@ -6,13 +6,13 @@ use crate::{
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use casper_event_types::{
-    metrics,
     sse_data::{deserialize, SseData},
     Filter,
 };
 use casper_types::ProtocolVersion;
 use eventsource_stream::Event;
 use futures_util::Stream;
+use metrics::{observe_error, sse::register_sse_message_size};
 use reqwest::Url;
 use std::{
     fmt::{self, Debug, Display},
@@ -242,7 +242,7 @@ impl DefaultConnectionManager {
                 if needs_raw_json {
                     raw_json_data = Some(event.data);
                 }
-                self.observe_bytes(payload_size);
+                self.observe_bytes(sse_data.type_label(), payload_size);
                 let api_version = self.api_version.ok_or(anyhow!(
                     "Expected ApiVersion to be present when handling messages."
                 ))?;
@@ -275,8 +275,6 @@ impl DefaultConnectionManager {
             None => Err(recoverable_error(Error::msg(FIRST_EVENT_EMPTY))),
             Some(Err(error)) => Err(failed_to_get_first_event(error)),
             Some(Ok(event)) => {
-                let payload_size = event.data.len();
-                self.observe_bytes(payload_size);
                 if event.data.contains(API_VERSION) {
                     self.try_handle_api_version_message(&event, receiver).await
                 } else {
@@ -296,6 +294,8 @@ impl DefaultConnectionManager {
             //at this point we
             // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
             Ok((SseData::ApiVersion(semver), _)) => {
+                let payload_size = event.data.len();
+                self.observe_bytes("ApiVersion", payload_size);
                 self.api_version = Some(semver);
                 let sse_event = SseEvent::new(
                     0,
@@ -328,10 +328,8 @@ impl DefaultConnectionManager {
         Ok(receiver)
     }
 
-    fn observe_bytes(&self, payload_size: usize) {
-        metrics::RECEIVED_BYTES
-            .with_label_values(&[self.filter.to_string().as_str()])
-            .observe(payload_size as f64);
+    fn observe_bytes(&self, sse_type_label: &str, payload_size: usize) {
+        register_sse_message_size(sse_type_label, payload_size as f64);
     }
 }
 
@@ -368,9 +366,7 @@ fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerEr
 }
 
 fn count_error(reason: &str) {
-    metrics::ERROR_COUNTS
-        .with_label_values(&["connection_manager", reason])
-        .inc();
+    observe_error("connection_manager", reason);
 }
 
 #[cfg(test)]

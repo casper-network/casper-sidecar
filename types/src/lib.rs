@@ -5,9 +5,18 @@
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
 mod filter;
-pub mod metrics;
 pub mod sse_data;
 #[cfg(feature = "sse-data-testing")]
 mod testing;
 
+use casper_types::ProtocolVersion;
 pub use filter::Filter;
+use std::str::FromStr;
+
+use once_cell::sync::Lazy;
+pub static SIDECAR_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    let major: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MAJOR")).unwrap();
+    let minor: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MINOR")).unwrap();
+    let patch: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap();
+    ProtocolVersion::from_parts(major, minor, patch)
+});

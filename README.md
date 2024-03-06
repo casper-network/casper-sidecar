@@ -345,7 +345,7 @@ To monitor the Sidecar's memory consumption, observe the metrics page, `http://S
 process_resident_memory_bytes 292110336
 ```
 
-If memory consumption is high without an apparent reason, please inform the Sidecar team by creating an [issue in GitHub](https://github.com/CasperLabs/event-sidecar/issues).
+If memory consumption is high without an apparent reason, please inform the Sidecar team by creating an [issue in GitHub](https://github.com/casper-network/casper-sidecar/issues).
 
 Remember to check the `event_stream_buffer_length` setting in the configuration because it dramatically impacts how much memory the Sidecar consumes. Also, some events, like step events, consume more memory.
 

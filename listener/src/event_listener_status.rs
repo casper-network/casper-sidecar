@@ -1,4 +1,4 @@
-use casper_event_types::metrics;
+use metrics::sse::store_node_status;
 
 /// Helper enum determining in what state connection to a node is in.
 /// It's used to named different situations in which the connection can be.
@@ -31,8 +31,6 @@ impl EventListenerStatus {
             EventListenerStatus::IncompatibleVersion => -2,
         } as f64;
         let node_label = format!("{}:{}", node_address, sse_port);
-        metrics::NODE_STATUSES
-            .with_label_values(&[node_label.as_str()])
-            .set(status);
+        store_node_status(node_label.as_str(), status);
     }
 }

@@ -5,8 +5,8 @@ edition = "2021"
 description = "Event listener for casper-event-listener library"
 license-file = "../LICENSE"
 documentation = "README.md"
-homepage = "https://github.com/CasperLabs/event-sidecar"
-repository = "https://github.com/CasperLabs/event-sidecar"
+homepage = "https://github.com/casper-network/casper-sidecar/"
+repository = "https://github.com/casper-network/casper-sidecar/"
 
 [dependencies]
 anyhow = { workspace = true }
@@ -18,6 +18,7 @@ casper-types = { workspace = true, features = ["std"] }
 eventsource-stream = "0.2.3"
 futures = { workspace = true }
 futures-util = { workspace = true }
+metrics = { workspace = true }
 once_cell = { workspace = true }
 reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { workspace = true, default-features = true, features = ["derive"] }

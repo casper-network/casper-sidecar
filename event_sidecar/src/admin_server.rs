@@ -1,8 +1,8 @@
 use crate::types::config::AdminApiServerConfig;
 use crate::utils::{resolve_address, root_filter, Unexpected};
 use anyhow::Error;
-use casper_event_types::metrics::metrics_summary;
 use hyper::Server;
+use metrics::metrics_summary;
 use std::net::TcpListener;
 use std::process::ExitCode;
 use std::time::Duration;

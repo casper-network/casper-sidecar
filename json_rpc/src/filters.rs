@@ -82,7 +82,7 @@ async fn handle_body(
 ) -> Result<Response, Rejection> {
     let response = match serde_json::from_slice::<Map<String, Value>>(&body) {
         Ok(unvalidated_request) => match Request::new(unvalidated_request, allow_unknown_fields) {
-            Ok(request) => handlers.handle_request(request).await,
+            Ok(request) => handlers.handle_request(request, body.len()).await,
             Err(ErrorOrRejection::Error { id, error }) => {
                 debug!(?error, "got an invalid request");
                 Response::new_failure(id, error)

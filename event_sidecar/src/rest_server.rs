@@ -1,15 +1,17 @@
 mod errors;
 pub mod filters;
 mod handlers;
+mod metrics_layer;
 mod openapi;
+mod status;
 #[cfg(test)]
 mod tests;
 
-use std::net::TcpListener;
-use std::time::Duration;
-
 use anyhow::Error;
 use hyper::Server;
+use metrics::rest_api::observe_path_abstraction_time;
+use std::time::Duration;
+use std::{net::TcpListener, time::Instant};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use warp::Filter;
 
@@ -17,6 +19,8 @@ use crate::{
     types::{config::RestApiServerConfig, database::DatabaseReader},
     utils::resolve_address,
 };
+
+use self::metrics_layer::MetricsLayer;
 
 const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 
@@ -37,6 +41,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
             config.max_requests_per_second as u64,
             Duration::from_secs(1),
         )
+        .layer(MetricsLayer::new(path_abstraction_for_metrics))
         .service(warp_service);
 
     Server::from_tcp(listener)?
@@ -44,4 +49,48 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
         .await?;
 
     Err(Error::msg("REST server shutting down"))
+}
+
+fn path_abstraction_for_metrics(path: &str) -> String {
+    let start = Instant::now();
+    let result = path_abstraction_for_metrics_inner(path);
+    let elapsed = start.elapsed();
+    observe_path_abstraction_time(elapsed);
+    result
+}
+
+pub(super) fn path_abstraction_for_metrics_inner(path: &str) -> String {
+    let parts = path
+        .split('/')
+        .filter(|el| !el.is_empty())
+        .collect::<Vec<&str>>();
+    if parts.is_empty() {
+        return "unknown".to_string();
+    }
+    if parts[0] == "block" {
+        return "/block/(...)".to_string();
+    }
+    if parts[0] == "step" {
+        return "/step/(...)".to_string();
+    }
+    if parts[0] == "faults" {
+        return "/faults/(...)".to_string();
+    }
+    if parts[0] == "signatures" {
+        return "/signatures/(...)".to_string();
+    }
+    if parts[0] == "transaction" {
+        if parts.len() == 3 {
+            // paths like /transaction/deploy/<hash>
+            return "/transaction/(...)".to_string();
+        }
+        if parts.len() == 4 {
+            // paths like /transaction/accepted/deploy/<hash>
+            return format!("/transaction/{}/(...)", parts[1]);
+        }
+    }
+    if parts[0] == "status" {
+        return "/status".to_string();
+    }
+    "unknown".to_string()
 }

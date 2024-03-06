@@ -5,8 +5,8 @@ edition = "2021"
 description = "Types for casper-event-listener library"
 license-file = "../LICENSE"
 documentation = "README.md"
-homepage = "https://github.com/CasperLabs/event-sidecar" 
-repository = "https://github.com/CasperLabs/event-sidecar"
+homepage = "https://github.com/casper-network/casper-sidecar/" 
+repository = "https://github.com/casper-network/casper-sidecar/"
 
 [dependencies]
 base16 = "0.2.1"
@@ -15,7 +15,6 @@ casper-types = { workspace = true, features = ["std"] }
 hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
 once_cell = { workspace = true }
-prometheus = { version = "0.13.3", features = ["process"] }
 rand = { version = "0.8.5", optional = true }
 serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc", "raw_value"] }

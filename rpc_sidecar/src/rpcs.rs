@@ -158,7 +158,7 @@ pub(super) trait RpcWithoutParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(node_client.clone()).await
+                Self::do_handle_request(node_client).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
