@@ -12,7 +12,7 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockSynchronizerStatus, ChainspecRawBytes,
     Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers, ProtocolVersion,
-    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
 };
 
 use super::{
@@ -80,7 +80,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
         ProtocolVersion::from_parts(2, 0, 1),
     )),
     uptime: TimeDiff::from_seconds(13),
-    reactor_state: ReactorState::Initialize,
+    reactor_state: "Initialize".to_owned(),
     last_progress: Timestamp::from(0),
     available_block_range: AvailableBlockRange::RANGE_0_0,
     block_sync: BlockSynchronizerStatus::example().clone(),
@@ -442,8 +442,8 @@ pub struct GetStatusResult {
     pub next_upgrade: Option<NextUpgrade>,
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
-    /// The current state of node reactor.
-    pub reactor_state: ReactorState,
+    /// The name of the current state of node reactor.
+    pub reactor_state: String,
     /// Timestamp of the last recorded progress in the reactor.
     pub last_progress: Timestamp,
     /// The available block range in storage.
@@ -484,7 +484,7 @@ impl RpcWithoutParams for GetStatus {
             round_length: status.round_length,
             next_upgrade: status.next_upgrade,
             uptime: status.uptime,
-            reactor_state: status.reactor_state,
+            reactor_state: status.reactor_state.into_inner(),
             last_progress: status.last_progress,
             available_block_range: status.available_block_range,
             block_sync: status.block_sync,
