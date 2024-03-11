@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Error;
 use sea_query::SqliteQueryBuilder;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use sqlx::Row;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
@@ -96,8 +96,8 @@ impl SqliteDatabase {
     }
 }
 
-#[cfg(test)]
 impl SqliteDatabase {
+    #[cfg(test)]
     pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
         match storage_config {
             StorageConfig::SqliteDbConfig {
@@ -110,15 +110,14 @@ impl SqliteDatabase {
         }
     }
 
+    #[cfg(any(feature = "testing", test))]
     pub async fn new_in_memory(max_connections: u32) -> Result<SqliteDatabase, Error> {
-        let sqlite_db = Self::new_in_memory_no_migrations(max_connections).await?;
+        let sqlite_db = Self::new_in_memory_no_migrations(max_connections)?;
         MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;
         Ok(sqlite_db)
     }
 
-    pub async fn new_in_memory_no_migrations(
-        max_connections: u32,
-    ) -> Result<SqliteDatabase, Error> {
+    pub fn new_in_memory_no_migrations(max_connections: u32) -> Result<SqliteDatabase, Error> {
         let connection_pool = SqlitePoolOptions::new()
             .max_connections(max_connections)
             .connect_lazy_with(

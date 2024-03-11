@@ -83,7 +83,7 @@ pub async fn run(
 
     let event_broadcasting_handle =
         start_event_broadcasting(&config, storage_path, outbound_sse_data_receiver);
-
+    info!(address = %config.event_stream_server.port, "started {} server", "SSE");
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
         flatten_handle(listening_task_handle),

@@ -1,11 +1,22 @@
+use std::time::Duration;
+
 use bytes::{BufMut, BytesMut};
+use casper_types::{
+    binary_port::{BinaryResponse, BinaryResponseAndRequest, GlobalStateQueryResult},
+    bytesrepr::ToBytes,
+    CLValue, ProtocolVersion, StoredValue,
+};
 use juliet::{
     io::IoCoreBuilder,
     protocol::ProtocolBuilder,
     rpc::{IncomingRequest, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
-use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinHandle;
+use tokio::{
+    net::{TcpListener, TcpStream},
+    time::sleep,
+};
 
 const LOCALHOST: &str = "127.0.0.1";
 
@@ -69,4 +80,27 @@ async fn handle_request(incoming_request: IncomingRequest, response: Vec<u8>) {
         response_payload.put_u8(b);
     }
     incoming_request.respond(Some(response_payload.freeze()));
+}
+
+pub fn get_port() -> u16 {
+    portpicker::pick_unused_port().unwrap()
+}
+
+pub async fn start_mock_binary_port_responding_with_stored_value(port: u16) -> JoinHandle<()> {
+    let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
+    let data = GlobalStateQueryResult::new(value, vec![]);
+    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+    let val = BinaryResponse::from_value(data, protocol_version);
+    let request = [];
+    let response = BinaryResponseAndRequest::new(val, &request);
+    start_mock_binary_port(port, response.to_bytes().unwrap()).await
+}
+
+async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
+    let handler = tokio::spawn(async move {
+        let binary_port = BinaryPortMock::new(port, data);
+        binary_port.start().await;
+    });
+    sleep(Duration::from_secs(3)).await; // This should be handled differently, preferrably the mock binary port should inform that it already bound to the port
+    handler
 }

@@ -155,7 +155,7 @@ impl NodeClientConfig {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn finite_retries_config(port: u16, num_of_retries: usize) -> Self {
         let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
         NodeClientConfig {

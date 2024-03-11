@@ -13,6 +13,7 @@ use metrics::rest_api::observe_path_abstraction_time;
 use std::time::Duration;
 use std::{net::TcpListener, time::Instant};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use tracing::info;
 use warp::Filter;
 
 use crate::{
@@ -43,7 +44,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
         )
         .layer(MetricsLayer::new(path_abstraction_for_metrics))
         .service(warp_service);
-
+    info!(address = %address, "started {} server", "REST API");
     Server::from_tcp(listener)?
         .serve(Shared::new(Buffer::new(tower_service, 50)))
         .await?;

@@ -11,9 +11,9 @@ repository = "https://github.com/casper-network/casper-sidecar/"
 [dependencies]
 anyhow = { workspace = true }
 async-stream = { workspace = true }
-async-trait = "0.1.72"
+async-trait = { workspace = true }
 bytes = "1.2.0"
-casper-event-types = { path = "../types", version = "1.0.0" }
+casper-event-types.workspace = true
 casper-types = { workspace = true, features = ["std"] }
 eventsource-stream = "0.2.3"
 futures = { workspace = true }
@@ -31,7 +31,7 @@ tracing = { workspace = true, default-features = true }
 url = "2.3.1"
 
 [dev-dependencies]
-casper-event-types = { path = "../types", version = "1.0.0", features = ["sse-data-testing"] }
+casper-event-types = { workspace = true, features = ["sse-data-testing"] }
 eventsource-stream = "0.2.3"
 mockito = "1.2.0"
 portpicker = "0.1.1"
