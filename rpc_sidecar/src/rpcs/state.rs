@@ -318,12 +318,17 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .unwrap();
 
         let state_identifier = block_identifier.map(GlobalStateIdentifier::from);
-        let bid_stored_values = node_client
+        let legacy_bid_stored_values = node_client
             .query_global_state_by_tag(state_identifier, KeyTag::Bid)
             .await
             .map_err(|err| Error::NodeRequest("auction bids", err))?;
-        let bids = bid_stored_values
+        let bid_stored_values = node_client
+            .query_global_state_by_tag(state_identifier, KeyTag::BidAddr)
+            .await
+            .map_err(|err| Error::NodeRequest("auction bids", err))?;
+        let bids = legacy_bid_stored_values
             .into_iter()
+            .chain(bid_stored_values.into_iter())
             .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionState))
             .collect::<Result<Vec<_>, Error>>()?;
 
