@@ -1203,7 +1203,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    vec![bid.into(), BidKind::Unified(legacy_bid.into())]
+                    vec![bid, BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
