@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
 use casper_types::ProtocolVersion;
+use metrics::observe_error;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::str::FromStr;
@@ -14,13 +15,13 @@ static MINIMAL_NODE_VERSION: Lazy<ProtocolVersion> =
     Lazy::new(|| ProtocolVersion::from_parts(2, 0, 0));
 
 #[derive(Debug)]
-pub enum BuildVersionFetchError {
+pub enum MetadataFetchError {
     Error(anyhow::Error),
     VersionNotAcceptable(String),
 }
 
 #[cfg(test)]
-impl Clone for BuildVersionFetchError {
+impl Clone for MetadataFetchError {
     fn clone(&self) -> Self {
         match self {
             Self::Error(err) => Self::Error(Error::msg(err.to_string())),
@@ -36,13 +37,13 @@ pub struct NodeMetadata {
 }
 
 impl NodeMetadata {
-    pub fn validate(&self) -> Result<(), BuildVersionFetchError> {
+    pub fn validate(&self) -> Result<(), MetadataFetchError> {
         if self.build_version.lt(&MINIMAL_NODE_VERSION) {
             let msg = format!(
                 "Node version expected to be >= {}.",
                 MINIMAL_NODE_VERSION.value(),
             );
-            Err(BuildVersionFetchError::VersionNotAcceptable(msg))
+            Err(MetadataFetchError::VersionNotAcceptable(msg))
         } else {
             Ok(())
         }
@@ -51,7 +52,7 @@ impl NodeMetadata {
 
 #[async_trait]
 pub trait NodeMetadataFetcher: Sync + Send {
-    async fn fetch(&self) -> Result<NodeMetadata, BuildVersionFetchError>;
+    async fn fetch(&self) -> Result<NodeMetadata, MetadataFetchError>;
 }
 
 pub fn for_status_endpoint(status_endpoint: Url) -> impl NodeMetadataFetcher {
@@ -65,7 +66,7 @@ pub struct StatusEndpointVersionFetcher {
 
 #[async_trait]
 impl NodeMetadataFetcher for StatusEndpointVersionFetcher {
-    async fn fetch(&self) -> Result<NodeMetadata, BuildVersionFetchError> {
+    async fn fetch(&self) -> Result<NodeMetadata, MetadataFetchError> {
         let status_endpoint = self.status_endpoint.clone();
         debug!("Fetching build version for {}", status_endpoint);
         match fetch_metadata_from_status(status_endpoint).await {
@@ -73,7 +74,7 @@ impl NodeMetadataFetcher for StatusEndpointVersionFetcher {
                 metadata.validate()?;
                 Ok(metadata)
             }
-            Err(fetch_err) => Err(BuildVersionFetchError::Error(fetch_err)),
+            Err(fetch_err) => Err(MetadataFetchError::Error(fetch_err)),
         }
     }
 }
@@ -152,9 +153,7 @@ fn try_resolve_version(raw_response: &Value) -> Result<ProtocolVersion, Error> {
 }
 
 fn count_error(reason: &str) {
-    casper_event_types::metrics::ERROR_COUNTS
-        .with_label_values(&["fetching_build_version_for_node", reason])
-        .inc();
+    observe_error("fetching_build_version_for_node", reason);
 }
 
 #[cfg(test)]
@@ -205,7 +204,7 @@ pub mod tests {
             test_by_build_version(Some("1.5.1"), Some("some-network")).await;
         assert!(matches!(
             version_validation_failed,
-            Err(BuildVersionFetchError::VersionNotAcceptable(_))
+            Err(MetadataFetchError::VersionNotAcceptable(_))
         ));
     }
 
@@ -255,7 +254,7 @@ pub mod tests {
     async fn test_by_build_version(
         build_version: Option<&str>,
         network_name: Option<&str>,
-    ) -> Result<NodeMetadata, BuildVersionFetchError> {
+    ) -> Result<NodeMetadata, MetadataFetchError> {
         let (mock, url, _server) = build_server_mock(build_version, network_name).await;
         let result = for_status_endpoint(Url::parse(&url).unwrap()).fetch().await;
         mock.assert();
@@ -264,8 +263,8 @@ pub mod tests {
 
     pub struct MockVersionFetcher {
         repeatable: bool,
-        version_responses: Mutex<Vec<Result<ProtocolVersion, BuildVersionFetchError>>>,
-        network_name_responses: Mutex<Vec<Result<String, BuildVersionFetchError>>>,
+        version_responses: Mutex<Vec<Result<ProtocolVersion, MetadataFetchError>>>,
+        network_name_responses: Mutex<Vec<Result<String, MetadataFetchError>>>,
     }
 
     impl MockVersionFetcher {
@@ -278,8 +277,8 @@ pub mod tests {
             }
         }
         pub fn new(
-            version_responses: Vec<Result<ProtocolVersion, BuildVersionFetchError>>,
-            network_name_responses: Vec<Result<String, BuildVersionFetchError>>,
+            version_responses: Vec<Result<ProtocolVersion, MetadataFetchError>>,
+            network_name_responses: Vec<Result<String, MetadataFetchError>>,
         ) -> Self {
             Self {
                 repeatable: false,
@@ -291,7 +290,7 @@ pub mod tests {
 
     #[async_trait]
     impl NodeMetadataFetcher for MockVersionFetcher {
-        async fn fetch(&self) -> Result<NodeMetadata, BuildVersionFetchError> {
+        async fn fetch(&self) -> Result<NodeMetadata, MetadataFetchError> {
             let mut version_responses = self.version_responses.lock().await;
             let mut network_name_responses = self.network_name_responses.lock().await;
             if self.repeatable {

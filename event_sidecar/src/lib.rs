@@ -33,10 +33,12 @@ use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{metrics, sse_data::SseData, Filter};
+use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
 use futures::future::join_all;
 use hex_fmt::HexFmt;
+use metrics::observe_error;
+use metrics::sse::observe_contract_messages;
 use tokio::{
     sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
@@ -285,23 +287,17 @@ async fn handle_database_save_result<F>(
 {
     match res {
         Ok(_) => {
-            count_internal_event("main_inbound_sse_data", "db_save_end");
-            count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_start");
             if let Err(error) = outbound_sse_data_sender
                 .send((build_sse_data(), Some(inbound_filter), json_data))
                 .await
             {
-                count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
                 debug!(
                     "Error when sending to outbound_sse_data_sender. Error: {}",
                     error
                 );
-            } else {
-                count_internal_event("main_inbound_sse_data", "outbound_sse_data_send_end");
             }
         }
         Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
-            count_internal_event("main_inbound_sse_data", "db_save_end");
             debug!(
                 "Already received {} ({}), logged in event_log",
                 entity_name, entity_identifier,
@@ -309,12 +305,10 @@ async fn handle_database_save_result<F>(
             trace!(?uc_err);
         }
         Err(other_err) => {
-            count_internal_event("main_inbound_sse_data", "db_save_end");
             count_error(format!("db_save_error_{}", entity_name).as_str());
             warn!(?other_err, "Unexpected error saving {}", entity_identifier);
         }
     }
-    count_internal_event("main_inbound_sse_data", "event_received_end");
 }
 
 /// Function to handle single event in the sse_processor.
@@ -328,14 +322,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
     api_version_manager: GuardedApiVersionManager,
 ) {
-    match sse_event.data {
-        SseData::ApiVersion(_) | SseData::Shutdown => {
-            //don't do debug counting for ApiVersion since we don't store it
-        }
-        _ => {
-            count_internal_event("main_inbound_sse_data", "event_received_start");
-        }
-    }
     match sse_event.data {
         SseData::SidecarVersion(_) => {
             //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
@@ -356,7 +342,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Block Added: {:18}", hex_block_hash);
                 debug!("Block Added: {}", hex_block_hash);
             }
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_block_added(
                     BlockAdded::new(block_hash, block.clone()),
@@ -384,7 +369,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Accepted: {:18}", entity_identifier);
                 debug!("Transaction Accepted: {}", entity_identifier);
             }
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_transaction_accepted(
                     transaction_accepted,
@@ -412,7 +396,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Expired: {:18}", entity_identifier);
                 debug!("Transaction Expired: {}", entity_identifier);
             }
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_transaction_expired(
                     transaction_expired,
@@ -442,7 +425,9 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             execution_result,
             messages,
         } => {
-            //TODO fix all these clones
+            if !messages.is_empty() {
+                observe_contract_messages("all", messages.len());
+            }
             let transaction_processed = TransactionProcessed::new(
                 transaction_hash.clone(),
                 initiator_addr.clone(),
@@ -457,7 +442,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Processed: {:18}", entity_identifier);
                 debug!("Transaction Processed: {}", entity_identifier);
             }
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_transaction_processed(
                     transaction_processed,
@@ -467,6 +451,9 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                     sse_event.network_name,
                 )
                 .await;
+            if res.is_ok() && !messages.is_empty() {
+                observe_contract_messages("unique", messages.len());
+            }
             handle_database_save_result(
                 "TransactionProcessed",
                 &entity_identifier,
@@ -493,7 +480,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
         } => {
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_fault(
                     fault.clone(),
@@ -528,7 +514,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 );
             }
             let finality_signature = FinalitySignature::new(fs.clone());
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_finality_signature(
                     finality_signature.clone(),
@@ -557,7 +542,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             if enable_event_logging {
                 info!("Step at era: {}", era_id.value());
             }
-            count_internal_event("main_inbound_sse_data", "db_save_start");
             let res = database
                 .save_step(
                     step,
@@ -781,17 +765,5 @@ async fn start_single_threaded_events_consumer<
 }
 
 fn count_error(reason: &str) {
-    metrics::ERROR_COUNTS
-        .with_label_values(&["main", reason])
-        .inc();
-}
-
-/// This metric is used for debugging of possible issues
-/// with sidecar to determine at which step of processing there was a hang.
-/// If we determine that this issue was fixed completely this can be removed
-/// (the corresponding metric also).
-fn count_internal_event(category: &str, reason: &str) {
-    metrics::INTERNAL_EVENTS
-        .with_label_values(&[category, reason])
-        .inc();
+    observe_error("main_loop", reason);
 }

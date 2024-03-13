@@ -17,10 +17,12 @@ pub enum EventFilter {
 
 #[cfg(feature = "sse-data-testing")]
 use super::testing;
+#[cfg(feature = "sse-data-testing")]
+use casper_types::ChainNameDigest;
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, ChainNameDigest,
-    EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash,
+    contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, EraId,
+    FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
 };
 #[cfg(feature = "sse-data-testing")]
 use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
@@ -102,6 +104,20 @@ pub enum SseData {
 }
 
 impl SseData {
+    pub fn type_label(&self) -> &str {
+        match self {
+            SseData::ApiVersion(_) => "ApiVersion",
+            SseData::SidecarVersion(_) => "SidecarVersion",
+            SseData::BlockAdded { .. } => "BlockAdded",
+            SseData::TransactionAccepted(_) => "TransactionAccepted",
+            SseData::TransactionProcessed { .. } => "TransactionProcessed",
+            SseData::TransactionExpired { .. } => "TransactionExpired",
+            SseData::Fault { .. } => "Fault",
+            SseData::FinalitySignature(_) => "FinalitySignature",
+            SseData::Step { .. } => "Step",
+            SseData::Shutdown => "Shutdown",
+        }
+    }
     pub fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
             SseData::Shutdown => true,
@@ -169,7 +185,6 @@ impl SseData {
             timestamp,
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),
-            //#[data_size(skip)]
             execution_result: Box::new(ExecutionResult::random(rng)),
             messages: rng.random_vec(1..5),
         }

@@ -6,7 +6,7 @@ edition = "2021"
 description = "Base module that spins up casper sidecar"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/event-sidecar/tree/dev"
+repository = "https://github.com/casper-network/casper-sidecar/tree/dev"
 license = "Apache-2.0"
 
 [dependencies]

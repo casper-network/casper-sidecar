@@ -55,7 +55,7 @@ impl Modify for AuthorsModification {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
         let mut contact = Contact::new();
         contact.name = Some("Sidecar team".to_string());
-        contact.url = Some("https://github.com/CasperLabs/event-sidecar".to_string());
+        contact.url = Some("https://github.com/casper-network/casper-sidecar".to_string());
         openapi.info.contact = Some(contact);
     }
 }

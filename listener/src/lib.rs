@@ -27,9 +27,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
-use version_fetcher::{
-    for_status_endpoint, BuildVersionFetchError, NodeMetadata, NodeMetadataFetcher,
-};
+use version_fetcher::{for_status_endpoint, MetadataFetchError, NodeMetadata, NodeMetadataFetcher};
 
 const MAX_CONNECTION_ATTEMPTS_REACHED: &str = "Max connection attempts reached";
 
@@ -257,14 +255,14 @@ impl EventListener {
                 }
                 GetNodeMetadataResult::Ok(None)
             }
-            Err(BuildVersionFetchError::VersionNotAcceptable(msg)) => {
+            Err(MetadataFetchError::VersionNotAcceptable(msg)) => {
                 log_status_for_event_listener(EventListenerStatus::IncompatibleVersion, self);
                 //The node has a build version which sidecar can't talk to. Failing fast in this case.
                 GetNodeMetadataResult::Error(Error::msg(msg))
             }
-            Err(BuildVersionFetchError::Error(err)) => {
+            Err(MetadataFetchError::Error(err)) => {
                 error!(
-                    "Error fetching build version (for {}): {err}",
+                    "Error fetching metadata (for {}): {err}",
                     self.node.ip_address
                 );
                 GetNodeMetadataResult::Retry
@@ -337,7 +335,7 @@ fn warn_connection_lost(listener: &EventListener, current_attempt: usize) {
 mod tests {
     use crate::{
         connections_builder::tests::MockConnectionsBuilder,
-        version_fetcher::{tests::MockVersionFetcher, BuildVersionFetchError, NodeMetadata},
+        version_fetcher::{tests::MockVersionFetcher, MetadataFetchError, NodeMetadata},
         EventListener, NodeConnectionInterface,
     };
     use anyhow::Error;
@@ -347,7 +345,7 @@ mod tests {
     #[tokio::test]
     async fn given_event_listener_should_not_connect_when_incompatible_version() {
         let version_fetcher = MockVersionFetcher::new(
-            vec![Err(BuildVersionFetchError::VersionNotAcceptable(
+            vec![Err(MetadataFetchError::VersionNotAcceptable(
                 "1.5.10".to_string(),
             ))],
             vec![Ok("x".to_string())],
@@ -364,7 +362,7 @@ mod tests {
         let protocol_version = ProtocolVersion::from_str("1.5.10").unwrap();
         let version_fetcher = MockVersionFetcher::new(
             vec![
-                Err(BuildVersionFetchError::Error(Error::msg("retryable error"))),
+                Err(MetadataFetchError::Error(Error::msg("retryable error"))),
                 Ok(protocol_version),
             ],
             vec![Ok("network-1".to_string()), Ok("network-2".to_string())],

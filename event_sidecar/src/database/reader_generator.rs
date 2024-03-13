@@ -6,6 +6,7 @@ macro_rules! database_reader_implementation {
         use anyhow::Error;
         use async_trait::async_trait;
         use casper_types::FinalitySignature as FinSig;
+        use metrics::db::observe_raw_data_size;
         use serde::Deserialize;
         use sqlx::{Executor, Row};
         use $crate::{
@@ -141,7 +142,7 @@ macro_rules! database_reader_implementation {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
                             let (raw, api_version, network_name) =
-                                fetch_envelope_data_from_row(row)?;
+                                fetch_envelope_data_from_row(row, "TransactionAccepted")?;
                             let sse_event = deserialize_data::<TransactionAccepted>(&raw)
                                 .map_err(wrap_query_error)?;
                             Ok(SseEnvelope::new(sse_event, api_version, network_name))
@@ -170,7 +171,7 @@ macro_rules! database_reader_implementation {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
                             let (raw, api_version, network_name) =
-                                fetch_envelope_data_from_row(row)?;
+                                fetch_envelope_data_from_row(row, "TransactionProcessed")?;
                             let sse_event = deserialize_data::<TransactionProcessed>(&raw)
                                 .map_err(wrap_query_error)?;
                             Ok(SseEnvelope::new(sse_event, api_version, network_name))
@@ -199,7 +200,7 @@ macro_rules! database_reader_implementation {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
                             let (raw, api_version, network_name) =
-                                fetch_envelope_data_from_row(row)?;
+                                fetch_envelope_data_from_row(row, "TransactionExpired")?;
                             let sse_event = deserialize_data::<TransactionExpired>(&raw)
                                 .map_err(wrap_query_error)?;
                             Ok(SseEnvelope::new(sse_event, api_version, network_name))
@@ -276,7 +277,7 @@ macro_rules! database_reader_implementation {
                         None => Err(DatabaseReadError::NotFound),
                         Some(row) => {
                             let (raw, api_version, network_name) =
-                                fetch_envelope_data_from_row(row)?;
+                                fetch_envelope_data_from_row(row, "Step")?;
                             let sse_event =
                                 deserialize_data::<Step>(&raw).map_err(wrap_query_error)?;
                             Ok(SseEnvelope::new(sse_event, api_version, network_name))
@@ -323,7 +324,8 @@ macro_rules! database_reader_implementation {
         fn parse_block_from_row(
             row: $row_type,
         ) -> Result<SseEnvelope<BlockAdded>, DatabaseReadError> {
-            let (raw_data, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+            let (raw_data, api_version, network_name) =
+                fetch_envelope_data_from_row(row, "BlockAdded")?;
             let sse_event = deserialize_data::<BlockAdded>(&raw_data).map_err(wrap_query_error)?;
             Ok(SseEnvelope::new(sse_event, api_version, network_name))
         }
@@ -333,7 +335,8 @@ macro_rules! database_reader_implementation {
         ) -> Result<Vec<SseEnvelope<FinSig>>, DatabaseReadError> {
             let mut finality_signatures = Vec::new();
             for row in rows {
-                let (raw, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+                let (raw, api_version, network_name) =
+                    fetch_envelope_data_from_row(row, "FinalitySignature")?;
                 let sse_event =
                     deserialize_data::<FinalitySignature>(&raw).map_err(wrap_query_error)?;
                 finality_signatures.push(SseEnvelope::new(
@@ -354,7 +357,7 @@ macro_rules! database_reader_implementation {
         ) -> Result<Vec<SseEnvelope<Fault>>, DatabaseReadError> {
             let mut faults = Vec::new();
             for row in rows {
-                let (raw, api_version, network_name) = fetch_envelope_data_from_row(row)?;
+                let (raw, api_version, network_name) = fetch_envelope_data_from_row(row, "Fault")?;
                 let sse_event = deserialize_data::<Fault>(&raw).map_err(wrap_query_error)?;
                 faults.push(SseEnvelope::new(sse_event, api_version, network_name));
             }
@@ -367,10 +370,12 @@ macro_rules! database_reader_implementation {
 
         fn fetch_envelope_data_from_row(
             row: $row_type,
+            message_type: &str,
         ) -> Result<(String, String, String), DatabaseReadError> {
             let raw_data = row
                 .try_get::<String, &str>("raw")
                 .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;
+            observe_raw_data_size(message_type, raw_data.len());
             let api_version = row
                 .try_get::<String, &str>("api_version")
                 .map_err(|sqlx_err| wrap_query_error(sqlx_err.into()))?;

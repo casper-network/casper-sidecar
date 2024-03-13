@@ -4,6 +4,7 @@ members = [
     "event_sidecar",
     "json_rpc",
     "listener",
+    "metrics",
     "rpc_sidecar",
     "sidecar",
     "types"
@@ -18,6 +19,7 @@ casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
 datasize = "0.2.11"
 futures = "0"
 futures-util = "0.3.28"
+metrics = { path = "./metrics", version = "1.0.0" }
 once_cell = "1.18.0"
 thiserror = "1"
 tokio = "1.23.1"
