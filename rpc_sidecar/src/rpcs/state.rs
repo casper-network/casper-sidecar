@@ -21,7 +21,7 @@ use casper_types::{
     bytesrepr::Bytes,
     system::{
         auction::{
-            EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
+            BidKind, EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         AUCTION,
@@ -321,15 +321,21 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let legacy_bid_stored_values = node_client
             .query_global_state_by_tag(state_identifier, KeyTag::Bid)
             .await
-            .map_err(|err| Error::NodeRequest("auction bids", err))?;
+            .map_err(|err| Error::NodeRequest("auction bids", err))?
+            .into_iter()
+            .map(|value| {
+                Ok(BidKind::Unified(
+                    value.into_bid().ok_or(Error::InvalidAuctionState)?.into(),
+                ))
+            });
         let bid_stored_values = node_client
             .query_global_state_by_tag(state_identifier, KeyTag::BidAddr)
             .await
-            .map_err(|err| Error::NodeRequest("auction bids", err))?;
-        let bids = legacy_bid_stored_values
+            .map_err(|err| Error::NodeRequest("auction bids", err))?
             .into_iter()
-            .chain(bid_stored_values.into_iter())
-            .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionState))
+            .map(|value| value.into_bid_kind().ok_or(Error::InvalidAuctionState));
+        let bids = legacy_bid_stored_values
+            .chain(bid_stored_values)
             .collect::<Result<Vec<_>, Error>>()?;
 
         let (registry_value, _) = node_client
@@ -1006,7 +1012,7 @@ mod tests {
             GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
-        system::auction::BidKind,
+        system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
         AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
         ProtocolVersion, TestBlockBuilder,
@@ -1083,6 +1089,7 @@ mod tests {
         struct ClientMock {
             block: Block,
             bids: Vec<BidKind>,
+            legacy_bids: Vec<Bid>,
             contract_hash: AddressableEntityHash,
             snapshot: SeigniorageRecipientsSnapshot,
         }
@@ -1108,6 +1115,21 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
                         key_tag: KeyTag::Bid,
+                        ..
+                    })) => {
+                        let bids = self
+                            .legacy_bids
+                            .iter()
+                            .cloned()
+                            .map(|bid| StoredValue::Bid(bid.into()))
+                            .collect::<Vec<_>>();
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
+                        key_tag: KeyTag::BidAddr,
                         ..
                     })) => {
                         let bids = self
@@ -1157,11 +1179,14 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
+        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
 
         let resp = GetAuctionInfo::do_handle_request(
             Arc::new(ClientMock {
                 block: Block::V2(block.clone()),
-                bids: Default::default(),
+                bids: vec![bid.clone()],
+                legacy_bids: vec![legacy_bid.clone()],
                 contract_hash: rng.gen(),
                 snapshot: Default::default(),
             }),
@@ -1178,7 +1203,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    Default::default()
+                    vec![bid, BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
