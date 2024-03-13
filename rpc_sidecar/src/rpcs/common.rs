@@ -91,6 +91,25 @@ pub async fn get_block_header(
     }
 }
 
+pub async fn get_latest_switch_block_header(
+    node_client: &dyn NodeClient,
+) -> Result<BlockHeader, Error> {
+    match node_client
+        .read_latest_switch_block_header()
+        .await
+        .map_err(|err| Error::NodeRequest("latest switch block header", err))?
+    {
+        Some(header) => Ok(header),
+        None => {
+            let available_range = node_client
+                .read_available_block_range()
+                .await
+                .map_err(|err| Error::NodeRequest("available block range", err))?;
+            Err(Error::NoBlockFound(None, available_range))
+        }
+    }
+}
+
 pub async fn resolve_account_hash(
     node_client: &dyn NodeClient,
     account_hash: AccountHash,

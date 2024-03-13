@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
-    ActivationPoint, AvailableBlockRange, Block, BlockSynchronizerStatus, ChainspecRawBytes,
-    Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers, ProtocolVersion,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
+    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
 };
 
 use super::{
@@ -84,6 +84,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
     last_progress: Timestamp::from(0),
     available_block_range: AvailableBlockRange::RANGE_0_0,
     block_sync: BlockSynchronizerStatus::example().clone(),
+    latest_switch_block_hash: Some(BlockHash::default()),
     #[cfg(not(test))]
     build_version: version_string(),
 
@@ -450,6 +451,8 @@ pub struct GetStatusResult {
     pub available_block_range: AvailableBlockRange,
     /// The status of the block synchronizer builders.
     pub block_sync: BlockSynchronizerStatus,
+    /// The hash of the latest switch block.
+    pub latest_switch_block_hash: Option<BlockHash>,
 }
 
 impl DocExample for GetStatusResult {
@@ -488,6 +491,7 @@ impl RpcWithoutParams for GetStatus {
             last_progress: status.last_progress,
             available_block_range: status.available_block_range,
             block_sync: status.block_sync,
+            latest_switch_block_hash: status.latest_switch_block_hash,
             build_version: status.build_version,
         })
     }
