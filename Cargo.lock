@@ -694,7 +694,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "3.0.0"
-source = "git+https://github.com/casper-network/casper-node?branch=feat-2.0#8b60d1999f51bb8a45b8da5a61e5f044e5da71ca"
+source = "git+https://github.com/casper-network/casper-node?branch=feat-2.0#36eec71c235996865707982cb2e1686d5949927d"
 dependencies = [
  "base16",
  "base64 0.13.1",
