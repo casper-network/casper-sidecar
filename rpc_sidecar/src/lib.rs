@@ -4,13 +4,14 @@ mod node_client;
 mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
-#[cfg(test)]
-pub(crate) mod testing;
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
 
 use anyhow::Error;
 use casper_types::ProtocolVersion;
 pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 pub use config::{NodeClientConfig, RpcConfig};
+use futures::future::BoxFuture;
 use futures::FutureExt;
 pub use http_server::run as run_rpc_server;
 use hyper::{
@@ -33,33 +34,41 @@ pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_pa
 /// The exit code is used to indicate that the client has shut down due to version mismatch.
 pub const CLIENT_SHUTDOWN_EXIT_CODE: u8 = 0x3;
 
-pub async fn start_rpc_server(config: &RpcServerConfig) -> Result<ExitCode, Error> {
+pub type MaybeRpcServerReturn<'a> = Result<Option<BoxFuture<'a, Result<ExitCode, Error>>>, Error>;
+pub async fn build_rpc_server<'a>(config: RpcServerConfig) -> MaybeRpcServerReturn<'a> {
     let (node_client, client_loop) = JulietNodeClient::new(config.node_client.clone()).await?;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
-
-    let rpc_server = config
-        .main_server
-        .enable_server
-        .then(|| run_rpc(&config.main_server, node_client.clone()).boxed())
-        .unwrap_or_else(|| std::future::pending().boxed());
-
-    let spec_exec_server = config
-        .speculative_exec_server
-        .as_ref()
-        .filter(|conf| conf.enable_server)
-        .map_or_else(
-            || std::future::pending().boxed(),
-            |conf| run_speculative_exec(conf, node_client.clone()).boxed(),
-        );
-
-    tokio::select! {
-        result = rpc_server => result.map(|()| ExitCode::SUCCESS),
-        result = spec_exec_server => result.map(|()| ExitCode::SUCCESS),
-        result = client_loop => result.map(|()| ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)),
+    let mut futures = Vec::new();
+    let main_server_config = config.main_server;
+    if main_server_config.enable_server {
+        let future = run_rpc(main_server_config, node_client.clone())
+            .map(|_| Ok(ExitCode::SUCCESS))
+            .boxed();
+        futures.push(future);
     }
+    let speculative_server_config = config.speculative_exec_server;
+    if let Some(config) = speculative_server_config {
+        if config.enable_server {
+            let future = run_speculative_exec(config, node_client.clone())
+                .map(|_| Ok(ExitCode::SUCCESS))
+                .boxed();
+            futures.push(future);
+        }
+    }
+    let client_loop = client_loop
+        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .boxed();
+    futures.push(client_loop);
+    Ok(Some(retype_future_vec(futures).boxed()))
 }
 
-async fn run_rpc(config: &RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
+async fn retype_future_vec(
+    futures: Vec<BoxFuture<'_, Result<ExitCode, Error>>>,
+) -> Result<ExitCode, Error> {
+    futures::future::select_all(futures).await.0
+}
+
+async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
     run_rpc_server(
         node_client,
         start_listening(&config.address)?,
@@ -72,7 +81,7 @@ async fn run_rpc(config: &RpcConfig, node_client: Arc<dyn NodeClient>) -> Result
 }
 
 async fn run_speculative_exec(
-    config: &SpeculativeExecConfig,
+    config: SpeculativeExecConfig,
     node_client: Arc<dyn NodeClient>,
 ) -> anyhow::Result<()> {
     run_speculative_exec_server(

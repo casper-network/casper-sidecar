@@ -75,6 +75,12 @@ impl Database {
             }
         }
     }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn for_tests() -> Database {
+        let sqlite_database = SqliteDatabase::new_in_memory_no_migrations(100).unwrap();
+        Database::SqliteDatabaseWrapper(sqlite_database)
+    }
 }
 
 /// Describes a reference for the writing interface of an 'Event Store' database.

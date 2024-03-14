@@ -555,7 +555,7 @@ dependencies = [
  "casper-event-types",
  "casper-types",
  "colored",
- "derive-new",
+ "derive-new 0.5.9",
  "eventsource-stream",
  "futures",
  "futures-util",
@@ -641,7 +641,6 @@ dependencies = [
  "base16",
  "bincode",
  "bytes",
- "casper-event-types",
  "casper-json-rpc",
  "casper-types",
  "datasize",
@@ -675,11 +674,14 @@ name = "casper-sidecar"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "backtrace",
  "casper-event-sidecar",
+ "casper-event-types",
  "casper-rpc-sidecar",
  "clap 4.5.2",
  "datasize",
+ "derive-new 0.6.0",
  "futures",
  "num_cpus",
  "serde",
@@ -1059,6 +1061,17 @@ dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "derive-new"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d150dea618e920167e5973d70ae6ece4385b7164e0d799fe7c122dd0a5d912ad"
+dependencies = [
+ "proc-macro2 1.0.78",
+ "quote 1.0.35",
+ "syn 2.0.52",
 ]
 
 [[package]]

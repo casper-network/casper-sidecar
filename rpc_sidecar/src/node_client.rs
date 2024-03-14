@@ -444,13 +444,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::BinaryPortMock;
+    use crate::testing::{get_port, start_mock_binary_port_responding_with_stored_value};
 
     use super::*;
     use casper_types::testing::TestRng;
     use casper_types::{CLValue, SemVer};
     use futures::FutureExt;
-    use tokio::task::JoinHandle;
     use tokio::time::sleep;
 
     #[tokio::test]
@@ -589,28 +588,5 @@ mod tests {
             .await?
             .ok_or(Error::NoResponseBody)
             .map(|query_res| query_res.into_inner().0)
-    }
-
-    async fn start_mock_binary_port_responding_with_stored_value(port: u16) -> JoinHandle<()> {
-        let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
-        let data = GlobalStateQueryResult::new(value, vec![]);
-        let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
-        let val = BinaryResponse::from_value(data, protocol_version);
-        let request = [];
-        let response = BinaryResponseAndRequest::new(val, &request);
-        start_mock_binary_port(port, response.to_bytes().unwrap()).await
-    }
-
-    async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
-        let handler = tokio::spawn(async move {
-            let binary_port = BinaryPortMock::new(port, data);
-            binary_port.start().await;
-        });
-        sleep(Duration::from_secs(3)).await; // This should be handled differently, preferrably the mock binary port should inform that it already bound to the port
-        handler
-    }
-
-    pub fn get_port() -> u16 {
-        portpicker::pick_unused_port().unwrap()
     }
 }

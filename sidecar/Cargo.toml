@@ -13,6 +13,7 @@ license = "Apache-2.0"
 anyhow = { workspace = true }
 backtrace = "0.3.69"
 casper-event-sidecar = { workspace = true }
+casper-event-types = { workspace = true }
 casper-rpc-sidecar = { workspace = true }
 clap = { version = "4.0.32", features = ["derive"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
@@ -24,6 +25,8 @@ toml = { workspace = true }
 tracing = { workspace = true, default-features = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
 thiserror = { workspace = true }
+derive-new = "0.6.0"
+async-trait = { workspace = true }
 
 [dev-dependencies]
 casper-event-sidecar = { workspace = true, features = ["testing"] }

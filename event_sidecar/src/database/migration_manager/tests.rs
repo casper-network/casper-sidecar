@@ -13,7 +13,6 @@ const MAX_CONNECTIONS: u32 = 100;
 #[tokio::test]
 async fn should_have_version_none_if_no_migrations_applied() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(sqlite_db.clone(), vec![]).await;
@@ -27,7 +26,6 @@ async fn should_have_version_none_if_no_migrations_applied() {
 #[tokio::test]
 async fn should_store_failed_version_if_migration_was_erroneous() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res =
@@ -43,7 +41,6 @@ async fn should_store_failed_version_if_migration_was_erroneous() {
 #[tokio::test]
 async fn should_apply_migration() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res =
@@ -66,7 +63,6 @@ async fn should_apply_migration() {
 #[tokio::test]
 async fn should_apply_migrations() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(
@@ -104,7 +100,6 @@ async fn should_apply_migrations() {
 async fn given_ok_and_failing_migrations_first_should_be_applied_second_only_stored_in_migrations_table(
 ) {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(
@@ -123,7 +118,6 @@ async fn given_ok_and_failing_migrations_first_should_be_applied_second_only_sto
 #[tokio::test]
 async fn should_fail_if_migration_has_no_version() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
     let migration = build_no_version_migration();
 
@@ -135,7 +129,6 @@ async fn should_fail_if_migration_has_no_version() {
 #[tokio::test]
 async fn should_fail_if_two_migrations_have_the_same_version() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(
@@ -150,7 +143,6 @@ async fn should_fail_if_two_migrations_have_the_same_version() {
 #[tokio::test]
 async fn given_shuffled_migrations_should_sort_by_version() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(
@@ -179,7 +171,6 @@ async fn given_shuffled_migrations_should_sort_by_version() {
 #[tokio::test]
 async fn should_execute_script() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res =
@@ -203,7 +194,6 @@ async fn should_execute_script() {
 #[tokio::test]
 async fn given_failed_migration_should_not_execute_next_migration_() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(
@@ -222,7 +212,6 @@ async fn given_failed_migration_should_not_execute_next_migration_() {
 #[tokio::test]
 async fn should_store_failed_version_if_script_fails() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
-        .await
         .expect("Error opening database in memory");
 
     let apply_res = MigrationManager::apply_migrations(

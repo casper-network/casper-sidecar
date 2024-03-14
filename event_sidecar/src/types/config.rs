@@ -25,6 +25,7 @@ pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SseEventServerConfig {
+    pub enable_server: bool,
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
@@ -35,6 +36,7 @@ pub struct SseEventServerConfig {
 impl Default for SseEventServerConfig {
     fn default() -> Self {
         Self {
+            enable_server: true,
             inbound_channel_size: Some(100),
             outbound_channel_size: Some(100),
             connections: vec![],
@@ -224,6 +226,7 @@ impl TryFrom<PostgresqlConfigSerdeTarget> for PostgresqlConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct RestApiServerConfig {
+    pub enable_server: bool,
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
@@ -238,9 +241,22 @@ pub struct EventStreamServerConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct AdminApiServerConfig {
+    pub enable_server: bool,
     pub port: u16,
     pub max_concurrent_requests: u32,
     pub max_requests_per_second: u32,
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Default for AdminApiServerConfig {
+    fn default() -> Self {
+        Self {
+            enable_server: true,
+            port: 1211,
+            max_concurrent_requests: 50,
+            max_requests_per_second: 60,
+        }
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -333,6 +349,7 @@ mod tests {
     impl Default for RestApiServerConfig {
         fn default() -> Self {
             Self {
+                enable_server: true,
                 port: 17777,
                 max_concurrent_requests: 50,
                 max_requests_per_second: 50,

@@ -7,6 +7,7 @@ use std::net::TcpListener;
 use std::process::ExitCode;
 use std::time::Duration;
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use tracing::info;
 use warp::Filter;
 use warp::{Rejection, Reply};
 
@@ -29,7 +30,7 @@ impl AdminServer {
             .concurrency_limit(self.max_concurrent_requests as usize)
             .rate_limit(self.max_requests_per_second as u64, Duration::from_secs(1))
             .service(warp_service);
-
+        info!(address = %address, "started {} server", "Admin API");
         Server::from_tcp(listener)?
             .serve(Shared::new(Buffer::new(tower_service, 50)))
             .await?;
@@ -39,14 +40,19 @@ impl AdminServer {
 }
 
 pub async fn run_server(config: AdminApiServerConfig) -> Result<ExitCode, Error> {
-    AdminServer {
-        port: config.port,
-        max_concurrent_requests: config.max_concurrent_requests,
-        max_requests_per_second: config.max_requests_per_second,
+    if config.enable_server {
+        AdminServer {
+            port: config.port,
+            max_concurrent_requests: config.max_concurrent_requests,
+            max_requests_per_second: config.max_requests_per_second,
+        }
+        .start()
+        .await
+        .map(|_| ExitCode::SUCCESS)
+    } else {
+        info!("Admin API server is disabled. Skipping...");
+        Ok(ExitCode::SUCCESS)
     }
-    .start()
-    .await
-    .map(|_| ExitCode::SUCCESS)
 }
 
 /// Return metrics data at a given time.
@@ -76,6 +82,7 @@ mod tests {
         let port = pick_unused_port().unwrap();
         let request_url = format!("http://localhost:{}/metrics", port);
         let admin_config = AdminApiServerConfig {
+            enable_server: true,
             port,
             max_concurrent_requests: 1,
             max_requests_per_second: 1,
