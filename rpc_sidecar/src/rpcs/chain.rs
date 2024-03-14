@@ -556,7 +556,7 @@ mod tests {
         let resp = GetEraSummary::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                expect_no_block_idenfitier: true,
+                expect_no_block_identifier: true,
             }),
             None,
         )
@@ -586,7 +586,7 @@ mod tests {
         let resp = GetEraSummary::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                expect_no_block_idenfitier: false,
+                expect_no_block_identifier: false,
             }),
             Some(GetEraSummaryParams {
                 block_identifier: BlockIdentifier::Hash(*block.hash()),
@@ -618,7 +618,7 @@ mod tests {
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                expect_no_block_idenfitier: true,
+                expect_no_block_identifier: true,
             }),
             None,
         )
@@ -648,7 +648,7 @@ mod tests {
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                expect_no_block_idenfitier: false,
+                expect_no_block_identifier: false,
             }),
             Some(GetEraInfoParams {
                 block_identifier: BlockIdentifier::Hash(*block.hash()),
@@ -680,7 +680,7 @@ mod tests {
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
-                expect_no_block_idenfitier: true,
+                expect_no_block_identifier: true,
             }),
             None,
         )
@@ -745,7 +745,7 @@ mod tests {
 
     struct ValidEraSummaryMock {
         block: Block,
-        expect_no_block_idenfitier: bool,
+        expect_no_block_identifier: bool,
     }
 
     #[async_trait]
@@ -754,7 +754,7 @@ mod tests {
             &self,
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
-            let expected_tag = if self.expect_no_block_idenfitier {
+            let expected_tag = if self.expect_no_block_identifier {
                 InformationRequestTag::LatestSwitchBlockHeader
             } else {
                 InformationRequestTag::BlockHeader
