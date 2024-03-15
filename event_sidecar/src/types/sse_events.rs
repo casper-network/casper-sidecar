@@ -143,7 +143,6 @@ pub struct TransactionProcessed {
     #[schema(value_type = String)]
     ttl: TimeDiff,
     block_hash: Box<BlockHash>,
-    //#[data_size(skip)]
     execution_result: Box<ExecutionResult>,
     messages: Messages,
 }
