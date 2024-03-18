@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+use crate::*;
 
 /// This struct holds flags that steer DDL generation for specific databases.
 pub struct DDLConfiguration {
@@ -6,22 +9,33 @@ pub struct DDLConfiguration {
     pub db_supports_unsigned: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SseEnvelopeHeader {
+/// Header of the SSE envelope
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct EnvelopeHeader {
     api_version: String,
     network_name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Wrapper envelope for SSE events. It contains the event in `payload` field and some metadata in `header` field.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+#[aliases(
+    BlockAddedEnveloped = SseEnvelope<BlockAdded>,
+    TransactionAcceptedEnveloped = SseEnvelope<TransactionAccepted>,
+    TransactionExpiredEnveloped = SseEnvelope<TransactionExpired>,
+    TransactionProcessedEnveloped = SseEnvelope<TransactionProcessed>,
+    FaultEnveloped = SseEnvelope<Fault>,
+    FinalitySignatureEnveloped = SseEnvelope<FinalitySignature>,
+    StepEnveloped = SseEnvelope<Step>,
+)]
 pub struct SseEnvelope<T> {
-    header: SseEnvelopeHeader,
+    header: EnvelopeHeader,
     payload: T,
 }
 
 impl<T> SseEnvelope<T> {
     pub fn new(sse_event: T, api_version: String, network_name: String) -> SseEnvelope<T> {
         SseEnvelope {
-            header: SseEnvelopeHeader {
+            header: EnvelopeHeader {
                 api_version,
                 network_name,
             },

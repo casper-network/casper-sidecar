@@ -19,7 +19,7 @@ rand = { version = "0.8.5", optional = true }
 serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc", "raw_value"] }
 thiserror = { workspace = true }
-utoipa = { version = "3.4.4", features = ["rc_schema"] }
+utoipa = { version = "4", features = ["rc_schema"] }
 
 [features]
 sse-data-testing = ["blake2", "casper-types/testing", "rand"]

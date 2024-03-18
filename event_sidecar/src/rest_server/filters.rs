@@ -87,7 +87,7 @@ fn transaction_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(transaction_expired_by_hash(db))
 }
 
-/// Return information about the last block added to the linear chain.
+/// Returns information about the last block added to the linear chain.
 /// Input: the database with data to be filtered.
 /// Return: data about the latest block.
 /// Path URL: block
@@ -96,7 +96,7 @@ fn transaction_filters<Db: DatabaseReader + Clone + Send + Sync>(
     get,
     path = "/block",
     responses(
-        (status = 200, description = "latest stored block", body = BlockAdded)
+        (status = 200, description = "latest stored block", body = BlockAddedEnveloped)
     )
 )]
 pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
@@ -108,7 +108,7 @@ pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_latest_block)
 }
 
-/// Return information about a block given its block hash.
+/// Returns information about a block given its block hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the block specified.
 /// Path URL: block/<block-hash>
@@ -120,7 +120,7 @@ pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
         ("block_hash" = String, Path, description = "Base64 encoded block hash of requested block")
     ),
     responses(
-        (status = 200, description = "fetch latest stored block", body = BlockAdded)
+        (status = 200, description = "fetch latest stored block", body = BlockAddedEnveloped)
     )
 )]
 fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
@@ -132,7 +132,7 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_hash)
 }
 
-/// Return information about a block given a specific block height.
+/// Returns information about a block given a specific block height.
 /// Input: the database with data to be filtered.
 /// Return: data about the block requested.
 /// Path URL: block/<block-height>
@@ -144,7 +144,7 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("height" = u32, Path, description = "Height of the requested block")
     ),
     responses(
-        (status = 200, description = "fetch latest stored block", body = BlockAdded)
+        (status = 200, description = "fetch latest stored block", body = BlockAddedEnveloped)
     )
 )]
 fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
@@ -156,20 +156,20 @@ fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_block_by_height)
 }
 
-/// Return an aggregate of the different states for the given transaction. This is a synthetic JSON not emitted by the node.
+/// Returns an aggregate of the different states for the given transaction. This is a synthetic JSON not emitted by the node.
 /// The output differs depending on the transaction's status, which changes over time as the transaction goes through its lifecycle.
 /// Input: the database with data to be filtered.
 /// Return: data about the transaction specified.
-/// Path URL: transaction/<transaction-hash>
-/// Example: curl http://127.0.0.1:18888/transaction/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+/// Path URL: transaction/<transaction-type>/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/version1/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 #[utoipa::path(
     get,
-    path = "/transaction/{transaction_hash}",
+    path = "/transaction/{transaction_type}/{transaction_hash}",
     params(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction")
     ),
     responses(
-        (status = 200, description = "fetch aggregate data for transaction events", body = TreansactionAggregate)
+        (status = 200, description = "fetch aggregate data for transaction events", body = TransactionAggregate)
     )
 )]
 fn transaction_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
@@ -181,19 +181,19 @@ fn transaction_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         .and_then(handlers::get_transaction_by_identifier)
 }
 
-/// Return information about an accepted transaction given its transaction hash.
+/// Returns information about an accepted transaction given its transaction hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the accepted transaction.
-/// Path URL: transaction/accepted/<transaction-hash>
-/// Example: curl http://127.0.0.1:18888/transaction/accepted/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+/// Path URL: transaction/accepted/<transaction-type>/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/accepted/version1/f01544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 #[utoipa::path(
     get,
-    path = "/transaction/accepted/{transaction_hash}",
+    path = "/transaction/accepted/{transaction_type}/{transaction_hash}",
     params(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction accepted")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionAccepted)
+        (status = 200, description = "fetch stored transaction", body = TransactionAcceptedEnveloped)
     )
 )]
 fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
@@ -207,19 +207,19 @@ fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 
 #[utoipa::path(
     get,
-    path = "/transaction/expired/{transaction_hash}",
+    path = "/transaction/expired/{transaction_type}/{transaction_hash}",
     params(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction expired")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionExpired)
+        (status = 200, description = "fetch stored transaction", body = TransactionExpiredEnveloped)
     )
 )]
-/// Return information about a transaction that expired given its transaction hash.
+/// Returns information about a transaction that expired given its transaction hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the expired transaction.
-/// Path URL: transaction/expired/<transaction-hash>
-/// Example: curl http://127.0.0.1:18888/transaction/expired/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
+/// Path URL: transaction/expired/<transaction-type>/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/expired/version1/e03544d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab58a
 fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -231,19 +231,19 @@ fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
 
 #[utoipa::path(
     get,
-    path = "/transaction/processed/{transaction_hash}",
+    path = "/transaction/processed/{transaction_type}/{transaction_hash}",
     params(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction processed")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionProcessed)
+        (status = 200, description = "fetch stored transaction", body = TransactionProcessedEnveloped)
     )
 )]
-/// Return information about a transaction that was processed given its transaction hash.
+/// Returns information about a transaction that was processed given its transaction hash.
 /// Input: the database with data to be filtered.
 /// Return: data about the processed transaction.
-/// Path URL: transaction/processed/<transaction-hash>
-/// Example: curl http://127.0.0.1:18888/transaction/processed/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
+/// Path URL: transaction/processed/<transaction-type>/<transaction-hash>
+/// Example: curl http://127.0.0.1:18888/transaction/processed/version1/f08944d37354c5f9b2c4956826d32f8e44198f94fb6752e87f422fe3071ab77a
 fn transaction_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
     db: Db,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -260,10 +260,10 @@ fn transaction_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("public_key" = String, Path, description = "Base64 encoded validator's public key")
     ),
     responses(
-        (status = 200, description = "faults associated with a validator's public key", body = [Fault])
+        (status = 200, description = "faults associated with a validator's public key", body = [FaultEnveloped])
     )
 )]
-/// Return the faults associated with a validator's public key.
+/// Returns the faults associated with a validator's public key.
 /// Input: the database with data to be filtered.
 /// Return: faults caused by the validator specified.
 /// Path URL: faults/<public-key>
@@ -284,10 +284,10 @@ fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
         ("era" = String, Path, description = "Era identifier")
     ),
     responses(
-        (status = 200, description = "faults associated with an era ", body = [Fault])
+        (status = 200, description = "faults associated with an era ", body = [FaultEnveloped])
     )
 )]
-/// Return the faults associated with an era given a valid era identifier.
+/// Returns the faults associated with an era given a valid era identifier.
 /// Input: the database with data to be filtered.
 /// Return: fault information for a given era.
 /// Path URL: faults/<era-ID>
@@ -308,10 +308,10 @@ fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         ("block_hash" = String, Path, description = "Base64 encoded block hash of requested block")
     ),
     responses(
-        (status = 200, description = "finality signatures in a block", body = [FinalitySignature])
+        (status = 200, description = "finality signatures in a block", body = [FinalitySignatureEnveloped])
     )
 )]
-/// Return the finality signatures in a block given its block hash.
+/// Returns the finality signatures in a block given its block hash.
 /// Input: the database with data to be filtered.
 /// Return: the finality signatures for the block specified.
 /// Path URL: signatures/<block-hash>
@@ -332,10 +332,10 @@ fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
         ("era_id" = String, Path, description = "Era id")
     ),
     responses(
-        (status = 200, description = "step event emitted at the end of an era", body = Step)
+        (status = 200, description = "step event emitted at the end of an era", body = StepEnveloped)
     )
 )]
-/// Return the step event emitted at the end of an era, given a valid era identifier.
+/// Returns the step event emitted at the end of an era, given a valid era identifier.
 /// Input: the database with data to be filtered.
 /// Return: the step event for a given era.
 /// Path URL: step/<era-ID>

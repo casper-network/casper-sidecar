@@ -1,11 +1,18 @@
 mod schema_transformation_visitor;
-use crate::types::{
-    database::TransactionAggregate,
-    sse_events::{
-        BlockAdded, Fault, Step, TransactionAccepted, TransactionExpired, TransactionProcessed,
+use crate::{
+    database::types::*,
+    types::{
+        database::TransactionAggregate,
+        sse_events::{
+            BlockAdded, Fault, Step, TransactionAccepted, TransactionExpired, TransactionProcessed,
+        },
     },
 };
-use casper_types::RuntimeArgs;
+use casper_types::{
+    contract_messages::Messages,
+    execution::{execution_result_v1::ExecutionEffect, ExecutionResult},
+    Block, BlockHash, FinalitySignature, RuntimeArgs, Transaction,
+};
 use http::Uri;
 use schemars::{schema::SchemaObject, schema_for, visit::Visitor};
 use serde::{Deserialize, Serialize};
@@ -41,7 +48,7 @@ use self::schema_transformation_visitor::SchemaTransformationVisitor;
 
         ),
         components(
-            schemas(Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
+            schemas(EnvelopeHeader, BlockAddedEnveloped, TransactionAcceptedEnveloped, TransactionExpiredEnveloped, TransactionProcessedEnveloped, FaultEnveloped, FinalitySignatureEnveloped, StepEnveloped, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
         ),
         tags(
             (name = "event-sidecar", description = "Event-sidecar rest API")
@@ -80,15 +87,17 @@ pub fn build_open_api_filters(
     extend_open_api_with_schemars_schemas(
         &mut components,
         vec![
-            //("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
+            ("Block".to_string(), schema_for!(Block)),
+            ("BlockHash".to_string(), schema_for!(BlockHash)),
             ("RuntimeArgs".to_string(), schema_for!(RuntimeArgs)),
-            //("ContractHash".to_string(), schema_for!(ContractHash)),
-            /*(
-                "ContractPackageHash".to_string(),
-                schema_for!(ContractPackageHash),
+            (
+                "FinalitySignature".to_string(),
+                schema_for!(FinalitySignature),
             ),
-            ("ContractVersion".to_string(), schema_for!(ContractVersion)),
-            ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),*/
+            ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),
+            ("Transaction".to_string(), schema_for!(Transaction)),
+            ("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
+            ("Messages".to_string(), schema_for!(Messages)),
         ],
     );
     doc.components = Some(components);
