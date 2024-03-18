@@ -1,5 +1,5 @@
 ---
-name: ci-casper-event-sidecar
+name: ci-casper-sidecar
 
 on:
   push:
@@ -53,12 +53,8 @@ jobs:
         run: cargo test
 
       - name: install cargo packaging tools
-        # TODO: fix deb package for feat-2.0
-        if: ${{ github.base_ref == null || github.base_ref == 'dev' }}
         run: |
           cargo install cargo-deb
 
       - name: deb
-        # TODO: fix deb package for feat-2.0
-        if: ${{ github.base_ref == null || github.base_ref == 'dev' }}
-        run: cargo deb --package casper-event-sidecar
+        run: cargo deb --package casper-sidecar

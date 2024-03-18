@@ -19,8 +19,7 @@ pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 pub(crate) const DEFAULT_PORT: u16 = 5432;
 
-pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str =
-    "/casper/sidecar-storage/casper-event-sidecar";
+pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str = "/casper/sidecar-storage/casper-sidecar";
 
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

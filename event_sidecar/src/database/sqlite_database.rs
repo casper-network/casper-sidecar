@@ -3,7 +3,7 @@ mod reader;
 mod tests;
 mod writer;
 use super::migration_manager::MigrationManager;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::types::config::StorageConfig;
 use crate::{
     sql::tables,
@@ -96,8 +96,8 @@ impl SqliteDatabase {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl SqliteDatabase {
-    #[cfg(test)]
     pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
         match storage_config {
             StorageConfig::SqliteDbConfig {
@@ -110,7 +110,6 @@ impl SqliteDatabase {
         }
     }
 
-    #[cfg(any(feature = "testing", test))]
     pub async fn new_in_memory(max_connections: u32) -> Result<SqliteDatabase, Error> {
         let sqlite_db = Self::new_in_memory_no_migrations(max_connections)?;
         MigrationManager::apply_all_migrations(sqlite_db.clone()).await?;

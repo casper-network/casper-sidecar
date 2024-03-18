@@ -34,3 +34,28 @@ casper-rpc-sidecar = { workspace = true, features = ["testing"] }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5"
+
+
+[package.metadata.deb]
+revision = "0"
+assets = [
+    ["../target/release/casper-sidecar", "/usr/bin/casper-sidecar", "755"],
+    ["../resources/ETC_README.md", "/etc/casper-sidecar/README.md", "644"],
+    ["../resources/example_configs/default_rpc_only_config.toml", "/etc/casper-sidecar/config.toml", "644"]
+]
+maintainer-scripts = "../resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper Event Sidecar
+"""
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_sidecar"
+restart-after-upgrade = true
+
+[package.metadata.deb.variants.bionic]
+name = "casper-sidecar"
+revision = "0+bionic"
+
+[package.metadata.deb.variants.focal]
+name = "casper-sidecar"
+revision = "0+focal"
