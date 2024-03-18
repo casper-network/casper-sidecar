@@ -18,6 +18,7 @@ use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
+    binary_port::DictionaryItemIdentifier,
     bytesrepr::Bytes,
     system::{
         auction::{
@@ -27,8 +28,8 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockV2, CLValue, Digest, GlobalStateIdentifier, Key, KeyTag, PublicKey,
-    SecretKey, StoredValue, Tagged, URef, U512,
+    BlockIdentifier, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key, KeyTag,
+    PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -621,6 +622,15 @@ pub enum DictionaryIdentifier {
         /// The dictionary item key formatted as a string.
         dictionary_item_key: String,
     },
+    /// Lookup a dictionary item via an entities named keys.
+    EntityNamedKey {
+        /// The entity address formatted as a string.
+        key: String,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: String,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: String,
+    },
     /// Lookup a dictionary item via its seed URef.
     URef {
         /// The dictionary's seed URef.
@@ -630,56 +640,6 @@ pub enum DictionaryIdentifier {
     },
     /// Lookup a dictionary item via its unique key.
     Dictionary(String),
-}
-
-impl DictionaryIdentifier {
-    fn get_dictionary_address(
-        &self,
-        maybe_stored_value: Option<StoredValue>,
-    ) -> Result<Key, Error> {
-        match self {
-            DictionaryIdentifier::AccountNamedKey {
-                dictionary_name,
-                dictionary_item_key,
-                ..
-            }
-            | DictionaryIdentifier::ContractNamedKey {
-                dictionary_name,
-                dictionary_item_key,
-                ..
-            } => {
-                let named_keys = match &maybe_stored_value {
-                    Some(StoredValue::Account(account)) => account.named_keys(),
-                    Some(StoredValue::Contract(contract)) => contract.named_keys(),
-                    Some(other) => {
-                        return Err(Error::InvalidTypeUnderDictionaryKey(other.type_name()))
-                    }
-                    None => return Err(Error::DictionaryKeyNotFound),
-                };
-
-                let key_bytes = dictionary_item_key.as_str().as_bytes();
-                let seed_uref = match named_keys.get(dictionary_name) {
-                    Some(key) => *key
-                        .as_uref()
-                        .ok_or_else(|| Error::DictionaryValueIsNotAUref(key.tag()))?,
-                    None => return Err(Error::DictionaryNameNotFound),
-                };
-
-                Ok(Key::dictionary(seed_uref, key_bytes))
-            }
-            DictionaryIdentifier::URef {
-                seed_uref,
-                dictionary_item_key,
-            } => {
-                let key_bytes = dictionary_item_key.as_str().as_bytes();
-                let seed_uref = URef::from_formatted_str(seed_uref)
-                    .map_err(|error| Error::DictionaryKeyCouldNotBeParsed(error.to_string()))?;
-                Ok(Key::dictionary(seed_uref, key_bytes))
-            }
-            DictionaryIdentifier::Dictionary(address) => Key::from_formatted_str(address)
-                .map_err(|error| Error::DictionaryKeyCouldNotBeParsed(error.to_string())),
-        }
-    }
 }
 
 /// Params for "state_get_dictionary_item" RPC request.
@@ -733,34 +693,80 @@ impl RpcWithParams for GetDictionaryItem {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let state_identifier = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
+
         let dictionary_key = match params.dictionary_identifier {
-            DictionaryIdentifier::AccountNamedKey { ref key, .. }
-            | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
-                let base_key = Key::from_formatted_str(key).map_err(Error::InvalidDictionaryKey)?;
-                let (value, _) = node_client
-                    .query_global_state(Some(state_identifier), base_key, vec![])
-                    .await
-                    .map_err(|err| Error::NodeRequest("dictionary key", err))?
-                    .ok_or(Error::GlobalStateEntryNotFound)?
-                    .into_inner();
-                params
-                    .dictionary_identifier
-                    .get_dictionary_address(Some(value))?
+            DictionaryIdentifier::AccountNamedKey {
+                key,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                let hash = AccountHash::from_formatted_str(&key)
+                    .map_err(|err| Error::InvalidDictionaryKey(err.to_string()))?;
+                DictionaryItemIdentifier::AccountNamedKey {
+                    hash,
+                    dictionary_name,
+                    dictionary_item_key,
+                }
             }
-            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
-                params.dictionary_identifier.get_dictionary_address(None)?
+            DictionaryIdentifier::ContractNamedKey {
+                key,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                let hash = Key::from_formatted_str(&key)
+                    .map_err(|err| Error::InvalidDictionaryKey(err.to_string()))?
+                    .into_hash_addr()
+                    .ok_or_else(|| Error::InvalidDictionaryKey("not a hash address".to_owned()))?;
+                DictionaryItemIdentifier::ContractNamedKey {
+                    hash,
+                    dictionary_name,
+                    dictionary_item_key,
+                }
+            }
+            DictionaryIdentifier::EntityNamedKey {
+                key,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                let addr = EntityAddr::from_formatted_str(&key)
+                    .map_err(|err| Error::InvalidDictionaryKey(err.to_string()))?;
+                DictionaryItemIdentifier::EntityNamedKey {
+                    addr,
+                    dictionary_name,
+                    dictionary_item_key,
+                }
+            }
+            DictionaryIdentifier::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let seed_uref = URef::from_formatted_str(&seed_uref)
+                    .map_err(|err| Error::InvalidDictionaryKey(err.to_string()))?;
+                DictionaryItemIdentifier::URef {
+                    seed_uref,
+                    dictionary_item_key,
+                }
+            }
+            DictionaryIdentifier::Dictionary(dictionary_item_key) => {
+                let key = Key::from_formatted_str(&dictionary_item_key)
+                    .map_err(|err| Error::InvalidDictionaryKey(err.to_string()))?;
+                let dict_key = key.as_dictionary().ok_or_else(|| {
+                    Error::InvalidDictionaryKey("not a dictionary key".to_owned())
+                })?;
+                DictionaryItemIdentifier::DictionaryItem(*dict_key)
             }
         };
-        let (stored_value, merkle_proof) = node_client
-            .query_global_state(Some(state_identifier), dictionary_key, vec![])
+        let (key, result) = node_client
+            .query_dictionary_item(Some(state_identifier), dictionary_key)
             .await
             .map_err(|err| Error::NodeRequest("dictionary item", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
             .into_inner();
+        let (stored_value, merkle_proof) = result.into_inner();
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
-            dictionary_key: dictionary_key.to_formatted_string(),
+            dictionary_key: key.to_formatted_string(),
             stored_value,
             merkle_proof: common::encode_proof(&merkle_proof)?,
         })
@@ -1008,8 +1014,8 @@ mod tests {
             ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
         },
         binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
+            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DictionaryQueryResult,
+            GetRequest, GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
@@ -1572,13 +1578,15 @@ mod tests {
     async fn should_read_dictionary_item() {
         let rng = &mut TestRng::new();
         let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let uref = URef::new(rng.gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
+        let result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
+        let dict_key = Key::dictionary(uref, item_key.as_bytes());
+        let expected = DictionaryQueryResult::new(dict_key, result);
 
         let resp = GetDictionaryItem::do_handle_request(
-            Arc::new(ValidGlobalStateResultMock(expected.clone())),
+            Arc::new(ValidDictionaryQueryResultMock(expected.clone())),
             GetDictionaryItemParams {
                 state_root_hash: rng.gen(),
                 dictionary_identifier: DictionaryIdentifier::URef {
@@ -1594,7 +1602,7 @@ mod tests {
             resp,
             GetDictionaryItemResult {
                 api_version: CURRENT_API_VERSION,
-                dictionary_key: Key::dictionary(uref, item_key.as_bytes()).to_formatted_string(),
+                dictionary_key: dict_key.to_formatted_string(),
                 stored_value,
                 merkle_proof: String::from("00000000"),
             }
@@ -1878,6 +1886,26 @@ mod tests {
         );
     }
 
+    struct ValidDictionaryQueryResultMock(DictionaryQueryResult);
+
+    #[async_trait]
+    impl NodeClient for ValidDictionaryQueryResultMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+                    ..
+                })) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
+                    &[],
+                )),
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
     struct ValidGlobalStateResultMock(GlobalStateQueryResult);
 
     #[async_trait]
@@ -1887,10 +1915,12 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
-                    &[],
-                )),
+                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item { .. })) => {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                    ))
+                }
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }
@@ -1920,10 +1950,12 @@ mod tests {
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
-                    &[],
-                )),
+                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item { .. })) => {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                    ))
+                }
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }
