@@ -195,6 +195,13 @@ pub trait NodeClient: Send + Sync {
         parse_response::<ConsensusValidatorChanges>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
+    async fn read_latest_switch_block_header(&self) -> Result<Option<BlockHeader>, Error> {
+        let resp = self
+            .read_info(InformationRequest::LatestSwitchBlockHeader)
+            .await?;
+        parse_response::<BlockHeader>(&resp.into())
+    }
+
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)

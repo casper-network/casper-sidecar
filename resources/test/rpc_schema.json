@@ -1312,6 +1312,17 @@
             "block_sync": {
               "description": "The status of the block synchronizer builders.",
               "$ref": "#/components/schemas/BlockSynchronizerStatus"
+            },
+            "latest_switch_block_hash": {
+              "description": "The hash of the latest switch block.",
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BlockHash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false
@@ -1366,7 +1377,8 @@
                   "block_height": 6701,
                   "acquisition_state": "have block body(6701) for: block hash 5990..4983"
                 }
-              }
+              },
+              "latest_switch_block_hash": "0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }

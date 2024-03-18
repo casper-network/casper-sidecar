@@ -275,8 +275,12 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         node_client: Arc<dyn NodeClient>,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let identifier = maybe_params.map(|params| params.block_identifier);
-        let block_header = common::get_block_header(&*node_client, identifier).await?;
+        let block_header = match maybe_params {
+            Some(params) => {
+                common::get_block_header(&*node_client, Some(params.block_identifier)).await?
+            }
+            None => common::get_latest_switch_block_header(&*node_client).await?,
+        };
         let era_summary = if block_header.is_switch_block() {
             Some(get_era_summary_by_block(node_client, &block_header).await?)
         } else {
@@ -334,8 +338,13 @@ impl RpcWithOptionalParams for GetEraSummary {
         node_client: Arc<dyn NodeClient>,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let identifier = maybe_params.map(|params| params.block_identifier);
-        let block_header = common::get_block_header(&*node_client, identifier).await?;
+        let block_header = match maybe_params {
+            Some(params) => {
+                common::get_block_header(&*node_client, Some(params.block_identifier)).await?
+            }
+            None => common::get_latest_switch_block_header(&*node_client).await?,
+        };
+
         let era_summary = get_era_summary_by_block(node_client, &block_header).await?;
 
         Ok(Self::ResponseResult {
@@ -547,8 +556,41 @@ mod tests {
         let resp = GetEraSummary::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
+                expect_no_block_identifier: true,
             }),
             None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetEraSummaryResult {
+                api_version: CURRENT_API_VERSION,
+                era_summary: EraSummary {
+                    block_hash: *block.hash(),
+                    era_id: block.era_id(),
+                    stored_value: StoredValue::EraInfo(EraInfo::new()),
+                    state_root_hash: *block.state_root_hash(),
+                    merkle_proof: String::from("00000000"),
+                }
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_block_era_summary_with_block_id() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+
+        let resp = GetEraSummary::do_handle_request(
+            Arc::new(ValidEraSummaryMock {
+                block: Block::V2(block.clone()),
+                expect_no_block_identifier: false,
+            }),
+            Some(GetEraSummaryParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            }),
         )
         .await
         .expect("should handle request");
@@ -576,8 +618,41 @@ mod tests {
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
+                expect_no_block_identifier: true,
             }),
             None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetEraInfoResult {
+                api_version: CURRENT_API_VERSION,
+                era_summary: Some(EraSummary {
+                    block_hash: *block.hash(),
+                    era_id: block.era_id(),
+                    stored_value: StoredValue::EraInfo(EraInfo::new()),
+                    state_root_hash: *block.state_root_hash(),
+                    merkle_proof: String::from("00000000"),
+                })
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_block_era_info_by_switch_block_with_block_id() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().switch_block(true).build(rng);
+
+        let resp = GetEraInfoBySwitchBlock::do_handle_request(
+            Arc::new(ValidEraSummaryMock {
+                block: Block::V2(block.clone()),
+                expect_no_block_identifier: false,
+            }),
+            Some(GetEraInfoParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            }),
         )
         .await
         .expect("should handle request");
@@ -605,6 +680,7 @@ mod tests {
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
             Arc::new(ValidEraSummaryMock {
                 block: Block::V2(block.clone()),
+                expect_no_block_identifier: true,
             }),
             None,
         )
@@ -669,6 +745,7 @@ mod tests {
 
     struct ValidEraSummaryMock {
         block: Block,
+        expect_no_block_identifier: bool,
     }
 
     #[async_trait]
@@ -677,10 +754,14 @@ mod tests {
             &self,
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
+            let expected_tag = if self.expect_no_block_identifier {
+                InformationRequestTag::LatestSwitchBlockHeader
+            } else {
+                InformationRequestTag::BlockHeader
+            };
             match req {
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
-                    if InformationRequestTag::try_from(info_type_tag)
-                        == Ok(InformationRequestTag::BlockHeader) =>
+                    if InformationRequestTag::try_from(info_type_tag) == Ok(expected_tag) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
