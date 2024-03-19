@@ -19,7 +19,7 @@ The SSE Sidecar uses one ring buffer for outbound events, providing some robustn
 
 ## Configuration
 
-The file `/etc/casper-event-sidecar/config.toml` holds a default configuration. This should work if installed on a Casper node.
+The file `/etc/casper-sidecar/config.toml` holds a default configuration. This should work if installed on a Casper node.
 
 If you install the Sidecar on an external server, you must update the `ip-address` values under `node_connections` appropriately.
 
@@ -82,7 +82,7 @@ This directory stores the SSE cache and an SQLite database if the Sidecar is con
 
 ```
 [storage]
-storage_path = "/var/lib/casper-event-sidecar"
+storage_path = "/var/lib/casper-sidecar"
 ```
 
 ### Database Connectivity
@@ -222,16 +222,16 @@ An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`.
 
 ## Running the Event Sidecar
 
-The `casper-event-sidecar` service starts after installation, using the systemd service file.
+The `casper-sidecar` service starts after installation, using the systemd service file.
 
 ### Stop
 
-`sudo systemctl stop casper-event-sidecar.service`
+`sudo systemctl stop casper-sidecar.service`
 
 ### Start
 
-`sudo systemctl start casper-event-sidecar.service`
+`sudo systemctl start casper-sidecar.service`
 
 ### Logs
 
-`journalctl --no-pager -u casper-event-sidecar`
+`journalctl --no-pager -u casper-sidecar`

@@ -13,7 +13,7 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 
 [storage]
-storage_path = "/var/lib/casper-event-sidecar"
+storage_path = "/var/lib/casper-sidecar"
 
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
