@@ -184,15 +184,22 @@ impl Component for RpcApiComponent {
         config: &SidecarConfig,
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
         if let Some(config) = config.rpc_server.as_ref() {
-            let any_server_defined = config.main_server.enable_server
-                || config
-                    .speculative_exec_server
-                    .as_ref()
-                    .map(|x| x.enable_server)
-                    .unwrap_or(false);
-            if !any_server_defined {
+            let is_main_exec_defined = config.main_server.enable_server;
+            let is_speculative_exec_defined = config
+                .speculative_exec_server
+                .as_ref()
+                .map(|x| x.enable_server)
+                .unwrap_or(false);
+            if !is_main_exec_defined && !is_speculative_exec_defined {
                 //There was no main rpc server of speculative exec server configured, we shouldn't bother with proceeding
+                info!("RPC API server is disabled. Skipping...");
                 return Ok(None);
+            }
+            if !is_main_exec_defined {
+                info!("Main RPC API server is disabled. Only speculative server will be running.");
+            }
+            if !is_speculative_exec_defined {
+                info!("Speculative RPC API server is disabled. Only main RPC API will be running.");
             }
             let res = build_rpc_server(config.clone()).await;
             match res {
