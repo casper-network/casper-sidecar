@@ -37,7 +37,7 @@ static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: Some(*BlockHash::example()),
-        transfers: Some(vec![Transfer::default()]),
+        transfers: Some(vec![Transfer::example().clone()]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {

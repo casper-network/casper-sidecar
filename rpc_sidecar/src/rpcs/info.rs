@@ -3,12 +3,12 @@
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use async_trait::async_trait;
+use casper_binary_port::MinimalBlockInfo;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
     ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers,
@@ -491,7 +491,9 @@ impl RpcWithoutParams for GetStatus {
             last_progress: status.last_progress,
             available_block_range: status.available_block_range,
             block_sync: status.block_sync,
-            latest_switch_block_hash: status.latest_switch_block_hash,
+            // TODO[RC]: Check this
+            //latest_switch_block_hash: status.latest_switch_block_hash,
+            latest_switch_block_hash: Default::default(),
             build_version: status.build_version,
         })
     }
@@ -537,6 +539,7 @@ mod tests {
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
+    use tracing::error;
 
     use super::*;
 

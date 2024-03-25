@@ -1,5 +1,11 @@
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
+use casper_binary_port::{
+    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+    ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, RecordId,
+    SpeculativeExecutionResult, TransactionWithExecutionInfo,
+};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
@@ -11,12 +17,6 @@ use std::{
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types::{
-    binary_port::{
-        BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusValidatorChanges, ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity,
-        RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
-    },
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
@@ -118,13 +118,7 @@ pub trait NodeClient: Send + Sync {
         transaction: Transaction,
         exec_at_block: BlockHeader,
     ) -> Result<SpeculativeExecutionResult, Error> {
-        let request = BinaryRequest::TrySpeculativeExec {
-            transaction,
-            state_root_hash,
-            block_time,
-            protocol_version,
-            speculative_exec_at_block: exec_at_block,
-        };
+        let request = BinaryRequest::TrySpeculativeExec { transaction };
         let resp = self.send_request(request).await?;
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -196,14 +190,19 @@ pub trait NodeClient: Send + Sync {
     }
 
     async fn read_latest_switch_block_header(&self) -> Result<Option<BlockHeader>, Error> {
-        let resp = self
-            .read_info(InformationRequest::LatestSwitchBlockHeader)
-            .await?;
-        parse_response::<BlockHeader>(&resp.into())
+        Ok(None)
+
+        // TODO[RC]: Align with the recently added `LatestSwitchBlockHeader`
+
+        // let resp = self
+        //     .read_info(InformationRequest::LatestSwitchBlockHeader)
+        //     .await?;
+        // parse_response::<BlockHeader>(&resp.into())
     }
 
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
+        error!("XXXXX - resp - {resp:?}");
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
@@ -242,15 +241,14 @@ pub enum Error {
 
 impl Error {
     fn from_error_code(code: u8) -> Self {
-        match BinaryPortError::try_from(code) {
-            Ok(BinaryPortError::FunctionDisabled) => Self::FunctionIsDisabled,
-            Ok(BinaryPortError::InvalidTransaction) => Self::InvalidTransaction,
-            Ok(BinaryPortError::RootNotFound) => Self::UnknownStateRootHash,
-            Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,
-            Ok(
-                err @ (BinaryPortError::WasmPreprocessing
-                | BinaryPortError::InvalidDeployItemVariant),
-            ) => Self::SpecExecutionFailed(err.to_string()),
+        match ErrorCode::try_from(code) {
+            Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
+            Ok(ErrorCode::InvalidTransaction) => Self::InvalidTransaction,
+            Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
+            Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
+                Self::SpecExecutionFailed(err.to_string())
+            }
             Ok(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,

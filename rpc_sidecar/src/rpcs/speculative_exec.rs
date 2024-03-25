@@ -3,6 +3,7 @@
 use std::{str, sync::Arc};
 
 use async_trait::async_trait;
+use casper_binary_port::SpeculativeExecutionResult;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -27,8 +28,7 @@ static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
     Lazy::new(|| SpeculativeExecTxnResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: *BlockHash::example(),
-        execution_result: ExecutionResultV2::example().clone(),
-        messages: Vec::new(),
+        execution_result: SpeculativeExecutionResult::example().clone(),
     });
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
@@ -60,10 +60,8 @@ pub struct SpeculativeExecTxnResult {
     pub api_version: ApiVersion,
     /// Hash of the block on top of which the transaction was executed.
     pub block_hash: BlockHash,
-    /// Result of the execution.
-    pub execution_result: ExecutionResultV2,
-    /// Messages emitted during execution.
-    pub messages: Messages,
+    /// Result of the speculative execution.
+    pub execution_result: SpeculativeExecutionResult,
 }
 
 impl DocExample for SpeculativeExecTxnResult {
@@ -133,7 +131,7 @@ async fn handle_request(
     let block_time = block_header.timestamp();
     let protocol_version = block_header.protocol_version();
 
-    let (execution_result, messages) = node_client
+    let speculative_execution_result = node_client
         .exec_speculatively(
             state_root_hash,
             block_time,
@@ -142,15 +140,12 @@ async fn handle_request(
             block_header,
         )
         .await
-        .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?
-        .into_inner()
-        .ok_or(Error::SpecExecReturnedNothing)?;
+        .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?;
 
     Ok(SpeculativeExecTxnResult {
         api_version: CURRENT_API_VERSION,
         block_hash,
-        execution_result,
-        messages,
+        execution_result: speculative_execution_result,
     })
 }
 

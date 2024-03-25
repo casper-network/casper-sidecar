@@ -20,7 +20,10 @@ async-trait = "0.1.56"
 bytes = "1.2.0"
 casper-event-listener = { path = "../listener", version = "1.0.0" }
 casper-event-types.workspace = true
-casper-types = { workspace = true, features = ["std", "json-schema"] }
+
+#casper-types = { workspace = true, features = ["std", "json-schema"] }
+casper-types = { path = "../../casper-node/types" }
+
 derive-new = "0.5.9"
 eventsource-stream = "0.2.3"
 futures = { workspace = true }
@@ -55,7 +58,10 @@ wheelbuf = "0.2.0"
 [dev-dependencies]
 async-stream = { workspace = true }
 casper-event-types = { workspace = true, features = ["sse-data-testing"] }
-casper-types = { workspace = true, features = ["std", "testing"] }
+
+#casper-types = { workspace = true, features = ["std", "testing"] }
+casper-types = { path = "../../casper-node/types" }
+
 colored = "2.0.0"
 futures-util = { workspace = true }
 once_cell = { workspace = true }
