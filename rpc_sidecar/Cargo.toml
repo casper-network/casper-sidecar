@@ -18,11 +18,8 @@ base16 = "0.2.1"
 bincode = "1"
 bytes = "1.5.0"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-
-#casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
-casper-types = { path = "../../casper-node/types" }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
 casper-binary-port = { path = "../../casper-node/binary_port" }
-
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 http = "0.2.1"
@@ -46,10 +43,7 @@ warp = { version = "0.3.6", features = ["compression"] }
 
 [dev-dependencies]
 assert-json-diff = "2"
-
-#casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
-casper-types = { path = "../../casper-node/types" }
-
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
 pretty_assertions = "0.7.2"
 regex = "1"
 tempfile = "3"
