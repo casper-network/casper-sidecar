@@ -2,21 +2,184 @@
 
 ## Summary of Purpose
 
-The Casper Event Sidecar is an application that runs in tandem with the node process. This reduces the load on the node process by allowing subscribers to monitor the event stream through the Sidecar while the node focuses entirely on the blockchain. Users needing access to the JSON-RPC will still need to query the node directly.
+The Casper Event Sidecar is an application that runs in tandem with the node process. It's main purpose is to:
+* offload the node from broadcasting SSE events to multiple clients
+* provide client features that aren't part of the nodes' functionality, nor should they be
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
 ### System Components & Architecture
 
-![Sidecar Diagram](/images/SidecarDiagram.png)
+Casper Sidecar has three main functionalities:
+* Providing a SSE server with a firehose `/events` endpoint that streams all events from the connected nodes. Sidecar also stores observed events in storage.
+* Providing a REST API server that allows clients to query events in storage.
+* Be a JSON RPC bridge between end users and a Casper node's binary RPC port.
 
-Casper Nodes offer a Node Event Stream API returning Server-Sent Events (SSEs) that hold JSON-encoded data. The SSE Sidecar uses this API to achieve the following goals:
+The system has the following components and external dependencies:
+```mermaid
+   graph LR;
+   subgraph CASPER-SIDECAR
+      SSE_SERVER["SSE server"]
+      RPC_API_SERVER["RPC API server (json)"]
+      REST_API["Rest API server"]
+      ADMIN_API["Admin API server"]
+   end
+   CONFIG{{"Config file (toml)"}}
+   CONFIG --> CASPER-SIDECAR
+   STORAGE[(Storage)]
+   NODE_SSE(("Casper Node SSE port"))
+   NODE_BINARY(("Casper Node binary port"))
+   RPC_API_SERVER --> NODE_BINARY
+   SSE_SERVER --> NODE_SSE
+   SSE_SERVER --> STORAGE
+   STORAGE --> REST_API
+```
 
-* Build a sidecar middleware service that reads the Event Stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes and their filters (i.e., `/main`, `/deploys`, and `/sigs` with support for the use of the `?start_from=` query to allow clients to get previously sent events from the Sidecar's buffer).
+#### SSE Server
 
-* Provide a new RESTful endpoint that is discoverable to node operators. See the [usage instructions](USAGE.md) for details.
+Diving into the SSE Server, we see the following components:
+```mermaid
+   graph TD;
+   CLIENT{Client}
+   CLIENT --> SSE_SERVER_API
+   STORAGE[("Storage")]
+   CONFIG{{"Config file (toml)"}}
+   MAIN --1.reads--> CONFIG
+   NODE_SSE{Node SSE port}
+   SSE_LISTENER --2--> STORAGE
+   NODE_SSE --1--> SSE_LISTENER
+   subgraph "Casper sidecar"
+     MAIN[main.rs]
+     MAIN --2.spawns---> SSE-SERVER
+     subgraph SSE-SERVER
+        SSE_SERVER_API["SSE API"]
+        RING_BUFFER["Events buffer"]
+        SSE_SERVER_API --> RING_BUFFER
+        SSE_LISTENER --3--> RING_BUFFER
+        subgraph "For connection in connections"
+          SSE_LISTENER["SSE Listener"]   
+        end
+     end
+   end
+```
 
-The SSE Sidecar uses one ring buffer for outbound events, providing some robustness against unintended subscriber disconnects. If a disconnected subscriber re-subscribes before the buffer moves past their last received event, there will be no gap in the event history if they use the `start_from` URL query.
+Given the flow above, the SSE Listener processes events in this order:
+1. Fetch an event from the node's SSE port
+2. Store the event
+3. Publish the event to the SSE API
+
+
+Casper nodes offer an event stream API that returns Server-Sent Events (SSEs) with JSON-encoded data. The Sidecar reads the event stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes. The Sidecar can:
+* republish the current events from the node to clients listening to Sidecar's SSE API
+* publish a configurable number of previous events to clients connecting to the Sidecar's SSE API with `?start_from=` query (similar to the node's SSE API)
+* store the events in external storage for clients to query them via the Sidecar's REST API
+Enabling and configuring the SSE Server of the Sidecar is optional. 
+
+#### REST API Server
+```mermaid
+   graph LR;
+   CLIENT{Client}
+   CLIENT --> REST_API
+   STORAGE[("Storage")]
+   REST_API --> STORAGE
+   CONFIG{{"Config file (toml)"}}
+   MAIN --1.reads--> CONFIG
+   subgraph "Casper sidecar"
+      MAIN[main.rs]
+      MAIN --2.spawns--> REST_API
+      REST_API["REST API"]
+   end
+```
+
+The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. Node operators can discover the specific endpoints of the REST API using [OpenAPI] (#openapi-specification) and [Swagger] (#swagger-documentation). Also, the [usage instructions](USAGE.md) provide more details.
+
+#### ADMIN API Server
+```mermaid
+   graph LR;
+   CLIENT{Client}
+   CLIENT --> ADMIN_API
+   CONFIG{{Config file}}
+   MAIN --1.reads--> CONFIG
+   subgraph "Casper sidecar"
+      MAIN[main.rs]
+      MAIN --2.spawns--> ADMIN_API
+      ADMIN_API["ADMIN API"]
+   end
+```
+
+The Sidecar offers an administrative API to allow an operator to check its current status. The Sidecar operator has the option to enable and configure this API. Please see the [admin server configuration](#admin-server) for details.
+
+#### RPC API Server
+```mermaid
+   graph LR;
+   CLIENT{Client}
+   CLIENT --> RPC_API
+   CONFIG{{Config file}}
+   MAIN --1.reads--> CONFIG
+   CASPER_NODE(("Casper Node binary port"))
+   RPC_API --forwards request--> CASPER_NODE
+   subgraph "Casper sidecar"
+      MAIN[main.rs]
+      MAIN --2.spawns--> RPC_API
+      RPC_API["RPC JSON API"]
+   end
+```
+The Sidecar offers an optional RPC JSON API module that can be enabled and configured. It is a JSON bridge between end users and a Casper node's binary port. The RPC API server forwards requests to the Casper node's binary port. For more details on how the RPC JSON API works, see the [RPC Sidecar README](rpc_sidecar/README.md).
+
+Here is an example configuration of the RPC API server:
+
+```
+[rpc_server.main_server]
+enable_server = true
+address = '0.0.0.0:7777'
+qps_limit = 100
+max_body_bytes = 2_621_440
+cors_origin = ''
+
+[rpc_server.node_client]
+address = '127.0.0.1:28101'
+max_request_size_bytes = 4_194_304
+max_response_size_bytes = 4_194_304
+request_limit = 3
+request_buffer_size = 16
+
+[rpc_server.speculative_exec_server]
+enable_server = true
+address = '0.0.0.0:7778'
+qps_limit = 1
+max_body_bytes = 2_621_440
+cors_origin = ''
+
+
+[rpc_server.node_client.exponential_backoff]
+initial_delay_ms = 1000
+max_delay_ms = 32_000
+coefficient = 2
+max_attempts = 30
+```
+
+* `main_server.enable_server` - The RPC API server will be enabled if set to true.
+* `main_server.address` - Address under which the main RPC API server will be available.
+* `main_server.qps_limit` - The maximum number of requests per second.
+* `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
+* `main_server.cors_origin` - Configures the CORS origin.
+
+* `speculative_exec_server.enable_server` - If set to true, the speculative RPC API server will be enabled.
+* `speculative_exec_server.address` - Address under which the speculative RPC API server will be available.
+* `speculative_exec_server.qps_limit` - The maximum number of requests per second.
+* `speculative_exec_server.max_body_bytes` - Maximum body size of request to API in bytes.
+* `speculative_exec_server.cors_origin` - Configures the CORS origin.
+
+* `node_client.address` - Address of the Casper Node binary port
+* `node_client.max_request_size_bytes` - Maximum request size to the binary port in bytes.
+* `node_client.max_response_size_bytes` - Maximum response size from the binary port in bytes.
+* `node_client.request_limit` - Maximum number of in-flight requests.
+* `node_client.request_buffer_size` - Number of node requests that can be buffered.
+
+* `node_client.exponential_backoff.initial_delay_ms` - Timeout after the first broken connection (backoff) in milliseconds.
+* `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
+* `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
+* `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
 
 ## Prerequisites
 
@@ -38,9 +201,9 @@ This repository contains several sample configuration files that can be used as 
 
 Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
-### Node Connections
+### SSE Node Connections
 
-The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
+The Casper Sidecar's SSE component can connect to Casper nodes' SSE endpoints with versions greater or equal to `2.0.0`.
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[sse_server.connections]]` sections.
 
@@ -118,20 +281,20 @@ max_connections_in_pool = 100
 wal_autocheckpointing_interval = 1000
 ```
 
-* `file_name` - The database file path.
-* `max_connections_in_pool` - The maximum number of connections to the database. (Should generally be left as is.)
-* `wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
+* `storage.sqlite_config.file_name` - The database file path.
+* `storage.sqlite_config.max_connections_in_pool` - The maximum number of connections to the database (should generally be left as is).
+* `storage.sqlite_config.wal_autocheckpointing_interval` - This controls how often the system commits pages to the database. The value determines the maximum number of pages before forcing a commit. More information can be found [here](https://www.sqlite.org/compile.html#default_wal_autocheckpoint).
 
 #### PostgreSQL Database
 
 The properties listed below are elements of the PostgreSQL database connection that can be configured for the Sidecar.
 
-* `database_name` - Name of the database.
-* `host` - URL to PostgreSQL instance.
-* `database_username` - Username.
-* `database_password` - Database password.
-* `max_connections_in_pool` - The maximum number of connections to the database.
-* `port` - The port for the database connection.
+* `storage.postgresql_config.database_name` - Name of the database.
+* `storage.postgresql_config.host` - URL to PostgreSQL instance.
+* `storage.postgresql_config.database_username` - Username.
+* `storage.postgresql_config.database_password` - Database password.
+* `storage.postgresql_config.max_connections_in_pool` - The maximum number of connections to the database.
+* `storage.postgresql_config.port` - The port for the database connection.
 
 
 To run the Sidecar with PostgreSQL, you can set the following database environment variables to control how the Sidecar connects to the database. This is the suggested method to set the connection information for the PostgreSQL database.
@@ -181,12 +344,13 @@ This information determines outbound connection criteria for the Sidecar's `rest
 
 ```
 [rest_api_server]
+enable_server = true
 port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
 request_timeout_in_seconds = 10
 ```
-
+* `enable_server` - If set to true, the RPC API server will be enabled.
 * `port` - The port for accessing the sidecar's `rest_server`. `18888` is the default, but operators are free to choose their own port as needed.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be made to the REST server.
 * `max_requests_per_second` - The maximum total number of requests that can be made per second.
@@ -199,12 +363,13 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 ```
 
-The `event_stream_server` section specifies a port for the Sidecar's event stream.
+The `sse_server.event_stream_server` section specifies a port for the Sidecar's event stream.
 
 Additionally, there are the following two options:
 
-* `max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
-* `event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
+* `event_stream_server.port` - Port under which the SSE server is published.
+* `event_stream_server.max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
+* `event_stream_server.event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
 ### Admin Server
 
@@ -212,11 +377,13 @@ This optional section configures the Sidecar's administrative server. If this se
 
 ```
 [admin_api_server]
+enable_server = true
 port = 18887
 max_concurrent_requests = 1
 max_requests_per_second = 1
 ```
 
+* `enable_server` - If set to true, the RPC API server will be enabled.
 * `port` - The port for accessing the Sidecar's admin server.
 * `max_concurrent_requests` - The maximum total number of simultaneous requests that can be sent to the admin server.
 * `max_requests_per_second` - The maximum total number of requests that can be sent per second to the admin server.
