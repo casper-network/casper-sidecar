@@ -160,14 +160,14 @@ impl SseData {
         }
     }
 
-    /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
+    /// Returns a random `SseData::TransactionAccepted`, along with the random `Transaction`.
     pub fn random_transaction_accepted(rng: &mut TestRng) -> (Self, Transaction) {
         let transaction = Transaction::random(rng);
         let event = SseData::TransactionAccepted(Arc::new(transaction.clone()));
         (event, transaction)
     }
 
-    /// Returns a random `SseData::DeployProcessed`.
+    /// Returns a random `SseData::TransactionProcessed`.
     pub fn random_transaction_processed(rng: &mut TestRng) -> Self {
         let transaction = Transaction::random(rng);
         let timestamp = match &transaction {
@@ -190,7 +190,7 @@ impl SseData {
         }
     }
 
-    /// Returns a random `SseData::DeployExpired`
+    /// Returns a random `SseData::TransactionExpired`
     pub fn random_transaction_expired(rng: &mut TestRng) -> Self {
         let transaction = testing::create_expired_transaction(Timestamp::now(), rng);
         SseData::TransactionExpired {
@@ -263,7 +263,7 @@ pub mod test_support {
     }
 
     pub fn example_block_added_2_0_0(hash: &str, height: &str) -> String {
-        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{hash}\",\"block\":{{\"Version2\":{{\"hash\":\"{hash}\",\"header\":{{\"parent_hash\":\"e38f28265439296d106cf111869cd17a3ca114707ae2c82b305bf830f90a36a5\",\"state_root_hash\":\"e7ec15c0700717850febb2a0a67ee5d3a55ddb121b1fc70e5bcf154e327fe6c6\",\"body_hash\":\"5ad04cda6912de119d776045d44a4266e05eb768d4c1652825cc19bce7030d2c\",\"random_bit\":false,\"accumulated_seed\":\"bbcabbb76ac8714a37e928b7f0bde4caeddf5e446e51a36ceab9a34f5e983b92\",\"era_end\":null,\"timestamp\":\"2024-02-22T08:18:44.352Z\",\"era_id\":2,\"height\":{height},\"protocol_version\":\"2.0.0\"}},\"body\":{{\"proposer\":\"01302f30e5a5a00b2a0afbfbe9e63b3a9feb278d5f1944ba5efffa15fbb2e8a2e6\",\"mint\":[],\"auction\":[],\"install_upgrade\":[],\"standard\":[{{\"Deploy\":\"2e3083dbf5344c82efeac5e1a079bfd94acc1dfb454da0d92970f2e18e3afa9f\"}}],\"rewarded_signatures\":[[248],[0],[0]]}}}}}}}}}}");
+        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{hash}\",\"block\":{{\"Version2\":{{\"hash\":\"{hash}\",\"header\":{{\"parent_hash\":\"12e135355e7eca479d67809e71c36c2e29060607e34f378037f92e8edf406719\",\"state_root_hash\":\"f3e13be7e02273c9362f7c5eb4483811012f8a5d42b8855910caebdc7d8d3eb4\",\"body_hash\":\"ddebade25c99fb8a81a595d63aafb86a478358907d04d5dd8548e7d2bca9eff7\",\"random_bit\":true,\"accumulated_seed\":\"2966bcd7bda50ca5e904eeadc9284b5c355530641696715c02b7828ae5e13b37\",\"era_end\":null,\"timestamp\":\"2024-03-21T09:57:44.123Z\",\"era_id\":116390,\"height\":{height},\"protocol_version\":\"1.0.0\",\"current_gas_price\":1}},\"body\":{{\"proposer\":\"02034aeded2db627239d86eda1f5c8c01f14e26840007af1af698567e13fcef18fa7\",\"mint\":[],\"auction\":[],\"install_upgrade\":[],\"standard\":[],\"rewarded_signatures\":[]}}}}}}}}}}");
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }
