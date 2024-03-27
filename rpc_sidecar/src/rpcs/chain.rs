@@ -752,7 +752,6 @@ mod tests {
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag) == Ok(expected_tag) =>
                 {
-                    dbg!(&1);
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             self.block.clone_header(),
