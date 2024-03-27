@@ -186,14 +186,10 @@ pub trait NodeClient: Send + Sync {
     }
 
     async fn read_latest_switch_block_header(&self) -> Result<Option<BlockHeader>, Error> {
-        Ok(None)
-
-        // TODO[RC]: Align with the recently added `LatestSwitchBlockHeader`
-
-        // let resp = self
-        //     .read_info(InformationRequest::LatestSwitchBlockHeader)
-        //     .await?;
-        // parse_response::<BlockHeader>(&resp.into())
+        let resp = self
+            .read_info(InformationRequest::LatestSwitchBlockHeader)
+            .await?;
+        parse_response::<BlockHeader>(&resp.into())
     }
 
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
