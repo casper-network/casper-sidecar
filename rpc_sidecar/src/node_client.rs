@@ -20,7 +20,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Timestamp, Transaction, TransactionHash, Transfer,
+    Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -112,11 +112,7 @@ pub trait NodeClient: Send + Sync {
 
     async fn exec_speculatively(
         &self,
-        state_root_hash: Digest,
-        block_time: Timestamp,
-        protocol_version: ProtocolVersion,
         transaction: Transaction,
-        exec_at_block: BlockHeader,
     ) -> Result<SpeculativeExecutionResult, Error> {
         let request = BinaryRequest::TrySpeculativeExec { transaction };
         let resp = self.send_request(request).await?;

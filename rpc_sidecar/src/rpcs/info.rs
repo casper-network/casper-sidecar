@@ -528,18 +528,17 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest, InformationRequest,
+        InformationRequestTag, TransactionWithExecutionInfo,
+    };
     use casper_types::{
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            InformationRequest, InformationRequestTag, TransactionWithExecutionInfo,
-        },
         bytesrepr::{FromBytes, ToBytes},
         testing::TestRng,
         BlockHash, TransactionV1,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
-    use tracing::error;
 
     use super::*;
 

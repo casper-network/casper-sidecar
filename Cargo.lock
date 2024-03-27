@@ -511,11 +511,11 @@ dependencies = [
  "bincode",
  "casper-types",
  "once_cell",
+ "rand",
  "schemars",
  "serde",
  "serde-map-to-array",
  "thiserror",
- "tracing",
 ]
 
 [[package]]

@@ -1003,13 +1003,13 @@ mod tests {
     };
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
+    };
     use casper_types::{
         addressable_entity::{
             ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
-        },
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},

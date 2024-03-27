@@ -403,15 +403,13 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
+    };
     use casper_types::{
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
-        },
-        system::auction::EraInfo,
-        testing::TestRng,
-        Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, SignedBlock,
-        TestBlockBuilder, TestBlockV1Builder,
+        system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2,
+        ChainNameDigest, SignedBlock, TestBlockBuilder, TestBlockV1Builder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -481,16 +479,7 @@ mod tests {
 
         let mut transfers = vec![];
         for _ in 0..rng.gen_range(0..10) {
-            transfers.push(Transfer::new(
-                DeployHash::random(rng),
-                rng.gen(),
-                Some(rng.gen()),
-                rng.gen(),
-                rng.gen(),
-                rng.gen(),
-                rng.gen(),
-                Some(rng.gen()),
-            ));
+            transfers.push(Transfer::random(rng));
         }
         let signatures = BlockSignaturesV2::new(
             *block.hash(),
@@ -763,6 +752,7 @@ mod tests {
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag) == Ok(expected_tag) =>
                 {
+                    dbg!(&1);
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
                             self.block.clone_header(),

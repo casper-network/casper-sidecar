@@ -166,12 +166,12 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5",
+                  "hash": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
+                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -186,8 +186,10 @@
                       [
                         "source",
                         {
-                          "cl_type": "URef",
-                          "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                          "cl_type": {
+                            "Option": "URef"
+                          },
+                          "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                           "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                         }
                       ],
@@ -208,18 +210,6 @@
                         }
                       ],
                       [
-                        "to",
-                        {
-                          "cl_type": {
-                            "Option": {
-                              "ByteArray": 32
-                            }
-                          },
-                          "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
-                          "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
-                        }
-                      ],
-                      [
                         "id",
                         {
                           "cl_type": {
@@ -237,7 +227,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "017650934fca4d5f4107058c68b1c4ce66aac965164a3c6f8070753c4bb2623119ea1fb9046b8324dcba20c9fd141bb1364953638ecd65d57c283132845134e50c"
+                      "signature": "012eaaf83b1ed367ed424c859974bc5115a62d6b10d635f4b39d380414c4abcb2d54c01b7b96e0d27e00ed913f05f06d7bee9c25c31bbd8e9215961e61f835250d"
                     }
                   ]
                 }
@@ -249,7 +239,7 @@
             "value": {
               "api_version": "2.0.0",
               "transaction_hash": {
-                "Version1": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5"
+                "Version1": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8"
               }
             }
           }
@@ -388,29 +378,52 @@
                   }
                 ]
               },
-              "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
               "block_height": 10,
               "execution_result": {
                 "Version2": {
-                  "Success": {
-                    "effects": [
-                      {
-                        "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                        "kind": {
-                          "AddUInt64": 8
-                        }
-                      },
-                      {
-                        "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                        "kind": "Identity"
+                  "initiator": {
+                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                  },
+                  "error_message": null,
+                  "limit": "123456",
+                  "consumed": "100000",
+                  "cost": "246912",
+                  "payment": [
+                    {
+                      "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
+                    }
+                  ],
+                  "transfers": [
+                    {
+                      "Version2": {
+                        "transaction_hash": {
+                          "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
+                        },
+                        "from": {
+                          "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
+                        },
+                        "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
+                        "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+                        "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+                        "amount": "1000000000000",
+                        "gas": "2500000000",
+                        "id": 999
                       }
-                    ],
-                    "transfers": [
-                      "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                      "transfer-8282828282828282828282828282828282828282828282828282828282828282"
-                    ],
-                    "cost": "123456"
-                  }
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                      "kind": {
+                        "AddUInt64": 8
+                      }
+                    },
+                    {
+                      "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                      "kind": "Identity"
+                    }
+                  ]
                 }
               }
             }
@@ -490,7 +503,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5"
+                "Version1": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8"
               }
             },
             {
@@ -504,12 +517,12 @@
               "api_version": "2.0.0",
               "transaction": {
                 "Version1": {
-                  "hash": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5",
+                  "hash": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
+                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -524,8 +537,10 @@
                       [
                         "source",
                         {
-                          "cl_type": "URef",
-                          "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                          "cl_type": {
+                            "Option": "URef"
+                          },
+                          "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                           "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                         }
                       ],
@@ -546,18 +561,6 @@
                         }
                       ],
                       [
-                        "to",
-                        {
-                          "cl_type": {
-                            "Option": {
-                              "ByteArray": 32
-                            }
-                          },
-                          "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
-                          "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
-                        }
-                      ],
-                      [
                         "id",
                         {
                           "cl_type": {
@@ -575,34 +578,57 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "017650934fca4d5f4107058c68b1c4ce66aac965164a3c6f8070753c4bb2623119ea1fb9046b8324dcba20c9fd141bb1364953638ecd65d57c283132845134e50c"
+                      "signature": "012eaaf83b1ed367ed424c859974bc5115a62d6b10d635f4b39d380414c4abcb2d54c01b7b96e0d27e00ed913f05f06d7bee9c25c31bbd8e9215961e61f835250d"
                     }
                   ]
                 }
               },
-              "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
               "block_height": 10,
               "execution_result": {
                 "Version2": {
-                  "Success": {
-                    "effects": [
-                      {
-                        "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                        "kind": {
-                          "AddUInt64": 8
-                        }
-                      },
-                      {
-                        "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                        "kind": "Identity"
+                  "initiator": {
+                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                  },
+                  "error_message": null,
+                  "limit": "123456",
+                  "consumed": "100000",
+                  "cost": "246912",
+                  "payment": [
+                    {
+                      "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
+                    }
+                  ],
+                  "transfers": [
+                    {
+                      "Version2": {
+                        "transaction_hash": {
+                          "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
+                        },
+                        "from": {
+                          "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
+                        },
+                        "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
+                        "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+                        "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+                        "amount": "1000000000000",
+                        "gas": "2500000000",
+                        "id": 999
                       }
-                    ],
-                    "transfers": [
-                      "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                      "transfer-8282828282828282828282828282828282828282828282828282828282828282"
-                    ],
-                    "cost": "123456"
-                  }
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                      "kind": {
+                        "AddUInt64": 8
+                      }
+                    },
+                    {
+                      "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                      "kind": "Identity"
+                    }
+                  ]
                 }
               }
             }
@@ -803,7 +829,7 @@
                         "args": [],
                         "ret": "Unit",
                         "access": "Public",
-                        "entry_point_type": "Session"
+                        "entry_point_type": "Caller"
                       }
                     }
                   ],
@@ -1006,7 +1032,7 @@
             {
               "name": "state_identifier",
               "value": {
-                "BlockHash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "BlockHash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             },
             {
@@ -1050,12 +1076,14 @@
                         "weight": "789"
                       }
                     ],
-                    "rewards": {}
+                    "rewards": {},
+                    "next_era_gas_price": 1
                   },
                   "timestamp": "2020-11-17T00:39:24.072Z",
                   "era_id": 1,
                   "height": 10,
-                  "protocol_version": "1.0.0"
+                  "protocol_version": "1.0.0",
+                  "current_gas_price": 1
                 }
               },
               "stored_value": {
@@ -1346,7 +1374,7 @@
               "chainspec_name": "casper-example",
               "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
               "last_added_block_info": {
-                "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "timestamp": "2020-11-17T00:39:24.072Z",
                 "era_id": 1,
                 "height": 10,
@@ -1528,7 +1556,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -1539,7 +1567,7 @@
               "block_with_signatures": {
                 "block": {
                   "Version2": {
-                    "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                    "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
@@ -1567,12 +1595,14 @@
                             "weight": "789"
                           }
                         ],
-                        "rewards": {}
+                        "rewards": {},
+                        "next_era_gas_price": 1
                       },
                       "timestamp": "2020-11-17T00:39:24.072Z",
                       "era_id": 1,
                       "height": 10,
-                      "protocol_version": "1.0.0"
+                      "protocol_version": "1.0.0",
+                      "current_gas_price": 1
                     },
                     "body": {
                       "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
@@ -1603,7 +1633,7 @@
                 "proofs": [
                   {
                     "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                    "signature": "010fff61ef78aa2bc5ba549b287b67c50ce23f828e81633a5c0eb832863c101351738d94ad114a74a33fd5872e9fabe1b6a2042dd2c084a53ec75a5316a87bbf0f"
+                    "signature": "010dae9911fdb2e62b525e13828935b93dcee028670e1479393a0e21f700e868f85fb5d8d90ad7a23e1c3e6aaabbaa3f1fdd0dfa962461c4208d02fd8e398bb90c"
                   }
                 ]
               }
@@ -1681,14 +1711,20 @@
               "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
               "transfers": [
                 {
-                  "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-                  "from": "account-hash-0000000000000000000000000000000000000000000000000000000000000000",
-                  "to": null,
-                  "source": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
-                  "target": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
-                  "amount": "0",
-                  "gas": "0",
-                  "id": null
+                  "Version2": {
+                    "transaction_hash": {
+                      "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
+                    },
+                    "from": {
+                      "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
+                    },
+                    "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
+                    "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+                    "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+                    "amount": "1000000000000",
+                    "gas": "2500000000",
+                    "id": 999
+                  }
                 }
               ]
             }
@@ -1974,7 +2010,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -1983,7 +2019,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -2149,7 +2185,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -2158,7 +2194,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -2992,7 +3028,8 @@
                 "type": "object",
                 "required": [
                   "gas_price",
-                  "payment_amount"
+                  "payment_amount",
+                  "standard_payment"
                 ],
                 "properties": {
                   "payment_amount": {
@@ -3002,10 +3039,14 @@
                     "minimum": 0.0
                   },
                   "gas_price": {
-                    "description": "User-specified gas_price tolerance (minimum 1).",
+                    "description": "User-specified gas_price (minimum 1).",
                     "type": "integer",
-                    "format": "uint64",
+                    "format": "uint8",
                     "minimum": 0.0
+                  },
+                  "standard_payment": {
+                    "description": "Standard payment.",
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -3029,7 +3070,7 @@
                   "gas_price_tolerance": {
                     "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                     "type": "integer",
-                    "format": "uint64",
+                    "format": "uint8",
                     "minimum": 0.0
                   }
                 },
@@ -3240,10 +3281,10 @@
             "description": "Hex-encoded entity address identifying the invocable entity.",
             "type": "object",
             "required": [
-              "InvocableEntity"
+              "ByHash"
             ],
             "properties": {
-              "InvocableEntity": {
+              "ByHash": {
                 "type": "string"
               }
             },
@@ -3253,10 +3294,10 @@
             "description": "The alias identifying the invocable entity.",
             "type": "object",
             "required": [
-              "InvocableEntityAlias"
+              "ByName"
             ],
             "properties": {
-              "InvocableEntityAlias": {
+              "ByName": {
                 "type": "string"
               }
             },
@@ -3266,10 +3307,10 @@
             "description": "The address and optional version identifying the package.",
             "type": "object",
             "required": [
-              "Package"
+              "ByPackageHash"
             ],
             "properties": {
-              "Package": {
+              "ByPackageHash": {
                 "type": "object",
                 "required": [
                   "addr"
@@ -3298,16 +3339,16 @@
             "description": "The alias and optional version identifying the package.",
             "type": "object",
             "required": [
-              "PackageAlias"
+              "ByPackageName"
             ],
             "properties": {
-              "PackageAlias": {
+              "ByPackageName": {
                 "type": "object",
                 "required": [
-                  "alias"
+                  "name"
                 ],
                 "properties": {
-                  "alias": {
+                  "name": {
                     "description": "The package alias.",
                     "type": "string"
                   },
@@ -3582,10 +3623,10 @@
                     ]
                   },
                   "transfers": {
-                    "description": "A record of Transfers performed while executing the deploy.",
+                    "description": "A record of version 1 Transfers performed while executing the deploy.",
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
+                      "$ref": "#/components/schemas/TransferV1Addr"
                     }
                   },
                   "cost": {
@@ -3633,7 +3674,7 @@
                     "description": "A record of Transfers performed while executing the deploy.",
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
+                      "$ref": "#/components/schemas/TransferV1Addr"
                     }
                   },
                   "cost": {
@@ -3847,14 +3888,14 @@
             "additionalProperties": false
           },
           {
-            "description": "Writes the given Transfer to global state.",
+            "description": "Writes the given version 1 Transfer to global state.",
             "type": "object",
             "required": [
               "WriteTransfer"
             ],
             "properties": {
               "WriteTransfer": {
-                "$ref": "#/components/schemas/Transfer"
+                "$ref": "#/components/schemas/TransferV1"
               }
             },
             "additionalProperties": false
@@ -4056,10 +4097,10 @@
             ]
           },
           "transfers": {
-            "description": "Transfers performed by the Deploy.",
+            "description": "Version 1 transfers performed by the Deploy.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TransferAddr"
+              "$ref": "#/components/schemas/TransferV1Addr"
             }
           },
           "from": {
@@ -4089,8 +4130,8 @@
         },
         "additionalProperties": false
       },
-      "TransferAddr": {
-        "description": "Hex-encoded transfer address.",
+      "TransferV1Addr": {
+        "description": "Hex-encoded version 1 transfer address.",
         "type": "string"
       },
       "URef": {
@@ -4199,8 +4240,8 @@
           }
         ]
       },
-      "Transfer": {
-        "description": "Represents a transfer from one purse to another",
+      "TransferV1": {
+        "description": "Represents a version 1 transfer from one purse to another.",
         "type": "object",
         "required": [
           "amount",
@@ -4700,102 +4741,220 @@
         "additionalProperties": false
       },
       "ExecutionResultV2": {
-        "description": "The result of executing a single deploy.",
+        "description": "The result of executing a single transaction.",
+        "type": "object",
+        "required": [
+          "consumed",
+          "cost",
+          "effects",
+          "initiator",
+          "limit",
+          "payment",
+          "transfers"
+        ],
+        "properties": {
+          "initiator": {
+            "description": "Who initiated this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitiatorAddr"
+              }
+            ]
+          },
+          "error_message": {
+            "description": "If there is no error message, this execution was processed successfully. If there is an error message, this execution failed to fully process for the stated reason.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "What was the maximum allowed gas limit for this transaction?.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          },
+          "consumed": {
+            "description": "How much gas was consumed executing this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          },
+          "cost": {
+            "description": "How much was paid for this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "payment": {
+            "description": "Breakdown of payments made to cover the cost.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentInfo"
+            }
+          },
+          "transfers": {
+            "description": "A record of transfers performed while executing this transaction.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transfer"
+            }
+          },
+          "effects": {
+            "description": "The effects of executing this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Effects"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Gas": {
+        "description": "The `Gas` struct represents a `U512` amount of gas.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/U512"
+          }
+        ]
+      },
+      "PaymentInfo": {
+        "description": "Breakdown of payments made to cover the cost.",
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "source": {
+            "description": "Source purse used for payment of the transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          }
+        }
+      },
+      "Transfer": {
+        "description": "A versioned wrapper for a transfer.",
         "oneOf": [
           {
-            "description": "The result of a failed execution.",
+            "description": "A version 1 transfer.",
             "type": "object",
             "required": [
-              "Failure"
+              "Version1"
             ],
             "properties": {
-              "Failure": {
-                "type": "object",
-                "required": [
-                  "cost",
-                  "effects",
-                  "error_message",
-                  "transfers"
-                ],
-                "properties": {
-                  "effects": {
-                    "description": "The effects of executing the deploy.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/Effects"
-                      }
-                    ]
-                  },
-                  "transfers": {
-                    "description": "A record of transfers performed while executing the deploy.",
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
-                    }
-                  },
-                  "cost": {
-                    "description": "The cost in Motes of executing the deploy.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/U512"
-                      }
-                    ]
-                  },
-                  "error_message": {
-                    "description": "The error message associated with executing the deploy.",
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false
+              "Version1": {
+                "$ref": "#/components/schemas/TransferV1"
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "The result of a successful execution.",
+            "description": "A version 2 transfer.",
             "type": "object",
             "required": [
-              "Success"
+              "Version2"
             ],
             "properties": {
-              "Success": {
-                "type": "object",
-                "required": [
-                  "cost",
-                  "effects",
-                  "transfers"
-                ],
-                "properties": {
-                  "effects": {
-                    "description": "The effects of executing the deploy.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/Effects"
-                      }
-                    ]
-                  },
-                  "transfers": {
-                    "description": "A record of transfers performed while executing the deploy.",
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
-                    }
-                  },
-                  "cost": {
-                    "description": "The cost in Motes of executing the deploy.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/U512"
-                      }
-                    ]
-                  }
-                },
-                "additionalProperties": false
+              "Version2": {
+                "$ref": "#/components/schemas/TransferV2"
               }
             },
             "additionalProperties": false
           }
         ]
+      },
+      "TransferV2": {
+        "description": "Represents a version 2 transfer from one purse to another.",
+        "type": "object",
+        "required": [
+          "amount",
+          "from",
+          "gas",
+          "source",
+          "target",
+          "transaction_hash"
+        ],
+        "properties": {
+          "transaction_hash": {
+            "description": "Transaction that created the transfer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionHash"
+              }
+            ]
+          },
+          "from": {
+            "description": "Entity from which transfer was executed.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitiatorAddr"
+              }
+            ]
+          },
+          "to": {
+            "description": "Account to which funds are transferred.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "description": "Source purse.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "target": {
+            "description": "Target purse.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "amount": {
+            "description": "Transfer amount.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "gas": {
+            "description": "Gas.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          },
+          "id": {
+            "description": "User-defined ID.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        },
+        "additionalProperties": false
       },
       "Effects": {
         "description": "A log of all transforms produced during execution.",
@@ -4822,7 +4981,7 @@
         "additionalProperties": false
       },
       "TransformKindV2": {
-        "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
+        "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of `TransformKindV2` are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
         "oneOf": [
           {
             "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
@@ -5022,14 +5181,14 @@
             "additionalProperties": false
           },
           {
-            "description": "A `Transfer`.",
+            "description": "A version 1 (legacy) transfer.",
             "type": "object",
             "required": [
-              "Transfer"
+              "LegacyTransfer"
             ],
             "properties": {
-              "Transfer": {
-                "$ref": "#/components/schemas/Transfer"
+              "LegacyTransfer": {
+                "$ref": "#/components/schemas/TransferV1"
               }
             },
             "additionalProperties": false
@@ -5469,21 +5628,21 @@
         "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
         "oneOf": [
           {
-            "description": "Runs as session code (caller) Deprecated, retained to allow read back of legacy stored session.",
+            "description": "Runs using the calling entity's context. In v1.x this was used for both \"session\" code run using the originating Account's context, and also for \"StoredSession\" code that ran in the caller's context. While this made systemic sense due to the way the runtime context nesting works, this dual usage was very confusing to most human beings.\n\nIn v2.x the renamed Caller variant is exclusively used for wasm run using the initiating account entity's context. Previously installed 1.x stored session code should continue to work as the binary value matches but we no longer allow such logic to be upgraded, nor do we allow new stored session to be installed.",
             "type": "string",
             "enum": [
-              "Session"
+              "Caller"
             ]
           },
           {
-            "description": "Runs within called entity's context (called)",
+            "description": "Runs using the called entity's context.",
             "type": "string",
             "enum": [
-              "AddressableEntity"
+              "Called"
             ]
           },
           {
-            "description": "This entry point is intended to extract a subset of bytecode. Runs within called entity's context (called)",
+            "description": "Extract a subset of bytecode and installs it as a new smart contract. Runs using the called entity's context.",
             "type": "string",
             "enum": [
               "Factory"
@@ -6684,6 +6843,7 @@
         "required": [
           "accumulated_seed",
           "body_hash",
+          "current_gas_price",
           "era_id",
           "height",
           "parent_hash",
@@ -6769,6 +6929,12 @@
                 "$ref": "#/components/schemas/ProtocolVersion"
               }
             ]
+          },
+          "current_gas_price": {
+            "description": "The gas price of the era",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           }
         }
       },
@@ -6778,6 +6944,7 @@
         "required": [
           "equivocators",
           "inactive_validators",
+          "next_era_gas_price",
           "next_era_validator_weights",
           "rewards"
         ],
@@ -6810,6 +6977,11 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/U512"
             }
+          },
+          "next_era_gas_price": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           }
         }
       },

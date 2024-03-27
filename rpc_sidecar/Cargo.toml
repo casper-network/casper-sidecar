@@ -44,6 +44,7 @@ warp = { version = "0.3.6", features = ["compression"] }
 [dev-dependencies]
 assert-json-diff = "2"
 casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
+casper-binary-port = { path = "../../casper-node/binary_port", features = ["testing"] }
 pretty_assertions = "0.7.2"
 regex = "1"
 tempfile = "3"
@@ -56,7 +57,7 @@ vergen = { version = "8.2.1", default-features = false, features = [
 ] }
 
 [features]
-testing = ["casper-types/testing"]
+testing = ["casper-types/testing", "casper-binary-port/testing"]
 
 [package.metadata.deb]
 revision = "0"

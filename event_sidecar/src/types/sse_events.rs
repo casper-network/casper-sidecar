@@ -46,7 +46,7 @@ pub fn random_execution_result(rng: &mut TestRng) -> ExecutionResult {
             ExecutionResult::V1(result_v1)
         }
         1 => {
-            let result_v2: ExecutionResultV2 = rng.gen();
+            let result_v2 = ExecutionResultV2::random(rng);
             ExecutionResult::V2(result_v2)
         }
         _ => panic!("Unexpected value"),
