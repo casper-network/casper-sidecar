@@ -1,6 +1,8 @@
 use anyhow::Error;
 use async_trait::async_trait;
-use casper_event_sidecar::{run as run_sse_sidecar, run_admin_server, run_rest_server, Database};
+use casper_event_sidecar::{
+    run as run_sse_sidecar, run_admin_server, run_rest_server, LazyDatabaseWrapper,
+};
 use casper_rpc_sidecar::build_rpc_server;
 use derive_new::new;
 use futures::{future::BoxFuture, FutureExt};
@@ -78,7 +80,7 @@ pub trait Component {
 
 #[derive(new)]
 pub struct SseServerComponent {
-    maybe_database: Option<Database>,
+    maybe_database: Option<LazyDatabaseWrapper>,
 }
 
 #[async_trait]
@@ -91,6 +93,10 @@ impl Component for SseServerComponent {
             (&config.storage, &self.maybe_database, &config.sse_server)
         {
             if sse_server_config.enable_server {
+                let database =
+                    database.acquire().await.as_ref().map_err(|db_err| {
+                        ComponentError::runtime_error(self.name(), db_err.into())
+                    })?;
                 // If sse server is configured, both storage config and database must be "Some" here. This should be ensured by prior validation.
                 let future = run_sse_sidecar(
                     sse_server_config.clone(),
@@ -116,7 +122,7 @@ impl Component for SseServerComponent {
 
 #[derive(new)]
 pub struct RestApiComponent {
-    maybe_database: Option<Database>,
+    maybe_database: Option<LazyDatabaseWrapper>,
 }
 
 #[async_trait]
@@ -127,6 +133,10 @@ impl Component for RestApiComponent {
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
         if let (Some(config), Some(database)) = (&config.rest_api_server, &self.maybe_database) {
             if config.enable_server {
+                let database =
+                    database.acquire().await.as_ref().map_err(|db_err| {
+                        ComponentError::runtime_error(self.name(), db_err.into())
+                    })?;
                 let future = run_rest_server(config.clone(), database.clone())
                     .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
@@ -242,7 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_but_no_config_should_return_none() {
-        let component = SseServerComponent::new(Some(Database::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let mut config = all_components_all_disabled();
         config.sse_server = None;
         let res = component.prepare_component_task(&config).await;
@@ -252,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_config_disabled_should_return_none() {
-        let component = SseServerComponent::new(Some(Database::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -261,7 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_and_config_should_return_some() {
-        let component = SseServerComponent::new(Some(Database::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -279,7 +289,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_rest_api_server_component_when_db_but_no_config_should_return_none() {
-        let component = RestApiComponent::new(Some(Database::for_tests()));
+        let component = RestApiComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let mut config = all_components_all_disabled();
         config.rest_api_server = None;
         let res = component.prepare_component_task(&config).await;
@@ -289,7 +299,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_rest_api_server_component_when_config_disabled_should_return_none() {
-        let component = RestApiComponent::new(Some(Database::for_tests()));
+        let component = RestApiComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -298,7 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_rest_api_server_component_when_db_and_config_should_return_some() {
-        let component = RestApiComponent::new(Some(Database::for_tests()));
+        let component = RestApiComponent::new(Some(LazyDatabaseWrapper::for_tests()));
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());

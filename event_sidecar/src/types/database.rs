@@ -15,9 +15,9 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
 use std::fmt::{Display, Formatter};
 use std::{path::Path, sync::Arc};
+use tokio::sync::OnceCell;
 use utoipa::ToSchema;
 
 pub enum TransactionTypeId {
@@ -51,8 +51,44 @@ pub enum Database {
     PostgreSqlDatabaseWrapper(PostgreSqlDatabase),
 }
 
+/// Wrapper for a Database that is lazily initialized.
+/// Using this structure ensures that the database connection is not being initialized
+/// if the db-dependant components are configured, but disabled.
+#[derive(Clone)]
+pub struct LazyDatabaseWrapper {
+    config: StorageConfig,
+    resource: Arc<OnceCell<Result<Database, DatabaseInitializationError>>>,
+}
+
+impl LazyDatabaseWrapper {
+    pub fn new(config: StorageConfig) -> Self {
+        let cell = Arc::new(tokio::sync::OnceCell::new());
+        Self {
+            config,
+            resource: cell,
+        }
+    }
+
+    pub async fn acquire(&self) -> &Result<Database, DatabaseInitializationError> {
+        let config_ref = &self.config;
+        self.resource
+            .get_or_init(|| async move { Database::build(&config_ref.clone()).await })
+            .await
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn for_tests() -> Self {
+        let db = Database::for_tests();
+        let cell = Arc::new(tokio::sync::OnceCell::from(Ok(db)));
+        Self {
+            config: StorageConfig::default(),
+            resource: cell,
+        }
+    }
+}
+
 impl Database {
-    pub async fn build(config: &StorageConfig) -> Result<Database, anyhow::Error> {
+    pub async fn build(config: &StorageConfig) -> Result<Database, DatabaseInitializationError> {
         match config {
             StorageConfig::SqliteDbConfig {
                 storage_path,
@@ -62,7 +98,8 @@ impl Database {
                 let sqlite_database =
                     SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
                         .await
-                        .context("Error instantiating sqlite database")?;
+                        .context("Error instantiating sqlite database")
+                        .map_err(DatabaseInitializationError::from)?;
                 Ok(Database::SqliteDatabaseWrapper(sqlite_database))
             }
             StorageConfig::PostgreSqlDbConfig {
@@ -70,7 +107,8 @@ impl Database {
             } => {
                 let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone())
                     .await
-                    .context("Error instantiating postgres database")?;
+                    .context("Error instantiating postgres database")
+                    .map_err(DatabaseInitializationError::from)?;
                 Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
             }
         }
@@ -201,6 +239,31 @@ pub trait DatabaseWriter {
 pub struct UniqueConstraintError {
     pub table: String,
     pub error: sqlx::Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct DatabaseInitializationError {
+    reason: String,
+}
+
+impl Display for DatabaseInitializationError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "DatabaseInitializationError: {}", self.reason)
+    }
+}
+
+impl From<&DatabaseInitializationError> for Error {
+    fn from(value: &DatabaseInitializationError) -> Self {
+        Error::msg(value.to_string())
+    }
+}
+
+impl DatabaseInitializationError {
+    pub fn from(error: Error) -> Self {
+        Self {
+            reason: error.to_string(),
+        }
+    }
 }
 
 /// The database failed to insert a record(s).

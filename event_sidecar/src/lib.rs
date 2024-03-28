@@ -51,12 +51,13 @@ use utils::start_metrics_thread;
 
 pub use admin_server::run_server as run_admin_server;
 pub use database::DatabaseConfigError;
-pub use types::config::{
-    AdminApiServerConfig, Connection, RestApiServerConfig, SseEventServerConfig, StorageConfig,
-    StorageConfigSerdeTarget,
+pub use types::{
+    config::{
+        AdminApiServerConfig, Connection, RestApiServerConfig, SseEventServerConfig, StorageConfig,
+        StorageConfigSerdeTarget,
+    },
+    database::{Database, LazyDatabaseWrapper},
 };
-
-pub type Database = types::database::Database;
 
 const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
