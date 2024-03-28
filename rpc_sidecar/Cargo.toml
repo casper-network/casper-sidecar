@@ -24,6 +24,7 @@ futures = { workspace = true }
 http = "0.2.1"
 hyper = "0.14.26"
 juliet = { version ="0.3", features = ["tracing"] }
+metrics = { workspace = true }
 num_cpus = "1"
 once_cell.workspace = true
 portpicker = "0.1.1"

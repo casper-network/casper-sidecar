@@ -638,6 +638,7 @@ dependencies = [
  "http",
  "hyper",
  "juliet",
+ "metrics",
  "num_cpus",
  "once_cell",
  "portpicker",

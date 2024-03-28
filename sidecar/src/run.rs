@@ -1,16 +1,15 @@
 use crate::component::*;
 use crate::config::SidecarConfig;
 use anyhow::{anyhow, Error};
-use casper_event_sidecar::Database;
+use casper_event_sidecar::LazyDatabaseWrapper;
 use std::process::ExitCode;
 use tracing::info;
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
-    let maybe_database = if let Some(storage_config) = config.storage.as_ref() {
-        Some(Database::build(storage_config).await?)
-    } else {
-        None
-    };
+    let maybe_database = config
+        .storage
+        .as_ref()
+        .map(|storage_config| LazyDatabaseWrapper::new(storage_config.clone()));
     let mut components: Vec<Box<dyn Component>> = Vec::new();
     let admin_api_component = AdminApiComponent::new();
     components.push(Box::new(admin_api_component));
