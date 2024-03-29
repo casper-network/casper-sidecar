@@ -1,11 +1,11 @@
-use crate::rest_server::path_abstraction_for_metrics_inner;
+use crate::rest_server::path_abstraction_for_metrics;
 
 pub mod integration_tests;
 pub mod integration_tests_version_switch;
 pub mod performance_tests;
 
 #[test]
-fn path_abstraction_for_metrics_inner_should_handle_endpoints() {
+fn path_abstraction_for_metrics_should_handle_endpoints() {
     test_single_nested_path("block");
     test_single_nested_path("step");
     test_single_nested_path("faults");
@@ -50,5 +50,5 @@ fn test_single_nested_path(part: &str) {
 }
 
 fn expect_output(input: &str, output: &str) {
-    assert_eq!(path_abstraction_for_metrics_inner(input), output);
+    assert_eq!(path_abstraction_for_metrics(input), output);
 }

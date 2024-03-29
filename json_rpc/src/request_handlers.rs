@@ -1,7 +1,7 @@
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Instant};
 
 use futures::FutureExt;
-use metrics::rpc::{inc_method_call, inc_result, register_request_size};
+use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error};
@@ -34,11 +34,13 @@ impl RequestHandlers {
     ///
     /// Otherwise a [`Response::Success`] is returned.
     pub(crate) async fn handle_request(&self, request: Request, request_size: usize) -> Response {
+        let start = Instant::now();
         let request_method = request.method.as_str();
         let handler = match self.0.get(request_method) {
             Some(handler) => Arc::clone(handler),
             None => {
-                inc_result("unknown-handler", "unknown-handler");
+                let elapsed = start.elapsed();
+                observe_response_time("unknown-handler", "unknown-handler", elapsed);
                 debug!(requested_method = %request.method.as_str(), "failed to get handler");
                 let error = Error::new(
                     ReservedErrorCode::MethodNotFound,
@@ -55,11 +57,13 @@ impl RequestHandlers {
 
         match handler(request.params).await {
             Ok(result) => {
-                inc_result(request_method, "success");
+                let elapsed = start.elapsed();
+                observe_response_time(request_method, "success", elapsed);
                 Response::new_success(request.id, result)
             }
             Err(error) => {
-                inc_result(request_method, &error.code().to_string());
+                let elapsed = start.elapsed();
+                observe_response_time(request_method, &error.code().to_string(), elapsed);
                 Response::new_failure(request.id, error)
             }
         }

@@ -1,3 +1,4 @@
+use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use casper_binary_port::{
@@ -6,6 +7,7 @@ use casper_binary_port::{
     GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, RecordId,
     SpeculativeExecutionResult, TransactionWithExecutionInfo,
 };
+use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
@@ -15,7 +17,6 @@ use std::{
     time::Duration,
 };
 
-use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
@@ -28,6 +29,10 @@ use juliet::{
     rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
+use std::{
+    fmt::{self, Display, Formatter},
+    time::Instant,
+};
 use tokio::{
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -35,7 +40,7 @@ use tokio::{
     },
     sync::{Notify, RwLock},
 };
-use tracing::{error, info, warn};
+use tracing::{error, field, info, warn};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync {
@@ -293,6 +298,30 @@ impl JulietNodeClient {
         Ok((Self { client, shutdown }, server_loop))
     }
 
+    async fn reconnect(
+        addr: SocketAddr,
+        config: ExponentialBackoffConfig,
+        rpc_builder: &RpcBuilder<CHANNEL_COUNT>,
+    ) -> Result<
+        (
+            JulietRpcClient<CHANNEL_COUNT>,
+            JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
+        ),
+        AnyhowError,
+    > {
+        let disconnected_start = Instant::now();
+        inc_disconnect();
+        error!("node connection closed, will attempt to reconnect");
+        let (reader, writer) = Self::connect_with_retries(addr, &config)
+            .await?
+            .into_split();
+        let (new_client, new_server) = rpc_builder.build(reader, writer);
+
+        info!("connection with the node has been re-established");
+        observe_reconnect_time(disconnected_start.elapsed());
+        Ok((new_client, new_server))
+    }
+
     async fn server_loop(
         addr: SocketAddr,
         config: ExponentialBackoffConfig,
@@ -304,13 +333,14 @@ impl JulietNodeClient {
         loop {
             tokio::select! {
                 req = server.next_request() => match req {
-                    Ok(None) | Err(_) => {
-                        error!("node connection closed, will attempt to reconnect");
-                        let (reader, writer) =
-                            Self::connect_with_retries(addr, &config).await?.into_split();
-                        let (new_client, new_server) = rpc_builder.build(reader, writer);
-
-                        info!("connection with the node has been re-established");
+                    Err(err) => {
+                        warn!(%addr, err=display_error(&err), "binary port client handler error");
+                        let (new_client, new_server) = Self::reconnect(addr, config.clone(), &rpc_builder).await?;
+                        *client.write().await = new_client;
+                        server = new_server;
+                    }
+                    Ok(None) => {
+                        let (new_client, new_server) = Self::reconnect(addr, config.clone(), &rpc_builder).await?;
                         *client.write().await = new_client;
                         server = new_server;
                     }
@@ -436,6 +466,38 @@ where
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
+    }
+}
+
+/// Wraps an error to ensure it gets properly captured by tracing.
+pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
+where
+    T: std::error::Error + 'a,
+{
+    field::display(ErrFormatter(err))
+}
+
+/// An error formatter.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
+
+impl<'a, T> Display for ErrFormatter<'a, T>
+where
+    T: std::error::Error,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut opt_source: Option<&(dyn std::error::Error)> = Some(self.0);
+
+        while let Some(source) = opt_source {
+            write!(f, "{}", source)?;
+            opt_source = source.source();
+
+            if opt_source.is_some() {
+                f.write_str(": ")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
