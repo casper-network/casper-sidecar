@@ -3104,11 +3104,9 @@
                   },
                   "paid_amount": {
                     "description": "Price paid in the past to reserve space in a future block.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/U512"
-                      }
-                    ]
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
                   },
                   "strike_price": {
                     "description": "The gas price at the time of reservation.",
@@ -3123,10 +3121,6 @@
             "additionalProperties": false
           }
         ]
-      },
-      "U512": {
-        "description": "Decimal representation of a 512-bit integer.",
-        "type": "string"
       },
       "InitiatorAddr": {
         "description": "The address of the initiator of a TransactionV1.",
@@ -3356,7 +3350,7 @@
                 ],
                 "properties": {
                   "name": {
-                    "description": "The package alias.",
+                    "description": "The package name.",
                     "type": "string"
                   },
                   "version": {
@@ -4143,6 +4137,10 @@
       },
       "URef": {
         "description": "Hex-encoded, formatted URef.",
+        "type": "string"
+      },
+      "U512": {
+        "description": "Decimal representation of a 512-bit integer.",
         "type": "string"
       },
       "EraInfo": {
