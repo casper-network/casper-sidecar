@@ -9,9 +9,8 @@ mod tests;
 
 use anyhow::Error;
 use hyper::Server;
-use metrics::rest_api::observe_path_abstraction_time;
+use std::net::TcpListener;
 use std::time::Duration;
-use std::{net::TcpListener, time::Instant};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use tracing::info;
 use warp::Filter;
@@ -52,15 +51,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
     Err(Error::msg("REST server shutting down"))
 }
 
-fn path_abstraction_for_metrics(path: &str) -> String {
-    let start = Instant::now();
-    let result = path_abstraction_for_metrics_inner(path);
-    let elapsed = start.elapsed();
-    observe_path_abstraction_time(elapsed);
-    result
-}
-
-pub(super) fn path_abstraction_for_metrics_inner(path: &str) -> String {
+pub(super) fn path_abstraction_for_metrics(path: &str) -> String {
     let parts = path
         .split('/')
         .filter(|el| !el.is_empty())
