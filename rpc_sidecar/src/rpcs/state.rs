@@ -1581,12 +1581,14 @@ mod tests {
 
         let uref = URef::new(rng.gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
-        let result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
+        let query_result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
         let dict_key = Key::dictionary(uref, item_key.as_bytes());
-        let expected = DictionaryQueryResult::new(dict_key, result);
 
         let resp = GetDictionaryItem::do_handle_request(
-            Arc::new(ValidDictionaryQueryResultMock(expected.clone())),
+            Arc::new(ValidDictionaryQueryResultMock {
+                dict_key,
+                query_result,
+            }),
             GetDictionaryItemParams {
                 state_root_hash: rng.gen(),
                 dictionary_identifier: DictionaryIdentifier::URef {
@@ -1886,7 +1888,10 @@ mod tests {
         );
     }
 
-    struct ValidDictionaryQueryResultMock(DictionaryQueryResult);
+    struct ValidDictionaryQueryResultMock {
+        dict_key: Key,
+        query_result: GlobalStateQueryResult,
+    }
 
     #[async_trait]
     impl NodeClient for ValidDictionaryQueryResultMock {
@@ -1898,7 +1903,13 @@ mod tests {
                 BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
                     ..
                 })) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
+                    BinaryResponse::from_value(
+                        DictionaryQueryResult::new(
+                            self.dict_key.clone(),
+                            self.query_result.clone(),
+                        ),
+                        SUPPORTED_PROTOCOL_VERSION,
+                    ),
                     &[],
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
