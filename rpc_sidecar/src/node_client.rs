@@ -199,7 +199,6 @@ pub trait NodeClient: Send + Sync {
 
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
-        error!("XXXXX - resp - {resp:?}");
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
