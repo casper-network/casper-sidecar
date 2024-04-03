@@ -1904,10 +1904,7 @@ mod tests {
                     ..
                 })) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(
-                        DictionaryQueryResult::new(
-                            self.dict_key.clone(),
-                            self.query_result.clone(),
-                        ),
+                        DictionaryQueryResult::new(self.dict_key, self.query_result.clone()),
                         SUPPORTED_PROTOCOL_VERSION,
                     ),
                     &[],
