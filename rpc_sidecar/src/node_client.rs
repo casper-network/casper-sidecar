@@ -4,9 +4,10 @@ use async_trait::async_trait;
 use casper_types::{
     binary_port::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusValidatorChanges, ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity,
-        RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+        ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult,
+        ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+        GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, RecordId,
+        SpeculativeExecutionResult, TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
@@ -98,6 +99,21 @@ pub trait NodeClient: Send + Sync {
             .await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(<Vec<u8>>::from))
+    }
+
+    async fn query_dictionary_item(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        identifier: DictionaryItemIdentifier,
+    ) -> Result<Option<DictionaryQueryResult>, Error> {
+        let get = GlobalStateRequest::DictionaryItem {
+            state_identifier,
+            identifier,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(get)))
+            .await?;
+        parse_response::<DictionaryQueryResult>(&resp.into())
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {

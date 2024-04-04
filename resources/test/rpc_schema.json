@@ -6349,6 +6349,38 @@
             "additionalProperties": false
           },
           {
+            "description": "Lookup a dictionary item via an entities named keys.",
+            "type": "object",
+            "required": [
+              "EntityNamedKey"
+            ],
+            "properties": {
+              "EntityNamedKey": {
+                "type": "object",
+                "required": [
+                  "dictionary_item_key",
+                  "dictionary_name",
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "description": "The entity address formatted as a string.",
+                    "type": "string"
+                  },
+                  "dictionary_name": {
+                    "description": "The named key under which the dictionary seed URef is stored.",
+                    "type": "string"
+                  },
+                  "dictionary_item_key": {
+                    "description": "The dictionary item key formatted as a string.",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
             "description": "Lookup a dictionary item via its seed URef.",
             "type": "object",
             "required": [
