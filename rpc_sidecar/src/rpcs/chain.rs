@@ -760,16 +760,26 @@ mod tests {
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                    base_key: Key::EraSummary,
-                    ..
-                })) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        GlobalStateQueryResult::new(StoredValue::EraInfo(EraInfo::new()), vec![]),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(
+                        &*req,
+                        GlobalStateRequest::Item {
+                            base_key: Key::EraSummary,
+                            ..
+                        }
+                    ) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::EraInfo(EraInfo::new()),
+                                vec![],
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    ))
+                }
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }

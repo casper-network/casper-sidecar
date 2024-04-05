@@ -8,12 +8,10 @@ use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::ToBytes,
     global_state::TrieMerkleProof, Account, AddressableEntity, AddressableEntityHash,
     AvailableBlockRange, BlockHeader, BlockIdentifier, GlobalStateIdentifier, Key, SignedBlock,
-    StoredValue, URef, U512,
+    StoredValue,
 };
 
 use crate::NodeClient;
-
-use super::state::PurseIdentifier;
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -178,51 +176,6 @@ pub async fn resolve_entity_hash(
             .ok_or(Error::InvalidAddressableEntity)?,
         merkle_proof,
     }))
-}
-
-pub async fn get_main_purse(
-    node_client: &dyn NodeClient,
-    identifier: PurseIdentifier,
-    state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<URef, Error> {
-    let account_hash = match identifier {
-        PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
-            account_public_key.to_account_hash()
-        }
-        PurseIdentifier::MainPurseUnderAccountHash(account_hash) => account_hash,
-        PurseIdentifier::PurseUref(purse_uref) => return Ok(purse_uref),
-    };
-    match resolve_account_hash(node_client, account_hash, state_identifier)
-        .await?
-        .ok_or(Error::MainPurseNotFound)?
-        .value
-    {
-        EntityOrAccount::AddressableEntity(entity) => Ok(entity.main_purse()),
-        EntityOrAccount::LegacyAccount(account) => Ok(account.main_purse()),
-    }
-}
-
-pub async fn get_balance(
-    node_client: &dyn NodeClient,
-    uref: URef,
-    state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<SuccessfulQueryResult<U512>, Error> {
-    let key = Key::Balance(uref.addr());
-    let (value, merkle_proof) = node_client
-        .query_global_state(state_identifier, key, vec![])
-        .await
-        .map_err(|err| Error::NodeRequest("balance by uref", err))?
-        .ok_or(Error::GlobalStateEntryNotFound)?
-        .into_inner();
-    let value = value
-        .into_cl_value()
-        .ok_or(Error::InvalidPurseBalance)?
-        .into_t()
-        .map_err(|_| Error::InvalidPurseBalance)?;
-    Ok(SuccessfulQueryResult {
-        value,
-        merkle_proof,
-    })
 }
 
 pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<String, Error> {

@@ -7,7 +7,7 @@ use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 use crate::{
     rpcs::{
         info::{GetPeers, GetStatus, GetTransaction},
-        state::GetAddressableEntity,
+        state::{GetAddressableEntity, QueryFullBalance},
     },
     NodeClient,
 };
@@ -62,7 +62,8 @@ pub async fn run(
     ListRpcs::register_as_handler(node.clone(), &mut handlers);
     GetDictionaryItem::register_as_handler(node.clone(), &mut handlers);
     GetChainspec::register_as_handler(node.clone(), &mut handlers);
-    QueryBalance::register_as_handler(node, &mut handlers);
+    QueryBalance::register_as_handler(node.clone(), &mut handlers);
+    QueryFullBalance::register_as_handler(node, &mut handlers);
     let handlers = handlers.build();
 
     match cors_origin.as_str() {
