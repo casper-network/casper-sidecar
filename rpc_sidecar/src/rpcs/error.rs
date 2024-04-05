@@ -1,8 +1,8 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
 use casper_types::{
-    bytesrepr, AvailableBlockRange, BlockIdentifier, DeployHash, KeyFromStrError, KeyTag,
-    TransactionHash, URefFromStrError,
+    bytesrepr, AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash,
+    URefFromStrError,
 };
 
 use super::{ErrorCode, ErrorData};
@@ -24,7 +24,7 @@ pub enum Error {
     #[error("the requested purse URef was invalid: {0}")]
     InvalidPurseURef(URefFromStrError),
     #[error("the provided dictionary key was invalid: {0}")]
-    InvalidDictionaryKey(KeyFromStrError),
+    InvalidDictionaryKey(String),
     #[error("the provided dictionary key points at an unexpected type: {0}")]
     InvalidTypeUnderDictionaryKey(String),
     #[error("the provided dictionary key doesn't exist")]
