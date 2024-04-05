@@ -491,9 +491,7 @@ impl RpcWithoutParams for GetStatus {
             last_progress: status.last_progress,
             available_block_range: status.available_block_range,
             block_sync: status.block_sync,
-            // TODO[RC]: Check this
-            //latest_switch_block_hash: status.latest_switch_block_hash,
-            latest_switch_block_hash: Default::default(),
+            latest_switch_block_hash: status.latest_switch_block_hash,
             build_version: status.build_version,
         })
     }
