@@ -19,7 +19,7 @@ bincode = "1"
 bytes = "1.5.0"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
 casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
-casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", branch = "feat-2.0" }
+casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 http = "0.2.1"
@@ -45,7 +45,7 @@ warp = { version = "0.3.6", features = ["compression"] }
 [dev-dependencies]
 assert-json-diff = "2"
 casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
-casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", branch = "feat-2.0", features = ["testing"] }
+casper-binary-port = { workspace = true, features = ["testing"] }
 pretty_assertions = "0.7.2"
 regex = "1"
 tempfile = "3"
