@@ -1,12 +1,6 @@
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
-use casper_binary_port::{
-    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-    ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, PurseIdentifier, RecordId,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo,
-};
 use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
@@ -17,6 +11,13 @@ use std::{
     time::Duration,
 };
 
+use casper_binary_port::{
+    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+    ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    NodeStatus, PayloadEntity, PurseIdentifier, RecordId, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo,
+};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
@@ -134,6 +135,21 @@ pub trait NodeClient: Send + Sync {
             .await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(<Vec<u8>>::from))
+    }
+
+    async fn query_dictionary_item(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        identifier: DictionaryItemIdentifier,
+    ) -> Result<Option<DictionaryQueryResult>, Error> {
+        let get = GlobalStateRequest::DictionaryItem {
+            state_identifier,
+            identifier,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .await?;
+        parse_response::<DictionaryQueryResult>(&resp.into())
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
