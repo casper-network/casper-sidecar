@@ -13,12 +13,12 @@ use super::{
     ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
     CURRENT_API_VERSION,
 };
+use casper_binary_port::DictionaryItemIdentifier;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
-    binary_port::DictionaryItemIdentifier,
     bytesrepr::Bytes,
     system::{
         auction::{
@@ -1009,13 +1009,13 @@ mod tests {
     };
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DictionaryQueryResult, GetRequest,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
+    };
     use casper_types::{
         addressable_entity::{
             ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
-        },
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DictionaryQueryResult,
-            GetRequest, GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
         },
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},

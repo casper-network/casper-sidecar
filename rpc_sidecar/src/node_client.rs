@@ -1,18 +1,27 @@
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
+use metrics::rpc::{inc_disconnect, observe_reconnect_time};
+use serde::de::DeserializeOwned;
+use std::{
+    convert::{TryFrom, TryInto},
+    future::Future,
+    net::SocketAddr,
+    sync::Arc,
+    time::Duration,
+};
+
+use casper_binary_port::{
+    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+    ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    NodeStatus, PayloadEntity, RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+};
 use casper_types::{
-    binary_port::{
-        BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult,
-        ErrorCode as BinaryPortError, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-        GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, RecordId,
-        SpeculativeExecutionResult, TransactionWithExecutionInfo,
-    },
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Timestamp, Transaction, TransactionHash, Transfer,
+    Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -20,15 +29,9 @@ use juliet::{
     rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
-use metrics::rpc::{inc_disconnect, observe_reconnect_time};
-use serde::de::DeserializeOwned;
 use std::{
-    convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    future::Future,
-    net::SocketAddr,
-    sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tokio::{
     net::{
@@ -129,19 +132,9 @@ pub trait NodeClient: Send + Sync {
 
     async fn exec_speculatively(
         &self,
-        state_root_hash: Digest,
-        block_time: Timestamp,
-        protocol_version: ProtocolVersion,
         transaction: Transaction,
-        exec_at_block: BlockHeader,
     ) -> Result<SpeculativeExecutionResult, Error> {
-        let request = BinaryRequest::TrySpeculativeExec {
-            transaction,
-            state_root_hash,
-            block_time,
-            protocol_version,
-            speculative_exec_at_block: exec_at_block,
-        };
+        let request = BinaryRequest::TrySpeculativeExec { transaction };
         let resp = self.send_request(request).await?;
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -259,15 +252,14 @@ pub enum Error {
 
 impl Error {
     fn from_error_code(code: u8) -> Self {
-        match BinaryPortError::try_from(code) {
-            Ok(BinaryPortError::FunctionDisabled) => Self::FunctionIsDisabled,
-            Ok(BinaryPortError::InvalidTransaction) => Self::InvalidTransaction,
-            Ok(BinaryPortError::RootNotFound) => Self::UnknownStateRootHash,
-            Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,
-            Ok(
-                err @ (BinaryPortError::WasmPreprocessing
-                | BinaryPortError::InvalidDeployItemVariant),
-            ) => Self::SpecExecutionFailed(err.to_string()),
+        match ErrorCode::try_from(code) {
+            Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
+            Ok(ErrorCode::InvalidTransaction) => Self::InvalidTransaction,
+            Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
+            Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
+                Self::SpecExecutionFailed(err.to_string())
+            }
             Ok(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,

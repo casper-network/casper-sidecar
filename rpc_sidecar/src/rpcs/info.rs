@@ -3,12 +3,12 @@
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use async_trait::async_trait;
+use casper_binary_port::MinimalBlockInfo;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
     ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers,
@@ -526,11 +526,11 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest, InformationRequest,
+        InformationRequestTag, TransactionWithExecutionInfo,
+    };
     use casper_types::{
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            InformationRequest, InformationRequestTag, TransactionWithExecutionInfo,
-        },
         bytesrepr::{FromBytes, ToBytes},
         testing::TestRng,
         BlockHash, TransactionV1,

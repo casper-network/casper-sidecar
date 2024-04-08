@@ -1,13 +1,14 @@
+use casper_binary_port::GlobalStateQueryResult;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, binary_port::GlobalStateQueryResult,
-    bytesrepr::ToBytes, global_state::TrieMerkleProof, Account, AddressableEntity,
-    AddressableEntityHash, AvailableBlockRange, BlockHeader, BlockIdentifier,
-    GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::ToBytes,
+    global_state::TrieMerkleProof, Account, AddressableEntity, AddressableEntityHash,
+    AvailableBlockRange, BlockHeader, BlockIdentifier, GlobalStateIdentifier, Key, SignedBlock,
+    StoredValue, URef, U512,
 };
 
 use crate::NodeClient;

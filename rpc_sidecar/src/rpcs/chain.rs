@@ -37,7 +37,7 @@ static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: Some(*BlockHash::example()),
-        transfers: Some(vec![Transfer::default()]),
+        transfers: Some(vec![Transfer::example().clone()]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
@@ -403,15 +403,13 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
+    };
     use casper_types::{
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-            GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
-        },
-        system::auction::EraInfo,
-        testing::TestRng,
-        Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, SignedBlock,
-        TestBlockBuilder, TestBlockV1Builder,
+        system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2,
+        ChainNameDigest, SignedBlock, TestBlockBuilder, TestBlockV1Builder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -481,16 +479,7 @@ mod tests {
 
         let mut transfers = vec![];
         for _ in 0..rng.gen_range(0..10) {
-            transfers.push(Transfer::new(
-                DeployHash::random(rng),
-                rng.gen(),
-                Some(rng.gen()),
-                rng.gen(),
-                rng.gen(),
-                rng.gen(),
-                rng.gen(),
-                Some(rng.gen()),
-            ));
+            transfers.push(Transfer::random(rng));
         }
         let signatures = BlockSignaturesV2::new(
             *block.hash(),

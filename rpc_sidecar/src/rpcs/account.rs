@@ -151,13 +151,10 @@ impl RpcWithParams for PutTransaction {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{
-        binary_port::{
-            BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
-            ErrorCode as BinaryPortErrorCode,
-        },
-        testing::TestRng,
+    use casper_binary_port::{
+        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, ErrorCode as BinaryPortErrorCode,
     };
+    use casper_types::testing::TestRng;
     use pretty_assertions::assert_eq;
 
     use crate::{rpcs::ErrorCode, SUPPORTED_PROTOCOL_VERSION};

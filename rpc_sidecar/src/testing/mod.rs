@@ -1,11 +1,8 @@
 use std::time::Duration;
 
 use bytes::{BufMut, BytesMut};
-use casper_types::{
-    binary_port::{BinaryResponse, BinaryResponseAndRequest, GlobalStateQueryResult},
-    bytesrepr::ToBytes,
-    CLValue, ProtocolVersion, StoredValue,
-};
+use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, GlobalStateQueryResult};
+use casper_types::{bytesrepr::ToBytes, CLValue, ProtocolVersion, StoredValue};
 use juliet::{
     io::IoCoreBuilder,
     protocol::ProtocolBuilder,

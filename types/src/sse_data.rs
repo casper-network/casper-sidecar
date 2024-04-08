@@ -224,10 +224,8 @@ impl SseData {
 
     /// Returns a random `SseData::Step`.
     pub fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effects = match ExecutionResultV2::random(rng) {
-            ExecutionResultV2::Success { effects, .. }
-            | ExecutionResultV2::Failure { effects, .. } => effects,
-        };
+        let execution_effects = ExecutionResultV2::random(rng);
+
         SseData::Step {
             era_id: EraId::new(rng.gen()),
             execution_effects: to_raw_value(&execution_effects).unwrap(),
