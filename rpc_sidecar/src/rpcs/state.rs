@@ -29,8 +29,8 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key, KeyTag,
-    PublicKey, SecretKey, StoredValue, Timestamp, URef, U512,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key,
+    KeyTag, PublicKey, SecretKey, StoredValue, Timestamp, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -153,6 +153,11 @@ static QUERY_FULL_BALANCE_RESULT: Lazy<QueryFullBalanceResult> =
         total_balance: U512::from(123_456),
         available_balance: U512::from(123_456),
         total_balance_proof: MERKLE_PROOF.clone(),
+        holds: vec![BalanceHoldWithProof {
+            time: BlockTime::new(0),
+            amount: U512::from(123_456),
+            proof: MERKLE_PROOF.clone(),
+        }],
     });
 
 /// Params for "state_get_item" RPC request.
@@ -1020,12 +1025,24 @@ pub struct QueryFullBalanceResult {
     pub available_balance: U512,
     /// A proof that the given value is present in the Merkle trie.
     pub total_balance_proof: String,
+    /// Holds active at the requested point in time.
+    pub holds: Vec<BalanceHoldWithProof>,
 }
 
 impl DocExample for QueryFullBalanceResult {
     fn doc_example() -> &'static Self {
         &QUERY_FULL_BALANCE_RESULT
     }
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+pub struct BalanceHoldWithProof {
+    /// The block time at which the hold was created.
+    pub time: BlockTime,
+    /// The amount in the hold.
+    pub amount: U512,
+    /// A proof that the given value is present in the Merkle trie.
+    pub proof: String,
 }
 
 /// "query_full_balance" RPC.
@@ -1063,11 +1080,27 @@ impl RpcWithParams for QueryFullBalance {
                 .await
                 .map_err(|err| Error::NodeRequest("balance by latest block", err))?,
         };
+
+        let holds = balance
+            .balance_holds
+            .into_iter()
+            .flat_map(|(time, holds)| {
+                holds.into_iter().map(move |(_, (amount, proof))| {
+                    Ok(BalanceHoldWithProof {
+                        time,
+                        amount,
+                        proof: common::encode_proof(&vec![proof])?,
+                    })
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             total_balance: balance.total_balance,
             available_balance: balance.available_balance,
             total_balance_proof: common::encode_proof(&vec![*balance.total_balance_proof])?,
+            holds,
         })
     }
 }
@@ -1926,6 +1959,7 @@ mod tests {
                 available_balance,
                 total_balance_proof: common::encode_proof(&vec![*balance.total_balance_proof])
                     .expect("should encode proof"),
+                holds: vec![],
             }
         );
     }
