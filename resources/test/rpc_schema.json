@@ -798,42 +798,7 @@
             {
               "name": "entity_identifier",
               "value": {
-                "EntityAddr": {
-                  "Account": [
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0
-                  ]
-                }
+                "EntityAddr": "entity-account-0000000000000000000000000000000000000000000000000000000000000000"
               }
             },
             {
@@ -5715,10 +5680,11 @@
           },
           "versions": {
             "description": "All versions (enabled & disabled)",
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ContractHash"
-            }
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
+              }
+            ]
           },
           "disabled_versions": {
             "description": "Disabled versions",
@@ -5746,9 +5712,34 @@
           }
         }
       },
-      "ContractHash": {
-        "description": "The hash address of the contract",
-        "type": "string"
+      "Array_of_ContractVersionAndHash": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ContractVersionAndHash"
+        }
+      },
+      "ContractVersionAndHash": {
+        "type": "object",
+        "required": [
+          "contract_entity_hash",
+          "contract_version_key"
+        ],
+        "properties": {
+          "contract_version_key": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContractVersionKey"
+              }
+            ]
+          },
+          "contract_entity_hash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContractHash"
+              }
+            ]
+          }
+        }
       },
       "ContractVersionKey": {
         "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
@@ -5767,6 +5758,10 @@
         ],
         "maxItems": 2,
         "minItems": 2
+      },
+      "ContractHash": {
+        "description": "The hash address of the contract",
+        "type": "string"
       },
       "Array_of_NamedUserGroup": {
         "type": "array",
@@ -6434,45 +6429,18 @@
       },
       "EntityAddr": {
         "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-        "oneOf": [
+        "anyOf": [
           {
             "description": "The address for a system entity account or contract.",
-            "type": "object",
-            "required": [
-              "System"
-            ],
-            "properties": {
-              "System": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
+            "type": "string"
           },
           {
             "description": "The address of an entity that corresponds to an Account.",
-            "type": "object",
-            "required": [
-              "Account"
-            ],
-            "properties": {
-              "Account": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
+            "type": "string"
           },
           {
             "description": "The address of an entity that corresponds to a Userland smart contract.",
-            "type": "object",
-            "required": [
-              "SmartContract"
-            ],
-            "properties": {
-              "SmartContract": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
+            "type": "string"
           }
         ]
       },
