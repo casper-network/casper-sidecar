@@ -5785,10 +5785,11 @@
           },
           "versions": {
             "description": "All versions (enabled & disabled)",
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ContractHash"
-            }
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
+              }
+            ]
           },
           "disabled_versions": {
             "description": "Disabled versions",
@@ -5816,9 +5817,34 @@
           }
         }
       },
-      "ContractHash": {
-        "description": "The hash address of the contract",
-        "type": "string"
+      "Array_of_ContractVersionAndHash": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ContractVersionAndHash"
+        }
+      },
+      "ContractVersionAndHash": {
+        "type": "object",
+        "required": [
+          "contract_entity_hash",
+          "contract_version_key"
+        ],
+        "properties": {
+          "contract_version_key": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContractVersionKey"
+              }
+            ]
+          },
+          "contract_entity_hash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContractHash"
+              }
+            ]
+          }
+        }
       },
       "ContractVersionKey": {
         "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
@@ -5837,6 +5863,10 @@
         ],
         "maxItems": 2,
         "minItems": 2
+      },
+      "ContractHash": {
+        "description": "The hash address of the contract",
+        "type": "string"
       },
       "Array_of_NamedUserGroup": {
         "type": "array",
