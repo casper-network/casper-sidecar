@@ -1157,7 +1157,7 @@
               "type": "string"
             },
             "balance": {
-              "description": "The balance represented in motes.",
+              "description": "The available balance in motes (total balance - sum of all active holds).",
               "$ref": "#/components/schemas/U512"
             }
           }
@@ -1191,7 +1191,7 @@
       ]
     },
     {
-      "name": "query_full_balance",
+      "name": "query_balance_details",
       "summary": "query for full balance information using a purse identifier and a state identifier",
       "params": [
         {
@@ -1219,7 +1219,7 @@
         }
       ],
       "result": {
-        "name": "query_full_balance_result",
+        "name": "query_balance_details_result",
         "schema": {
           "description": "Result for \"query_balance\" RPC response.",
           "type": "object",
@@ -1240,7 +1240,7 @@
               "$ref": "#/components/schemas/U512"
             },
             "available_balance": {
-              "description": "The available balance (total balance - sum of all active holds).",
+              "description": "The available balance in motes (total balance - sum of all active holds).",
               "$ref": "#/components/schemas/U512"
             },
             "total_balance_proof": {
@@ -1259,7 +1259,7 @@
       },
       "examples": [
         {
-          "name": "query_full_balance_example",
+          "name": "query_balance_details_example",
           "params": [
             {
               "name": "state_identifier",
@@ -1277,7 +1277,7 @@
             }
           ],
           "result": {
-            "name": "query_full_balance_example_result",
+            "name": "query_balance_details_example_result",
             "value": {
               "api_version": "2.0.0",
               "total_balance": "123456",
@@ -2032,7 +2032,7 @@
               "type": "string"
             },
             "balance_value": {
-              "description": "The balance value.",
+              "description": "The available balance in motes (total balance - sum of all active holds). The active holds are determined by the current timestamp and not the state root hash. If you need to account for holds at a specific time, you should use the `query_balance_details` RPC.",
               "$ref": "#/components/schemas/U512"
             },
             "merkle_proof": {

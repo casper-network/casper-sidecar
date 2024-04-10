@@ -140,15 +140,15 @@ static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanc
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance: U512::from(123_456),
 });
-static QUERY_FULL_BALANCE_PARAMS: Lazy<QueryFullBalanceParams> =
-    Lazy::new(|| QueryFullBalanceParams {
+static QUERY_BALANCE_DETAILS_PARAMS: Lazy<QueryBalanceDetailsParams> =
+    Lazy::new(|| QueryBalanceDetailsParams {
         state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::Hash(
             *BlockHash::example(),
         ))),
         purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
     });
-static QUERY_FULL_BALANCE_RESULT: Lazy<QueryFullBalanceResult> =
-    Lazy::new(|| QueryFullBalanceResult {
+static QUERY_BALANCE_DETAILS_RESULT: Lazy<QueryBalanceDetailsResult> =
+    Lazy::new(|| QueryBalanceDetailsResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         total_balance: U512::from(123_456),
         available_balance: U512::from(123_456),
@@ -250,7 +250,10 @@ pub struct GetBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
-    /// The balance value.
+    /// The available balance in motes (total balance - sum of all active holds).
+    /// The active holds are determined by the current timestamp and not the
+    /// state root hash. If you need to account for holds at a specific time,
+    /// you should use the `query_balance_details` RPC.
     pub balance_value: U512,
     /// The Merkle proof.
     pub merkle_proof: String,
@@ -928,7 +931,7 @@ pub struct QueryBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
-    /// The balance represented in motes.
+    /// The available balance in motes (total balance - sum of all active holds).
     pub balance: U512,
 }
 
@@ -999,7 +1002,7 @@ pub enum BalanceStateIdentifier {
 
 /// Params for "query_balance" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-pub struct QueryFullBalanceParams {
+pub struct QueryBalanceDetailsParams {
     /// The identifier for the state used for the query, if none is passed,
     /// the latest block will be used.
     pub state_identifier: Option<BalanceStateIdentifier>,
@@ -1007,21 +1010,21 @@ pub struct QueryFullBalanceParams {
     pub purse_identifier: PurseIdentifier,
 }
 
-impl DocExample for QueryFullBalanceParams {
+impl DocExample for QueryBalanceDetailsParams {
     fn doc_example() -> &'static Self {
-        &QUERY_FULL_BALANCE_PARAMS
+        &QUERY_BALANCE_DETAILS_PARAMS
     }
 }
 
 /// Result for "query_balance" RPC response.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-pub struct QueryFullBalanceResult {
+pub struct QueryBalanceDetailsResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
     /// The purses total balance, not considering holds.
     pub total_balance: U512,
-    /// The available balance (total balance - sum of all active holds).
+    /// The available balance in motes (total balance - sum of all active holds).
     pub available_balance: U512,
     /// A proof that the given value is present in the Merkle trie.
     pub total_balance_proof: String,
@@ -1029,9 +1032,9 @@ pub struct QueryFullBalanceResult {
     pub holds: Vec<BalanceHoldWithProof>,
 }
 
-impl DocExample for QueryFullBalanceResult {
+impl DocExample for QueryBalanceDetailsResult {
     fn doc_example() -> &'static Self {
-        &QUERY_FULL_BALANCE_RESULT
+        &QUERY_BALANCE_DETAILS_RESULT
     }
 }
 
@@ -1045,14 +1048,14 @@ pub struct BalanceHoldWithProof {
     pub proof: String,
 }
 
-/// "query_full_balance" RPC.
-pub struct QueryFullBalance {}
+/// "query_balance_details" RPC.
+pub struct QueryBalanceDetails {}
 
 #[async_trait]
-impl RpcWithParams for QueryFullBalance {
-    const METHOD: &'static str = "query_full_balance";
-    type RequestParams = QueryFullBalanceParams;
-    type ResponseResult = QueryFullBalanceResult;
+impl RpcWithParams for QueryBalanceDetails {
+    const METHOD: &'static str = "query_balance_details";
+    type RequestParams = QueryBalanceDetailsParams;
+    type ResponseResult = QueryBalanceDetailsResult;
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
@@ -1923,7 +1926,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_read_query_full_balance_result() {
+    async fn should_read_query_balance_details_result() {
         let rng = &mut TestRng::new();
         let available_balance = rng.gen();
         let total_balance = rng.gen();
@@ -1938,9 +1941,9 @@ mod tests {
             balance_holds: BTreeMap::new(),
         };
 
-        let resp = QueryFullBalance::do_handle_request(
+        let resp = QueryBalanceDetails::do_handle_request(
             Arc::new(ValidBalanceMock(balance.clone())),
-            QueryFullBalanceParams {
+            QueryBalanceDetailsParams {
                 state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::random(rng))),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
                     rng.gen(),
@@ -1953,7 +1956,7 @@ mod tests {
 
         assert_eq!(
             resp,
-            QueryFullBalanceResult {
+            QueryBalanceDetailsResult {
                 api_version: CURRENT_API_VERSION,
                 total_balance,
                 available_balance,

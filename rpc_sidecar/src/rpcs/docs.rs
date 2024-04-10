@@ -20,7 +20,7 @@ use super::{
     info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetTransaction, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAddressableEntity, GetAuctionInfo, GetBalance, GetDictionaryItem,
-        GetItem, QueryBalance, QueryFullBalance, QueryGlobalState,
+        GetItem, QueryBalance, QueryBalanceDetails, QueryGlobalState,
     },
     ApiVersion, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     CURRENT_API_VERSION,
@@ -84,7 +84,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_params::<QueryBalance>(
         "query for a balance using a purse identifier and a state identifier",
     );
-    schema.push_with_params::<QueryFullBalance>(
+    schema.push_with_params::<QueryBalanceDetails>(
         "query for full balance information using a purse identifier and a state identifier",
     );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
