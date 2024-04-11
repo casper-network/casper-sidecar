@@ -7191,6 +7191,19 @@
             "additionalProperties": false
           },
           {
+            "description": "The main purse of the account identified by this entity address.",
+            "type": "object",
+            "required": [
+              "main_purse_under_entity_addr"
+            ],
+            "properties": {
+              "main_purse_under_entity_addr": {
+                "$ref": "#/components/schemas/EntityAddr"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
             "description": "The purse identified by this URef.",
             "type": "object",
             "required": [

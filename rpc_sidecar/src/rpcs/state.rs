@@ -875,6 +875,8 @@ pub enum PurseIdentifier {
     MainPurseUnderPublicKey(PublicKey),
     /// The main purse of the account identified by this account hash.
     MainPurseUnderAccountHash(AccountHash),
+    /// The main purse of the account identified by this entity address.
+    MainPurseUnderEntityAddr(EntityAddr),
     /// The purse identified by this URef.
     PurseUref(URef),
 }
@@ -886,6 +888,7 @@ impl PurseIdentifier {
             Self::MainPurseUnderAccountHash(account_hash) => {
                 PortPurseIdentifier::Account(account_hash)
             }
+            Self::MainPurseUnderEntityAddr(entity_addr) => PortPurseIdentifier::Entity(entity_addr),
             Self::PurseUref(uref) => PortPurseIdentifier::Purse(uref),
         }
     }
