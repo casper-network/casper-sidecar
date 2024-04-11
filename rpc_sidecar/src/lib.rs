@@ -135,12 +135,12 @@ mod tests {
 
     #[test]
     fn main_server_json_schema_check() {
-        json_schema_check("rpc_schema.json", &*OPEN_RPC_SCHEMA);
+        json_schema_check("rpc_schema.json", &OPEN_RPC_SCHEMA);
     }
 
     #[test]
     fn speculative_json_schema_check() {
-        json_schema_check("speculative_rpc_schema.json", &*SPECULATIVE_OPEN_RPC_SCHEMA);
+        json_schema_check("speculative_rpc_schema.json", &SPECULATIVE_OPEN_RPC_SCHEMA);
     }
 
     #[test]
