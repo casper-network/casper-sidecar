@@ -17,7 +17,7 @@ use super::rpcs::{
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
     },
-    docs::ListRpcs,
+    docs::RpcDiscover,
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, GetTrie,
@@ -59,7 +59,7 @@ pub async fn run(
     GetAuctionInfo::register_as_handler(node.clone(), &mut handlers);
     GetTrie::register_as_handler(node.clone(), &mut handlers);
     GetValidatorChanges::register_as_handler(node.clone(), &mut handlers);
-    ListRpcs::register_as_handler(node.clone(), &mut handlers);
+    RpcDiscover::register_as_handler(node.clone(), &mut handlers);
     GetDictionaryItem::register_as_handler(node.clone(), &mut handlers);
     GetChainspec::register_as_handler(node.clone(), &mut handlers);
     QueryBalance::register_as_handler(node.clone(), &mut handlers);

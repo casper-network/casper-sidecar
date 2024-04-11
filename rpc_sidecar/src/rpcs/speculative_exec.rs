@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 use casper_types::{Deploy, Transaction};
 
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, CURRENT_API_VERSION,
+    docs::{DocExample, OpenRpcSchema, DOCS_EXAMPLE_API_VERSION},
+    speculative_open_rpc_schema::SPECULATIVE_OPEN_RPC_SCHEMA,
+    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
 };
 
 static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
@@ -120,6 +121,47 @@ async fn handle_request(
         api_version: CURRENT_API_VERSION,
         execution_result: speculative_execution_result,
     })
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SpeculativeRpcDiscoverResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    api_version: ApiVersion,
+    name: String,
+    /// The list of supported RPCs.
+    #[schemars(skip)]
+    schema: OpenRpcSchema,
+}
+
+static SPECULATIVE_DISCOVER_RPC_RESULT: Lazy<SpeculativeRpcDiscoverResult> =
+    Lazy::new(|| SpeculativeRpcDiscoverResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        name: "OpenRPC Schema for speculative exectution server".to_string(),
+        schema: SPECULATIVE_OPEN_RPC_SCHEMA.clone(),
+    });
+
+impl DocExample for SpeculativeRpcDiscoverResult {
+    fn doc_example() -> &'static Self {
+        &SPECULATIVE_DISCOVER_RPC_RESULT
+    }
+}
+
+/// "rpc.discover" RPC.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct SpeculativeRpcDiscover {}
+
+#[async_trait]
+impl RpcWithoutParams for SpeculativeRpcDiscover {
+    const METHOD: &'static str = "rpc.discover";
+    type ResponseResult = SpeculativeRpcDiscoverResult;
+
+    async fn do_handle_request(
+        _node_client: Arc<dyn NodeClient>,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        Ok(SpeculativeRpcDiscoverResult::doc_example().clone())
+    }
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use derive_new::new;
 use once_cell::sync::Lazy;
 use schemars::{
     gen::{SchemaGenerator, SchemaSettings},
@@ -29,40 +30,36 @@ use super::{
 pub(crate) const DOCS_EXAMPLE_API_VERSION: ApiVersion = CURRENT_API_VERSION;
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
+pub(crate) const OPEN_RPC_VERSION: &str = "1.0.0-rc1";
+
+pub(crate) static CONTACT: Lazy<OpenRpcContactField> = Lazy::new(|| OpenRpcContactField {
+    name: "Casper Labs".to_string(),
+    url: "https://casperlabs.io".to_string(),
+});
+
+pub(crate) static LICENSE: Lazy<OpenRpcLicenseField> = Lazy::new(|| OpenRpcLicenseField {
+    name: "APACHE LICENSE, VERSION 2.0".to_string(),
+    url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
+});
+
+static SERVER: Lazy<OpenRpcServerEntry> = Lazy::new(|| {
+    OpenRpcServerEntry::new(
+        "any Sidecar with JSON RPC API enabled".to_string(),
+        "http://IP:PORT/rpc/".to_string(),
+    )
+});
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
 pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
-    let contact = OpenRpcContactField {
-        name: "Casper Labs".to_string(),
-        url: "https://casperlabs.io".to_string(),
-    };
-    let license = OpenRpcLicenseField {
-        name: "APACHE LICENSE, VERSION 2.0".to_string(),
-        url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
-    };
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_API_VERSION.to_string(),
         title: "Client API of Casper Node".to_string(),
         description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
             .to_string(),
-        contact,
-        license,
+        contact: CONTACT.clone(),
+        license: LICENSE.clone(),
     };
-
-    let server = OpenRpcServerEntry {
-        name: "any Casper Network node".to_string(),
-        url: "http://IP:PORT/rpc/".to_string(),
-    };
-
-    let mut schema = OpenRpcSchema {
-        openrpc: "1.0.0-rc1".to_string(),
-        info,
-        servers: vec![server],
-        methods: vec![],
-        components: Components {
-            schemas: Map::new(),
-        },
-    };
+    let mut schema = OpenRpcSchema::new(OPEN_RPC_VERSION.to_string(), info, vec![SERVER.clone()]);
 
     schema.push_with_params::<PutDeploy>(
         "receives a Deploy to be executed by the network (DEPRECATED: use \
@@ -121,7 +118,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
 
     schema
 });
-static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
+static LIST_RPCS_RESULT: Lazy<RpcDiscoverResult> = Lazy::new(|| RpcDiscoverResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
@@ -145,6 +142,16 @@ pub struct OpenRpcSchema {
 }
 
 impl OpenRpcSchema {
+    pub fn new(openrpc: String, info: OpenRpcInfoField, servers: Vec<OpenRpcServerEntry>) -> Self {
+        OpenRpcSchema {
+            openrpc,
+            info,
+            servers,
+            methods: vec![],
+            components: Components::default(),
+        }
+    }
+
     fn new_generator() -> SchemaGenerator {
         let settings = SchemaSettings::default().with(|settings| {
             settings.definitions_path = DEFINITIONS_PATH.to_string();
@@ -152,7 +159,7 @@ impl OpenRpcSchema {
         settings.into_generator()
     }
 
-    fn push_with_params<T: RpcWithParams>(&mut self, summary: &str) {
+    pub(crate) fn push_with_params<T: RpcWithParams>(&mut self, summary: &str) {
         let mut generator = Self::new_generator();
 
         let params_schema = T::RequestParams::json_schema(&mut generator);
@@ -179,7 +186,7 @@ impl OpenRpcSchema {
         self.update_schemas::<T::ResponseResult>();
     }
 
-    fn push_without_params<T: RpcWithoutParams>(&mut self, summary: &str) {
+    pub(crate) fn push_without_params<T: RpcWithoutParams>(&mut self, summary: &str) {
         let mut generator = Self::new_generator();
 
         let result_schema = T::ResponseResult::json_schema(&mut generator);
@@ -306,8 +313,8 @@ impl OpenRpcSchema {
     }
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-struct OpenRpcInfoField {
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema, new)]
+pub(crate) struct OpenRpcInfoField {
     version: String,
     title: String,
     description: String,
@@ -316,26 +323,26 @@ struct OpenRpcInfoField {
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-struct OpenRpcContactField {
+pub(crate) struct OpenRpcContactField {
     name: String,
     url: String,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-struct OpenRpcLicenseField {
+pub(crate) struct OpenRpcLicenseField {
     name: String,
     url: String,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-struct OpenRpcServerEntry {
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema, new)]
+pub(crate) struct OpenRpcServerEntry {
     name: String,
     url: String,
 }
 
 /// The struct containing the documentation for the RPCs.
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-pub struct Method {
+struct Method {
     name: String,
     summary: String,
     params: Vec<SchemaParam>,
@@ -423,8 +430,8 @@ struct ExampleResult {
     value: Value,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
-struct Components {
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, JsonSchema, Default)]
+pub struct Components {
     schemas: Map<String, Schema>,
 }
 
@@ -433,7 +440,7 @@ struct Components {
 // Fields named as per https://spec.open-rpc.org/#service-discovery-method.
 #[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ListRpcsResult {
+pub struct RpcDiscoverResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     api_version: ApiVersion,
@@ -443,7 +450,7 @@ pub struct ListRpcsResult {
     schema: OpenRpcSchema,
 }
 
-impl DocExample for ListRpcsResult {
+impl DocExample for RpcDiscoverResult {
     fn doc_example() -> &'static Self {
         &LIST_RPCS_RESULT
     }
@@ -451,18 +458,18 @@ impl DocExample for ListRpcsResult {
 
 /// "rpc.discover" RPC.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct ListRpcs {}
+pub struct RpcDiscover {}
 
 #[async_trait]
-impl RpcWithoutParams for ListRpcs {
+impl RpcWithoutParams for RpcDiscover {
     // Named as per https://spec.open-rpc.org/#service-discovery-method.
     const METHOD: &'static str = "rpc.discover";
-    type ResponseResult = ListRpcsResult;
+    type ResponseResult = RpcDiscoverResult;
 
     async fn do_handle_request(
         _node_client: Arc<dyn NodeClient>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        Ok(ListRpcsResult::doc_example().clone())
+        Ok(RpcDiscoverResult::doc_example().clone())
     }
 }
 
@@ -544,21 +551,7 @@ mod tests {
             contact,
             license,
         };
-
-        let server = OpenRpcServerEntry {
-            name: "any Casper Network node".to_string(),
-            url: "http://IP:PORT/rpc/".to_string(),
-        };
-
-        let schema = OpenRpcSchema {
-            openrpc: "1.0.0-rc1".to_string(),
-            info,
-            servers: vec![server],
-            methods: vec![],
-            components: Components {
-                schemas: Map::new(),
-            },
-        };
+        let schema = OpenRpcSchema::new("1.0.0-rc1".to_string(), info, vec![SERVER.clone()]);
         let params = schema.give_params_schema::<T>();
         let schema_object = params.into_object().object.expect("should be object");
         schema_object

@@ -7,8 +7,8 @@ use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 use crate::{
     node_client::NodeClient,
     rpcs::{
-        speculative_exec::{SpeculativeExec, SpeculativeExecTxn},
-        RpcWithParams,
+        speculative_exec::{SpeculativeExec, SpeculativeExecTxn, SpeculativeRpcDiscover},
+        RpcWithParams, RpcWithoutParams,
     },
 };
 
@@ -27,7 +27,8 @@ pub async fn run(
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     SpeculativeExecTxn::register_as_handler(node.clone(), &mut handlers);
-    SpeculativeExec::register_as_handler(node, &mut handlers);
+    SpeculativeExec::register_as_handler(node.clone(), &mut handlers);
+    SpeculativeRpcDiscover::register_as_handler(node, &mut handlers);
     let handlers = handlers.build();
 
     match cors_origin.as_str() {
