@@ -225,7 +225,7 @@ mod tests {
     fn json_schema_check(schema_filename: &str, rpc_schema: &OpenRpcSchema) {
         let schema_path = format!(
             "{}/../resources/test/{}",
-            env!("CARGO_MANIFEST_DIR"), 
+            env!("CARGO_MANIFEST_DIR"),
             schema_filename,
         );
         assert_schema(
