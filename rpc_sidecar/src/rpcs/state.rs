@@ -14,6 +14,7 @@ use super::{
     CURRENT_API_VERSION,
 };
 use casper_binary_port::DictionaryItemIdentifier;
+use casper_binary_port::PurseIdentifier as PortPurseIdentifier;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -28,8 +29,8 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key, KeyTag,
-    PublicKey, SecretKey, StoredValue, URef, U512,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key,
+    KeyTag, PublicKey, SecretKey, StoredValue, Timestamp, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -137,6 +138,25 @@ static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanc
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance: U512::from(123_456),
 });
+static QUERY_BALANCE_DETAILS_PARAMS: Lazy<QueryBalanceDetailsParams> =
+    Lazy::new(|| QueryBalanceDetailsParams {
+        state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::Hash(
+            *BlockHash::example(),
+        ))),
+        purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
+    });
+static QUERY_BALANCE_DETAILS_RESULT: Lazy<QueryBalanceDetailsResult> =
+    Lazy::new(|| QueryBalanceDetailsResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        total_balance: U512::from(123_456),
+        available_balance: U512::from(123_456),
+        total_balance_proof: MERKLE_PROOF.clone(),
+        holds: vec![BalanceHoldWithProof {
+            time: BlockTime::new(0),
+            amount: U512::from(123_456),
+            proof: MERKLE_PROOF.clone(),
+        }],
+    });
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -228,7 +248,10 @@ pub struct GetBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
-    /// The balance value.
+    /// The available balance in motes (total balance - sum of all active holds).
+    /// The active holds are determined by the current timestamp and not the
+    /// state root hash. If you need to account for holds at a specific time,
+    /// you should use the `query_balance_details` RPC.
     pub balance_value: U512,
     /// The Merkle proof.
     pub merkle_proof: String,
@@ -255,12 +278,20 @@ impl RpcWithParams for GetBalance {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_uref =
             URef::from_formatted_str(&params.purse_uref).map_err(Error::InvalidPurseURef)?;
-        let state_identifier = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
-        let result = common::get_balance(&*node_client, purse_uref, Some(state_identifier)).await?;
+
+        let state_id = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
+        let purse_id = PortPurseIdentifier::Purse(purse_uref);
+        // we cannot query the balance at a specific timestamp, so we use the current one
+        let timestamp = Timestamp::now();
+        let balance = node_client
+            .get_balance_by_state_root(Some(state_id), purse_id, timestamp)
+            .await
+            .map_err(|err| Error::NodeRequest("balance", err))?;
+
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
-            balance_value: result.value,
-            merkle_proof: common::encode_proof(&result.merkle_proof)?,
+            balance_value: balance.available_balance,
+            merkle_proof: common::encode_proof(&vec![*balance.total_balance_proof])?,
         })
     }
 }
@@ -844,8 +875,23 @@ pub enum PurseIdentifier {
     MainPurseUnderPublicKey(PublicKey),
     /// The main purse of the account identified by this account hash.
     MainPurseUnderAccountHash(AccountHash),
+    /// The main purse of the account identified by this entity address.
+    MainPurseUnderEntityAddr(EntityAddr),
     /// The purse identified by this URef.
     PurseUref(URef),
+}
+
+impl PurseIdentifier {
+    pub fn into_port_purse_identifier(self) -> PortPurseIdentifier {
+        match self {
+            Self::MainPurseUnderPublicKey(public_key) => PortPurseIdentifier::PublicKey(public_key),
+            Self::MainPurseUnderAccountHash(account_hash) => {
+                PortPurseIdentifier::Account(account_hash)
+            }
+            Self::MainPurseUnderEntityAddr(entity_addr) => PortPurseIdentifier::Entity(entity_addr),
+            Self::PurseUref(uref) => PortPurseIdentifier::Purse(uref),
+        }
+    }
 }
 
 /// Params for "query_balance" RPC request.
@@ -870,7 +916,7 @@ pub struct QueryBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
-    /// The balance represented in motes.
+    /// The available balance in motes (total balance - sum of all active holds).
     pub balance: U512,
 }
 
@@ -893,17 +939,156 @@ impl RpcWithParams for QueryBalance {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let purse = common::get_main_purse(
-            &*node_client,
-            params.purse_identifier,
-            params.state_identifier,
-        )
-        .await?;
-        let balance = common::get_balance(&*node_client, purse, params.state_identifier).await?;
+        let purse_id = params.purse_identifier.into_port_purse_identifier();
+        let balance = match params.state_identifier {
+            Some(GlobalStateIdentifier::BlockHash(hash)) => node_client
+                .get_balance_by_block(Some(BlockIdentifier::Hash(hash)), purse_id)
+                .await
+                .map_err(|err| Error::NodeRequest("balance by block hash", err))?,
+            Some(GlobalStateIdentifier::BlockHeight(height)) => node_client
+                .get_balance_by_block(Some(BlockIdentifier::Height(height)), purse_id)
+                .await
+                .map_err(|err| Error::NodeRequest("balance by block height", err))?,
+            Some(GlobalStateIdentifier::StateRootHash(digest)) => {
+                // we cannot query the balance at a specific timestamp, so we use the current one
+                let timestamp = Timestamp::now();
+                let state_id = GlobalStateIdentifier::StateRootHash(digest);
+                node_client
+                    .get_balance_by_state_root(Some(state_id), purse_id, timestamp)
+                    .await
+                    .map_err(|err| Error::NodeRequest("balance by state root", err))?
+            }
+            None => node_client
+                .get_balance_by_block(None, purse_id)
+                .await
+                .map_err(|err| Error::NodeRequest("balance by latest block", err))?,
+        };
+        Ok(Self::ResponseResult {
+            api_version: CURRENT_API_VERSION,
+            balance: balance.available_balance,
+        })
+    }
+}
+
+/// Identifier of a balance.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum BalanceStateIdentifier {
+    /// The balance at a specific block.
+    Block(BlockIdentifier),
+    /// The balance at a specific state root.
+    StateRoot {
+        /// The state root hash.
+        state_root_hash: Digest,
+        /// Timestamp for holds lookup.
+        timestamp: Timestamp,
+    },
+}
+
+/// Params for "query_balance" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct QueryBalanceDetailsParams {
+    /// The identifier for the state used for the query, if none is passed,
+    /// the latest block will be used.
+    pub state_identifier: Option<BalanceStateIdentifier>,
+    /// The identifier to obtain the purse corresponding to balance query.
+    pub purse_identifier: PurseIdentifier,
+}
+
+impl DocExample for QueryBalanceDetailsParams {
+    fn doc_example() -> &'static Self {
+        &QUERY_BALANCE_DETAILS_PARAMS
+    }
+}
+
+/// Result for "query_balance" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+pub struct QueryBalanceDetailsResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ApiVersion,
+    /// The purses total balance, not considering holds.
+    pub total_balance: U512,
+    /// The available balance in motes (total balance - sum of all active holds).
+    pub available_balance: U512,
+    /// A proof that the given value is present in the Merkle trie.
+    pub total_balance_proof: String,
+    /// Holds active at the requested point in time.
+    pub holds: Vec<BalanceHoldWithProof>,
+}
+
+impl DocExample for QueryBalanceDetailsResult {
+    fn doc_example() -> &'static Self {
+        &QUERY_BALANCE_DETAILS_RESULT
+    }
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+pub struct BalanceHoldWithProof {
+    /// The block time at which the hold was created.
+    pub time: BlockTime,
+    /// The amount in the hold.
+    pub amount: U512,
+    /// A proof that the given value is present in the Merkle trie.
+    pub proof: String,
+}
+
+/// "query_balance_details" RPC.
+pub struct QueryBalanceDetails {}
+
+#[async_trait]
+impl RpcWithParams for QueryBalanceDetails {
+    const METHOD: &'static str = "query_balance_details";
+    type RequestParams = QueryBalanceDetailsParams;
+    type ResponseResult = QueryBalanceDetailsResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let purse_id = params.purse_identifier.into_port_purse_identifier();
+        let balance = match params.state_identifier {
+            Some(BalanceStateIdentifier::Block(block_identifier)) => node_client
+                .get_balance_by_block(Some(block_identifier), purse_id)
+                .await
+                .map_err(|err| Error::NodeRequest("balance by block", err))?,
+            Some(BalanceStateIdentifier::StateRoot {
+                state_root_hash,
+                timestamp,
+            }) => node_client
+                .get_balance_by_state_root(
+                    Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                    purse_id,
+                    timestamp,
+                )
+                .await
+                .map_err(|err| Error::NodeRequest("balance by state root", err))?,
+            None => node_client
+                .get_balance_by_block(None, purse_id)
+                .await
+                .map_err(|err| Error::NodeRequest("balance by latest block", err))?,
+        };
+
+        let holds = balance
+            .balance_holds
+            .into_iter()
+            .flat_map(|(time, holds)| {
+                holds.into_iter().map(move |(_, (amount, proof))| {
+                    Ok(BalanceHoldWithProof {
+                        time,
+                        amount,
+                        proof: common::encode_proof(&vec![proof])?,
+                    })
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
-            balance: balance.value,
+            total_balance: balance.total_balance,
+            available_balance: balance.available_balance,
+            total_balance_proof: common::encode_proof(&vec![*balance.total_balance_proof])?,
+            holds,
         })
     }
 }
@@ -992,13 +1177,12 @@ mod tests {
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
-        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, DictionaryQueryResult, GetRequest,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag,
+        BalanceResponse, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
+        DictionaryQueryResult, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
+        InformationRequestTag,
     };
     use casper_types::{
-        addressable_entity::{
-            ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeys,
-        },
+        addressable_entity::{MessageTopics, NamedKeys},
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
@@ -1046,14 +1230,21 @@ mod tests {
     #[tokio::test]
     async fn should_read_balance() {
         let rng = &mut TestRng::new();
-        let balance_value: U512 = rng.gen();
-        let result = GlobalStateQueryResult::new(
-            StoredValue::CLValue(CLValue::from_t(balance_value).unwrap()),
-            vec![],
-        );
+        let available_balance = rng.gen();
+        let total_balance = rng.gen();
+        let balance = BalanceResponse {
+            total_balance,
+            available_balance,
+            total_balance_proof: Box::new(TrieMerkleProof::new(
+                Key::Account(rng.gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
+            )),
+            balance_holds: BTreeMap::new(),
+        };
 
         let resp = GetBalance::do_handle_request(
-            Arc::new(ValidGlobalStateResultMock(result.clone())),
+            Arc::new(ValidBalanceMock(balance.clone())),
             GetBalanceParams {
                 state_root_hash: rng.gen(),
                 purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
@@ -1066,8 +1257,9 @@ mod tests {
             resp,
             GetBalanceResult {
                 api_version: CURRENT_API_VERSION,
-                balance_value,
-                merkle_proof: String::from("00000000"),
+                balance_value: available_balance,
+                merkle_proof: common::encode_proof(&vec![*balance.total_balance_proof])
+                    .expect("should encode proof"),
             }
         );
     }
@@ -1101,10 +1293,15 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
-                        key_tag: KeyTag::Bid,
-                        ..
-                    })) => {
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::AllItems {
+                                key_tag: KeyTag::Bid,
+                                ..
+                            }
+                        ) =>
+                    {
                         let bids = self
                             .legacy_bids
                             .iter()
@@ -1116,10 +1313,15 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
-                        key_tag: KeyTag::BidAddr,
-                        ..
-                    })) => {
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::AllItems {
+                                key_tag: KeyTag::BidAddr,
+                                ..
+                            }
+                        ) =>
+                    {
                         let bids = self
                             .bids
                             .iter()
@@ -1131,10 +1333,15 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::SystemEntityRegistry,
-                        ..
-                    })) => {
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::SystemEntityRegistry,
+                                ..
+                            }
+                        ) =>
+                    {
                         let system_contracts =
                             iter::once((AUCTION.to_string(), self.contract_hash))
                                 .collect::<BTreeMap<_, _>>();
@@ -1147,10 +1354,15 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_),
-                        ..
-                    })) => {
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::AddressableEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
                             vec![],
@@ -1226,35 +1438,49 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Account(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::CLValue(
-                                    CLValue::from_t(Key::contract_entity_key(self.entity_hash))
-                                        .unwrap(),
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::Account(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(
+                                        CLValue::from_t(Key::contract_entity_key(self.entity_hash))
+                                            .unwrap(),
+                                    ),
+                                    vec![],
                                 ),
-                                vec![],
+                                SUPPORTED_PROTOCOL_VERSION,
                             ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::AddressableEntity(self.entity.clone()),
-                                vec![],
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::AddressableEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                GlobalStateQueryResult::new(
+                                    StoredValue::AddressableEntity(self.entity.clone()),
+                                    vec![],
+                                ),
+                                SUPPORTED_PROTOCOL_VERSION,
                             ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1363,13 +1589,20 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                    )),
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::AddressableEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1458,22 +1691,29 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Account(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::CLValue(
-                                    CLValue::from_t(Key::contract_entity_key(self.entity_hash))
-                                        .unwrap(),
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::Account(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(
+                                        CLValue::from_t(Key::contract_entity_key(self.entity_hash))
+                                            .unwrap(),
+                                    ),
+                                    vec![],
                                 ),
-                                vec![],
+                                SUPPORTED_PROTOCOL_VERSION,
                             ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1525,13 +1765,20 @@ mod tests {
                             &[],
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Account(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                    )),
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::Account(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1626,20 +1873,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_read_query_balance_by_uref_result() {
+    async fn should_read_query_balance_result() {
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let balance = rng.gen::<U512>();
-        let stored_value = StoredValue::CLValue(CLValue::from_t(balance).unwrap());
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
+        let available_balance = rng.gen();
+        let total_balance = rng.gen();
+        let balance = BalanceResponse {
+            total_balance,
+            available_balance,
+            total_balance_proof: Box::new(TrieMerkleProof::new(
+                Key::Account(rng.gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
+            )),
+            balance_holds: BTreeMap::new(),
+        };
 
         let resp = QueryBalance::do_handle_request(
-            Arc::new(ValidGlobalStateResultWithBlockMock {
-                block: block.clone(),
-                result: expected.clone(),
-            }),
+            Arc::new(ValidBalanceMock(balance.clone())),
             QueryBalanceParams {
-                state_identifier: None,
+                state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
                     rng.gen(),
                     AccessRights::empty(),
@@ -1653,94 +1905,35 @@ mod tests {
             resp,
             QueryBalanceResult {
                 api_version: CURRENT_API_VERSION,
-                balance
+                balance: available_balance,
             }
         );
     }
 
     #[tokio::test]
-    async fn should_read_query_balance_by_account_result() {
-        use casper_types::account::{ActionThresholds, AssociatedKeys};
-
-        struct ClientMock {
-            block: Block,
-            account: Account,
-            balance: U512,
-        }
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
-                        if InformationRequestTag::try_from(info_type_tag)
-                            == Ok(InformationRequestTag::BlockHeader) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Account(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::Account(self.account.clone()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Balance(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
+    async fn should_read_query_balance_details_result() {
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let account = Account::new(
-            rng.gen(),
-            NamedKeys::default(),
-            rng.gen(),
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-        );
+        let available_balance = rng.gen();
+        let total_balance = rng.gen();
+        let balance = BalanceResponse {
+            total_balance,
+            available_balance,
+            total_balance_proof: Box::new(TrieMerkleProof::new(
+                Key::Account(rng.gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
+            )),
+            balance_holds: BTreeMap::new(),
+        };
 
-        let balance = rng.gen::<U512>();
-
-        let resp = QueryBalance::do_handle_request(
-            Arc::new(ClientMock {
-                block: block.clone(),
-                account: account.clone(),
-                balance,
-            }),
-            QueryBalanceParams {
-                state_identifier: None,
-                purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(
-                    account.account_hash(),
-                ),
+        let resp = QueryBalanceDetails::do_handle_request(
+            Arc::new(ValidBalanceMock(balance.clone())),
+            QueryBalanceDetailsParams {
+                state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::random(rng))),
+                purse_identifier: PurseIdentifier::PurseUref(URef::new(
+                    rng.gen(),
+                    AccessRights::empty(),
+                )),
             },
         )
         .await
@@ -1748,124 +1941,13 @@ mod tests {
 
         assert_eq!(
             resp,
-            QueryBalanceResult {
+            QueryBalanceDetailsResult {
                 api_version: CURRENT_API_VERSION,
-                balance
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn should_read_query_balance_by_addressable_entity_result() {
-        struct ClientMock {
-            block: Block,
-            entity_hash: AddressableEntityHash,
-            entity: AddressableEntity,
-            balance: U512,
-        }
-
-        #[async_trait]
-        impl NodeClient for ClientMock {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
-                        if InformationRequestTag::try_from(info_type_tag)
-                            == Ok(InformationRequestTag::BlockHeader) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Account(_),
-                        ..
-                    })) => {
-                        let key =
-                            Key::addressable_entity_key(EntityKindTag::Account, self.entity_hash);
-                        let value = CLValue::from_t(key).unwrap();
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                GlobalStateQueryResult::new(StoredValue::CLValue(value), vec![]),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::AddressableEntity(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::AddressableEntity(self.entity.clone()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                        base_key: Key::Balance(_),
-                        ..
-                    })) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
-        let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let entity = AddressableEntity::new(
-            PackageHash::new(rng.gen()),
-            ByteCodeHash::new(rng.gen()),
-            EntryPoints::default(),
-            ProtocolVersion::V1_0_0,
-            rng.gen(),
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-            MessageTopics::default(),
-            EntityKind::default(),
-        );
-
-        let balance: U512 = rng.gen();
-        let entity_hash: AddressableEntityHash = rng.gen();
-
-        let resp = QueryBalance::do_handle_request(
-            Arc::new(ClientMock {
-                block: block.clone(),
-                entity_hash,
-                entity: entity.clone(),
-                balance,
-            }),
-            QueryBalanceParams {
-                state_identifier: None,
-                purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(rng.gen()),
-            },
-        )
-        .await
-        .expect("should handle request");
-
-        assert_eq!(
-            resp,
-            QueryBalanceResult {
-                api_version: CURRENT_API_VERSION,
-                balance
+                total_balance,
+                available_balance,
+                total_balance_proof: common::encode_proof(&vec![*balance.total_balance_proof])
+                    .expect("should encode proof"),
+                holds: vec![],
             }
         );
     }
@@ -1882,15 +1964,17 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
-                    ..
-                })) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        DictionaryQueryResult::new(self.dict_key, self.query_result.clone()),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(&*req, GlobalStateRequest::DictionaryItem { .. }) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            DictionaryQueryResult::new(self.dict_key, self.query_result.clone()),
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
+                        &[],
+                    ))
+                }
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }
@@ -1905,7 +1989,9 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item { .. })) => {
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(&*req, GlobalStateRequest::Item { .. }) =>
+                {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
@@ -1940,7 +2026,9 @@ mod tests {
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item { .. })) => {
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(&*req, GlobalStateRequest::Item { .. }) =>
+                {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
@@ -1975,19 +2063,52 @@ mod tests {
                         &[],
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
-                    base_key: Key::Account(_),
-                    ..
-                })) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        GlobalStateQueryResult::new(
-                            StoredValue::Account(self.account.clone()),
-                            vec![],
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(
+                        &*req,
+                        GlobalStateRequest::Item {
+                            base_key: Key::Account(_),
+                            ..
+                        }
+                    ) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(
+                            GlobalStateQueryResult::new(
+                                StoredValue::Account(self.account.clone()),
+                                vec![],
+                            ),
+                            SUPPORTED_PROTOCOL_VERSION,
                         ),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                )),
+                        &[],
+                    ))
+                }
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct ValidBalanceMock(BalanceResponse);
+
+    #[async_trait]
+    impl NodeClient for ValidBalanceMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(
+                        &*req,
+                        GlobalStateRequest::BalanceByBlock { .. }
+                            | GlobalStateRequest::BalanceByStateRoot { .. }
+                    ) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                    ))
+                }
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }

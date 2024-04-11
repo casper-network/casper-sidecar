@@ -12,16 +12,17 @@ use std::{
 };
 
 use casper_binary_port::{
-    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
     ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
     GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    NodeStatus, PayloadEntity, RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    NodeStatus, PayloadEntity, PurseIdentifier, RecordId, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Transaction, TransactionHash, Transfer,
+    Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -75,7 +76,7 @@ pub trait NodeClient: Send + Sync {
             path,
         };
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(req)))
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(req))))
             .await?;
         parse_response::<GlobalStateQueryResult>(&resp.into())
     }
@@ -90,15 +91,47 @@ pub trait NodeClient: Send + Sync {
             key_tag,
         };
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(get)))
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn get_balance_by_state_root(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        purse_identifier: PurseIdentifier,
+        timestamp: Timestamp,
+    ) -> Result<BalanceResponse, Error> {
+        let get = GlobalStateRequest::BalanceByStateRoot {
+            state_identifier,
+            purse_identifier,
+            timestamp,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .await?;
+        parse_response::<BalanceResponse>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn get_balance_by_block(
+        &self,
+        block_identifier: Option<BlockIdentifier>,
+        purse_identifier: PurseIdentifier,
+    ) -> Result<BalanceResponse, Error> {
+        let get = GlobalStateRequest::BalanceByBlock {
+            block_identifier,
+            purse_identifier,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .await?;
+        parse_response::<BalanceResponse>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
         let req = GlobalStateRequest::Trie { trie_key };
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(req)))
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(req))))
             .await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(<Vec<u8>>::from))
@@ -114,7 +147,7 @@ pub trait NodeClient: Send + Sync {
             identifier,
         };
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(get)))
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<DictionaryQueryResult>(&resp.into())
     }
