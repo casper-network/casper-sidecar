@@ -80,9 +80,7 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
 });
 static GET_ADDRESSABLE_ENTITY_PARAMS: Lazy<GetAddressableEntityParams> =
     Lazy::new(|| GetAddressableEntityParams {
-        entity_identifier: EntityIdentifier::EntityHashForAccount(AddressableEntityHash::new(
-            [0; 32],
-        )),
+        entity_identifier: EntityIdentifier::EntityAddr(EntityAddr::new_account([0; 32])),
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     });
 static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
@@ -519,20 +517,17 @@ pub enum EntityIdentifier {
     PublicKey(PublicKey),
     /// The account hash of an account.
     AccountHash(AccountHash),
-    /// The hash of an addressable entity representing an account.
-    EntityHashForAccount(AddressableEntityHash),
-    /// The hash of an addressable entity representing a contract.
-    EntityHashForContract(AddressableEntityHash),
+    /// The address of an addressable entity.
+    EntityAddr(EntityAddr),
 }
 
 impl EntityIdentifier {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => EntityIdentifier::PublicKey(PublicKey::random(rng)),
             1 => EntityIdentifier::AccountHash(rng.gen()),
-            2 => EntityIdentifier::EntityHashForAccount(rng.gen()),
-            3 => EntityIdentifier::EntityHashForContract(rng.gen()),
+            2 => EntityIdentifier::EntityAddr(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -588,23 +583,10 @@ impl RpcWithParams for GetAddressableEntity {
     ) -> Result<Self::ResponseResult, RpcError> {
         let state_identifier = params.block_identifier.map(GlobalStateIdentifier::from);
         let (entity, merkle_proof) = match params.entity_identifier {
-            EntityIdentifier::EntityHashForAccount(hash) => {
-                let tag = EntityKindTag::Account;
-                let result =
-                    common::resolve_entity_hash(&*node_client, tag, hash, state_identifier)
-                        .await?
-                        .ok_or(Error::AddressableEntityNotFound)?;
-                (
-                    EntityOrAccount::AddressableEntity(result.value),
-                    result.merkle_proof,
-                )
-            }
-            EntityIdentifier::EntityHashForContract(hash) => {
-                let tag = EntityKindTag::SmartContract;
-                let result =
-                    common::resolve_entity_hash(&*node_client, tag, hash, state_identifier)
-                        .await?
-                        .ok_or(Error::AddressableEntityNotFound)?;
+            EntityIdentifier::EntityAddr(addr) => {
+                let result = common::resolve_entity_addr(&*node_client, addr, state_identifier)
+                    .await?
+                    .ok_or(Error::AddressableEntityNotFound)?;
                 (
                     EntityOrAccount::AddressableEntity(result.value),
                     result.merkle_proof,
@@ -1625,7 +1607,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let entity_identifier = EntityIdentifier::EntityHashForAccount(rng.gen());
+        let entity_identifier = EntityIdentifier::EntityAddr(rng.gen());
 
         let err = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock {

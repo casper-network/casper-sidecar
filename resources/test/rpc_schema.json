@@ -798,7 +798,7 @@
             {
               "name": "entity_identifier",
               "value": {
-                "EntityHashForAccount": "addressable-entity-0000000000000000000000000000000000000000000000000000000000000000"
+                "EntityAddr": "entity-account-0000000000000000000000000000000000000000000000000000000000000000"
               }
             },
             {
@@ -6518,30 +6518,34 @@
             "additionalProperties": false
           },
           {
-            "description": "The hash of an addressable entity representing an account.",
+            "description": "The address of an addressable entity.",
             "type": "object",
             "required": [
-              "EntityHashForAccount"
+              "EntityAddr"
             ],
             "properties": {
-              "EntityHashForAccount": {
-                "$ref": "#/components/schemas/AddressableEntityHash"
+              "EntityAddr": {
+                "$ref": "#/components/schemas/EntityAddr"
               }
             },
             "additionalProperties": false
+          }
+        ]
+      },
+      "EntityAddr": {
+        "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
+        "anyOf": [
+          {
+            "description": "The address for a system entity account or contract.",
+            "type": "string"
           },
           {
-            "description": "The hash of an addressable entity representing a contract.",
-            "type": "object",
-            "required": [
-              "EntityHashForContract"
-            ],
-            "properties": {
-              "EntityHashForContract": {
-                "$ref": "#/components/schemas/AddressableEntityHash"
-              }
-            },
-            "additionalProperties": false
+            "description": "The address of an entity that corresponds to an Account.",
+            "type": "string"
+          },
+          {
+            "description": "The address of an entity that corresponds to a Userland smart contract.",
+            "type": "string"
           }
         ]
       },
