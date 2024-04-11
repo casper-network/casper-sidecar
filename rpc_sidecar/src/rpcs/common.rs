@@ -5,10 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::ToBytes,
-    global_state::TrieMerkleProof, Account, AddressableEntity, AddressableEntityHash,
-    AvailableBlockRange, BlockHeader, BlockIdentifier, GlobalStateIdentifier, Key, SignedBlock,
-    StoredValue, URef, U512,
+    account::AccountHash, bytesrepr::ToBytes, global_state::TrieMerkleProof, Account,
+    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, EntityAddr,
+    GlobalStateIdentifier, Key, SignedBlock, StoredValue, URef, U512,
 };
 
 use crate::NodeClient;
@@ -156,13 +155,12 @@ pub async fn resolve_account_hash(
     }))
 }
 
-pub async fn resolve_entity_hash(
+pub async fn resolve_entity_addr(
     node_client: &dyn NodeClient,
-    tag: EntityKindTag,
-    entity_hash: AddressableEntityHash,
+    entity_addr: EntityAddr,
     state_identifier: Option<GlobalStateIdentifier>,
 ) -> Result<Option<SuccessfulQueryResult<AddressableEntity>>, Error> {
-    let entity_key = Key::addressable_entity_key(tag, entity_hash);
+    let entity_key = Key::AddressableEntity(entity_addr);
     let Some((value, merkle_proof)) = node_client
         .query_global_state(state_identifier, entity_key, vec![])
         .await
