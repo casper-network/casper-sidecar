@@ -41,6 +41,7 @@ tower = { version = "0.4.6", features = ["limit"] }
 tracing = { workspace = true, default-features = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
 warp = { version = "0.3.6", features = ["compression"] }
+derive-new = "0.6.0"
 
 [dev-dependencies]
 assert-json-diff = "2"

@@ -126,6 +126,7 @@ mod tests {
 
     use crate::rpcs::docs::OPEN_RPC_SCHEMA;
 
+    use crate::rpcs::speculative_open_rpc_schema::SPECULATIVE_OPEN_RPC_SCHEMA;
     use crate::rpcs::{
         docs::OpenRpcSchema,
         info::{GetChainspecResult, GetStatusResult, GetValidatorChangesResult},
@@ -133,43 +134,13 @@ mod tests {
     use schemars::schema_for;
 
     #[test]
-    fn json_schema_check() {
-        let schema_path = format!(
-            "{}/../resources/test/rpc_schema.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        assert_schema(
-            &schema_path,
-            &serde_json::to_string_pretty(&*OPEN_RPC_SCHEMA).unwrap(),
-        );
+    fn main_server_json_schema_check() {
+        json_schema_check("rpc_schema.json", &*OPEN_RPC_SCHEMA);
+    }
 
-        let schema = fs::read_to_string(&schema_path).unwrap();
-
-        // Check for the following pattern in the JSON as this points to a byte array or vec (e.g.
-        // a hash digest) not being represented as a hex-encoded string:
-        //
-        // ```json
-        // "type": "array",
-        // "items": {
-        //   "type": "integer",
-        //   "format": "uint8",
-        //   "minimum": 0.0
-        // },
-        // ```
-        //
-        // The type/variant in question (most easily identified from the git diff) might be easily
-        // fixed via application of a serde attribute, e.g.
-        // `#[serde(with = "serde_helpers::raw_32_byte_array")]`.  It will likely require a
-        // schemars attribute too, indicating it is a hex-encoded string.  See for example
-        // `TransactionInvocationTarget::Package::addr`.
-        let regex = Regex::new(
-            r#"\s*"type":\s*"array",\s*"items":\s*\{\s*"type":\s*"integer",\s*"format":\s*"uint8",\s*"minimum":\s*0\.0\s*\},"#
-        ).unwrap();
-        assert!(
-            !regex.is_match(&schema),
-            "seems like a byte array is not hex-encoded - see comment in `json_schema_check` for \
-            further info"
-        );
+    #[test]
+    fn speculative_json_schema_check() {
+        json_schema_check("speculative_rpc_schema.json", &*SPECULATIVE_OPEN_RPC_SCHEMA);
     }
 
     #[test]
@@ -249,5 +220,45 @@ mod tests {
             temp_file_path.display()
         );
         assert_json_eq!(actual_schema, expected_schema);
+    }
+
+    fn json_schema_check(schema_filename: &str, rpc_schema: &OpenRpcSchema) {
+        let schema_path = format!(
+            "{}/../resources/test/{}",
+            env!("CARGO_MANIFEST_DIR"), 
+            schema_filename,
+        );
+        assert_schema(
+            &schema_path,
+            &serde_json::to_string_pretty(rpc_schema).unwrap(),
+        );
+
+        let schema = fs::read_to_string(&schema_path).unwrap();
+
+        // Check for the following pattern in the JSON as this points to a byte array or vec (e.g.
+        // a hash digest) not being represented as a hex-encoded string:
+        //
+        // ```json
+        // "type": "array",
+        // "items": {
+        //   "type": "integer",
+        //   "format": "uint8",
+        //   "minimum": 0.0
+        // },
+        // ```
+        //
+        // The type/variant in question (most easily identified from the git diff) might be easily
+        // fixed via application of a serde attribute, e.g.
+        // `#[serde(with = "serde_helpers::raw_32_byte_array")]`.  It will likely require a
+        // schemars attribute too, indicating it is a hex-encoded string.  See for example
+        // `TransactionInvocationTarget::Package::addr`.
+        let regex = Regex::new(
+            r#"\s*"type":\s*"array",\s*"items":\s*\{\s*"type":\s*"integer",\s*"format":\s*"uint8",\s*"minimum":\s*0\.0\s*\},"#
+        ).unwrap();
+        assert!(
+            !regex.is_match(&schema),
+            "seems like a byte array is not hex-encoded - see comment in `json_schema_check` for \
+            further info"
+        );
     }
 }

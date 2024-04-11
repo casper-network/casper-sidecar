@@ -650,6 +650,7 @@ dependencies = [
  "casper-json-rpc",
  "casper-types",
  "datasize",
+ "derive-new 0.6.0",
  "futures",
  "http",
  "hyper",

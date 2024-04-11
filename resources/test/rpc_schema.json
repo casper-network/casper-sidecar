@@ -15,7 +15,7 @@
   },
   "servers": [
     {
-      "name": "any Casper Network node",
+      "name": "any Sidecar with JSON RPC API enabled",
       "url": "http://IP:PORT/rpc/"
     }
   ],
