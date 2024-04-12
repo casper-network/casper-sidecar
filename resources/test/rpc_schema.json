@@ -1221,7 +1221,7 @@
       "result": {
         "name": "query_balance_details_result",
         "schema": {
-          "description": "Result for \"query_balance\" RPC response.",
+          "description": "Result for \"query_balance_details\" RPC response.",
           "type": "object",
           "required": [
             "api_version",
