@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::process::ExitCode;
 use std::{net::IpAddr, path::PathBuf, str::FromStr, time::Duration};
 
+use crate::types::config::LegacySseApiTag;
 use crate::{
     event_stream_server::{Config as SseConfig, EventStreamServer},
     rest_server::run_server as start_rest_server,
@@ -82,8 +83,14 @@ pub async fn run(
         outbound_sse_data_sender.clone(),
     );
 
-    let event_broadcasting_handle =
-        start_event_broadcasting(&config, storage_path, outbound_sse_data_receiver);
+    let event_broadcasting_handle = start_event_broadcasting(
+        &config,
+        storage_path,
+        outbound_sse_data_receiver,
+        config
+            .emulate_legacy_sse_apis
+            .contains(&LegacySseApiTag::V1),
+    );
     info!(address = %config.event_stream_server.port, "started {} server", "SSE");
     tokio::try_join!(
         flatten_handle(event_broadcasting_handle),
@@ -96,6 +103,7 @@ fn start_event_broadcasting(
     config: &SseEventServerConfig,
     storage_path: String,
     mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>, Option<String>)>,
+    enable_legacy_filters: bool,
 ) -> JoinHandle<Result<(), Error>> {
     let event_stream_server_port = config.event_stream_server.port;
     let buffer_length = config.event_stream_server.event_stream_buffer_length;
@@ -109,6 +117,7 @@ fn start_event_broadcasting(
                 Some(max_concurrent_subscribers),
             ),
             PathBuf::from(storage_path),
+            enable_legacy_filters,
         )
         .context("Error starting EventStreamServer")?;
         while let Some((sse_data, inbound_filter, maybe_json_data)) =

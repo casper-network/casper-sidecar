@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::string::ToString;
+use std::vec;
 use std::{
     convert::{TryFrom, TryInto},
     num::ParseIntError,
@@ -21,10 +22,17 @@ pub(crate) const DEFAULT_PORT: u16 = 5432;
 
 pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str = "/casper/sidecar-storage/casper-sidecar";
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub enum LegacySseApiTag {
+    // This tag is to point to sse endpoint of casper node in version 1.x
+    V1,
+}
+
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SseEventServerConfig {
     pub enable_server: bool,
+    pub emulate_legacy_sse_apis: Vec<LegacySseApiTag>,
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
@@ -36,6 +44,7 @@ impl Default for SseEventServerConfig {
     fn default() -> Self {
         Self {
             enable_server: true,
+            emulate_legacy_sse_apis: vec![LegacySseApiTag::V1],
             inbound_channel_size: Some(100),
             outbound_channel_size: Some(100),
             connections: vec![],

@@ -174,8 +174,9 @@ fn build_event_stream_server(
     println!("{} :: Started", log_details);
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-    let event_stream_server = EventStreamServer::new(ess_config, temp_dir.path().to_path_buf())
-        .expect("Error spinning up Event Stream Server");
+    let event_stream_server =
+        EventStreamServer::new(ess_config, temp_dir.path().to_path_buf(), true)
+            .expect("Error spinning up Event Stream Server");
     (event_stream_server, log_details)
 }
 
