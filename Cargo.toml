@@ -30,3 +30,7 @@ toml = "0.5.8"
 tracing = { version = "0", default-features = false }
 tracing-subscriber = "0"
 serde = { version = "1", default-features = false }
+
+[patch."https://github.com/casper-network/casper-node"]
+casper-binary-port = { path = "../casper-node/binary_port" }
+casper-types = { path = "../casper-node/types" }

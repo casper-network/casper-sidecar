@@ -3,12 +3,6 @@ use std::time::Duration;
 use bytes::{BufMut, BytesMut};
 use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, GlobalStateQueryResult};
 use casper_types::{bytesrepr::ToBytes, CLValue, ProtocolVersion, StoredValue};
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{IncomingRequest, RpcBuilder},
-    ChannelConfiguration, ChannelId,
-};
 use tokio::task::JoinHandle;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -17,6 +11,7 @@ use tokio::{
 
 const LOCALHOST: &str = "127.0.0.1";
 
+/*
 pub struct BinaryPortMock {
     port: u16,
     response: Vec<u8>,
@@ -101,3 +96,4 @@ async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
     sleep(Duration::from_secs(3)).await; // This should be handled differently, preferrably the mock binary port should inform that it already bound to the port
     handler
 }
+*/

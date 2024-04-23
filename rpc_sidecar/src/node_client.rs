@@ -1,6 +1,7 @@
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
 use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
@@ -10,25 +11,20 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio_util::codec::Framed;
 
 use casper_binary_port::{
-    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-    ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
-    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    NodeStatus, PayloadEntity, PurseIdentifier, RecordId, SpeculativeExecutionResult,
-    TransactionWithExecutionInfo,
+    BalanceResponse, BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader,
+    BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
+    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, PurseIdentifier, RecordId,
+    SpeculativeExecutionResult, TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
     Timestamp, Transaction, TransactionHash, Transfer,
-};
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder},
-    ChannelConfiguration, ChannelId,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -305,113 +301,34 @@ impl Error {
     }
 }
 
-const CHANNEL_COUNT: usize = 1;
-
-#[derive(Debug)]
-pub struct JulietNodeClient {
-    client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
+pub struct FramedNodeClient {
+    client: Arc<RwLock<Framed<TcpStream, BinaryPortCodec>>>,
     shutdown: Arc<Notify>,
+    config: NodeClientConfig,
 }
 
-impl JulietNodeClient {
-    pub async fn new(
-        config: NodeClientConfig,
-    ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
-        let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-            ChannelConfiguration::default()
-                .with_request_limit(config.request_limit)
-                .with_max_request_payload_size(config.max_request_size_bytes)
-                .with_max_response_payload_size(config.max_response_size_bytes),
-        );
-        let io_builder = IoCoreBuilder::new(protocol_builder)
-            .buffer_size(ChannelId::new(0), config.request_buffer_size);
-        let rpc_builder = RpcBuilder::new(io_builder);
-
+impl FramedNodeClient {
+    pub async fn new(config: NodeClientConfig) -> Result<Self, AnyhowError> {
         let stream =
             Self::connect_with_retries(config.address, &config.exponential_backoff).await?;
-        let (reader, writer) = stream.into_split();
-        let (client, server) = rpc_builder.build(reader, writer);
-        let client = Arc::new(RwLock::new(client));
         let shutdown = Arc::new(Notify::new());
-        let server_loop = Self::server_loop(
-            config.address,
-            config.exponential_backoff.clone(),
-            rpc_builder,
-            Arc::clone(&client),
-            server,
-            shutdown.clone(),
-        );
 
-        Ok((Self { client, shutdown }, server_loop))
-    }
-
-    async fn reconnect(
-        addr: SocketAddr,
-        config: ExponentialBackoffConfig,
-        rpc_builder: &RpcBuilder<CHANNEL_COUNT>,
-    ) -> Result<
-        (
-            JulietRpcClient<CHANNEL_COUNT>,
-            JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
-        ),
-        AnyhowError,
-    > {
-        let disconnected_start = Instant::now();
-        inc_disconnect();
-        error!("node connection closed, will attempt to reconnect");
-        let (reader, writer) = Self::connect_with_retries(addr, &config)
-            .await?
-            .into_split();
-        let (new_client, new_server) = rpc_builder.build(reader, writer);
-
-        info!("connection with the node has been re-established");
-        observe_reconnect_time(disconnected_start.elapsed());
-        Ok((new_client, new_server))
-    }
-
-    async fn server_loop(
-        addr: SocketAddr,
-        config: ExponentialBackoffConfig,
-        rpc_builder: RpcBuilder<CHANNEL_COUNT>,
-        client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
-        mut server: JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
-        shutdown: Arc<Notify>,
-    ) -> Result<(), AnyhowError> {
-        loop {
-            tokio::select! {
-                req = server.next_request() => match req {
-                    Err(err) => {
-                        warn!(%addr, err=display_error(&err), "binary port client handler error");
-                        let (new_client, new_server) = Self::reconnect(addr, config.clone(), &rpc_builder).await?;
-                        *client.write().await = new_client;
-                        server = new_server;
-                    }
-                    Ok(None) => {
-                        let (new_client, new_server) = Self::reconnect(addr, config.clone(), &rpc_builder).await?;
-                        *client.write().await = new_client;
-                        server = new_server;
-                    }
-                    Ok(Some(_)) => {
-                        error!("node client received a request from the node, it's going to be ignored")
-                    }
-                },
-                _ = shutdown.notified() => {
-                    info!("node client shutdown has been requested");
-                    return Ok(())
-                }
-            }
-        }
+        Ok(Self {
+            client: Arc::new(RwLock::new(stream)),
+            shutdown,
+            config,
+        })
     }
 
     async fn connect_with_retries(
         addr: SocketAddr,
         config: &ExponentialBackoffConfig,
-    ) -> Result<TcpStream, AnyhowError> {
+    ) -> Result<Framed<TcpStream, BinaryPortCodec>, AnyhowError> {
         let mut wait = config.initial_delay_ms;
         let mut current_attempt = 1;
         loop {
             match TcpStream::connect(addr).await {
-                Ok(server) => return Ok(server),
+                Ok(stream) => return Ok(Framed::new(stream, BinaryPortCodec {})),
                 Err(err) => {
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     current_attempt += 1;
@@ -425,29 +342,62 @@ impl JulietNodeClient {
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.coefficient).min(config.max_delay_ms);
                 }
-            }
+            };
         }
+    }
+
+    async fn reconnect(
+        addr: SocketAddr,
+        config: &ExponentialBackoffConfig,
+    ) -> Result<Framed<TcpStream, BinaryPortCodec>, AnyhowError> {
+        let disconnected_start = Instant::now();
+        inc_disconnect();
+        error!("node connection closed, will attempt to reconnect");
+        let stream = Self::connect_with_retries(addr, config).await?;
+        info!("connection with the node has been re-established");
+        observe_reconnect_time(disconnected_start.elapsed());
+        Ok(stream)
     }
 }
 
 #[async_trait]
-impl NodeClient for JulietNodeClient {
+impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
-        let payload = encode_request(&req).expect("should always serialize a request");
-        let request_guard = self
-            .client
-            .read()
+        let payload =
+            BinaryPortMessage(encode_request(&req).expect("should always serialize a request"));
+        let mut client = self.client.write().await;
+
+        // TODO[RC]: Read timeout from config.
+        if let Err(err) = tokio::time::timeout(Duration::from_secs(5), client.send(payload))
             .await
-            .create_request(ChannelId::new(0))
-            .with_payload(payload.into())
-            .queue_for_sending()
-            .await;
-        let response = request_guard
-            .wait_for_response()
-            .await
-            .map_err(|err| Error::RequestFailed(err.to_string()))?
-            .ok_or(Error::NoResponseBody)?;
-        let resp = bytesrepr::deserialize_from_slice(&response)
+            .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
+        {
+            warn!(
+                addr = %self.config.address,
+                err = display_error(&err),
+                "binary port client handler error"
+            );
+            return Err(Error::RequestFailed(err.to_string()));
+        };
+
+        let Ok(maybe_response) = tokio::time::timeout(Duration::from_secs(5), client.next()).await
+        else {
+            return Err(Error::RequestFailed("timeout".to_owned()));
+        };
+        let payload = match maybe_response {
+            // TODO[RC]: Fix unwrap
+            Some(response) => response.unwrap().0,
+            None => {
+                let stream = Self::reconnect(self.config.address, &self.config.exponential_backoff)
+                    .await
+                    .map_err(|_| Error::RequestFailed("reconnection failed".to_string()))?;
+                *client = stream;
+                // Reconnect, but still report a failure to the client.
+                return Err(Error::RequestFailed("disconnected".to_owned()));
+            }
+        };
+
+        let resp = bytesrepr::deserialize_from_slice(&payload)
             .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
         handle_response(resp, &self.shutdown)
     }
