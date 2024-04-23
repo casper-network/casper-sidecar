@@ -985,7 +985,7 @@ pub enum BalanceStateIdentifier {
     },
 }
 
-/// Params for "query_balance" RPC request.
+/// Params for "query_balance_details" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceDetailsParams {
     /// The identifier for the state used for the query, if none is passed,
@@ -1001,7 +1001,7 @@ impl DocExample for QueryBalanceDetailsParams {
     }
 }
 
-/// Result for "query_balance" RPC response.
+/// Result for "query_balance_details" RPC response.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceDetailsResult {
     /// The RPC API version.
