@@ -269,7 +269,7 @@ pub mod test_support {
     }
 
     pub fn example_finality_signature_2_0_0(hash: &str) -> String {
-        let raw_block_added = format!("{{\"FinalitySignature\":{{\"block_hash\":\"{hash}\",\"era_id\":2,\"signature\":\"01ff6089c9b187f38ba61b518082db22552fb4762d505773e8221f6593c45e0602de560c4690b035dbacba9ab9dbe63e97d928970a515ea6a25fb920b3e9099d05\",\"public_key\":\"01914182c7d11ef13dccdbf1470648af3c3cd7f570bc351f0c14112370b19b8331\"}}}}");
+        let raw_block_added = format!("{{\"FinalitySignature\":{{\"V2\":{{\"block_hash\":\"{hash}\",\"block_height\":123026,\"era_id\":279,\"chain_name_hash\":\"f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301\",\"signature\":\"01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d\",\"public_key\":\"0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf\"}}}}}}");
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }

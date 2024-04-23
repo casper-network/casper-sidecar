@@ -65,6 +65,16 @@ pub(crate) mod tests {
         ]
     }
 
+    pub fn sse_server_sigs_2_0_0_data() -> EventsWithIds {
+        vec![
+            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (
+                Some("1".to_string()),
+                example_finality_signature_2_0_0(BLOCK_HASH_2),
+            ),
+        ]
+    }
+
     pub fn sse_server_example_2_0_0_data_second() -> EventsWithIds {
         vec![
             (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),

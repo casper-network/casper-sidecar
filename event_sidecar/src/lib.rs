@@ -777,5 +777,5 @@ async fn start_single_threaded_events_consumer<
 }
 
 fn count_error(reason: &str) {
-    observe_error("main_loop", reason);
+    observe_error("event_listener_server", reason);
 }

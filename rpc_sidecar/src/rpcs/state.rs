@@ -277,7 +277,7 @@ impl RpcWithParams for GetBalance {
         let state_id = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
         let purse_id = PortPurseIdentifier::Purse(purse_uref);
         let balance = node_client
-            .get_balance_by_state_root(Some(state_id), purse_id)
+            .read_balance(Some(state_id), purse_id)
             .await
             .map_err(|err| Error::NodeRequest("balance", err))?;
 
@@ -934,9 +934,9 @@ impl RpcWithParams for QueryBalance {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
         let balance = node_client
-            .get_balance_by_state_root(params.state_identifier, purse_id)
+            .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance: balance.available_balance,
@@ -1007,9 +1007,9 @@ impl RpcWithParams for QueryBalanceDetails {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
         let balance = node_client
-            .get_balance_by_state_root(params.state_identifier, purse_id)
+            .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
 
         let holds = balance
             .balance_holds
@@ -2040,11 +2040,7 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(
-                        &*req,
-                        GlobalStateRequest::BalanceByBlock { .. }
-                            | GlobalStateRequest::BalanceByStateRoot { .. }
-                    ) =>
+                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
