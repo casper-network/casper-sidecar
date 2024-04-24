@@ -1,17 +1,22 @@
 use std::time::Duration;
 
 use bytes::{BufMut, BytesMut};
-use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, GlobalStateQueryResult};
+use casper_binary_port::{
+    BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest,
+    GlobalStateQueryResult,
+};
 use casper_types::{bytesrepr::ToBytes, CLValue, ProtocolVersion, StoredValue};
+use futures::{SinkExt, StreamExt};
 use tokio::task::JoinHandle;
 use tokio::{
     net::{TcpListener, TcpStream},
     time::sleep,
 };
+use tokio_util::codec::Framed;
 
 const LOCALHOST: &str = "127.0.0.1";
+const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 
-/*
 pub struct BinaryPortMock {
     port: u16,
     response: Vec<u8>,
@@ -25,24 +30,14 @@ impl BinaryPortMock {
     pub async fn start(&self) {
         let port = self.port;
         let addr = format!("{}:{}", LOCALHOST, port);
-        let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-            ChannelConfiguration::default()
-                .with_request_limit(300)
-                .with_max_request_payload_size(1000)
-                .with_max_response_payload_size(1000),
-        );
-
-        let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 20);
-
-        let rpc_builder = Box::leak(Box::new(RpcBuilder::new(io_builder)));
         let listener = TcpListener::bind(addr.clone())
             .await
             .expect("failed to listen");
         loop {
             match listener.accept().await {
-                Ok((client, _addr)) => {
+                Ok((stream, _addr)) => {
                     let response_payload = self.response.clone();
-                    tokio::spawn(handle_client(client, rpc_builder, response_payload));
+                    tokio::spawn(handle_client(stream, response_payload));
                 }
                 Err(io_err) => {
                     println!("acceptance failure: {:?}", io_err);
@@ -52,26 +47,17 @@ impl BinaryPortMock {
     }
 }
 
-async fn handle_client<const N: usize>(
-    mut client: TcpStream,
-    rpc_builder: &RpcBuilder<N>,
-    response: Vec<u8>,
-) {
-    let (reader, writer) = client.split();
-    let (client, mut server) = rpc_builder.build(reader, writer);
-    while let Ok(Some(incoming_request)) = server.next_request().await {
-        tokio::spawn(handle_request(incoming_request, response.clone()));
-    }
-    drop(client);
-}
+async fn handle_client(stream: TcpStream, response: Vec<u8>) {
+    let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
 
-async fn handle_request(incoming_request: IncomingRequest, response: Vec<u8>) {
-    let mut response_payload = BytesMut::new();
-    let byt = response;
-    for b in byt {
-        response_payload.put_u8(b);
+    let next_message = client.next().await;
+    if let Some(_) = next_message {
+        tokio::spawn({
+            async move {
+                let _ = client.send(BinaryMessage::new(response)).await;
+            }
+        });
     }
-    incoming_request.respond(Some(response_payload.freeze()));
 }
 
 pub fn get_port() -> u16 {

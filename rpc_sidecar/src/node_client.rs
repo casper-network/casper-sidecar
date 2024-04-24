@@ -594,7 +594,7 @@ mod tests {
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
         let config = NodeClientConfig::finite_retries_config(1111, 2);
-        let res = JulietNodeClient::new(config).await;
+        let res = FramedNodeClient::new(config).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -609,10 +609,7 @@ mod tests {
         let mut rng = TestRng::new();
         let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(port).await;
         let config = NodeClientConfig::finite_retries_config(port, 2);
-        let (c, server_loop) = JulietNodeClient::new(config).await.unwrap();
-        tokio::spawn(async move {
-            server_loop.await.unwrap();
-        });
+        let c = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -631,10 +628,7 @@ mod tests {
                 start_mock_binary_port_responding_with_stored_value(port).await;
         });
         let config = NodeClientConfig::finite_retries_config(port, 5);
-        let (client, server_loop) = JulietNodeClient::new(config).await.unwrap();
-        tokio::spawn(async move {
-            server_loop.await.unwrap();
-        });
+        let client = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
@@ -645,7 +639,7 @@ mod tests {
 
     async fn query_global_state_for_string_value(
         rng: &mut TestRng,
-        client: &JulietNodeClient,
+        client: &FramedNodeClient,
     ) -> Result<StoredValue, Error> {
         let state_root_hash = Digest::random(rng);
         let base_key = Key::ChecksumRegistry;
