@@ -374,10 +374,12 @@ impl NodeClient for FramedNodeClient {
             BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
         let mut client = self.client.write().await;
 
-        // TODO[RC]: Read timeout from config.
-        if let Err(err) = tokio::time::timeout(Duration::from_secs(5), client.send(payload))
-            .await
-            .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
+        if let Err(err) = tokio::time::timeout(
+            Duration::from_secs(self.config.message_timeout_secs),
+            client.send(payload),
+        )
+        .await
+        .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
         {
             warn!(
                 addr = %self.config.address,
@@ -387,7 +389,11 @@ impl NodeClient for FramedNodeClient {
             return Err(Error::RequestFailed(err.to_string()));
         };
 
-        let Ok(maybe_response) = tokio::time::timeout(Duration::from_secs(5), client.next()).await
+        let Ok(maybe_response) = tokio::time::timeout(
+            Duration::from_secs(self.config.message_timeout_secs),
+            client.next(),
+        )
+        .await
         else {
             return Err(Error::RequestFailed("timeout".to_owned()));
         };

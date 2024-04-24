@@ -107,6 +107,8 @@ impl Default for RpcConfig {
 const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
 /// Default maximum payload size.
 const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+/// Default message timeout in seconds.
+const DEFAULT_MESSAGE_TIMEOUT_SECS: u64 = 30;
 /// Default request limit.
 const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
 /// Default request buffer size.
@@ -127,6 +129,8 @@ pub struct NodeClientConfig {
     pub address: SocketAddr,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
+    /// Message transfer timeout in seconds.
+    pub message_timeout_secs: u64,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -143,6 +147,7 @@ impl NodeClientConfig {
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
+            message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
@@ -160,6 +165,7 @@ impl NodeClientConfig {
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
+            message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: 500,
                 max_delay_ms: 3000,
@@ -185,6 +191,8 @@ pub struct NodeClientConfigTarget {
     pub address: SocketAddr,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
+    /// Message transfer timeout in seconds.
+    pub message_timeout_secs: u64,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -209,6 +217,7 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
             request_limit: value.request_limit,
             max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,
+            message_timeout_secs: value.message_timeout_secs,
             exponential_backoff,
         })
     }

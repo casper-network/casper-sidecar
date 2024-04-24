@@ -72,6 +72,8 @@ max_message_size_bytes = 4_194_304
 request_limit = 3
 # Number of node requests that can be buffered.
 request_buffer_size = 16
+# Timeout for a node request in seconds.
+message_timeout_secs = 30
 
 [rpc_server.node_client.exponential_backoff]
 # The initial delay in milliseconds before the first retry.
