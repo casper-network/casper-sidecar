@@ -397,22 +397,23 @@ impl NodeClient for FramedNodeClient {
         else {
             return Err(Error::RequestFailed("timeout".to_owned()));
         };
-        let payload = match maybe_response {
-            // TODO[RC]: Fix unwrap and to_vec?
-            Some(response) => response.unwrap().payload().to_vec(),
-            None => {
-                let stream = Self::reconnect(&self.config)
-                    .await
-                    .map_err(|_| Error::RequestFailed("reconnection failed".to_string()))?;
-                *client = stream;
-                // Reconnect, but still report a failure to the client.
-                return Err(Error::RequestFailed("disconnected".to_owned()));
-            }
-        };
 
-        let resp = bytesrepr::deserialize_from_slice(&payload)
+        if let Some(response) = maybe_response {
+            let resp = bytesrepr::deserialize_from_slice(
+                response
+                    .map_err(|err| Error::RequestFailed(err.to_string()))?
+                    .payload(),
+            )
             .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-        handle_response(resp, &self.shutdown)
+            handle_response(resp, &self.shutdown)
+        } else {
+            let stream = Self::reconnect(&self.config)
+                .await
+                .map_err(|_| Error::RequestFailed("reconnection failed".to_string()))?;
+            *client = stream;
+            // Reconnect, but still report a failure to the client.
+            return Err(Error::RequestFailed("disconnected".to_owned()));
+        }
     }
 }
 
