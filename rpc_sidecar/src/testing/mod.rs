@@ -93,7 +93,6 @@ async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
         let binary_port = BinaryPortMock::new(port, data);
         binary_port.start().await;
     });
-    sleep(Duration::from_secs(3)).await; // This should be handled differently, preferrably the mock binary port should inform that it already bound to the port
+    sleep(Duration::from_secs(3)).await; // This should be handled differently, preferably the mock binary port should inform that it already bound to the port
     handler
 }
-*/
