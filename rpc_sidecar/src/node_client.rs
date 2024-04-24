@@ -14,7 +14,7 @@ use std::{
 use tokio_util::codec::Framed;
 
 use casper_binary_port::{
-    BalanceResponse, BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
     GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, PurseIdentifier, RecordId,
@@ -302,15 +302,14 @@ impl Error {
 }
 
 pub struct FramedNodeClient {
-    client: Arc<RwLock<Framed<TcpStream, BinaryPortCodec>>>,
+    client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
     shutdown: Arc<Notify>,
     config: NodeClientConfig,
 }
 
 impl FramedNodeClient {
     pub async fn new(config: NodeClientConfig) -> Result<Self, AnyhowError> {
-        let stream =
-            Self::connect_with_retries(config.address, &config.exponential_backoff).await?;
+        let stream = Self::connect_with_retries(&config).await?;
         let shutdown = Arc::new(Notify::new());
 
         Ok(Self {
@@ -321,39 +320,47 @@ impl FramedNodeClient {
     }
 
     async fn connect_with_retries(
-        addr: SocketAddr,
-        config: &ExponentialBackoffConfig,
-    ) -> Result<Framed<TcpStream, BinaryPortCodec>, AnyhowError> {
-        let mut wait = config.initial_delay_ms;
+        config: &NodeClientConfig,
+    ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
+        let mut wait = config.exponential_backoff.initial_delay_ms;
         let mut current_attempt = 1;
         loop {
-            match TcpStream::connect(addr).await {
-                Ok(stream) => return Ok(Framed::new(stream, BinaryPortCodec {})),
+            match TcpStream::connect(config.address).await {
+                Ok(stream) => {
+                    return Ok(Framed::new(
+                        stream,
+                        BinaryMessageCodec::new(config.max_message_size_bytes),
+                    ))
+                }
                 Err(err) => {
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     current_attempt += 1;
-                    if !config.max_attempts.can_attempt(current_attempt) {
+                    if !config
+                        .exponential_backoff
+                        .max_attempts
+                        .can_attempt(current_attempt)
+                    {
                         anyhow::bail!(
                             "Couldn't connect to node {} after {} attempts",
-                            addr,
+                            config.address,
                             current_attempt - 1
                         );
                     }
                     tokio::time::sleep(Duration::from_millis(wait)).await;
-                    wait = (wait * config.coefficient).min(config.max_delay_ms);
+                    wait = (wait * config.exponential_backoff.coefficient)
+                        .min(config.exponential_backoff.max_delay_ms);
                 }
             };
         }
     }
 
     async fn reconnect(
-        addr: SocketAddr,
-        config: &ExponentialBackoffConfig,
-    ) -> Result<Framed<TcpStream, BinaryPortCodec>, AnyhowError> {
+        config: &NodeClientConfig,
+    ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let disconnected_start = Instant::now();
         inc_disconnect();
         error!("node connection closed, will attempt to reconnect");
-        let stream = Self::connect_with_retries(addr, config).await?;
+        let stream = Self::connect_with_retries(config).await?;
         info!("connection with the node has been re-established");
         observe_reconnect_time(disconnected_start.elapsed());
         Ok(stream)
@@ -364,7 +371,7 @@ impl FramedNodeClient {
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
         let payload =
-            BinaryPortMessage(encode_request(&req).expect("should always serialize a request"));
+            BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
         let mut client = self.client.write().await;
 
         // TODO[RC]: Read timeout from config.
@@ -385,10 +392,10 @@ impl NodeClient for FramedNodeClient {
             return Err(Error::RequestFailed("timeout".to_owned()));
         };
         let payload = match maybe_response {
-            // TODO[RC]: Fix unwrap
-            Some(response) => response.unwrap().0,
+            // TODO[RC]: Fix unwrap and to_vec?
+            Some(response) => response.unwrap().payload().to_vec(),
             None => {
-                let stream = Self::reconnect(self.config.address, &self.config.exponential_backoff)
+                let stream = Self::reconnect(&self.config)
                     .await
                     .map_err(|_| Error::RequestFailed("reconnection failed".to_string()))?;
                 *client = stream;

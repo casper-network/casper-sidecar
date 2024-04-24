@@ -66,10 +66,8 @@ cors_origin = ''
 [rpc_server.node_client]
 # The address of the node to connect to.
 address = '127.0.0.1:28104'
-# Maximum size of a request in bytes.
-max_request_size_bytes = 4_194_304
-# Maximum size of a response in bytes.
-max_response_size_bytes = 4_194_304
+# Maximum size of a message in bytes.
+max_message_size_bytes = 4_194_304
 # Maximum number of in-flight node requests.
 request_limit = 3
 # Number of node requests that can be buffered.

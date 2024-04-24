@@ -138,8 +138,7 @@ cors_origin = ''
 
 [rpc_server.node_client]
 address = '127.0.0.1:28101'
-max_request_size_bytes = 4_194_304
-max_response_size_bytes = 4_194_304
+max_message_size_bytes = 4_194_304
 request_limit = 3
 request_buffer_size = 16
 
@@ -171,8 +170,7 @@ max_attempts = 30
 * `speculative_exec_server.cors_origin` - Configures the CORS origin.
 
 * `node_client.address` - Address of the Casper Node binary port
-* `node_client.max_request_size_bytes` - Maximum request size to the binary port in bytes.
-* `node_client.max_response_size_bytes` - Maximum response size from the binary port in bytes.
+* `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
 * `node_client.request_limit` - Maximum number of in-flight requests.
 * `node_client.request_buffer_size` - Number of node requests that can be buffered.
 

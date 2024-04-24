@@ -106,7 +106,7 @@ impl Default for RpcConfig {
 // Change this to SocketAddr, once SocketAddr::new is const stable.
 const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
 /// Default maximum payload size.
-const DEFAULT_MAX_NODE_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
 /// Default request limit.
 const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
 /// Default request buffer size.
@@ -125,10 +125,8 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 pub struct NodeClientConfig {
     /// Address of the node.
     pub address: SocketAddr,
-    /// Maximum size of a request in bytes.
-    pub max_request_size_bytes: u32,
-    /// Maximum size of a response in bytes.
-    pub max_response_size_bytes: u32,
+    /// Maximum size of a message in bytes.
+    pub max_message_size_bytes: u32,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -143,8 +141,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             address: DEFAULT_NODE_CONNECT_ADDRESS.into(),
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
-            max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
-            max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
@@ -161,8 +158,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             address: local_socket,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
-            max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
-            max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: 500,
@@ -187,10 +183,8 @@ impl Default for NodeClientConfig {
 pub struct NodeClientConfigTarget {
     /// Address of the node.
     pub address: SocketAddr,
-    /// Maximum size of a request in bytes.
-    pub max_request_size_bytes: u32,
-    /// Maximum size of a response in bytes.
-    pub max_response_size_bytes: u32,
+    /// Maximum size of a message in bytes.
+    pub max_message_size_bytes: u32,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -213,8 +207,7 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
         Ok(NodeClientConfig {
             address: value.address,
             request_limit: value.request_limit,
-            max_request_size_bytes: value.max_request_size_bytes,
-            max_response_size_bytes: value.max_response_size_bytes,
+            max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,
             exponential_backoff,
         })
