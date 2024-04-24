@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use bytes::{BufMut, BytesMut};
 use casper_binary_port::{
     BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest,
     GlobalStateQueryResult,
@@ -51,7 +50,7 @@ async fn handle_client(stream: TcpStream, response: Vec<u8>) {
     let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
 
     let next_message = client.next().await;
-    if let Some(_) = next_message {
+    if next_message.is_some() {
         tokio::spawn({
             async move {
                 let _ = client.send(BinaryMessage::new(response)).await;

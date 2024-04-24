@@ -1,4 +1,4 @@
-use crate::{config::ExponentialBackoffConfig, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
+use crate::{NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -6,8 +6,6 @@ use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
-    future::Future,
-    net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
@@ -31,10 +29,7 @@ use std::{
     time::Instant,
 };
 use tokio::{
-    net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpStream,
-    },
+    net::TcpStream,
     sync::{Notify, RwLock},
 };
 use tracing::{error, field, info, warn};
