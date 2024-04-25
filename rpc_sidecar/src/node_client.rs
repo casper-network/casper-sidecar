@@ -30,7 +30,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{Notify, RwLock},
+    sync::{Notify, RwLock, Semaphore},
 };
 use tracing::{error, field, info, warn};
 
@@ -300,6 +300,7 @@ pub struct FramedNodeClient {
     client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
     shutdown: Arc<Notify>,
     config: NodeClientConfig,
+    request_limit: Semaphore,
 }
 
 impl FramedNodeClient {
@@ -309,6 +310,7 @@ impl FramedNodeClient {
 
         Ok(Self {
             client: Arc::new(RwLock::new(stream)),
+            request_limit: Semaphore::new(config.request_limit as usize),
             shutdown,
             config,
         })
@@ -365,6 +367,12 @@ impl FramedNodeClient {
 #[async_trait]
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
+        let _permit = self
+            .request_limit
+            .acquire()
+            .await
+            .map_err(|err| Error::RequestFailed(err.to_string()))?;
+
         let payload =
             BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
         let mut client = self.client.write().await;
