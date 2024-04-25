@@ -3194,9 +3194,7 @@
               "Reserved": {
                 "type": "object",
                 "required": [
-                  "paid_amount",
-                  "receipt",
-                  "strike_price"
+                  "receipt"
                 ],
                 "properties": {
                   "receipt": {
@@ -3206,18 +3204,6 @@
                         "$ref": "#/components/schemas/Digest"
                       }
                     ]
-                  },
-                  "paid_amount": {
-                    "description": "Price paid in the past to reserve space in a future block.",
-                    "type": "integer",
-                    "format": "uint64",
-                    "minimum": 0.0
-                  },
-                  "strike_price": {
-                    "description": "The gas price at the time of reservation.",
-                    "type": "integer",
-                    "format": "uint8",
-                    "minimum": 0.0
                   }
                 },
                 "additionalProperties": false
@@ -5464,6 +5450,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "A reservation record.",
+            "type": "object",
+            "required": [
+              "Reservation"
+            ],
+            "properties": {
+              "Reservation": {
+                "$ref": "#/components/schemas/ReservationKind"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6328,6 +6327,28 @@
                 "$ref": "#/components/schemas/CLValue"
               }
             ]
+          }
+        }
+      },
+      "ReservationKind": {
+        "description": "Container for bytes recording location, type and data for a gas reservation",
+        "type": "object",
+        "required": [
+          "receipt",
+          "reservation_data",
+          "reservation_kind"
+        ],
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "reservation_kind": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "reservation_data": {
+            "$ref": "#/components/schemas/Bytes"
           }
         }
       },
