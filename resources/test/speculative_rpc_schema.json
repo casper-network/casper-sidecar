@@ -2070,11 +2070,10 @@
           },
           "versions": {
             "description": "All versions (enabled & disabled)",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
-              }
-            ]
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractVersion"
+            }
           },
           "disabled_versions": {
             "description": "Disabled versions",
@@ -2102,34 +2101,32 @@
           }
         }
       },
-      "Array_of_ContractVersionAndHash": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/ContractVersionAndHash"
-        }
-      },
-      "ContractVersionAndHash": {
+      "ContractVersion": {
         "type": "object",
         "required": [
-          "contract_entity_hash",
-          "contract_version_key"
+          "contract_hash",
+          "contract_version",
+          "protocol_version_major"
         ],
         "properties": {
-          "contract_version_key": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ContractVersionKey"
-              }
-            ]
+          "protocol_version_major": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
           },
-          "contract_entity_hash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ContractHash"
-              }
-            ]
+          "contract_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          },
+          "contract_hash": {
+            "$ref": "#/components/schemas/ContractHash"
           }
         }
+      },
+      "ContractHash": {
+        "description": "The hash address of the contract",
+        "type": "string"
       },
       "ContractVersionKey": {
         "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
@@ -2148,10 +2145,6 @@
         ],
         "maxItems": 2,
         "minItems": 2
-      },
-      "ContractHash": {
-        "description": "The hash address of the contract",
-        "type": "string"
       },
       "Array_of_NamedUserGroup": {
         "type": "array",
