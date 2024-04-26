@@ -35,6 +35,15 @@ use warp::{
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
+
+/// The URL path part to subscribe to "backwards compatible" 'main' event stream.
+/// It will check for events from the nodes firehose and those which can be translated to 1.x format will be translated.
+pub const SSE_API_MAIN_PATH: &str = "main";
+/// The URL path part to subscribe to only `DeployAccepted` events.
+pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
+/// The URL path part to subscribe to only `FinalitySignature` events.
+pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
+
 /// The URL path part to subscribe to all events other than `TransactionAccepted`s and
 /// `FinalitySignature`s.
 /// The URL path part to subscribe to sidecar specific events.
@@ -53,6 +62,21 @@ const EVENTS_FILTER: [EventFilter; 8] = [
     EventFilter::FinalitySignature,
     EventFilter::Step,
 ];
+/// The filter associated with `/events/main` path.
+const MAIN_FILTER: [EventFilter; 6] = [
+    EventFilter::ApiVersion,
+    EventFilter::BlockAdded,
+    EventFilter::TransactionProcessed,
+    EventFilter::TransactionExpired,
+    EventFilter::Fault,
+    EventFilter::Step,
+];
+/// The filter associated with `/events/deploys` path.
+const DEPLOYS_FILTER: [EventFilter; 2] =
+    [EventFilter::ApiVersion, EventFilter::TransactionAccepted];
+/// The filter associated with `/events/sigs` path.
+const SIGNATURES_FILTER: [EventFilter; 2] =
+    [EventFilter::ApiVersion, EventFilter::FinalitySignature];
 /// The filter associated with `/events/sidecar` path.
 const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 /// The "id" field of the events sent on the event stream to clients.
@@ -251,17 +275,29 @@ fn build_event_for_outbound(
         .id(id)))
 }
 
-pub(super) fn path_to_filter(path_param: &str) -> Option<&'static Endpoint> {
+pub(super) fn path_to_filter(
+    path_param: &str,
+    enable_legacy_filters: bool,
+) -> Option<&'static Endpoint> {
     match path_param {
         SSE_API_ROOT_PATH => Some(&Endpoint::Events),
+        SSE_API_MAIN_PATH if enable_legacy_filters => Some(&Endpoint::Main),
+        SSE_API_DEPLOYS_PATH if enable_legacy_filters => Some(&Endpoint::Deploys),
+        SSE_API_SIGNATURES_PATH if enable_legacy_filters => Some(&Endpoint::Sigs),
         SSE_API_SIDECAR_PATH => Some(&Endpoint::Sidecar),
         _ => None,
     }
 }
 /// Converts the final URL path element to a slice of `EventFilter`s.
-pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
+pub(super) fn get_filter(
+    path_param: &str,
+    enable_legacy_filters: bool,
+) -> Option<&'static [EventFilter]> {
     match path_param {
         SSE_API_ROOT_PATH => Some(&EVENTS_FILTER[..]),
+        SSE_API_MAIN_PATH if enable_legacy_filters => Some(&MAIN_FILTER[..]),
+        SSE_API_DEPLOYS_PATH if enable_legacy_filters => Some(&DEPLOYS_FILTER[..]),
+        SSE_API_SIGNATURES_PATH if enable_legacy_filters => Some(&SIGNATURES_FILTER[..]),
         SSE_API_SIDECAR_PATH => Some(&SIDECAR_FILTER[..]),
         _ => None,
     }
@@ -290,12 +326,25 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
 }
 
 /// Creates a 404 response with a useful error message in the body.
-fn create_404() -> Response {
-    let mut response = Response::new(Body::from(format!(
-        "invalid path: expected '/{root}' or '/{root}/{sidecar}'\n",
-        root = SSE_API_ROOT_PATH,
-        sidecar = SSE_API_SIDECAR_PATH,
-    )));
+fn create_404(enable_legacy_filters: bool) -> Response {
+    let text = if enable_legacy_filters {
+        format!(
+            "invalid path: expected '/{root}/{main}', '/{root}/{deploys}' or '/{root}/{sigs} or '/{root}/{sidecar}'\n",
+            root = SSE_API_ROOT_PATH,
+            main = SSE_API_MAIN_PATH,
+            deploys = SSE_API_DEPLOYS_PATH,
+            sigs = SSE_API_SIGNATURES_PATH,
+            sidecar = SSE_API_SIDECAR_PATH,
+        )
+    } else {
+        format!(
+            "invalid path: expected '/{root}/{main}' or '/{root}/{sidecar}'\n",
+            root = SSE_API_ROOT_PATH,
+            main = SSE_API_MAIN_PATH,
+            sidecar = SSE_API_SIDECAR_PATH,
+        )
+    };
+    let mut response = Response::new(Body::from(text));
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
 }
@@ -331,15 +380,17 @@ fn serve_sse_response_handler(
     cloned_broadcaster: tokio::sync::broadcast::Sender<BroadcastChannelMessage>,
     max_concurrent_subscribers: u32,
     new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
+    enable_legacy_filters: bool,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) -> http::Response<Body> {
     if let Some(value) = validate(&cloned_broadcaster, max_concurrent_subscribers) {
         return value;
     }
-    let (event_filter, stream_filter, start_from) = match parse_url_props(maybe_path_param, query) {
-        Ok(value) => value,
-        Err(error_response) => return error_response,
-    };
+    let (event_filter, stream_filter, start_from) =
+        match parse_url_props(maybe_path_param, query, enable_legacy_filters) {
+            Ok(value) => value,
+            Err(error_response) => return error_response,
+        };
 
     // Create a channel for the client's handler to receive the stream of initial events.
     let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
@@ -374,15 +425,16 @@ fn serve_sse_response_handler(
 fn parse_url_props(
     maybe_path_param: Option<String>,
     query: HashMap<String, String>,
+    enable_legacy_filters: bool,
 ) -> Result<UrlProps, http::Response<Body>> {
     let path_param = maybe_path_param.unwrap_or_else(|| SSE_API_ROOT_PATH.to_string());
-    let event_filter = match get_filter(path_param.as_str()) {
+    let event_filter = match get_filter(path_param.as_str(), enable_legacy_filters) {
         Some(filter) => filter,
-        None => return Err(create_404()),
+        None => return Err(create_404(enable_legacy_filters)),
     };
-    let stream_filter = match path_to_filter(path_param.as_str()) {
+    let stream_filter = match path_to_filter(path_param.as_str(), enable_legacy_filters) {
         Some(filter) => filter,
-        None => return Err(create_404()),
+        None => return Err(create_404(enable_legacy_filters)),
     };
     let start_from = match parse_query(query) {
         Ok(maybe_id) => maybe_id,
@@ -409,7 +461,11 @@ fn validate(
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
-    pub(super) fn new(broadcast_channel_size: usize, max_concurrent_subscribers: u32) -> Self {
+    pub(super) fn new(
+        broadcast_channel_size: usize,
+        max_concurrent_subscribers: u32,
+        enable_legacy_filters: bool,
+    ) -> Self {
         // Create a channel to broadcast new events to all subscribed clients' streams.
         let (event_broadcaster, _) = broadcast::channel(broadcast_channel_size);
         let cloned_broadcaster = event_broadcaster.clone();
@@ -436,12 +492,15 @@ impl ChannelsAndFilter {
                         cloned_broadcaster.clone(),
                         max_concurrent_subscribers,
                         new_subscriber_info_sender_clone,
+                        enable_legacy_filters,
                         #[cfg(feature = "additional-metrics")]
                         tx.clone(),
                     )
                 },
             )
-            .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
+            .or_else(
+                move |_| async move { Ok::<_, Rejection>((create_404(enable_legacy_filters),)) },
+            )
             .boxed();
 
         ChannelsAndFilter {
@@ -665,8 +724,6 @@ mod tests {
             data: SseData::Shutdown,
             json_data: None,
             inbound_filter: Some(SseFilter::Events),
-            //For shutdown we need to provide the inbound
-            //filter because we send shutdowns only to corresponding outbounds to prevent duplicates
         };
         let sidecar_api_version = ServerSentEvent {
             id: Some(rng.gen()),
@@ -675,7 +732,6 @@ mod tests {
             inbound_filter: None,
         };
 
-        // `EventFilter::Events` should only filter out `SidecarApiVersions`s.
         should_not_filter_out(&api_version, &EVENTS_FILTER[..]).await;
         should_not_filter_out(&block_added, &EVENTS_FILTER[..]).await;
         should_not_filter_out(&transaction_accepted, &EVENTS_FILTER[..]).await;
@@ -688,7 +744,6 @@ mod tests {
         should_not_filter_out(&finality_signature, &EVENTS_FILTER[..]).await;
         should_filter_out(&sidecar_api_version, &EVENTS_FILTER[..]).await;
 
-        // `EventFilter::Events` should only filter out `SidecarApiVersions`s.
         should_filter_out(&api_version, &SIDECAR_FILTER[..]).await;
         should_filter_out(&block_added, &SIDECAR_FILTER[..]).await;
         should_filter_out(&transaction_accepted, &SIDECAR_FILTER[..]).await;
@@ -700,6 +755,39 @@ mod tests {
         should_filter_out(&finality_signature, &SIDECAR_FILTER[..]).await;
         should_not_filter_out(&shutdown, &SIDECAR_FILTER).await;
         should_not_filter_out(&sidecar_api_version, &SIDECAR_FILTER[..]).await;
+
+        should_not_filter_out(&api_version, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&block_added, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&transaction_processed, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&transaction_expired, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&fault, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&step, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &MAIN_FILTER).await;
+
+        should_filter_out(&transaction_accepted, &MAIN_FILTER[..]).await;
+        should_filter_out(&finality_signature, &MAIN_FILTER[..]).await;
+
+        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]).await;
+        should_not_filter_out(&transaction_accepted, &DEPLOYS_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]).await;
+
+        should_filter_out(&block_added, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&transaction_processed, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&transaction_expired, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&fault, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&step, &DEPLOYS_FILTER[..]).await;
+
+        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]).await;
+        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]).await;
+
+        should_filter_out(&block_added, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&transaction_accepted, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&transaction_processed, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&transaction_expired, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&fault, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&step, &SIGNATURES_FILTER[..]).await;
     }
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
@@ -767,7 +855,13 @@ mod tests {
             inbound_filter: None,
         };
 
-        for filter in &[&EVENTS_FILTER[..], &SIDECAR_FILTER[..]] {
+        for filter in &[
+            &EVENTS_FILTER[..],
+            &SIDECAR_FILTER[..],
+            &MAIN_FILTER[..],
+            &DEPLOYS_FILTER[..],
+            &SIGNATURES_FILTER[..],
+        ] {
             should_filter_out(&malformed_api_version, filter).await;
             should_filter_out(&malformed_block_added, filter).await;
             should_filter_out(&malformed_transaction_accepted, filter).await;
@@ -781,7 +875,7 @@ mod tests {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn should_filter_duplicate_events() {
+    async fn should_filter_duplicate_events(path_filter: &str) {
         let mut rng = TestRng::new();
 
         let mut transactions = HashMap::new();
@@ -792,6 +886,7 @@ mod tests {
                     &mut rng,
                     0,
                     NUM_INITIAL_EVENTS,
+                    path_filter,
                     &mut transactions,
                 ))
                 .collect();
@@ -804,6 +899,7 @@ mod tests {
                 &mut rng,
                 *duplicate_count,
                 &initial_events,
+                path_filter,
                 &mut transactions,
             );
 
@@ -824,7 +920,7 @@ mod tests {
             drop(initial_events_sender);
             drop(ongoing_events_sender);
 
-            let stream_filter = path_to_filter(SSE_API_ROOT_PATH).unwrap();
+            let stream_filter = path_to_filter(path_filter, true).unwrap();
             #[cfg(feature = "additional-metrics")]
             let (tx, rx) = channel(1000);
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
@@ -832,7 +928,7 @@ mod tests {
                 initial_events_receiver,
                 ongoing_events_receiver,
                 stream_filter,
-                get_filter(SSE_API_ROOT_PATH).unwrap(),
+                get_filter(path_filter, true).unwrap(),
                 #[cfg(feature = "additional-metrics")]
                 tx,
             )
@@ -881,11 +977,28 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn should_filter_duplicate_main_events() {
+        should_filter_duplicate_events(SSE_API_MAIN_PATH).await
+    }
+    /// This test checks that deploy-accepted events from the initial stream which are duplicated in
+    /// the ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_deploys_events() {
+        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
+    }
+    /// This test checks that signature events from the initial stream which are duplicated in the
+    /// ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_signature_events() {
+        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
+    }
+
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
     async fn should_filter_duplicate_firehose_events() {
-        should_filter_duplicate_events().await
+        should_filter_duplicate_events(SSE_API_ROOT_PATH).await
     }
 
     // Returns `count` random SSE events.  The events will have sequential IDs starting from `start_id`, and if the path filter
@@ -895,21 +1008,37 @@ mod tests {
         rng: &mut TestRng,
         start_id: Id,
         count: usize,
+        path_filter: &str,
         transactions: &mut HashMap<TransactionHash, Transaction>,
     ) -> Vec<ServerSentEvent> {
         (start_id..(start_id + count as u32))
             .map(|id| {
-                let discriminator = id % 3;
-                let data = match discriminator {
-                    0 => SseData::random_block_added(rng),
-                    1 => {
+                let data = match path_filter {
+                    SSE_API_MAIN_PATH => SseData::random_block_added(rng),
+                    SSE_API_DEPLOYS_PATH => {
                         let (event, transaction) = SseData::random_transaction_accepted(rng);
                         assert!(transactions
                             .insert(transaction.hash(), transaction)
                             .is_none());
                         event
                     }
-                    2 => SseData::random_finality_signature(rng),
+                    SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
+                    SSE_API_ROOT_PATH => {
+                        let discriminator = id % 3;
+                        match discriminator {
+                            0 => SseData::random_block_added(rng),
+                            1 => {
+                                let (event, transaction) =
+                                    SseData::random_transaction_accepted(rng);
+                                assert!(transactions
+                                    .insert(transaction.hash(), transaction)
+                                    .is_none());
+                                event
+                            }
+                            2 => SseData::random_finality_signature(rng),
+                            _ => unreachable!(),
+                        }
+                    }
                     _ => unreachable!(),
                 };
                 ServerSentEvent {
@@ -929,6 +1058,7 @@ mod tests {
         rng: &mut TestRng,
         duplicate_count: usize,
         initial_events: &[ServerSentEvent],
+        path_filter: &str,
         transactions: &mut HashMap<TransactionHash, Transaction>,
     ) -> Vec<ServerSentEvent> {
         assert!(duplicate_count < initial_events.len());
@@ -943,6 +1073,7 @@ mod tests {
                 rng,
                 unique_start_id,
                 unique_count,
+                path_filter,
                 transactions,
             ))
             .collect()

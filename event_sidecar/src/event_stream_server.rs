@@ -68,7 +68,11 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(config: Config, storage_path: PathBuf) -> Result<Self, ListeningError> {
+    pub(crate) fn new(
+        config: Config,
+        storage_path: PathBuf,
+        enable_legacy_filters: bool,
+    ) -> Result<Self, ListeningError> {
         let required_address = resolve_address_and_retype(&config.address)?;
         let event_indexer = EventIndexer::new(storage_path);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
@@ -81,6 +85,7 @@ impl EventStreamServer {
         } = ChannelsAndFilter::new(
             get_broadcast_channel_size(&config),
             config.max_concurrent_subscribers,
+            enable_legacy_filters,
         );
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
         let (listening_address, server_with_shutdown) =

@@ -677,11 +677,8 @@ async fn start_counting_outbound_events(
     cancellation_token: CancellationToken,
     event_stream_server_port: u16,
 ) -> JoinHandle<u32> {
-    let (_, receiver) = fetch_data_from_endpoint(
-        "/events/Transactions?start_from=0",
-        event_stream_server_port,
-    )
-    .await;
+    let (_, receiver) =
+        fetch_data_from_endpoint("/events?start_from=0", event_stream_server_port).await;
     let mut receiver = wait_for_n_messages(1, receiver, Duration::from_secs(120)).await;
     tokio::spawn(async move {
         let mut counter = 0;

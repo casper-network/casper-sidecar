@@ -199,7 +199,24 @@ This repository contains several sample configuration files that can be used as 
 
 Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
-### SSE Node Connections
+### SSE server configuration
+The Casper sidecar SSE server is used to connect to casper nodes, listen to events from them, store them locally and re-broadcast them to clients. The configuration for the SSE server itself is as follows:
+
+```
+[sse_server]
+enable_server = true
+emulate_legacy_sse_apis = ["V1"]
+[[sse_server.connections]]
+ <Described later in the document>
+
+[sse_server.event_stream_server]
+ <Described later in the document>
+```
+
+* `sse_server.enable_server` - If set to true, the SSE server will be enabled.
+* `sse_server.emulate_legacy_sse_apis` - A list of legacy casper node SSE APIs to emulate. The Sidecar will expose sse endpoints that are compatible with specified versions. Please bear in mind that this feature is an emulation and should be used only for transition periods. In most case scenarios having a 1 to 1 mapping of new messages into old formats is impossible, so this can be a process that looses some data and/or doesn't emit all messages that come out of the casper node. The details of the emulation are described in section [Event Stream Server SSE legacy emulations](#event-stream-server-sse-legacy-emulations) module.
+
+#### SSE Node Connections
 
 The Casper Sidecar's SSE component can connect to Casper nodes' SSE endpoints with versions greater or equal to `2.0.0`.
 
@@ -253,6 +270,25 @@ sleep_between_keep_alive_checks_in_seconds = 30
 * `connection_timeout_in_seconds` - Number of seconds before the connection request times out. Parameter is optional, defaults to 5
 * `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. Parameter is optional, defaults to 120
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60
+
+#### Event Stream Server SSE legacy emulations
+
+Currently the only possible emulation is the V1 SSE API. Enabling V1 SSE api emulation requires setting `emulate_legacy_sse_apis` to `["V1"]`, like:
+```
+[sse_server]
+(...)
+emulate_legacy_sse_apis = ["V1"]
+(...)
+```
+
+This will expose three additional sse endpoints:
+* `/events/sigs`
+* `/events/deploys`
+* `/events/main`
+
+Those endpoints will emit events in the same format as the V1 SSE API of the casper node. There are limitations to what Casper Sidecar can and will do, here is a list of assumptions:
+
+TODO -> fill this in the next PR when mapping is implemented
 
 ### Storage
 
@@ -336,7 +372,7 @@ database_username = "postgres"
 max_connections_in_pool = 30
 ```
 
-### Rest & Event Stream Criteria
+#### Rest & Event Stream Criteria
 
 This information determines outbound connection criteria for the Sidecar's `rest_server`.
 

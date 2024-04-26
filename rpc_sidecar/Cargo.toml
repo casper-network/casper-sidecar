@@ -33,7 +33,6 @@ rand = "0.8.3"
 schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 serde = { workspace = true, default-features = true, features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-structopt = "0.3.14"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.6.4", features = ["codec"] }
@@ -48,7 +47,7 @@ derive-new = "0.6.0"
 assert-json-diff = "2"
 casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
 casper-binary-port = { workspace = true, features = ["testing"] }
-pretty_assertions = "0.7.2"
+pretty_assertions = "1"
 regex = "1"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

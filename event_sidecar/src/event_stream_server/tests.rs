@@ -6,8 +6,9 @@ use pretty_assertions::assert_eq;
 use reqwest::Response;
 use serde_json::Value;
 use sse_server::{
-    Id, TransactionAccepted, QUERY_FIELD, SSE_API_ROOT_PATH as ROOT_PATH,
-    SSE_API_SIDECAR_PATH as SIDECAR_PATH,
+    Id, TransactionAccepted, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
+    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
+    SSE_API_SIGNATURES_PATH as SIGS_PATH,
 };
 use std::{
     collections::HashMap,
@@ -270,7 +271,7 @@ impl TestFixture {
             ..Default::default()
         };
         let mut server =
-            EventStreamServer::new(config, self.storage_dir.path().to_path_buf()).unwrap();
+            EventStreamServer::new(config, self.storage_dir.path().to_path_buf(), true).unwrap();
 
         self.first_event_id = server.event_indexer.current_index();
 
@@ -359,7 +360,7 @@ impl TestFixture {
             data: serde_json::to_string(&SseData::ApiVersion(self.protocol_version)).unwrap(),
         };
         let id_filter = build_id_filter(from);
-        let filter = sse_server::get_filter(final_path_element).unwrap();
+        let filter = sse_server::get_filter(final_path_element, true).unwrap();
         let events: Vec<ReceivedEvent> = iter::once(api_version_event)
             .chain(
                 self.events
@@ -681,6 +682,21 @@ async fn should_serve_events_with_no_query(path: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_no_query() {
+    should_serve_events_with_no_query(MAIN_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_no_query() {
+    should_serve_events_with_no_query(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_no_query() {
+    should_serve_events_with_no_query(SIGS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_firehose_events_with_no_query() {
     should_serve_events_with_no_query(ROOT_PATH).await;
 }
@@ -708,6 +724,21 @@ async fn should_serve_events_with_query(path: &str) {
     fixture.stop_server().await;
 
     assert_eq!(received_events, expected_events);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_query() {
+    should_serve_events_with_query(MAIN_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_query() {
+    should_serve_events_with_query(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_query() {
+    should_serve_events_with_query(SIGS_PATH).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -742,6 +773,21 @@ async fn should_serve_remaining_events_with_query(path: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_main_events_with_query() {
+    should_serve_remaining_events_with_query(MAIN_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_deploy_accepted_events_with_query() {
+    should_serve_remaining_events_with_query(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_signature_events_with_query() {
+    should_serve_remaining_events_with_query(SIGS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_remaining_firehose_events_with_query() {
     should_serve_remaining_events_with_query(ROOT_PATH).await;
 }
@@ -766,6 +812,21 @@ async fn should_serve_events_with_query_for_future_event(path: &str) {
     fixture.stop_server().await;
 
     assert_eq!(received_events, expected_events);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(MAIN_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(SIGS_PATH).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -860,16 +921,13 @@ async fn should_handle_bad_url_path() {
         format!("http://{}/{}/bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
     ];
 
-    let expected_body = format!(
-        "invalid path: expected '/{0}' or '/{0}/{1}'",
-        ROOT_PATH, SIDECAR_PATH
-    );
+    let expected_body = "invalid path: expected '/events/main', '/events/deploys' or '/events/sigs or '/events/sidecar'";
     for url in &urls {
         let response = reqwest::get(url).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "URL: {}", url);
         assert_eq!(
             response.text().await.unwrap().trim(),
-            &expected_body,
+            expected_body,
             "URL: {}",
             url
         );
@@ -974,6 +1032,16 @@ async fn should_persist_event_ids(path: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_persist_deploy_accepted_event_ids() {
+    should_persist_event_ids(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_persist_signature_event_ids() {
+    should_persist_event_ids(SIGS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_persist_main_event_ids() {
     should_persist_event_ids(ROOT_PATH).await;
 }
@@ -1022,6 +1090,21 @@ async fn should_handle_wrapping_past_max_event_id(path: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_handle_wrapping_past_max_event_id_for_main() {
+    should_handle_wrapping_past_max_event_id(MAIN_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_handle_wrapping_past_max_event_id_for_deploy_accepted() {
+    should_handle_wrapping_past_max_event_id(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_handle_wrapping_past_max_event_id_for_signatures() {
+    should_handle_wrapping_past_max_event_id(SIGS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_handle_wrapping_past_max_event_id_for_events() {
     should_handle_wrapping_past_max_event_id(ROOT_PATH).await;
 }
@@ -1034,63 +1117,91 @@ async fn should_limit_concurrent_subscribers() {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
-    // Start the server with `max_concurrent_subscribers == 3`, and set to wait for three clients to
+    // Start the server with `max_concurrent_subscribers == 4`, and set to wait for three clients to
     // connect at event 0 and another three at event 1.
     let mut server_behavior = ServerBehavior::new();
-    server_behavior.set_max_concurrent_subscribers(3);
+    server_behavior.set_max_concurrent_subscribers(4);
     let barrier1 = server_behavior.add_client_sync_before_event(0);
     let barrier2 = server_behavior.add_client_sync_before_event(0);
     let barrier3 = server_behavior.add_client_sync_before_event(0);
-    let barrier4 = server_behavior.add_client_sync_before_event(1);
+    let barrier4 = server_behavior.add_client_sync_before_event(0);
     let barrier5 = server_behavior.add_client_sync_before_event(1);
     let barrier6 = server_behavior.add_client_sync_before_event(1);
+    let barrier7 = server_behavior.add_client_sync_before_event(1);
+    let barrier8 = server_behavior.add_client_sync_before_event(1);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url_main = url(server_address, ROOT_PATH, None);
+    let url_root = url(server_address, ROOT_PATH, None);
+    let url_main = url(server_address, MAIN_PATH, None);
+    let url_deploys = url(server_address, DEPLOYS_PATH, None);
+    let url_sigs = url(server_address, SIGS_PATH, None);
 
-    let (expected_events, final_id) = fixture.all_filtered_events(ROOT_PATH);
+    let (expected_events_root, final_id) = fixture.all_filtered_events(ROOT_PATH);
+    let (expected_events_main, final_main_id) = fixture.all_filtered_events(MAIN_PATH);
+    let (expected_events_deploys, final_deploys_id) = fixture.all_filtered_events(DEPLOYS_PATH);
+    let (expected_events_sigs, final_sigs_id) = fixture.all_filtered_events(SIGS_PATH);
 
     // Run the six clients.
     let (
         received_events_1,
         received_events_2,
         received_events_3,
+        received_events_4,
         empty_events_1,
         empty_events_2,
         empty_events_3,
+        empty_events_4,
     ) = join!(
-        subscribe(&url_main, barrier1, final_id, "client 1"),
-        subscribe(&url_main, barrier2, final_id, "client 2"),
-        subscribe(&url_main, barrier3, final_id, "client 3"),
-        subscribe(&url_main, barrier4, final_id, "client 4"),
-        subscribe(&url_main, barrier5, final_id, "client 5"),
-        subscribe(&url_main, barrier6, final_id, "client 6"),
+        subscribe(&url_root, barrier1, final_id, "client 1"),
+        subscribe(&url_main, barrier2, final_main_id, "client 2"),
+        subscribe(&url_deploys, barrier3, final_deploys_id, "client 3"),
+        subscribe(&url_sigs, barrier4, final_sigs_id, "client 4"),
+        subscribe(&url_root, barrier5, final_id, "client 5"),
+        subscribe(&url_main, barrier6, final_main_id, "client 6"),
+        subscribe(&url_deploys, barrier7, final_deploys_id, "client 7"),
+        subscribe(&url_sigs, barrier8, final_sigs_id, "client 8"),
     );
 
     // Check the first three received all expected events.
-    assert_eq!(received_events_1.unwrap(), expected_events);
-    assert_eq!(received_events_2.unwrap(), expected_events);
-    assert_eq!(received_events_3.unwrap(), expected_events);
+    assert_eq!(received_events_1.unwrap(), expected_events_root);
+    assert_eq!(received_events_2.unwrap(), expected_events_main);
+    assert_eq!(received_events_3.unwrap(), expected_events_deploys);
+    assert_eq!(received_events_4.unwrap(), expected_events_sigs);
 
     // Check the second three received no events.
     assert!(empty_events_1.unwrap().is_empty());
     assert!(empty_events_2.unwrap().is_empty());
     assert!(empty_events_3.unwrap().is_empty());
+    assert!(empty_events_4.unwrap().is_empty());
 
     // Check that now the first clients have all disconnected, three new clients can connect.  Have
     // them start from event 80 to allow them to actually pull some events off the stream (as the
     // server has by now stopped creating any new events).
     let start_id = EVENT_COUNT - 20;
 
-    let url_main = url(server_address, ROOT_PATH, Some(start_id));
+    let url_root = url(server_address, ROOT_PATH, Some(start_id));
+    let url_main = url(server_address, MAIN_PATH, Some(start_id));
+    let url_deploys = url(server_address, DEPLOYS_PATH, Some(start_id));
+    let url_sigs = url(server_address, SIGS_PATH, Some(start_id));
 
-    let (expected_main_events, final_main_id) = fixture.filtered_events(ROOT_PATH, start_id);
+    let (expected_root_events, final_root_id) = fixture.filtered_events(ROOT_PATH, start_id);
+    let (expected_main_events, final_main_id) = fixture.filtered_events(MAIN_PATH, start_id);
+    let (expected_deploys_events, final_deploys_id) =
+        fixture.filtered_events(DEPLOYS_PATH, start_id);
+    let (expected_sigs_events, final_sigs_id) = fixture.filtered_events(SIGS_PATH, start_id);
 
-    let received_events_main = subscribe_no_sync(&url_main, final_main_id, "client 7").await;
+    let (received_events_root, received_events_main, received_events_deploys, received_events_sigs) = join!(
+        subscribe_no_sync(&url_root, final_root_id, "client 9"),
+        subscribe_no_sync(&url_main, final_main_id, "client 10"),
+        subscribe_no_sync(&url_deploys, final_deploys_id, "client 11"),
+        subscribe_no_sync(&url_sigs, final_sigs_id, "client 12"),
+    );
 
     // Check the last three clients' received events are as expected.
+    assert_eq!(received_events_root.unwrap(), expected_root_events);
     assert_eq!(received_events_main.unwrap(), expected_main_events);
-
+    assert_eq!(received_events_deploys.unwrap(), expected_deploys_events);
+    assert_eq!(received_events_sigs.unwrap(), expected_sigs_events);
     fixture.stop_server().await;
 }
 
