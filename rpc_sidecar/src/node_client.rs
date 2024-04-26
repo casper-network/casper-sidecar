@@ -448,8 +448,10 @@ impl NodeClient for FramedNodeClient {
             .await
             .map_err(|err| Error::RequestFailed(err.to_string()))?;
 
+        // TODO: Use queue instead of individual timeouts. Currently it is possible to go pass the
+        // semaphore and the immediately wait for the client to become available.
         let mut client = match tokio::time::timeout(
-            Duration::from_secs(self.config.message_timeout_secs),
+            Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
         )
         .await
