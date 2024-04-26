@@ -1,7 +1,7 @@
 use crate::{NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
+use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
@@ -30,7 +30,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{Notify, RwLock, Semaphore},
+    sync::{Notify, RwLock, RwLockWriteGuard, Semaphore},
 };
 use tracing::{error, field, info, warn};
 
@@ -91,12 +91,11 @@ pub trait NodeClient: Send + Sync {
         &self,
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
-        timestamp: Timestamp,
+        _timestamp: Timestamp,
     ) -> Result<BalanceResponse, Error> {
         let get = GlobalStateRequest::BalanceByStateRoot {
             state_identifier,
             purse_identifier,
-            timestamp,
         };
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
@@ -298,22 +297,98 @@ impl Error {
 
 pub struct FramedNodeClient {
     client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
+    reconnect: Arc<Notify>,
     shutdown: Arc<Notify>,
     config: NodeClientConfig,
     request_limit: Semaphore,
 }
 
 impl FramedNodeClient {
-    pub async fn new(config: NodeClientConfig) -> Result<Self, AnyhowError> {
-        let stream = Self::connect_with_retries(&config).await?;
+    pub async fn new(
+        config: NodeClientConfig,
+    ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
+        let stream = Arc::new(RwLock::new(Self::connect_with_retries(&config).await?));
         let shutdown = Arc::new(Notify::new());
+        let reconnect = Arc::new(Notify::new());
 
-        Ok(Self {
-            client: Arc::new(RwLock::new(stream)),
-            request_limit: Semaphore::new(config.request_limit as usize),
-            shutdown,
-            config,
-        })
+        let reconnect_loop = Self::reconnect_loop(
+            config.clone(),
+            Arc::clone(&stream),
+            Arc::clone(&reconnect),
+            Arc::clone(&shutdown),
+        );
+
+        Ok((
+            Self {
+                client: Arc::clone(&stream),
+                request_limit: Semaphore::new(config.request_limit as usize),
+                reconnect,
+                shutdown,
+                config,
+            },
+            reconnect_loop,
+        ))
+    }
+
+    async fn reconnect_loop(
+        config: NodeClientConfig,
+        client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
+        shutdown: Arc<Notify>,
+        reconnect: Arc<Notify>,
+    ) -> Result<(), AnyhowError> {
+        loop {
+            tokio::select! {
+                _ = reconnect.notified() => {
+                        let mut lock = client.write().await;
+                        let new_client = Self::reconnect(&config.clone()).await?;
+                        *lock = new_client;
+                },
+                _ = shutdown.notified() => {
+                    info!("node client shutdown has been requested");
+                    return Ok(())
+                }
+            }
+        }
+    }
+
+    async fn send_request_internal(
+        &self,
+        req: BinaryRequest,
+        client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
+    ) -> Result<BinaryResponseAndRequest, Error> {
+        let payload =
+            BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
+
+        if let Err(err) = tokio::time::timeout(
+            Duration::from_secs(self.config.message_timeout_secs),
+            client.send(payload),
+        )
+        .await
+        .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
+        {
+            return Err(Error::RequestFailed(err.to_string()));
+        };
+
+        let Ok(maybe_response) = tokio::time::timeout(
+            Duration::from_secs(self.config.message_timeout_secs),
+            client.next(),
+        )
+        .await
+        else {
+            return Err(Error::RequestFailed("timeout".to_owned()));
+        };
+
+        if let Some(response) = maybe_response {
+            let resp = bytesrepr::deserialize_from_slice(
+                response
+                    .map_err(|err| Error::RequestFailed(err.to_string()))?
+                    .payload(),
+            )
+            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
+            handle_response(resp, &self.shutdown)
+        } else {
+            Err(Error::RequestFailed("disconnected".to_owned()))
+        }
     }
 
     async fn connect_with_retries(
@@ -373,50 +448,27 @@ impl NodeClient for FramedNodeClient {
             .await
             .map_err(|err| Error::RequestFailed(err.to_string()))?;
 
-        let payload =
-            BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
-        let mut client = self.client.write().await;
-
-        if let Err(err) = tokio::time::timeout(
+        let mut client = match tokio::time::timeout(
             Duration::from_secs(self.config.message_timeout_secs),
-            client.send(payload),
+            self.client.write(),
         )
         .await
-        .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
         {
+            Ok(client) => client,
+            Err(err) => return Err(Error::RequestFailed(err.to_string())),
+        };
+
+        let result = self.send_request_internal(req, &mut client).await;
+        if let Err(err) = &result {
             warn!(
                 addr = %self.config.address,
                 err = display_error(&err),
                 "binary port client handler error"
             );
-            return Err(Error::RequestFailed(err.to_string()));
-        };
-
-        let Ok(maybe_response) = tokio::time::timeout(
-            Duration::from_secs(self.config.message_timeout_secs),
-            client.next(),
-        )
-        .await
-        else {
-            return Err(Error::RequestFailed("timeout".to_owned()));
-        };
-
-        if let Some(response) = maybe_response {
-            let resp = bytesrepr::deserialize_from_slice(
-                response
-                    .map_err(|err| Error::RequestFailed(err.to_string()))?
-                    .payload(),
-            )
-            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-            handle_response(resp, &self.shutdown)
-        } else {
-            let stream = Self::reconnect(&self.config)
-                .await
-                .map_err(|_| Error::RequestFailed("reconnection failed".to_string()))?;
-            *client = stream;
-            // Reconnect, but still report a failure to the client.
-            return Err(Error::RequestFailed("disconnected".to_owned()));
+            client.close().await.ok();
+            self.reconnect.notify_one()
         }
+        result
     }
 }
 
@@ -612,7 +664,7 @@ mod tests {
         let mut rng = TestRng::new();
         let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(port).await;
         let config = NodeClientConfig::finite_retries_config(port, 2);
-        let c = FramedNodeClient::new(config).await.unwrap();
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -631,7 +683,7 @@ mod tests {
                 start_mock_binary_port_responding_with_stored_value(port).await;
         });
         let config = NodeClientConfig::finite_retries_config(port, 5);
-        let client = FramedNodeClient::new(config).await.unwrap();
+        let (client, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
