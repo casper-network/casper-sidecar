@@ -14,8 +14,8 @@ members = [
 anyhow = "1"
 async-stream = "0.3.4"
 async-trait = "0.1.77"
-casper-types = { git = "https://github.com/casper-network/casper-node", branch = "feat-2.0" }
-casper-binary-port = { git = "https://github.com/casper-network/casper-node", branch = "feat-2.0" }
+casper-types = { git = "https://github.com/rafal-ch/casper-node", branch = "julietless_node_2" }
+casper-binary-port = { git = "https://github.com/rafal-ch/casper-node", branch = "julietless_node_2" }
 casper-event-sidecar = { path = "./event_sidecar", version = "1.0.0" }
 casper-event-types = { path = "./types", version = "1.0.0" }
 casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
@@ -30,7 +30,3 @@ toml = "0.5.8"
 tracing = { version = "0", default-features = false }
 tracing-subscriber = "0"
 serde = { version = "1", default-features = false }
-
-[patch."https://github.com/casper-network/casper-node"]
-casper-binary-port = { path = "../casper-node/binary_port" }
-casper-types = { path = "../casper-node/types" }
