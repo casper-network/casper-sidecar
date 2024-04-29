@@ -550,7 +550,10 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value.get("execution_info").expect("should have execution_info").is_null());
+        assert!(json_value
+            .get("execution_info")
+            .expect("should have execution_info")
+            .is_null());
     }
 
     #[tokio::test]
@@ -565,7 +568,10 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value.get("execution_info").expect("should have execution_info").is_null());
+        assert!(json_value
+            .get("execution_info")
+            .expect("should have execution_info")
+            .is_null());
     }
 
     #[tokio::test]
