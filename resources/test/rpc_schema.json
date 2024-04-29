@@ -286,21 +286,11 @@
               "description": "The deploy.",
               "$ref": "#/components/schemas/Deploy"
             },
-            "block_hash": {
-              "description": "The hash of the block in which the deploy was executed.",
-              "$ref": "#/components/schemas/BlockHash"
-            },
-            "block_height": {
-              "description": "The height of the block in which the deploy was executed.",
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "execution_result": {
-              "description": "The execution result if known.",
+            "execution_info": {
+              "description": "Execution info, if available.",
               "anyOf": [
                 {
-                  "$ref": "#/components/schemas/ExecutionResult"
+                  "$ref": "#/components/schemas/ExecutionInfo"
                 },
                 {
                   "type": "null"
@@ -378,53 +368,55 @@
                   }
                 ]
               },
-              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
-              "block_height": 10,
-              "execution_result": {
-                "Version2": {
-                  "initiator": {
-                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
-                  },
-                  "error_message": null,
-                  "limit": "123456",
-                  "consumed": "100000",
-                  "cost": "246912",
-                  "payment": [
-                    {
-                      "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
-                    }
-                  ],
-                  "transfers": [
-                    {
-                      "Version2": {
-                        "transaction_hash": {
-                          "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
-                        },
-                        "from": {
-                          "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
-                        },
-                        "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
-                        "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-                        "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-                        "amount": "1000000000000",
-                        "gas": "2500000000",
-                        "id": 999
-                      }
-                    }
-                  ],
-                  "size_estimate": 186,
-                  "effects": [
-                    {
-                      "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                      "kind": {
-                        "AddUInt64": 8
-                      }
+              "execution_info": {
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_height": 10,
+                "execution_result": {
+                  "Version2": {
+                    "initiator": {
+                      "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     },
-                    {
-                      "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                      "kind": "Identity"
-                    }
-                  ]
+                    "error_message": null,
+                    "limit": "123456",
+                    "consumed": "100000",
+                    "cost": "246912",
+                    "payment": [
+                      {
+                        "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
+                      }
+                    ],
+                    "transfers": [
+                      {
+                        "Version2": {
+                          "transaction_hash": {
+                            "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
+                          },
+                          "from": {
+                            "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
+                          },
+                          "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
+                          "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+                          "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+                          "amount": "1000000000000",
+                          "gas": "2500000000",
+                          "id": 999
+                        }
+                      }
+                    ],
+                    "size_estimate": 186,
+                    "effects": [
+                      {
+                        "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                        "kind": {
+                          "AddUInt64": 8
+                        }
+                      },
+                      {
+                        "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                        "kind": "Identity"
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -472,21 +464,11 @@
               "description": "The transaction.",
               "$ref": "#/components/schemas/Transaction"
             },
-            "block_hash": {
-              "description": "The hash of the block in which the deploy was executed.",
-              "$ref": "#/components/schemas/BlockHash"
-            },
-            "block_height": {
-              "description": "The height of the block in which the deploy was executed.",
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "execution_result": {
-              "description": "The execution result if known.",
+            "execution_info": {
+              "description": "Execution info, if available.",
               "anyOf": [
                 {
-                  "$ref": "#/components/schemas/ExecutionResult"
+                  "$ref": "#/components/schemas/ExecutionInfo"
                 },
                 {
                   "type": "null"
@@ -584,53 +566,55 @@
                   ]
                 }
               },
-              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
-              "block_height": 10,
-              "execution_result": {
-                "Version2": {
-                  "initiator": {
-                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
-                  },
-                  "error_message": null,
-                  "limit": "123456",
-                  "consumed": "100000",
-                  "cost": "246912",
-                  "payment": [
-                    {
-                      "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
-                    }
-                  ],
-                  "transfers": [
-                    {
-                      "Version2": {
-                        "transaction_hash": {
-                          "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
-                        },
-                        "from": {
-                          "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
-                        },
-                        "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
-                        "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-                        "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-                        "amount": "1000000000000",
-                        "gas": "2500000000",
-                        "id": 999
-                      }
-                    }
-                  ],
-                  "size_estimate": 186,
-                  "effects": [
-                    {
-                      "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                      "kind": {
-                        "AddUInt64": 8
-                      }
+              "execution_info": {
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_height": 10,
+                "execution_result": {
+                  "Version2": {
+                    "initiator": {
+                      "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     },
-                    {
-                      "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                      "kind": "Identity"
-                    }
-                  ]
+                    "error_message": null,
+                    "limit": "123456",
+                    "consumed": "100000",
+                    "cost": "246912",
+                    "payment": [
+                      {
+                        "source": "uref-0101010101010101010101010101010101010101010101010101010101010101-001"
+                      }
+                    ],
+                    "transfers": [
+                      {
+                        "Version2": {
+                          "transaction_hash": {
+                            "Version1": "0101010101010101010101010101010101010101010101010101010101010101"
+                          },
+                          "from": {
+                            "AccountHash": "account-hash-0202020202020202020202020202020202020202020202020202020202020202"
+                          },
+                          "to": "account-hash-0303030303030303030303030303030303030303030303030303030303030303",
+                          "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+                          "target": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+                          "amount": "1000000000000",
+                          "gas": "2500000000",
+                          "id": 999
+                        }
+                      }
+                    ],
+                    "size_estimate": 186,
+                    "effects": [
+                      {
+                        "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                        "kind": {
+                          "AddUInt64": 8
+                        }
+                      },
+                      {
+                        "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                        "kind": "Identity"
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -3649,6 +3633,42 @@
             "additionalProperties": false
           }
         ]
+      },
+      "ExecutionInfo": {
+        "description": "The block hash and height in which a given deploy was executed, along with the execution result if known.",
+        "type": "object",
+        "required": [
+          "block_hash",
+          "block_height"
+        ],
+        "properties": {
+          "block_hash": {
+            "description": "The hash of the block in which the deploy was executed.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockHash"
+              }
+            ]
+          },
+          "block_height": {
+            "description": "The height of the block in which the deploy was executed.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "execution_result": {
+            "description": "The execution result if known.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "BlockHash": {
         "description": "Hex-encoded cryptographic hash of a block.",
