@@ -121,6 +121,7 @@ mod tests {
     use std::fs;
 
     use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
+    use casper_types::bytesrepr::ToBytes;
     use regex::Regex;
     use serde_json::Value;
     use std::io::Write;

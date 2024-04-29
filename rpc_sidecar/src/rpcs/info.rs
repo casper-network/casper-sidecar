@@ -127,7 +127,6 @@ pub struct GetDeployResult {
     /// The deploy.
     pub deploy: Deploy,
     /// Execution info, if available.
-    #[serde(skip_serializing_if = "Option::is_none", flatten)]
     pub execution_info: Option<ExecutionInfo>,
 }
 
@@ -200,7 +199,6 @@ pub struct GetTransactionResult {
     /// The transaction.
     pub transaction: Transaction,
     /// Execution info, if available.
-    #[serde(skip_serializing_if = "Option::is_none", flatten)]
     pub execution_info: Option<ExecutionInfo>,
 }
 
@@ -539,6 +537,36 @@ mod tests {
     use rand::Rng;
 
     use super::*;
+
+    #[tokio::test]
+    async fn get_deploy_result_none_execution_info_should_serialize_to_null() {
+        let rng = &mut TestRng::new();
+        let deploy = Deploy::random(rng);
+        let result = GetDeployResult {
+            api_version: CURRENT_API_VERSION,
+            deploy,
+            execution_info: None,
+        };
+
+        let json_value = serde_json::to_value(&result).unwrap();
+
+        assert!(json_value.get("execution_info").unwrap().is_null());
+    }
+
+    #[tokio::test]
+    async fn get_transaction_result_none_execution_info_should_serialize_to_null() {
+        let rng = &mut TestRng::new();
+        let transaction = Transaction::random(rng);
+        let result = GetTransactionResult {
+            api_version: CURRENT_API_VERSION,
+            transaction,
+            execution_info: None,
+        };
+
+        let json_value = serde_json::to_value(&result).unwrap();
+
+        assert!(json_value.get("execution_info").unwrap().is_null());
+    }
 
     #[tokio::test]
     async fn should_read_transaction() {

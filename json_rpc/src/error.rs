@@ -102,7 +102,6 @@ pub struct Error {
     /// A short description of the error.
     message: Cow<'static, str>,
     /// Additional information about the error.
-    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<Value>,
 }
 
@@ -219,7 +218,8 @@ mod tests {
     fn should_construct_reserved_error() {
         const EXPECTED_WITH_DATA: &str =
             r#"{"code":-32700,"message":"Parse error","data":{"id":1314,"context":"TEST"}}"#;
-        const EXPECTED_WITHOUT_DATA: &str = r#"{"code":-32601,"message":"Method not found"}"#;
+        const EXPECTED_WITHOUT_DATA: &str =
+            r#"{"code":-32601,"message":"Method not found","data":null}"#;
         const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
 
         let error_with_data = Error::new(ReservedErrorCode::ParseError, AdditionalInfo::default());
@@ -239,7 +239,8 @@ mod tests {
     fn should_construct_custom_error() {
         const EXPECTED_WITH_DATA: &str =
             r#"{"code":-123,"message":"Valid test error","data":{"id":1314,"context":"TEST"}}"#;
-        const EXPECTED_WITHOUT_DATA: &str = r#"{"code":-123,"message":"Valid test error"}"#;
+        const EXPECTED_WITHOUT_DATA: &str =
+            r#"{"code":-123,"message":"Valid test error","data":null}"#;
         const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
 
         let good_error_code = TestErrorCode {
