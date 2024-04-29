@@ -467,9 +467,10 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/casper-network/casper-node?branch=feat-2.0#336d63772e9cc105109adbb9429847c100b44695"
+source = "git+https://github.com/rafal-ch/casper-node?branch=julietless_node_2#33415a5a0b26757ac21ce62a457d8481940904e1"
 dependencies = [
  "bincode",
+ "bytes",
  "casper-types",
  "once_cell",
  "rand",
@@ -477,6 +478,7 @@ dependencies = [
  "serde",
  "serde-map-to-array",
  "thiserror",
+ "tokio-util 0.6.10",
 ]
 
 [[package]]
@@ -502,7 +504,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tracing",
  "url",
  "warp",
@@ -550,7 +552,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tower",
  "tracing",
  "tracing-subscriber",
@@ -628,6 +630,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util 0.6.10",
  "toml",
  "tower",
  "tracing",
@@ -663,7 +666,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "5.0.0"
-source = "git+https://github.com/casper-network/casper-node?branch=feat-2.0#336d63772e9cc105109adbb9429847c100b44695"
+source = "git+https://github.com/rafal-ch/casper-node?branch=julietless_node_2#33415a5a0b26757ac21ce62a457d8481940904e1"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -2018,7 +2021,7 @@ dependencies = [
  "indexmap 2.2.6",
  "slab",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tracing",
 ]
 
@@ -3351,7 +3354,7 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-native-tls",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -4399,7 +4402,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.10",
 ]
 
 [[package]]
@@ -4412,6 +4415,20 @@ dependencies = [
  "log",
  "tokio",
  "tungstenite",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.6.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "log",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -4447,7 +4464,7 @@ dependencies = [
  "futures-util",
  "pin-project-lite",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -4840,7 +4857,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-tungstenite",
- "tokio-util",
+ "tokio-util 0.7.10",
  "tower-service",
  "tracing",
 ]

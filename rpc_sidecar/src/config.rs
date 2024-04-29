@@ -106,7 +106,11 @@ impl Default for RpcConfig {
 // Change this to SocketAddr, once SocketAddr::new is const stable.
 const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
 /// Default maximum payload size.
-const DEFAULT_MAX_NODE_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+/// Default message timeout in seconds.
+const DEFAULT_MESSAGE_TIMEOUT_SECS: u64 = 30;
+/// Default timeout for client access.
+const DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS: u64 = 10;
 /// Default request limit.
 const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
 /// Default request buffer size.
@@ -125,10 +129,13 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 pub struct NodeClientConfig {
     /// Address of the node.
     pub address: SocketAddr,
-    /// Maximum size of a request in bytes.
-    pub max_request_size_bytes: u32,
-    /// Maximum size of a response in bytes.
-    pub max_response_size_bytes: u32,
+    /// Maximum size of a message in bytes.
+    pub max_message_size_bytes: u32,
+    /// Message transfer timeout in seconds.
+    pub message_timeout_secs: u64,
+    /// Timeout specifying how long to wait for binary port client to be available.
+    // Access to the client is synchronized.
+    pub client_access_timeout_secs: u64,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -143,9 +150,10 @@ impl NodeClientConfig {
         NodeClientConfig {
             address: DEFAULT_NODE_CONNECT_ADDRESS.into(),
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
-            max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
-            max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
+            message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
+            client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
@@ -161,9 +169,10 @@ impl NodeClientConfig {
         NodeClientConfig {
             address: local_socket,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
-            max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
-            max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
+            message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
+            client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: 500,
                 max_delay_ms: 3000,
@@ -187,10 +196,13 @@ impl Default for NodeClientConfig {
 pub struct NodeClientConfigTarget {
     /// Address of the node.
     pub address: SocketAddr,
-    /// Maximum size of a request in bytes.
-    pub max_request_size_bytes: u32,
-    /// Maximum size of a response in bytes.
-    pub max_response_size_bytes: u32,
+    /// Maximum size of a message in bytes.
+    pub max_message_size_bytes: u32,
+    /// Message transfer timeout in seconds.
+    pub message_timeout_secs: u64,
+    /// Timeout specifying how long to wait for binary port client to be available.
+    // Access to the client is synchronized.
+    pub client_access_timeout_secs: u64,
     /// Maximum number of in-flight node requests.
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
@@ -213,9 +225,10 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
         Ok(NodeClientConfig {
             address: value.address,
             request_limit: value.request_limit,
-            max_request_size_bytes: value.max_request_size_bytes,
-            max_response_size_bytes: value.max_response_size_bytes,
+            max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,
+            client_access_timeout_secs: value.client_access_timeout_secs,
+            message_timeout_secs: value.message_timeout_secs,
             exponential_backoff,
         })
     }
