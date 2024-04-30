@@ -30,7 +30,7 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    KeyTag, PublicKey, SecretKey, StoredValue, Timestamp, URef, U512,
+    KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -140,9 +140,7 @@ static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanc
 });
 static QUERY_BALANCE_DETAILS_PARAMS: Lazy<QueryBalanceDetailsParams> =
     Lazy::new(|| QueryBalanceDetailsParams {
-        state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::Hash(
-            *BlockHash::example(),
-        ))),
+        state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
         purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
     });
 static QUERY_BALANCE_DETAILS_RESULT: Lazy<QueryBalanceDetailsResult> =
@@ -249,9 +247,6 @@ pub struct GetBalanceResult {
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
     /// The available balance in motes (total balance - sum of all active holds).
-    /// The active holds are determined by the current timestamp and not the
-    /// state root hash. If you need to account for holds at a specific time,
-    /// you should use the `query_balance_details` RPC.
     pub balance_value: U512,
     /// The Merkle proof.
     pub merkle_proof: String,
@@ -281,10 +276,8 @@ impl RpcWithParams for GetBalance {
 
         let state_id = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
         let purse_id = PortPurseIdentifier::Purse(purse_uref);
-        // we cannot query the balance at a specific timestamp, so we use the current one
-        let timestamp = Timestamp::now();
         let balance = node_client
-            .get_balance_by_state_root(Some(state_id), purse_id, timestamp)
+            .get_balance_by_state_root(Some(state_id), purse_id)
             .await
             .map_err(|err| Error::NodeRequest("balance", err))?;
 
@@ -940,29 +933,10 @@ impl RpcWithParams for QueryBalance {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
-        let balance = match params.state_identifier {
-            Some(GlobalStateIdentifier::BlockHash(hash)) => node_client
-                .get_balance_by_block(Some(BlockIdentifier::Hash(hash)), purse_id)
-                .await
-                .map_err(|err| Error::NodeRequest("balance by block hash", err))?,
-            Some(GlobalStateIdentifier::BlockHeight(height)) => node_client
-                .get_balance_by_block(Some(BlockIdentifier::Height(height)), purse_id)
-                .await
-                .map_err(|err| Error::NodeRequest("balance by block height", err))?,
-            Some(GlobalStateIdentifier::StateRootHash(digest)) => {
-                // we cannot query the balance at a specific timestamp, so we use the current one
-                let timestamp = Timestamp::now();
-                let state_id = GlobalStateIdentifier::StateRootHash(digest);
-                node_client
-                    .get_balance_by_state_root(Some(state_id), purse_id, timestamp)
-                    .await
-                    .map_err(|err| Error::NodeRequest("balance by state root", err))?
-            }
-            None => node_client
-                .get_balance_by_block(None, purse_id)
-                .await
-                .map_err(|err| Error::NodeRequest("balance by latest block", err))?,
-        };
+        let balance = node_client
+            .get_balance_by_state_root(params.state_identifier, purse_id)
+            .await
+            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance: balance.available_balance,
@@ -970,27 +944,12 @@ impl RpcWithParams for QueryBalance {
     }
 }
 
-/// Identifier of a balance.
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "snake_case")]
-pub enum BalanceStateIdentifier {
-    /// The balance at a specific block.
-    Block(BlockIdentifier),
-    /// The balance at a specific state root.
-    StateRoot {
-        /// The state root hash.
-        state_root_hash: Digest,
-        /// Timestamp for holds lookup.
-        timestamp: Timestamp,
-    },
-}
-
 /// Params for "query_balance_details" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceDetailsParams {
     /// The identifier for the state used for the query, if none is passed,
     /// the latest block will be used.
-    pub state_identifier: Option<BalanceStateIdentifier>,
+    pub state_identifier: Option<GlobalStateIdentifier>,
     /// The identifier to obtain the purse corresponding to balance query.
     pub purse_identifier: PurseIdentifier,
 }
@@ -1047,27 +1006,10 @@ impl RpcWithParams for QueryBalanceDetails {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
-        let balance = match params.state_identifier {
-            Some(BalanceStateIdentifier::Block(block_identifier)) => node_client
-                .get_balance_by_block(Some(block_identifier), purse_id)
-                .await
-                .map_err(|err| Error::NodeRequest("balance by block", err))?,
-            Some(BalanceStateIdentifier::StateRoot {
-                state_root_hash,
-                timestamp,
-            }) => node_client
-                .get_balance_by_state_root(
-                    Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-                    purse_id,
-                    timestamp,
-                )
-                .await
-                .map_err(|err| Error::NodeRequest("balance by state root", err))?,
-            None => node_client
-                .get_balance_by_block(None, purse_id)
-                .await
-                .map_err(|err| Error::NodeRequest("balance by latest block", err))?,
-        };
+        let balance = node_client
+            .get_balance_by_state_root(params.state_identifier, purse_id)
+            .await
+            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
 
         let holds = balance
             .balance_holds
@@ -1929,7 +1871,7 @@ mod tests {
         let resp = QueryBalanceDetails::do_handle_request(
             Arc::new(ValidBalanceMock(balance.clone())),
             QueryBalanceDetailsParams {
-                state_identifier: Some(BalanceStateIdentifier::Block(BlockIdentifier::random(rng))),
+                state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
                     rng.gen(),
                     AccessRights::empty(),

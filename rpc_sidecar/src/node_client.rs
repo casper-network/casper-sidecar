@@ -22,7 +22,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
     GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Timestamp, Transaction, TransactionHash, Transfer,
+    Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -91,25 +91,9 @@ pub trait NodeClient: Send + Sync {
         &self,
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
-        _timestamp: Timestamp,
     ) -> Result<BalanceResponse, Error> {
         let get = GlobalStateRequest::BalanceByStateRoot {
             state_identifier,
-            purse_identifier,
-        };
-        let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
-            .await?;
-        parse_response::<BalanceResponse>(&resp.into())?.ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn get_balance_by_block(
-        &self,
-        block_identifier: Option<BlockIdentifier>,
-        purse_identifier: PurseIdentifier,
-    ) -> Result<BalanceResponse, Error> {
-        let get = GlobalStateRequest::BalanceByBlock {
-            block_identifier,
             purse_identifier,
         };
         let resp = self

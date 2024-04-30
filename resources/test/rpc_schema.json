@@ -1194,7 +1194,7 @@
             "description": "The identifier for the state used for the query, if none is passed, the latest block will be used.",
             "anyOf": [
               {
-                "$ref": "#/components/schemas/BalanceStateIdentifier"
+                "$ref": "#/components/schemas/GlobalStateIdentifier"
               },
               {
                 "type": "null"
@@ -1250,9 +1250,7 @@
             {
               "name": "state_identifier",
               "value": {
-                "block": {
-                  "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
-                }
+                "BlockHash": "0707070707070707070707070707070707070707070707070707070707070707"
               }
             },
             {
@@ -2018,7 +2016,7 @@
               "type": "string"
             },
             "balance_value": {
-              "description": "The available balance in motes (total balance - sum of all active holds). The active holds are determined by the current timestamp and not the state root hash. If you need to account for holds at a specific time, you should use the `query_balance_details` RPC.",
+              "description": "The available balance in motes (total balance - sum of all active holds).",
               "$ref": "#/components/schemas/U512"
             },
             "merkle_proof": {
@@ -7246,60 +7244,6 @@
             "properties": {
               "purse_uref": {
                 "$ref": "#/components/schemas/URef"
-              }
-            },
-            "additionalProperties": false
-          }
-        ]
-      },
-      "BalanceStateIdentifier": {
-        "description": "Identifier of a balance.",
-        "oneOf": [
-          {
-            "description": "The balance at a specific block.",
-            "type": "object",
-            "required": [
-              "block"
-            ],
-            "properties": {
-              "block": {
-                "$ref": "#/components/schemas/BlockIdentifier"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "The balance at a specific state root.",
-            "type": "object",
-            "required": [
-              "state_root"
-            ],
-            "properties": {
-              "state_root": {
-                "type": "object",
-                "required": [
-                  "state_root_hash",
-                  "timestamp"
-                ],
-                "properties": {
-                  "state_root_hash": {
-                    "description": "The state root hash.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/Digest"
-                      }
-                    ]
-                  },
-                  "timestamp": {
-                    "description": "Timestamp for holds lookup.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/Timestamp"
-                      }
-                    ]
-                  }
-                },
-                "additionalProperties": false
               }
             },
             "additionalProperties": false
