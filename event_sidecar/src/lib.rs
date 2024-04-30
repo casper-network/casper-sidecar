@@ -89,7 +89,9 @@ pub async fn run(
         outbound_sse_data_receiver,
         config
             .emulate_legacy_sse_apis
-            .contains(&LegacySseApiTag::V1),
+            .as_ref()
+            .map(|v| v.contains(&LegacySseApiTag::V1))
+            .unwrap_or(false),
     );
     info!(address = %config.event_stream_server.port, "started {} server", "SSE");
     tokio::try_join!(

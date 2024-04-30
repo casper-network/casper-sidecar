@@ -32,7 +32,7 @@ pub enum LegacySseApiTag {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SseEventServerConfig {
     pub enable_server: bool,
-    pub emulate_legacy_sse_apis: Vec<LegacySseApiTag>,
+    pub emulate_legacy_sse_apis: Option<Vec<LegacySseApiTag>>,
     pub inbound_channel_size: Option<usize>,
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
@@ -44,7 +44,7 @@ impl Default for SseEventServerConfig {
     fn default() -> Self {
         Self {
             enable_server: true,
-            emulate_legacy_sse_apis: vec![LegacySseApiTag::V1],
+            emulate_legacy_sse_apis: Some(vec![LegacySseApiTag::V1]),
             inbound_channel_size: Some(100),
             outbound_channel_size: Some(100),
             connections: vec![],
