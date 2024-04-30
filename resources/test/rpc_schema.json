@@ -804,7 +804,7 @@
                   "entity_kind": {
                     "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
                   },
-                  "package_hash": "contract-package-0000000000000000000000000000000000000000000000000000000000000000",
+                  "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
                   "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
                   "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
                   "entry_points": [
@@ -6138,21 +6138,12 @@
         "description": "Entity definition, metadata, and security container.",
         "type": "object",
         "required": [
-          "access_key",
           "disabled_versions",
           "groups",
           "lock_status",
           "versions"
         ],
         "properties": {
-          "access_key": {
-            "description": "Key used to add or disable versions.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/URef"
-              }
-            ]
-          },
           "versions": {
             "description": "All versions (enabled & disabled).",
             "allOf": [
