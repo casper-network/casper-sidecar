@@ -21,8 +21,8 @@ use casper_binary_port::{
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Transaction, TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyPrefix, KeyTag, Peers, ProtocolVersion, SignedBlock,
+    StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -80,6 +80,21 @@ pub trait NodeClient: Send + Sync {
         let get = GlobalStateRequest::AllItems {
             state_identifier,
             key_tag,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .await?;
+        parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn query_global_state_by_prefix(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        key_prefix: KeyPrefix,
+    ) -> Result<Vec<StoredValue>, Error> {
+        let get = GlobalStateRequest::ItemsByPrefix {
+            state_identifier,
+            key_prefix,
         };
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))

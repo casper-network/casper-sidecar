@@ -87,7 +87,14 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
     Lazy::new(|| GetAddressableEntityResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         merkle_proof: MERKLE_PROOF.clone(),
-        entity: EntityOrAccount::AddressableEntity(AddressableEntity::example().clone()),
+        entity: EntityOrAccount::AddressableEntity {
+            entity: AddressableEntity::example().clone(),
+            named_keys: [("key".to_string(), Key::Hash([0u8; 32]))]
+                .iter()
+                .cloned()
+                .collect::<BTreeMap<_, _>>()
+                .into(),
+        },
     });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
@@ -580,8 +587,14 @@ impl RpcWithParams for GetAddressableEntity {
                 let result = common::resolve_entity_addr(&*node_client, addr, state_identifier)
                     .await?
                     .ok_or(Error::AddressableEntityNotFound)?;
+                let named_keys =
+                    common::resolve_entity_named_keys(&*node_client, addr, state_identifier)
+                        .await?;
                 (
-                    EntityOrAccount::AddressableEntity(result.value),
+                    EntityOrAccount::AddressableEntity {
+                        entity: result.value,
+                        named_keys,
+                    },
                     result.merkle_proof,
                 )
             }
@@ -1124,12 +1137,12 @@ mod tests {
         InformationRequestTag,
     };
     use casper_types::{
-        addressable_entity::{MessageTopics, NamedKeys},
+        addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
-        ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, KeyPrefix,
+        PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1356,8 +1369,8 @@ mod tests {
         use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys};
 
         struct ClientMock {
-            block: Block,
             entity: AddressableEntity,
+            named_keys: NamedKeys,
             entity_hash: AddressableEntityHash,
         }
 
@@ -1368,18 +1381,6 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
-                        if InformationRequestTag::try_from(info_type_tag)
-                            == Ok(InformationRequestTag::BlockHeader) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                        ))
-                    }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
                             &*req,
@@ -1423,13 +1424,37 @@ mod tests {
                             &[],
                         ))
                     }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::NamedKeysByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.named_keys
+                                    .iter()
+                                    .map(|(name, key)| {
+                                        StoredValue::NamedKey(
+                                            NamedKeyValue::from_concrete_values(*key, name.clone())
+                                                .expect("should create named key"),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
         }
 
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
@@ -1442,12 +1467,20 @@ mod tests {
             EntityKind::SmartContract,
         );
         let entity_hash: AddressableEntityHash = rng.gen();
+
+        let named_key_count = rng.gen_range(0..10);
+        let named_keys: NamedKeys =
+            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.gen())))
+                .take(named_key_count)
+                .collect::<BTreeMap<_, _>>()
+                .into();
+
         let entity_identifier = EntityIdentifier::random(rng);
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock {
-                block: block.clone(),
                 entity: entity.clone(),
+                named_keys: named_keys.clone(),
                 entity_hash,
             }),
             GetAddressableEntityParams {
@@ -1462,7 +1495,7 @@ mod tests {
             resp,
             GetAddressableEntityResult {
                 api_version: CURRENT_API_VERSION,
-                entity: EntityOrAccount::AddressableEntity(entity),
+                entity: EntityOrAccount::AddressableEntity { entity, named_keys },
                 merkle_proof: String::from("00000000"),
             }
         );

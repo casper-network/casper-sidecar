@@ -800,40 +800,48 @@
               "api_version": "2.0.0",
               "entity": {
                 "AddressableEntity": {
-                  "protocol_version": "2.0.0",
-                  "entity_kind": {
-                    "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
-                  },
-                  "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
-                  "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
-                  "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
-                  "entry_points": [
-                    {
-                      "name": "call",
-                      "entry_point": {
+                  "entity": {
+                    "protocol_version": "2.0.0",
+                    "entity_kind": {
+                      "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
+                    },
+                    "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
+                    "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
+                    "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                    "entry_points": [
+                      {
                         "name": "call",
-                        "args": [],
-                        "ret": "Unit",
-                        "access": "Public",
-                        "entry_point_type": "Caller"
+                        "entry_point": {
+                          "name": "call",
+                          "args": [],
+                          "ret": "Unit",
+                          "access": "Public",
+                          "entry_point_type": "Caller"
+                        }
                       }
-                    }
-                  ],
-                  "associated_keys": [
-                    {
-                      "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
-                      "weight": 1
-                    }
-                  ],
-                  "action_thresholds": {
-                    "deployment": 1,
-                    "upgrade_management": 1,
-                    "key_management": 1
+                    ],
+                    "associated_keys": [
+                      {
+                        "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                        "weight": 1
+                      }
+                    ],
+                    "action_thresholds": {
+                      "deployment": 1,
+                      "upgrade_management": 1,
+                      "key_management": 1
+                    },
+                    "message_topics": [
+                      {
+                        "topic_name": "topic",
+                        "topic_name_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+                      }
+                    ]
                   },
-                  "message_topics": [
+                  "named_keys": [
                     {
-                      "topic_name": "topic",
-                      "topic_name_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+                      "name": "key",
+                      "key": "hash-0000000000000000000000000000000000000000000000000000000000000000"
                     }
                   ]
                 }
@@ -6592,7 +6600,29 @@
             ],
             "properties": {
               "AddressableEntity": {
-                "$ref": "#/components/schemas/AddressableEntity"
+                "type": "object",
+                "required": [
+                  "entity",
+                  "named_keys"
+                ],
+                "properties": {
+                  "entity": {
+                    "description": "The addressable entity.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/AddressableEntity"
+                      }
+                    ]
+                  },
+                  "named_keys": {
+                    "description": "The named keys of the addressable entity.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/NamedKeys"
+                      }
+                    ]
+                  }
+                }
               }
             },
             "additionalProperties": false
