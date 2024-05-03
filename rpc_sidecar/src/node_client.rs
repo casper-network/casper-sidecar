@@ -87,7 +87,7 @@ pub trait NodeClient: Send + Sync {
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn get_balance(
+    async fn read_balance(
         &self,
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
