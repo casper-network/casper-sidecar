@@ -936,7 +936,7 @@ impl RpcWithParams for QueryBalance {
         let balance = node_client
             .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance: balance.available_balance,
@@ -1009,7 +1009,7 @@ impl RpcWithParams for QueryBalanceDetails {
         let balance = node_client
             .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
 
         let holds = balance
             .balance_holds
