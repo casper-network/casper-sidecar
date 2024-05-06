@@ -164,7 +164,7 @@ fn maybe_translate_transaction_processed(
         TransactionHash::Deploy(deploy_hash) => {
             let account = match initiator_addr {
                 InitiatorAddr::PublicKey(public_key) => public_key,
-                InitiatorAddr::AccountHash(_) => return None, //This shouldn't happen since we alredy are in TransactionHas::Deploy
+                InitiatorAddr::AccountHash(_) => return None, //This shouldn't happen since we already are in TransactionHash::Deploy
             };
             let execution_result = match execution_result {
                 ExecutionResult::V1(result) => result.clone(),

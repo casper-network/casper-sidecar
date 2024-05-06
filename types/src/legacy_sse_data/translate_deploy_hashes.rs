@@ -7,12 +7,12 @@ pub trait DeployHashTranslator {
 }
 
 #[derive(Default)]
-pub struct DefaultDeployHashTranslator;
+pub struct StandardDeployHashesTranslator;
 
 #[derive(Default)]
-pub struct TransferDeployHashTranslator;
+pub struct TransferDeployHashesTranslator;
 
-impl DeployHashTranslator for DefaultDeployHashTranslator {
+impl DeployHashTranslator for StandardDeployHashesTranslator {
     fn translate(&self, block_body_v2: &casper_types::BlockBodyV2) -> Vec<DeployHash> {
         block_body_v2
             .standard()
@@ -24,7 +24,7 @@ impl DeployHashTranslator for DefaultDeployHashTranslator {
     }
 }
 
-impl DeployHashTranslator for TransferDeployHashTranslator {
+impl DeployHashTranslator for TransferDeployHashesTranslator {
     fn translate(&self, block_body_v2: &casper_types::BlockBodyV2) -> Vec<DeployHash> {
         block_body_v2
             .mint()

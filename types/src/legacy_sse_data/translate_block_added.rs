@@ -1,7 +1,7 @@
 use super::{
     structs,
     translate_deploy_hashes::{
-        DefaultDeployHashTranslator, DeployHashTranslator, TransferDeployHashTranslator,
+        StandardDeployHashesTranslator, DeployHashTranslator, TransferDeployHashesTranslator,
     },
     LegacySseData,
 };
@@ -116,8 +116,8 @@ where
 pub fn build_default_block_added_translator() -> DefaultBlockAddedTranslator<
     DefaultBlockV2Translator<
         DefaultEraEndV2Translator,
-        DefaultDeployHashTranslator,
-        TransferDeployHashTranslator,
+        StandardDeployHashesTranslator,
+        TransferDeployHashesTranslator,
     >,
 > {
     DefaultBlockAddedTranslator {
@@ -127,13 +127,13 @@ pub fn build_default_block_added_translator() -> DefaultBlockAddedTranslator<
 
 pub fn build_default_block_v2_translator() -> DefaultBlockV2Translator<
     DefaultEraEndV2Translator,
-    DefaultDeployHashTranslator,
-    TransferDeployHashTranslator,
+    StandardDeployHashesTranslator,
+    TransferDeployHashesTranslator,
 > {
     DefaultBlockV2Translator {
         era_end_translator: DefaultEraEndV2Translator,
-        deploy_hash_translator: DefaultDeployHashTranslator,
-        transfer_hash_translator: TransferDeployHashTranslator,
+        deploy_hash_translator: StandardDeployHashesTranslator,
+        transfer_hash_translator: TransferDeployHashesTranslator,
     }
 }
 
