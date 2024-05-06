@@ -1,7 +1,7 @@
 use super::{
     structs,
     translate_deploy_hashes::{
-        StandardDeployHashesTranslator, DeployHashTranslator, TransferDeployHashesTranslator,
+        DeployHashTranslator, StandardDeployHashesTranslator, TransferDeployHashesTranslator,
     },
     LegacySseData,
 };
