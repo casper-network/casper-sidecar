@@ -29,7 +29,7 @@ hex_fmt = "0.3.0"
 http = "0.2.1"
 hyper = "0.14.4"
 indexmap = "2.0.0"
-itertools = "0.10.3"
+itertools = { workspace = true }
 jsonschema = "0.17.1"
 metrics = { workspace = true }
 pin-project = "1.1.5"
