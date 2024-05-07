@@ -15,14 +15,14 @@ use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, PurseIdentifier, RecordId,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus, PayloadEntity, PurseIdentifier,
+    RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyPrefix, KeyTag, Peers, ProtocolVersion, SignedBlock,
-    StoredValue, Transaction, TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
+    Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -102,12 +102,12 @@ pub trait NodeClient: Send + Sync {
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn get_balance_by_state_root(
+    async fn get_balance(
         &self,
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
     ) -> Result<BalanceResponse, Error> {
-        let get = GlobalStateRequest::BalanceByStateRoot {
+        let get = GlobalStateRequest::Balance {
             state_identifier,
             purse_identifier,
         };

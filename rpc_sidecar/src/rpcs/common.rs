@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_binary_port::GlobalStateQueryResult;
+use casper_binary_port::{GlobalStateQueryResult, KeyPrefix};
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use crate::rpcs::error::Error;
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, bytesrepr::ToBytes,
     global_state::TrieMerkleProof, Account, AddressableEntity, AvailableBlockRange, BlockHeader,
-    BlockIdentifier, EntityAddr, GlobalStateIdentifier, Key, KeyPrefix, SignedBlock, StoredValue,
+    BlockIdentifier, EntityAddr, GlobalStateIdentifier, Key, SignedBlock, StoredValue,
 };
 
 use crate::NodeClient;
