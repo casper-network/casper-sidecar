@@ -1128,8 +1128,8 @@ mod tests {
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
-        ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, PackageHash,
+        ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1433,13 +1433,12 @@ mod tests {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            EntryPoints::default(),
             ProtocolVersion::V1_0_0,
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
         );
         let entity_hash: AddressableEntityHash = rng.gen();
         let entity_identifier = EntityIdentifier::random(rng);
