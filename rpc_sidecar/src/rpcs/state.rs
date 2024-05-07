@@ -284,7 +284,7 @@ impl RpcWithParams for GetBalance {
         let state_id = GlobalStateIdentifier::StateRootHash(params.state_root_hash);
         let purse_id = PortPurseIdentifier::Purse(purse_uref);
         let balance = node_client
-            .get_balance(Some(state_id), purse_id)
+            .read_balance(Some(state_id), purse_id)
             .await
             .map_err(|err| Error::NodeRequest("balance", err))?;
 
@@ -947,9 +947,9 @@ impl RpcWithParams for QueryBalance {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
         let balance = node_client
-            .get_balance(params.state_identifier, purse_id)
+            .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             balance: balance.available_balance,
@@ -1020,9 +1020,9 @@ impl RpcWithParams for QueryBalanceDetails {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_id = params.purse_identifier.into_port_purse_identifier();
         let balance = node_client
-            .get_balance(params.state_identifier, purse_id)
+            .read_balance(params.state_identifier, purse_id)
             .await
-            .map_err(|err| Error::NodeRequest("balance by state root", err))?;
+            .map_err(|err| Error::NodeRequest("balance", err))?;
 
         let holds = balance
             .balance_holds
@@ -1134,15 +1134,15 @@ mod tests {
     use casper_binary_port::{
         BalanceResponse, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
         DictionaryQueryResult, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
-        InformationRequestTag,
+        InformationRequestTag, KeyPrefix,
     };
     use casper_types::{
         addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, KeyPrefix,
-        PackageHash, ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, PackageHash,
+        ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1458,13 +1458,12 @@ mod tests {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            EntryPoints::default(),
             ProtocolVersion::V1_0_0,
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
         );
         let entity_hash: AddressableEntityHash = rng.gen();
 
@@ -2073,11 +2072,7 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(
-                        &*req,
-                        GlobalStateRequest::BalanceByBlock { .. }
-                            | GlobalStateRequest::BalanceByStateRoot { .. }
-                    ) =>
+                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
