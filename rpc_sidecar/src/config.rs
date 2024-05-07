@@ -163,8 +163,30 @@ impl NodeClientConfig {
         }
     }
 
+    /// Creates an instance of `NodeClientConfig` with specified listening port.
     #[cfg(any(feature = "testing", test))]
-    pub fn finite_retries_config(port: u16, num_of_retries: usize) -> Self {
+    pub fn new_with_port(port: u16) -> Self {
+        let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+        NodeClientConfig {
+            address: local_socket,
+            request_limit: DEFAULT_NODE_REQUEST_LIMIT,
+            max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
+            request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
+            message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
+            client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
+            exponential_backoff: ExponentialBackoffConfig {
+                initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
+                max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
+                coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
+                max_attempts: MaxAttempts::Infinite,
+            },
+        }
+    }
+
+    /// Creates an instance of `NodeClientConfig` with specified listening port and maximum number
+    /// of reconnection retries.
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_with_port_and_retries(port: u16, num_of_retries: usize) -> Self {
         let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
         NodeClientConfig {
             address: local_socket,
