@@ -236,12 +236,8 @@ impl DefaultConnectionManager {
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
-            Ok((sse_data, needs_raw_json)) => {
+            Ok(sse_data) => {
                 let payload_size = event.data.len();
-                let mut raw_json_data = None;
-                if needs_raw_json {
-                    raw_json_data = Some(event.data);
-                }
                 self.observe_bytes(sse_data.type_label(), payload_size);
                 let api_version = self.api_version.ok_or(anyhow!(
                     "Expected ApiVersion to be present when handling messages."
@@ -250,7 +246,6 @@ impl DefaultConnectionManager {
                     event.id.parse().unwrap_or(0),
                     sse_data,
                     self.bind_address.clone(),
-                    raw_json_data,
                     self.filter.clone(),
                     api_version.to_string(),
                     self.network_name.clone(),
@@ -293,7 +288,7 @@ impl DefaultConnectionManager {
         match deserialize(&event.data) {
             //at this point we
             // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
-            Ok((SseData::ApiVersion(semver), _)) => {
+            Ok(SseData::ApiVersion(semver)) => {
                 let payload_size = event.data.len();
                 self.observe_bytes("ApiVersion", payload_size);
                 self.api_version = Some(semver);
@@ -301,7 +296,6 @@ impl DefaultConnectionManager {
                     0,
                     SseData::ApiVersion(semver),
                     self.bind_address.clone(),
-                    None,
                     self.filter.clone(),
                     semver.to_string(),
                     self.network_name.clone(),

@@ -194,7 +194,7 @@ async fn do_spam_testing(
 
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events));
         }
     });
 
@@ -237,7 +237,7 @@ async fn do_load_testing_transaction(
 
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events));
         }
     });
 
@@ -279,7 +279,7 @@ async fn do_load_testing_step(
     });
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events));
         }
     });
     let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);
@@ -314,7 +314,7 @@ async fn handle_realistic_scenario(
     });
     let broadcasting_task = tokio::spawn(async move {
         while let Some(event) = events_receiver.recv().await {
-            event_stream_server.broadcast(event, Some(SseFilter::Events), None);
+            event_stream_server.broadcast(event, Some(SseFilter::Events));
         }
     });
     let (test_rng, _) = tokio::join!(scenario_task, broadcasting_task);

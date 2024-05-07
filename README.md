@@ -273,22 +273,8 @@ sleep_between_keep_alive_checks_in_seconds = 30
 
 #### Event Stream Server SSE legacy emulations
 
-Currently the only possible emulation is the V1 SSE API. Enabling V1 SSE api emulation requires setting `emulate_legacy_sse_apis` to `["V1"]`, like:
-```
-[sse_server]
-(...)
-emulate_legacy_sse_apis = ["V1"]
-(...)
-```
+Please see [Legacy sse emulation file](./LEGACY_SSE_EMULATION.md)
 
-This will expose three additional sse endpoints:
-* `/events/sigs`
-* `/events/deploys`
-* `/events/main`
-
-Those endpoints will emit events in the same format as the V1 SSE API of the casper node. There are limitations to what Casper Sidecar can and will do, here is a list of assumptions:
-
-TODO -> fill this in the next PR when mapping is implemented
 
 ### Storage
 

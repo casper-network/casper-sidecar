@@ -1,3 +1,6 @@
+use casper_types::{BlockV1, BlockV2, EraEndV2};
+use serde_json::Value;
+
 use super::LegacySseData;
 use crate::sse_data::SseData;
 
@@ -75,6 +78,26 @@ pub fn deploy_processed() -> SseData {
 
 pub fn legacy_deploy_processed() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_DEPLOY_PROCESSED).unwrap()
+}
+
+pub fn block_v2() -> BlockV2 {
+    serde_json::from_str(BLOCK_BODY_V2_WITH_ALL_DATA).unwrap()
+}
+
+pub fn block_v1_no_deploys_no_era() -> BlockV1 {
+    let mut val = serde_json::from_str::<Value>(BLOCK_BODY_V1_ALL_DATA).unwrap();
+    val["header"]["era_end"] = serde_json::Value::Null;
+    val["body"]["deploy_hashes"] = serde_json::Value::Array(vec![]);
+    val["body"]["transfer_hashes"] = serde_json::Value::Array(vec![]);
+    serde_json::from_value(val).unwrap()
+}
+
+pub fn era_end_v2() -> EraEndV2 {
+    serde_json::from_str(ERA_END_V2_WITH_ALL_DATA).unwrap()
+}
+
+pub fn era_end_v2_with_reward_exceeding_u64() -> EraEndV2 {
+    serde_json::from_str(ERA_END_V2_WITH_REWARD_EXCEEDING_U64).unwrap()
 }
 
 const RAW_API_VERSION: &str = r#"{"ApiVersion":"2.0.0"}"#;
@@ -667,3 +690,241 @@ const RAW_LEGACY_DEPLOY_PROCESSED: &str = r#"{
         }
     }
 }"#;
+const BLOCK_BODY_V1_ALL_DATA: &str = r#"
+{
+    "hash": "e0c36ab6748b9011e5aba95f6e753ace0c2171fa96d99dba5d51f8996359d248",
+    "header": {
+        "parent_hash": "90a4ade2849634e9c1ad0e02cb30645d0984056f68075cad8f6cad2b42a824ba",
+        "state_root_hash": "e396ff238e584f101be1fd60c5fd4b4b14f52941a2ea9ed610fd466171f613e8",
+        "body_hash": "fd2455605a34a540d99b474cd7a276024f1268d4fc8c86967a29191776576a11",
+        "random_bit": true,
+        "accumulated_seed": "446c1581914be4dc9617d64d06062a4f38acccff64d683eefe55b7c240c5fb9b",
+        "era_end": {
+            "era_report": {
+                "equivocators": [
+                    "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50",
+                    "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+                    "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05"
+                ],
+                "rewards": [
+                    {
+                        "validator": "010d2d4fdda5ff7a9820de2fe18a262b29bb2df36cbc767446e1dcd015e9c5ea98",
+                        "amount": 155246594
+                    }
+                ],
+                "inactive_validators": []
+            },
+            "next_era_validator_weights": [
+                {
+                    "validator": "013183e7169846881fb6ae07dc5ba63d92bd592d67681a765cf9813d5146de97f3",
+                    "weight": "277433153"
+                },
+                {
+                    "validator": "0202cfc31ccfba98abbc4cfe6c17e7aacc7bfe52f9f88dac8d32aca5c825951fb660",
+                    "weight": "875434194"
+                },
+                {
+                    "validator": "0203f4ba92963513e1cc0171691a7133d26b59aa025261a0ecdbfb53502457ab770a",
+                    "weight": "775555276"
+                },
+                {
+                    "validator": "0203ff1caebb0fd53fb4c52f8cf18d0e3257f6b075a16f0fd6aa5499ddb28a8d82ab",
+                    "weight": "818689728"
+                }
+            ]
+        },
+        "timestamp": "2020-08-07T01:25:44.194Z",
+        "era_id": 746263,
+        "height": 12581264813190897996,
+        "protocol_version": "2.0.0"
+    },
+    "body": {
+        "proposer": "018f40f339c5a4999eb50d5438da964f94e4c329ac33c1d5c32ab6640b3f8261a0",
+        "deploy_hashes": [
+            "e185793e2a6214542ffee6de0ede37d7dd9748b429e4586d73fd2abdd100bd7c",
+            "c4f7acd014ef88af95ebf338e8dd29b95b161a6a812a6764112bf9d09abc399a"
+        ],
+        "transfer_hashes": [
+            "19cd7acc75ffe58e6dd5f3f1a6b7c08f8d02bf47928926054d4818e6eb41ca74"
+        ]
+    }
+}
+"#;
+const ERA_END_V2_WITH_REWARD_EXCEEDING_U64: &str = r#"
+{
+    "equivocators": [
+        "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50",
+        "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+        "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05"
+    ],
+    "inactive_validators": ["010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51"],
+    "next_era_validator_weights": [
+        {
+            "validator": "013183e7169846881fb6ae07dc5ba63d92bd592d67681a765cf9813d5146de97f3",
+            "weight": "277433153"
+        },
+        {
+            "validator": "0203ff1caebb0fd53fb4c52f8cf18d0e3257f6b075a16f0fd6aa5499ddb28a8d82ab",
+            "weight": "818689728"
+        }
+    ],
+    "rewards": {
+        "010d2d4fdda5ff7a9820de2fe18a262b29bb2df36cbc767446e1dcd015e9c5ea98": "18446744073709551616"
+    },
+    "next_era_gas_price": 152
+}
+"#;
+
+const ERA_END_V2_WITH_ALL_DATA: &str = r#"
+{
+    "equivocators": [
+        "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50",
+        "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+        "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05"
+    ],
+    "inactive_validators": ["010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51"],
+    "next_era_validator_weights": [
+        {
+            "validator": "013183e7169846881fb6ae07dc5ba63d92bd592d67681a765cf9813d5146de97f3",
+            "weight": "277433153"
+        },
+        {
+            "validator": "0203ff1caebb0fd53fb4c52f8cf18d0e3257f6b075a16f0fd6aa5499ddb28a8d82ab",
+            "weight": "818689728"
+        }
+    ],
+    "rewards": {
+        "010d2d4fdda5ff7a9820de2fe18a262b29bb2df36cbc767446e1dcd015e9c5ea98": "155246594"
+    },
+    "next_era_gas_price": 152
+}
+"#;
+
+const BLOCK_BODY_V2_WITH_ALL_DATA: &str = r#"
+{
+    "hash": "e0c36ab6748b9011e5aba95f6e753ace0c2171fa96d99dba5d51f8996359d248",
+    "header": {
+        "parent_hash": "90a4ade2849634e9c1ad0e02cb30645d0984056f68075cad8f6cad2b42a824ba",
+        "state_root_hash": "e396ff238e584f101be1fd60c5fd4b4b14f52941a2ea9ed610fd466171f613e8",
+        "body_hash": "fd2455605a34a540d99b474cd7a276024f1268d4fc8c86967a29191776576a11",
+        "random_bit": true,
+        "accumulated_seed": "446c1581914be4dc9617d64d06062a4f38acccff64d683eefe55b7c240c5fb9b",
+        "era_end": {
+            "equivocators": [
+                "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50",
+                "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+                "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05"
+            ],
+            "inactive_validators": [],
+            "next_era_validator_weights": [
+                {
+                    "validator": "013183e7169846881fb6ae07dc5ba63d92bd592d67681a765cf9813d5146de97f3",
+                    "weight": "277433153"
+                },
+                {
+                    "validator": "0202cfc31ccfba98abbc4cfe6c17e7aacc7bfe52f9f88dac8d32aca5c825951fb660",
+                    "weight": "875434194"
+                },
+                {
+                    "validator": "0203f4ba92963513e1cc0171691a7133d26b59aa025261a0ecdbfb53502457ab770a",
+                    "weight": "775555276"
+                },
+                {
+                    "validator": "0203ff1caebb0fd53fb4c52f8cf18d0e3257f6b075a16f0fd6aa5499ddb28a8d82ab",
+                    "weight": "818689728"
+                }
+            ],
+            "rewards": {
+                "010d2d4fdda5ff7a9820de2fe18a262b29bb2df36cbc767446e1dcd015e9c5ea98": "155246594"
+            },
+            "next_era_gas_price": 1
+        },
+        "timestamp": "2020-08-07T01:25:44.194Z",
+        "era_id": 746263,
+        "height": 12581264813190897996,
+        "protocol_version": "2.0.0",
+        "current_gas_price": 231
+    },
+    "body": {
+        "proposer": "018f40f339c5a4999eb50d5438da964f94e4c329ac33c1d5c32ab6640b3f8261a0",
+        "mint": [
+            {
+                "Version1": "b26ae87e978a22e3d6cd28d2659a9a8ee7f0d98d1d7a7894fb07a42f9619b3f7"
+            },
+            {
+                "Deploy": "19cd7acc75ffe58e6dd5f3f1a6b7c08f8d02bf47928926054d4818e6eb41ca74"
+            },
+            {
+                "Version1": "493a5aba2ecd38c99302738509fe1ba27e28e9bfdd2a642c430ffbfb33cb7692"
+            },
+            {
+                "Version1": "4df9827fdb559cf1ecfc2490ed6039e720a54f729377a86d5466cb1eedf30cc3"
+            },
+            {
+                "Deploy": "5e50ebcf0190ef2be4182fe7940f4d68dde8210f42c75ca9478fc1be765c5751"
+            }
+        ],
+        "auction": [
+            {
+                "Deploy": "3adac5169f7e2c83d9e9b8a0563ff072251851436e97c04287f838752be8114d"
+            },
+            {
+                "Version1": "9a7c8cb4eee485220b89fd4cd0cc298b8bd5ac9c26836cb0c17b99f83f03a106"
+            },
+            {
+                "Deploy": "f8b204a26c27ba38f624a11d629c162d739afe4af547e1f9da71be029c9ed577"
+            },
+            {
+                "Version1": "56c0a2166f7b7e6cd03ca3cd8f0872cec37951817f28bc3b3f36924fd5f838c6"
+            },
+            {
+                "Deploy": "cffea0de3f6dd60d3636e8e02c3bee696773c0d8e498deacef9a19e80bb43e42"
+            }
+        ],
+        "install_upgrade": [
+            {
+                "Version1": "f6da6cf6005d0fc129de7d1e7c3994dffa91fb90dbd8c9f0889054219329e038"
+            },
+            {
+                "Deploy": "332f14259115d09fccc79df0cc5d3c6b01f420b051ad0e7f93981c11af7ed332"
+            },
+            {
+                "Deploy": "ff5f9819a0db8947739ec69438479c954439d7f95d6c09d4c2489a7a8bccb249"
+            },
+            {
+                "Version1": "8abe7ebce38def7df1cbf642a28b50adc882d093821efea104cc64236be81f25"
+            },
+            {
+                "Deploy": "06e7d220c0015d914fef28aec07047ee8f40030fb9ea001dcada426f3c43a656"
+            }
+        ],
+        "standard": [
+            {
+                "Version1": "dda811037b26144f36c5b82c57b3378d93783cf87203f709822eff7f922ee788"
+            },
+            {
+                "Version1": "e881cb051e210b34d4428552d89b2ef2800c949837f494763a5de1691da99103"
+            },
+            {
+                "Version1": "7bef85e904b4c2757ed38a22570fb98fa451b5ecfeb601c0a454a18638db81d2"
+            },
+            {
+                "Deploy": "e185793e2a6214542ffee6de0ede37d7dd9748b429e4586d73fd2abdd100bd7c"
+            },
+            {
+                "Deploy": "c4f7acd014ef88af95ebf338e8dd29b95b161a6a812a6764112bf9d09abc399a"
+            }
+        ],
+        "rewarded_signatures": [
+            [
+                1,
+                2
+            ],
+            [
+                4,
+                12
+            ]
+        ]
+    }
+}
+"#;

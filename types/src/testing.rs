@@ -6,8 +6,11 @@
 use casper_types::{
     testing::TestRng, Deploy, TimeDiff, Timestamp, Transaction, TransactionV1Builder,
 };
+#[cfg(test)]
+use casper_types::{DeployHash, PublicKey};
 use rand::Rng;
 
+#[cfg(feature = "sse-data-testing")]
 /// Creates a test deploy created at given instant and with given ttl.
 pub fn create_test_transaction(
     created_ago: TimeDiff,
@@ -32,6 +35,7 @@ pub fn create_test_transaction(
     }
 }
 
+#[cfg(feature = "sse-data-testing")]
 /// Creates a random deploy that is considered expired.
 pub fn create_expired_transaction(now: Timestamp, test_rng: &mut TestRng) -> Transaction {
     create_test_transaction(
@@ -40,4 +44,16 @@ pub fn create_expired_transaction(now: Timestamp, test_rng: &mut TestRng) -> Tra
         now,
         test_rng,
     )
+}
+
+#[cfg(test)]
+pub fn parse_public_key(arg: &str) -> PublicKey {
+    let escaped = format!("\"{}\"", arg);
+    serde_json::from_str(&escaped).unwrap()
+}
+
+#[cfg(test)]
+pub fn parse_deploy_hash(arg: &str) -> DeployHash {
+    let escaped = format!("\"{}\"", arg);
+    serde_json::from_str(&escaped).unwrap()
 }
