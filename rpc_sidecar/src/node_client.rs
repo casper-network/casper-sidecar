@@ -694,4 +694,50 @@ mod tests {
             .ok_or(Error::NoResponseBody)
             .map(|query_res| query_res.into_inner().0)
     }
+
+    #[tokio::test]
+    async fn given_client_should_reconnect_to_restarted_node_and_do_request() {
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let shutdown_mock = Arc::new(Notify::new());
+        let mock_server_handle =
+            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown_mock))
+                .await;
+        let config = NodeClientConfig::finite_retries_config(port, 200);
+        let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
+
+        let scenario = async {
+            assert!(query_global_state_for_string_value(&mut rng, &c)
+                .await
+                .is_ok());
+
+            shutdown_mock.notify_one();
+            let _ = mock_server_handle.await;
+
+            let err = query_global_state_for_string_value(&mut rng, &c)
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                err,
+                Error::RequestFailed(e) if e == "disconnected"
+            ));
+
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                Arc::clone(&shutdown_mock),
+            )
+            .await;
+
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            assert!(query_global_state_for_string_value(&mut rng, &c)
+                .await
+                .is_ok());
+        };
+
+        tokio::select! {
+            _ = scenario => (),
+            _ = reconnect_loop => panic!("reconnect loop should not exit"),
+        }
+    }
 }

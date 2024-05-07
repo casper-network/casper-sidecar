@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use casper_binary_port::{
@@ -6,6 +7,7 @@ use casper_binary_port::{
 };
 use casper_types::{bytesrepr::ToBytes, CLValue, ProtocolVersion, StoredValue};
 use futures::{SinkExt, StreamExt};
+use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -26,20 +28,27 @@ impl BinaryPortMock {
         Self { port, response }
     }
 
-    pub async fn start(&self) {
+    pub async fn start(&self, shutdown: Arc<Notify>) {
         let port = self.port;
         let addr = format!("{}:{}", LOCALHOST, port);
         let listener = TcpListener::bind(addr.clone())
             .await
             .expect("failed to listen");
         loop {
-            match listener.accept().await {
-                Ok((stream, _addr)) => {
-                    let response_payload = self.response.clone();
-                    tokio::spawn(handle_client(stream, response_payload));
+            tokio::select! {
+                _ = shutdown.notified() => {
+                    break;
                 }
-                Err(io_err) => {
-                    println!("acceptance failure: {:?}", io_err);
+                val = listener.accept() => {
+                    match val {
+                        Ok((stream, _addr)) => {
+                            let response_payload = self.response.clone();
+                            tokio::spawn(handle_client(stream, response_payload));
+                        }
+                        Err(io_err) => {
+                            println!("acceptance failure: {:?}", io_err);
+                        }
+                    }
                 }
             }
         }
@@ -63,20 +72,23 @@ pub fn get_port() -> u16 {
     portpicker::pick_unused_port().unwrap()
 }
 
-pub async fn start_mock_binary_port_responding_with_stored_value(port: u16) -> JoinHandle<()> {
+pub async fn start_mock_binary_port_responding_with_stored_value(
+    port: u16,
+    shutdown: Arc<Notify>,
+) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
     let data = GlobalStateQueryResult::new(value, vec![]);
     let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
     let val = BinaryResponse::from_value(data, protocol_version);
     let request = [];
     let response = BinaryResponseAndRequest::new(val, &request);
-    start_mock_binary_port(port, response.to_bytes().unwrap()).await
+    start_mock_binary_port(port, response.to_bytes().unwrap(), shutdown).await
 }
 
-async fn start_mock_binary_port(port: u16, data: Vec<u8>) -> JoinHandle<()> {
+async fn start_mock_binary_port(port: u16, data: Vec<u8>, shutdown: Arc<Notify>) -> JoinHandle<()> {
     let handler = tokio::spawn(async move {
         let binary_port = BinaryPortMock::new(port, data);
-        binary_port.start().await;
+        binary_port.start(shutdown).await;
     });
     sleep(Duration::from_secs(3)).await; // This should be handled differently, preferably the mock binary port should inform that it already bound to the port
     handler
