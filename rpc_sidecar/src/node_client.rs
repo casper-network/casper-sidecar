@@ -30,7 +30,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{Notify, RwLock, RwLockWriteGuard, Semaphore},
+    sync::{futures::Notified, RwLock, RwLockWriteGuard, Semaphore},
 };
 use tracing::{error, field, info, warn};
 
@@ -279,10 +279,35 @@ impl Error {
     }
 }
 
+struct Reconnect;
+struct Shutdown;
+
+struct Notify<T> {
+    inner: tokio::sync::Notify,
+    phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> Notify<T> {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            inner: tokio::sync::Notify::new(),
+            phantom: std::marker::PhantomData,
+        })
+    }
+
+    fn notified(&self) -> Notified {
+        self.inner.notified()
+    }
+
+    fn notify_one(&self) {
+        self.inner.notify_one()
+    }
+}
+
 pub struct FramedNodeClient {
     client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
-    reconnect: Arc<Notify>,
-    shutdown: Arc<Notify>,
+    reconnect: Arc<Notify<Reconnect>>,
+    shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
     request_limit: Semaphore,
 }
@@ -292,14 +317,14 @@ impl FramedNodeClient {
         config: NodeClientConfig,
     ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
         let stream = Arc::new(RwLock::new(Self::connect_with_retries(&config).await?));
-        let shutdown = Arc::new(Notify::new());
-        let reconnect = Arc::new(Notify::new());
+        let shutdown = Notify::<Shutdown>::new();
+        let reconnect = Notify::<Reconnect>::new();
 
         let reconnect_loop = Self::reconnect_loop(
             config.clone(),
             Arc::clone(&stream),
-            Arc::clone(&reconnect),
             Arc::clone(&shutdown),
+            Arc::clone(&reconnect),
         );
 
         Ok((
@@ -317,15 +342,15 @@ impl FramedNodeClient {
     async fn reconnect_loop(
         config: NodeClientConfig,
         client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
-        shutdown: Arc<Notify>,
-        reconnect: Arc<Notify>,
+        shutdown: Arc<Notify<Shutdown>>,
+        reconnect: Arc<Notify<Reconnect>>,
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
                 _ = reconnect.notified() => {
-                        let mut lock = client.write().await;
-                        let new_client = Self::reconnect(&config.clone()).await?;
-                        *lock = new_client;
+                    let mut lock = client.write().await;
+                    let new_client = Self::reconnect(&config.clone()).await?;
+                    *lock = new_client;
                 },
                 _ = shutdown.notified() => {
                     info!("node client shutdown has been requested");
@@ -460,7 +485,7 @@ impl NodeClient for FramedNodeClient {
 
 fn handle_response(
     resp: BinaryResponseAndRequest,
-    shutdown: &Notify,
+    shutdown: &Notify<Shutdown>,
 ) -> Result<BinaryResponseAndRequest, Error> {
     let version = resp.response().protocol_version();
 
@@ -565,7 +590,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_reject_bad_major_version() {
-        let notify = Notify::new();
+        let notify = Notify::<Shutdown>::new();
         let bad_version = ProtocolVersion::from_parts(10, 0, 0);
 
         let result = handle_response(
@@ -582,7 +607,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_accept_different_minor_version() {
-        let notify = Notify::new();
+        let notify = Notify::<Shutdown>::new();
         let version = ProtocolVersion::new(SemVer {
             minor: SUPPORTED_PROTOCOL_VERSION.value().minor + 1,
             ..SUPPORTED_PROTOCOL_VERSION.value()
@@ -608,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_accept_different_patch_version() {
-        let notify = Notify::new();
+        let notify = Notify::<Shutdown>::new();
         let version = ProtocolVersion::new(SemVer {
             patch: SUPPORTED_PROTOCOL_VERSION.value().patch + 1,
             ..SUPPORTED_PROTOCOL_VERSION.value()
@@ -634,7 +659,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
-        let config = NodeClientConfig::finite_retries_config(1111, 2);
+        let config = NodeClientConfig::new_with_port_and_retries(1111, 2);
         let res = FramedNodeClient::new(config).await;
 
         assert!(res.is_err());
@@ -648,8 +673,10 @@ mod tests {
     async fn given_client_and_node_should_connect_and_do_request() {
         let port = get_port();
         let mut rng = TestRng::new();
-        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(port).await;
-        let config = NodeClientConfig::finite_retries_config(port, 2);
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle =
+            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
@@ -663,12 +690,14 @@ mod tests {
     async fn given_client_should_try_until_node_starts() {
         let mut rng = TestRng::new();
         let port = get_port();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
         tokio::spawn(async move {
             sleep(Duration::from_secs(5)).await;
             let _mock_server_handle =
-                start_mock_binary_port_responding_with_stored_value(port).await;
+                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
+                    .await;
         });
-        let config = NodeClientConfig::finite_retries_config(port, 5);
+        let config = NodeClientConfig::new_with_port_and_retries(port, 5);
         let (client, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
@@ -699,11 +728,10 @@ mod tests {
     async fn given_client_should_reconnect_to_restarted_node_and_do_request() {
         let port = get_port();
         let mut rng = TestRng::new();
-        let shutdown_mock = Arc::new(Notify::new());
+        let shutdown = Arc::new(tokio::sync::Notify::new());
         let mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown_mock))
-                .await;
-        let config = NodeClientConfig::finite_retries_config(port, 200);
+            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+        let config = NodeClientConfig::new_with_port(port);
         let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
@@ -711,7 +739,7 @@ mod tests {
                 .await
                 .is_ok());
 
-            shutdown_mock.notify_one();
+            shutdown.notify_one();
             let _ = mock_server_handle.await;
 
             let err = query_global_state_for_string_value(&mut rng, &c)
@@ -722,11 +750,9 @@ mod tests {
                 Error::RequestFailed(e) if e == "disconnected"
             ));
 
-            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
-                port,
-                Arc::clone(&shutdown_mock),
-            )
-            .await;
+            let _mock_server_handle =
+                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
+                    .await;
 
             tokio::time::sleep(Duration::from_secs(2)).await;
 
