@@ -48,6 +48,22 @@ pub mod tests {
             )
         }
 
+        pub fn build_example_2_0_0_node_with_data(
+            node_port_for_sse_connection: u16,
+            node_port_for_rest_connection: u16,
+            data: EventsWithIds,
+        ) -> MockNode {
+            MockNodeBuilder {
+                version: "2.0.0".to_string(),
+                network_name: "network-1".to_string(),
+                data_of_node: data,
+                cache_of_node: None,
+                sse_port: Some(node_port_for_sse_connection),
+                rest_port: Some(node_port_for_rest_connection),
+            }
+            .build()
+        }
+
         pub fn build_example_node_with_version(
             node_port_for_sse_connection: Option<u16>,
             node_port_for_rest_connection: Option<u16>,

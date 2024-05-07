@@ -5,6 +5,7 @@
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
 mod filter;
+pub mod legacy_sse_data;
 pub mod sse_data;
 #[cfg(feature = "sse-data-testing")]
 mod testing;

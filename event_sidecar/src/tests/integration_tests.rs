@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use casper_event_types::sse_data::test_support::*;
+use casper_event_types::{legacy_sse_data::LegacySseData, sse_data::test_support::*};
 use casper_types::testing::TestRng;
 use core::time;
 use eventsource_stream::{Event, EventStream, Eventsource};
@@ -18,7 +18,7 @@ use crate::{
         raw_sse_events_utils::tests::{
             random_n_block_added, sse_server_example_2_0_0_data,
             sse_server_example_2_0_0_data_second, sse_server_example_2_0_0_data_third,
-            sse_server_shutdown_2_0_0_data, EventsWithIds,
+            sse_server_shutdown_2_0_0_data, sse_server_sigs_2_0_0_data, EventsWithIds,
         },
         testing_config::{prepare_config, TestingConfig},
     },
@@ -119,6 +119,75 @@ async fn should_allow_client_connection_to_sse() {
         events_received[0].contains("\"ApiVersion\""),
         "First event should be ApiVersion"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_translate_events_on_main_endpoint() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/main?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    assert!(
+        events_received[0].contains("\"ApiVersion\""),
+        "First event should be ApiVersion"
+    );
+    let legacy_block_added = serde_json::from_str::<LegacySseData>(&events_received[1])
+        .expect("Should have parsed legacy BlockAdded from string");
+    assert!(matches!(
+        legacy_block_added,
+        LegacySseData::BlockAdded { .. }
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_translate_events_on_sigs_endpoint() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node_with_data(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        sse_server_sigs_2_0_0_data(),
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events/sigs?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    assert!(
+        events_received[0].contains("\"ApiVersion\""),
+        "First event should be ApiVersion"
+    );
+    let legacy_finality_signature = serde_json::from_str::<LegacySseData>(&events_received[1])
+        .expect("Should have parsed legacy FinalitySignature from string");
+    assert!(matches!(
+        legacy_finality_signature,
+        LegacySseData::FinalitySignature { .. }
+    ));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
