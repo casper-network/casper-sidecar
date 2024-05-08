@@ -9,7 +9,8 @@ use crate::rpcs::error::Error;
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, bytesrepr::ToBytes,
     global_state::TrieMerkleProof, Account, AddressableEntity, AvailableBlockRange, BlockHeader,
-    BlockIdentifier, EntityAddr, GlobalStateIdentifier, Key, SignedBlock, StoredValue,
+    BlockIdentifier, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, SignedBlock,
+    StoredValue,
 };
 
 use crate::NodeClient;
@@ -51,6 +52,8 @@ pub enum EntityOrAccount {
         entity: AddressableEntity,
         /// The named keys of the addressable entity.
         named_keys: NamedKeys,
+        /// The entry points of the addressable entity.
+        entry_points: Vec<EntryPointValue>,
     },
     /// A legacy account.
     LegacyAccount(Account),
@@ -153,9 +156,15 @@ pub async fn resolve_account_hash(
                 return Err(Error::InvalidAddressableEntity);
             };
             let named_keys =
-                resolve_entity_named_keys(node_client, entity_addr, state_identifier).await?;
+                get_entity_named_keys(node_client, entity_addr, state_identifier).await?;
+            let entry_points =
+                get_entity_entry_points(node_client, entity_addr, state_identifier).await?;
             (
-                EntityOrAccount::AddressableEntity { entity, named_keys },
+                EntityOrAccount::AddressableEntity {
+                    entity,
+                    named_keys,
+                    entry_points,
+                },
                 merkle_proof,
             )
         }
@@ -190,7 +199,7 @@ pub async fn resolve_entity_addr(
     }))
 }
 
-pub async fn resolve_entity_named_keys(
+pub async fn get_entity_named_keys(
     node_client: &dyn NodeClient,
     entity_addr: EntityAddr,
     state_identifier: Option<GlobalStateIdentifier>,
@@ -219,6 +228,42 @@ pub async fn resolve_entity_named_keys(
         })
         .collect::<Result<BTreeMap<String, Key>, Error>>()?;
     Ok(NamedKeys::from(named_keys))
+}
+
+pub async fn get_entity_entry_points(
+    node_client: &dyn NodeClient,
+    entity_addr: EntityAddr,
+    state_identifier: Option<GlobalStateIdentifier>,
+) -> Result<Vec<EntryPointValue>, Error> {
+    let stored_values_v1 = node_client
+        .query_global_state_by_prefix(
+            state_identifier,
+            KeyPrefix::EntryPointsV1ByEntity(entity_addr),
+        )
+        .await
+        .map_err(|err| Error::NodeRequest("entity named keys", err))?;
+    let stored_values_v2 = node_client
+        .query_global_state_by_prefix(
+            state_identifier,
+            KeyPrefix::EntryPointsV2ByEntity(entity_addr),
+        )
+        .await
+        .map_err(|err| Error::NodeRequest("entity named keys", err))?;
+
+    stored_values_v1
+        .into_iter()
+        .chain(stored_values_v2)
+        .map(|stored_value| {
+            if let StoredValue::EntryPoint(entry_point) = stored_value {
+                Ok(entry_point)
+            } else {
+                Err(Error::InvalidNamedKeys(format!(
+                    "unexpected stored value: {}",
+                    stored_value.type_name()
+                )))
+            }
+        })
+        .collect::<Result<_, _>>()
 }
 
 pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<String, Error> {

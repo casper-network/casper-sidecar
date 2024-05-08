@@ -831,6 +831,18 @@
                       "name": "key",
                       "key": "hash-0000000000000000000000000000000000000000000000000000000000000000"
                     }
+                  ],
+                  "entry_points": [
+                    {
+                      "V1CasperVm": {
+                        "name": "entry_point",
+                        "args": [],
+                        "ret": "Unit",
+                        "access": "Public",
+                        "entry_point_type": "Caller",
+                        "entry_point_payment": "Caller"
+                      }
+                    }
                   ]
                 }
               },
@@ -6783,6 +6795,7 @@
                 "type": "object",
                 "required": [
                   "entity",
+                  "entry_points",
                   "named_keys"
                 ],
                 "properties": {
@@ -6801,6 +6814,13 @@
                         "$ref": "#/components/schemas/NamedKeys"
                       }
                     ]
+                  },
+                  "entry_points": {
+                    "description": "The entry points of the addressable entity.",
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EntryPointValue"
+                    }
                   }
                 }
               }

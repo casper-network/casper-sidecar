@@ -29,8 +29,8 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
+    GlobalStateIdentifier, Key, KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -94,6 +94,9 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
                 .cloned()
                 .collect::<BTreeMap<_, _>>()
                 .into(),
+            entry_points: vec![EntryPointValue::new_v1_entry_point_value(
+                EntryPoint::default_with_name("entry_point"),
+            )],
         },
     });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
@@ -588,12 +591,14 @@ impl RpcWithParams for GetAddressableEntity {
                     .await?
                     .ok_or(Error::AddressableEntityNotFound)?;
                 let named_keys =
-                    common::resolve_entity_named_keys(&*node_client, addr, state_identifier)
-                        .await?;
+                    common::get_entity_named_keys(&*node_client, addr, state_identifier).await?;
+                let entry_points =
+                    common::get_entity_entry_points(&*node_client, addr, state_identifier).await?;
                 (
                     EntityOrAccount::AddressableEntity {
                         entity: result.value,
                         named_keys,
+                        entry_points,
                     },
                     result.merkle_proof,
                 )
@@ -1371,6 +1376,7 @@ mod tests {
         struct ClientMock {
             entity: AddressableEntity,
             named_keys: NamedKeys,
+            entry_points: Vec<EntryPointValue>,
             entity_hash: AddressableEntityHash,
         }
 
@@ -1449,6 +1455,44 @@ mod tests {
                             &[],
                         ))
                     }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::EntryPointsV1ByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.entry_points
+                                    .iter()
+                                    .cloned()
+                                    .map(StoredValue::EntryPoint)
+                                    .collect::<Vec<_>>(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::EntryPointsV2ByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                Vec::<StoredValue>::new(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1473,6 +1517,14 @@ mod tests {
                 .take(named_key_count)
                 .collect::<BTreeMap<_, _>>()
                 .into();
+        let entry_point_count = rng.gen_range(0..10);
+        let entry_points = iter::repeat_with(|| {
+            EntryPointValue::new_v1_entry_point_value(EntryPoint::default_with_name(
+                rng.random_string(1..10),
+            ))
+        })
+        .take(entry_point_count)
+        .collect::<Vec<_>>();
 
         let entity_identifier = EntityIdentifier::random(rng);
 
@@ -1480,6 +1532,7 @@ mod tests {
             Arc::new(ClientMock {
                 entity: entity.clone(),
                 named_keys: named_keys.clone(),
+                entry_points: entry_points.clone(),
                 entity_hash,
             }),
             GetAddressableEntityParams {
@@ -1494,7 +1547,11 @@ mod tests {
             resp,
             GetAddressableEntityResult {
                 api_version: CURRENT_API_VERSION,
-                entity: EntityOrAccount::AddressableEntity { entity, named_keys },
+                entity: EntityOrAccount::AddressableEntity {
+                    entity,
+                    named_keys,
+                    entry_points
+                },
                 merkle_proof: String::from("00000000"),
             }
         );
