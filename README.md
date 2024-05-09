@@ -6,9 +6,7 @@
    - [The REST API server](#the-rest-api-server)
 	- [The Admin API server](#the-admin-api-server)
 	- [The RPC API server](#the-rpc-api-server)
-- [Running and Testing the Sidecar](#running-and-testing-the-sidecar)
-	- [Prerequisites](#prerequisites)
-	- [Configuration](#configuration)
+- [Configuring the Sidecar](#configuring-the-sidecar)
 	- [RPC server setup](#rpc-server-setup)
 	- [SSE server setup](#sse-server-setup)
 		- [Configuring SSE node connections](#configuring-sse-node-connections)
@@ -20,11 +18,12 @@
 		- [SQLite database](#sqlite-database)
 		- [PostgreSQL database](#postgresql-database)
 	- [Admin server setup](#admin-server-setup)
+- [Running and Testing the Sidecar](#running-and-testing-the-sidecar)
+	- [Prerequisites](#prerequisites)
+   - [Running the Sidecar](#running-the-sidecar)
+   - [Testing the Sidecar](#testing-the-sidecar)
 - [Swagger Documentation](#swagger-documentation)
 - [OpenAPI Specification](#openapi-specification)
-- [Running the Sidecar](#running-the-sidecar)
-- [Testing the Sidecar](#testing-the-sidecar)
-	- [Testing the Sidecar using NCTL](#testing-the-sidecar-using-nctl)
 - [Troubleshooting Tips](#troubleshooting-tips)
 	- [Checking liveness](#checking-liveness)
 	- [Checking the node connection](#checking-the-node-connection)
@@ -167,19 +166,8 @@ The Sidecar also offers an RPC JSON API server that can be enabled and configure
    end
 ```
 
-## Running and Testing the Sidecar
+## Configuring the Sidecar
 
-### Prerequisites
-
-To compile, test, and run the Sidecar, install the following software first:
-
-* CMake 3.1.4 or greater
-* [Rust](https://www.rust-lang.org/tools/install)
-* pkg-config
-* gcc
-* g++
-
-### Configuration
 
 The Sidecar service must be configured using a `.toml` file specified at runtime.
 
@@ -381,7 +369,7 @@ request_timeout_in_seconds = 10
 * `max_requests_per_second` - The maximum total number of requests that can be made per second.
 * `request_timeout_in_seconds` - The total time before a request times out.
 
-### Dtorage setup
+### Storage setup
 
 This directory stores the SSE cache and an SQLite database if the Sidecar was configured to use SQLite.
 
@@ -479,15 +467,19 @@ max_requests_per_second = 1
 
 Access the admin server at `http://localhost:18887/metrics/`.
 
-## Swagger Documentation
+## Running and Testing the Sidecar
 
-Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
+### Prerequisites
 
-## OpenAPI Specification
+To compile, test, and run the Sidecar, install the following software first:
 
-An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
+* CMake 3.1.4 or greater
+* [Rust](https://www.rust-lang.org/tools/install)
+* pkg-config
+* gcc
+* g++
 
-## Running the Sidecar
+### Running the Sidecar
 
 After creating the configuration file, run the Sidecar using `cargo` and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
@@ -513,7 +505,7 @@ The log levels, listed in order of increasing verbosity, are:
 
 Further details about log levels can be found [here](https://docs.rs/env_logger/0.9.1/env_logger/#enabling-logging).
 
-## Testing the Sidecar
+### Testing the Sidecar
 
 You can run the unit and integration tests included in this repository with the following command:
 
@@ -529,11 +521,19 @@ cargo test -- --include-ignored
 
 The [EXAMPLE_NCTL_CONFIG.toml](./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml) file contains the configurations used for these tests.
 
-### Testing the Sidecar using NCTL
+#### Testing the Sidecar using NCTL
 
 The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
 
 The configuration shown [here](./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml) will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would while connected to a live node, displaying events as they occur in the local NCTL network.
+
+## Swagger Documentation
+
+Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
+
+## OpenAPI Specification
+
+An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
 
 ## Troubleshooting Tips
 
