@@ -334,11 +334,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let block_identifier = maybe_params.map(|params| params.block_identifier);
-        let block_header = node_client
-            .read_block_header(block_identifier)
-            .await
-            .map_err(|err| Error::NodeRequest("block header", err))?
-            .unwrap();
+        let block_header = common::get_block_header(&*node_client, block_identifier).await?;
 
         let state_identifier = block_identifier.map(GlobalStateIdentifier::from);
         let legacy_bid_stored_values = node_client
@@ -1128,8 +1124,8 @@ mod tests {
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, PackageHash,
-        ProtocolVersion, TestBlockBuilder, TransactionRuntime,
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCodeHash, EntityKind,
+        PackageHash, ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1349,6 +1345,50 @@ mod tests {
                 ),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn should_fail_auction_info_when_block_not_found() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::AvailableBlockRange) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                AvailableBlockRange::RANGE_0_0,
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let err = GetAuctionInfo::do_handle_request(Arc::new(ClientMock), None)
+            .await
+            .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::NoSuchBlock as i64);
     }
 
     #[tokio::test]
