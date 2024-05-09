@@ -8,7 +8,7 @@
 
 ## Synopsis
 
-The Casper Event Sidecar is a process that connects to the RPC port of a Casper node and exposes a JSON-RPC interface for interacting with that node. The RPC protocol allows for basic operations like querying global state, sending transactions and deploys, etc. All of the RPC methods are documented [here](https://docs.casper.network/developers/json-rpc/).
+The Casper Sidecar is a process that connects to the RPC port of a Casper node and exposes a JSON-RPC interface for interacting with that node. The RPC protocol allows for basic operations like querying global state, sending transactions and deploys, etc. All of the RPC methods are documented [here](https://docs.casper.network/developers/json-rpc/).
 
 ## Protocol
 The sidecar maintains a TCP connection with the node and communicates using a custom binary protocol built on top of [Juliet](https://github.com/casper-network/juliet). The protocol uses a request-response model where the sidecar sends simple self-contained requests and the node responds to them. The requests can be split into these main categories:

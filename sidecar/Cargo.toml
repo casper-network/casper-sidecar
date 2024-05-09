@@ -45,7 +45,7 @@ assets = [
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
-Package for Casper Event Sidecar
+Package for Casper Sidecar
 """
 
 [package.metadata.deb.systemd-units]
