@@ -1,4 +1,4 @@
-# Casper Event Sidecar USAGE
+# Casper Sidecar USAGE
 
 This document describes how to consume events and perform queries using the Sidecar, covering the following topics:
 
@@ -20,9 +20,11 @@ Events are emitted on two endpoints:
 
 For more information on various event types emitted by the node, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
 
-### Monitoring the Sidecar Event Stream
+### Monitoring the Sidecar event stream
 
 It is possible to monitor the Sidecar event stream using *cURL*, depending on how the HOST and PORT are configured.
+
+The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
 
 ```json
 curl -s http://<HOST:PORT>/events
@@ -43,15 +45,13 @@ Also, the Sidecar exposes an endpoint for Sidecar-generated events:
     curl -sN http://127.0.0.1:19999/events/sidecar
     ```
 
-### The API Version of Node Events
+### Node events versioning
 
-An `ApiVersion` event is always emitted when a new client connects to a node's SSE server, informing the client of the node's software version.
-
-When a client connects to the Sidecar, the Sidecar displays the node’s API version, `ApiVersion`, which it receives from the node. Then, it starts streaming the events coming from the node. The `ApiVersion` may differ from the node’s build version.
+An `ApiVersion` event is always emitted when the Sidecar connects to a node's SSE server, broadcasting the node's software version. Then, the Sidecar starts streaming the events coming from the node. Note that the `ApiVersion` may differ from the node’s build version.
 
 If the node goes offline, the `ApiVersion` may differ when it restarts (i.e., in the case of an upgrade). In this case, the Sidecar will report the new `ApiVersion` to its client. If the node’s `ApiVersion` has not changed, the Sidecar will not report the version again and will continue to stream messages that use the previous version.
 
-Here is an example of what the API version would look like while listening on the Sidecar’s `TransactionAccepted` event stream:
+Here is an example of what the API version would look like while listening on the Sidecar’s event stream. The colons represent "keep-alive" messages.
 
 ```
 curl -sN http://127.0.0.1:19999/events
@@ -68,13 +68,9 @@ id:21821471
 :
 ```
 
-#### Middleware Mode
+>**Note**: The Sidecar can connect simultaneously to nodes with different build versions, which send messages with different API versions. There is also the rare possibility of nodes changing API versions and not being in sync with other connected nodes. Although this situation would be rare, clients should be able to parse messages with different API versions.
 
-The Sidecar can connect simultaneously to nodes with different build versions, which send messages with different API versions. There is also the rare possibility of nodes changing API versions and not being in sync with other connected nodes. Although this situation would be rare, clients should be able to parse messages with different API versions.
-
->**Note**: The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
-
-### The Version of Sidecar Events
+### Sidecar events versioning
 
 When a client connects to the `events/sidecar` endpoint, it will receive a message containing the version of the Sidecar software. Release version `1.1.0` would look like this:
 
@@ -91,9 +87,9 @@ data:{"SidecarVersion":"1.1.0"}
 
 Note that the SidecarVersion differs from the APIVersion emitted by the node event streams. You will also see the keep-alive messages as colons, ensuring the connection is active.
 
-### The Node Shutdown Event
+### The node's Shutdown event
 
-When the node sends a Shutdown event and disconnects from the Sidecar, the Sidecar will report it as part of the event stream and on the `/events` endpoint. The Sidecar will continue to operate and attempt to reconnect to the node according to the `max_attempts` and `delay_between_retries_in_seconds` settings specified in its configuration.
+When the node sends a Shutdown event and disconnects from the Sidecar, the Sidecar will report it as part of the event stream on the `/events` endpoint. The Sidecar will continue to operate and attempt to reconnect to the node according to the `max_attempts` and `delay_between_retries_in_seconds` settings specified in its configuration.
 
 The Sidecar does not expose Shutdown events via its REST API. 
 
@@ -131,7 +127,7 @@ id:3
 
 Note that the Sidecar can emit another type of shutdown event on the `events/sidecar` endpoint, as described below.
 
-### The Sidecar Shutdown Event
+### The Sidecar Shutdown event
 
 If the Sidecar attempts to connect to a node that does not come back online within the maximum number of reconnection attempts, the Sidecar will start a controlled shutdown process. It will emit a Sidecar-specific Shutdown event on the [events/sidecar](#the-sidecar-shutdown-event) endpoint, designated for events originating solely from the Sidecar service. The other event streams do not get this message because they only emit messages from the node.
 
@@ -156,7 +152,7 @@ id:8
 
 The Sidecar provides a RESTful endpoint for useful queries about the state of the network.
 
-### Latest Block
+### Latest block
 
 Retrieve information about the last block added to the linear chain.
 
@@ -178,7 +174,7 @@ curl -s http://127.0.0.1:18888/block
 <br></br>
 
 
-### Block by Hash
+### Block by hash
 
 Retrieve information about a block given its block hash.
 
@@ -199,7 +195,7 @@ curl -s http://127.0.0.1:18888/block/bd2e0c36150a74f50d9884e38a0955f8b1cba94821b
 </details>
 <br></br>
 
-### Block by Height
+### Block by chain height
 
 Retrieve information about a block, given a specific block height.
 
@@ -220,7 +216,7 @@ curl -s http://127.0.0.1:18888/block/336460
 </details>
 <br></br>
 
-### Transaction by Hash
+### Transaction by hash
 
 Retrieve an aggregate of the various states a transaction goes through, given its transaction hash. The endpoint also needs the transaction type as an input (`deploy` or `version1`) The node does not emit this event, but the Sidecar computes it and returns it for the given transaction. This endpoint behaves differently than other endpoints, which return the raw event received from the node. 
 
@@ -250,11 +246,13 @@ The next sample output is for a transaction that was accepted and processed.
 <summary><b>Transaction accepted and processed successfully</b></summary>
 
 ```json
-{"transaction_hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","transaction_accepted": {"header": {"api_version": "2.0.0","network_name": "casper-net-1"},"payload": {"transaction": {"Version1": {"hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","header": {"chain_name": "casper-net-1","timestamp": "2024-03-20T13:31:59.772Z","ttl": "30m","body_hash": "40c7476a175fb97656ec6da1ace2f1900a9d353f1637943a30edd5385494b345","pricing_mode": {"Fixed": {"gas_price_tolerance": 1000}},"initiator_addr": {"PublicKey": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973"}},"body": {"args": [],"target": {"Session": {"kind": "Standard","module_bytes":"<REDACTED>","runtime": "VmCasperV1"}},"entry_point": {"Custom": "test"},"scheduling": "Standard"},"approvals": [{"signer": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973","signature": "0154fd295f5d4d62544f63d70470de28b2bf2cddecac2a237b6a2a78d25ee14b21ea2861d711a51f57b3f9f74e247a8d26861eceead6569f233949864a9d5fa100"}]}}}},"transaction_processed": {"transaction_hash":{"Deploy":"c6907d46a5cc61ef30c66dbb6599208a57d3d62812c5f061169cdd7ad4e52597"},"initiator_addr":{"PublicKey":"0202dec9e70126ddd13af6e2e14771339c22f73626202a28ef1ed41594a3b2a79156"},"timestamp":"2024-03-20T13:58:57.301Z","ttl":"2m 53s","block_hash":"6c6a1fb17147fe467a52f8078e4c6d1143e8f61e2ec0c57938a0ac5f49e3f960","execution_result":{"Version1":{"Success":{"effect":{"operations":[{"key":"9192013132486795888","kind":"NoOp"}],"transforms":[{"key":"9278390014984155010","transform":{"AddUInt64":17967007786823421753}},{"key":"8284631679508534160","transform":{"AddUInt512":"13486131286369918968"}},{"key":"11406903664472624400","transform":{"AddKeys":[{"name":"5532223989822042950","key":"6376159234520705888"},{"name":"9797089120764120320","key":"3973583116099652644"},{"name":"17360643427404656075","key":"3412027808185329863"},{"name":"9849256366384177518","key":"1556404389498537987"},{"name":"14237913702817074429","key":"16416969798013966173"}]}},{"key":"11567235260771335457","transform":"Identity"},{"key":"13285707355579107355","transform":"Identity"}]},"transfers":[],"cost":"14667737366273622842"}}},"messages":[{"entity_addr":{"SmartContract":[193,43,184,185,6,88,15,83,243,107,130,63,136,174,24,148,79,214,87,238,171,138,195,141,119,235,134,196,253,221,36,0]},"message":{"String":"wLNta4zbpJiW5ScjagPXm5LoGViYApCfIbEXJycPUuLQP4fA7REhV4LdBRbZ7bQb"},"topic_name":"FdRRgbXEGS1xKEXCJKvaq7hVyZ2ZUlSb","topic_name_hash":"473f644238bbb334843df5bd06a85e8bc34d692cce804de5f97e7f344595c769","topic_index":4225483688,"block_index":16248749308130060594},{"entity_addr":{"Account":[109,75,111,241,219,141,104,160,197,208,7,245,112,199,31,150,68,65,166,247,43,111,0,56,32,124,7,36,107,230,100,132]},"message":{"String":"U5qR82wJoPDGJWhwJ4qkblsu6Q5DDqDt0Q2pAjhVOUjn520PdvYOC27oo4aDEosw"},"topic_name":"zMEkHxGgUUSMmb7eWJhFs5e6DH9vXvCg","topic_name_hash":"d911ebafb53ccfeaf5c970e462a864622ec4e3a1030a17a8cfaf4d7a4cd74d48","topic_index":560585407,"block_index":15889379229443860143}]},"transaction_expired": false}```
+{"transaction_hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","transaction_accepted": {"header": {"api_version": "2.0.0","network_name": "casper-net-1"},"payload": {"transaction": {"Version1": {"hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","header": {"chain_name": "casper-net-1","timestamp": "2024-03-20T13:31:59.772Z","ttl": "30m","body_hash": "40c7476a175fb97656ec6da1ace2f1900a9d353f1637943a30edd5385494b345","pricing_mode": {"Fixed": {"gas_price_tolerance": 1000}},"initiator_addr": {"PublicKey": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973"}},"body": {"args": [],"target": {"Session": {"kind": "Standard","module_bytes":"<REDACTED>","runtime": "VmCasperV1"}},"entry_point": {"Custom": "test"},"scheduling": "Standard"},"approvals": [{"signer": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973","signature": "0154fd295f5d4d62544f63d70470de28b2bf2cddecac2a237b6a2a78d25ee14b21ea2861d711a51f57b3f9f74e247a8d26861eceead6569f233949864a9d5fa100"}]}}}},"transaction_processed": {"transaction_hash":{"Deploy":"c6907d46a5cc61ef30c66dbb6599208a57d3d62812c5f061169cdd7ad4e52597"},"initiator_addr":{"PublicKey":"0202dec9e70126ddd13af6e2e14771339c22f73626202a28ef1ed41594a3b2a79156"},"timestamp":"2024-03-20T13:58:57.301Z","ttl":"2m 53s","block_hash":"6c6a1fb17147fe467a52f8078e4c6d1143e8f61e2ec0c57938a0ac5f49e3f960","execution_result":{"Version1":{"Success":{"effect":{"operations":[{"key":"9192013132486795888","kind":"NoOp"}],"transforms":[{"key":"9278390014984155010","transform":{"AddUInt64":17967007786823421753}},{"key":"8284631679508534160","transform":{"AddUInt512":"13486131286369918968"}},{"key":"11406903664472624400","transform":{"AddKeys":[{"name":"5532223989822042950","key":"6376159234520705888"},{"name":"9797089120764120320","key":"3973583116099652644"},{"name":"17360643427404656075","key":"3412027808185329863"},{"name":"9849256366384177518","key":"1556404389498537987"},{"name":"14237913702817074429","key":"16416969798013966173"}]}},{"key":"11567235260771335457","transform":"Identity"},{"key":"13285707355579107355","transform":"Identity"}]},"transfers":[],"cost":"14667737366273622842"}}},"messages":[{"entity_addr":{"SmartContract":[193,43,184,185,6,88,15,83,243,107,130,63,136,174,24,148,79,214,87,238,171,138,195,141,119,235,134,196,253,221,36,0]},"message":{"String":"wLNta4zbpJiW5ScjagPXm5LoGViYApCfIbEXJycPUuLQP4fA7REhV4LdBRbZ7bQb"},"topic_name":"FdRRgbXEGS1xKEXCJKvaq7hVyZ2ZUlSb","topic_name_hash":"473f644238bbb334843df5bd06a85e8bc34d692cce804de5f97e7f344595c769","topic_index":4225483688,"block_index":16248749308130060594},{"entity_addr":{"Account":[109,75,111,241,219,141,104,160,197,208,7,245,112,199,31,150,68,65,166,247,43,111,0,56,32,124,7,36,107,230,100,132]},"message":{"String":"U5qR82wJoPDGJWhwJ4qkblsu6Q5DDqDt0Q2pAjhVOUjn520PdvYOC27oo4aDEosw"},"topic_name":"zMEkHxGgUUSMmb7eWJhFs5e6DH9vXvCg","topic_name_hash":"d911ebafb53ccfeaf5c970e462a864622ec4e3a1030a17a8cfaf4d7a4cd74d48","topic_index":560585407,"block_index":15889379229443860143}]},"transaction_expired": false}
+```
+
 </details>
 <br></br>
 
-### Accepted Transaction by Hash
+### Accepted transaction by hash
 
 Retrieve information about an accepted transaction, given its transaction hash.
 
@@ -276,7 +274,7 @@ curl -s http://127.0.0.1:18888/transaction/accepted/version1/8204af872d7d19ef8da
 <br></br>
 
 
-### Expired Transaction by Hash
+### Expired transaction by hash
 
 Retrieve information about a transaction that expired, given its trnasaction type and transaction hash.
 
@@ -296,7 +294,7 @@ curl -s http://127.0.0.1:18888/transaction/expired/version1/3dcf9cb73977a1163129
 ```
 </details>
 
-### Processed Transaction by Hash
+### Processed transaction by hash
 
 Retrieve information about a transaction that was processed, given its transaction hash.
 The path URL is `<HOST:PORT>/transaction/expired/version1/<transaction-hash>`. Enter a valid transaction hash.
@@ -317,7 +315,7 @@ curl -s http://127.0.0.1:18888/transaction/processed/version1/8204af872d7d19ef8d
 </details>
 <br></br>
 
-### Faults by Public Key
+### Faults by public key
 
 Retrieve the faults associated with a validator's public key.
 The path URL is `<HOST:PORT>/faults/<public-key>`. Enter a valid hexadecimal representation of a validator's public key.
@@ -328,7 +326,7 @@ Example:
 curl -s http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 ```
 
-### Faults by Era
+### Faults by era
 
 Return the faults associated with an era, given a valid era identifier.
 The path URL is: `<HOST:PORT>/faults/<era-ID>`. Enter an era identifier.
@@ -339,7 +337,7 @@ Example:
 curl -s http://127.0.0.1:18888/faults/2304
 ```
 
-### Finality Signatures by Block
+### Finality signatures by block
 
 Retrieve the finality signatures in a block, given its block hash. 
 
@@ -351,7 +349,7 @@ Example:
 curl -s http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
 ```
 
-### Step by Era
+### Step by era
 
 Retrieve the step event emitted at the end of an era, given a valid era identifier.
 
@@ -363,7 +361,7 @@ Example:
 curl -s http://127.0.0.1:18888/step/7268
 ```
 
-### Missing Filter
+### Missing filter
 
 If no filter URL was specified after the root address (HOST:PORT), an error message will be returned.
 
@@ -374,7 +372,7 @@ curl http://127.0.0.1:18888
 {"code":400,"message":"Invalid request path provided"}
 ```
 
-### Invalid Filter
+### Invalid filter
 
 If an invalid filter was specified, an error message will be returned.
 
