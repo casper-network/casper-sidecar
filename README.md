@@ -1,5 +1,39 @@
 # The Casper Sidecar
 
+- [Summary of Purpose](#summary-of-purpose)
+- [System Components and Architecture](#system-components-and-architecture)
+   - [The SSE server](#the-sse-server)
+   - [The REST API server](#the-rest-api-server)
+	- [The Admin API server](#the-admin-api-server)
+	- [The RPC API server](#the-rpc-api-server)
+- [Running and Testing the Sidecar](#running-and-testing-the-sidecar)
+	- [Prerequisites](#prerequisites)
+	- [Configuration](#configuration)
+	- [RPC server setup](#rpc-server-setup)
+	- [SSE server setup](#sse-server-setup)
+		- [Configuring SSE node connections](#configuring-sse-node-connections)
+		- [Configuring SSE legacy emulations](#configuring-sse-legacy-emulations)
+		- [Configuring the event stream](#configuring-the-event-stream)
+	- [REST server setup](#rest-server-setup)
+	- [Storage setup](#setup-storage)
+	- [Database connectivity setup](#database-connectivity-setup)
+		- [SQLite database](#sqlite-database)
+		- [PostgreSQL database](#postgresql-database)
+	- [Admin server setup](#admin-server-setup)
+- [Swagger Documentation](#swagger-documentation)
+- [OpenAPI Specification](#openapi-specification)
+- [Running the Sidecar](#running-the-sidecar)
+- [Testing the Sidecar](#testing-the-sidecar)
+	- [Testing the Sidecar using NCTL](#testing-the-sidecar-using-nctl)
+- [Troubleshooting Tips](#troubleshooting-tips)
+	- [Checking liveness](#checking-liveness)
+	- [Checking the node connection](#checking-the-node-connection)
+	- [Diagnosing errors](#diagnosing-errors)
+	- [Monitoring memory consumption](#monitoring-memory-consumption)
+	- [Ensuring sufficient storage](#ensuring-sufficient-storage)
+	- [Inspecting the REST API](#inspecting-the-rest-api)
+	- [Limiting concurrent requests](#limiting-concurrent-requests)
+
 ## Summary of Purpose
 
 The Casper Sidecar application runs in tandem with the node process, and its primary purpose is to:
@@ -8,7 +42,7 @@ The Casper Sidecar application runs in tandem with the node process, and its pri
 
 While the primary use case for the Sidecar application is running alongside the node on the same machine, it can be run remotely if necessary.
 
-## System Components & Architecture
+## System Components and Architecture
 
 The Casper Sidecar provides the following functionalities:
 * A server-sent events (SSE) server with an `/events` endpoint that streams all the events received from all connected nodes. The Sidecar also stores these events.
@@ -135,7 +169,7 @@ The Sidecar also offers an RPC JSON API server that can be enabled and configure
 
 ## Running and Testing the Sidecar
 
-## Prerequisites
+### Prerequisites
 
 To compile, test, and run the Sidecar, install the following software first:
 
@@ -145,7 +179,7 @@ To compile, test, and run the Sidecar, install the following software first:
 * gcc
 * g++
 
-## Configuration
+### Configuration
 
 The Sidecar service must be configured using a `.toml` file specified at runtime.
 
@@ -157,7 +191,7 @@ This repository contains several sample configuration files that can be used as 
 
 Once you create the configuration file and are ready to run the Sidecar service, you must provide the configuration as an argument using the `-- --path-to-config` option as described [here](#running-the-sidecar).
 
-### Configuring the RPC server
+### RPC server setup
 
 Here is an example configuration for the RPC API server:
 
@@ -216,7 +250,7 @@ max_attempts = 30
 * `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
 * `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
 
-### SSE server configuration
+### SSE server setup
 
 The Sidecar SSE server is used to connect to Casper nodes, listen to events from them, store them locally and re-broadcast them to clients. Here is a sample configuration for the SSE server:
 
@@ -235,7 +269,7 @@ emulate_legacy_sse_apis = ["V1"]
 * `sse_server.enable_server` - If set to true, the SSE server will be enabled.
 * `sse_server.emulate_legacy_sse_apis` - A list of legacy Casper node SSE APIs to emulate. The Sidecar will expose SSE endpoints that are compatible with specified versions. Please bear in mind that this feature is an emulation and should be used only for transition periods. In most scenarios, having a 1-to-1 mapping of new messages into old formats is impossible, so this can be a process that loses some data and/or doesn't emit all messages that come from the Casper node. <!--TODO link to new document The details of the emulation are described in the [Event Stream Server SSE legacy emulations](#event-stream-server-sse-legacy-emulations) section.-->
 
-#### SSE node connections
+#### Configuring SSE node connections
 
 <!--TODO check if this needs to be reworded -->
 The Sidecar's SSE component can connect to Casper nodes' SSE endpoints with versions greater or equal to `2.0.0`.
@@ -294,7 +328,7 @@ sleep_between_keep_alive_checks_in_seconds = 30
 * `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. This parameter is optional, and defaults to 120.
 * `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60.
 
-#### SSE legacy emulations
+#### Configuring SSE legacy emulations
 
 Applications using version 1 of a Casper node's event stream server can still function using an emulated V1 SSE API for a limited time. Enabling the V1 SSE API emulation requires the `emulate_legacy_sse_apis` setting to be `["V1"]`:
 
@@ -313,7 +347,7 @@ This setting will expose three legacy SSE endpoints with the following events st
 Those endpoints will emit events in the same format as the V1 SSE API of the Casper node. There are limitations to what the Casper Sidecar can and will do. Here is a list of assumptions:
 -->
 
-#### Event stream configuration
+#### Configuring the event stream
 
 To configure the Sidecar's event stream server, specify the following settings:
 
@@ -328,7 +362,7 @@ event_stream_buffer_length = 5000
 * `event_stream_server.max_concurrent_subscribers` - The maximum number of subscribers that can monitor the Sidecar's event stream.
 * `event_stream_server.event_stream_buffer_length` - The number of events that the stream will hold in its buffer for reference when a subscriber reconnects.
 
-### REST server configuration
+### REST server setup
 
 The following section determines outbound connection criteria for the Sidecar's REST server.
 
@@ -347,7 +381,7 @@ request_timeout_in_seconds = 10
 * `max_requests_per_second` - The maximum total number of requests that can be made per second.
 * `request_timeout_in_seconds` - The total time before a request times out.
 
-### Storage
+### Dtorage setup
 
 This directory stores the SSE cache and an SQLite database if the Sidecar was configured to use SQLite.
 
@@ -356,7 +390,7 @@ This directory stores the SSE cache and an SQLite database if the Sidecar was co
 storage_path = "./target/storage"
 ```
 
-### Database connectivity
+### Database connectivity setup
 
 The Sidecar can connect to different types of databases. The current options are `SQLite` or `PostgreSQL`. The following sections show how to configure the database connection. Note that the Sidecar can only connect to one database at a time.
 
@@ -426,7 +460,7 @@ database_username = "postgres"
 max_connections_in_pool = 30
 ```
 
-### Admin server configuration
+### Admin server setup
 
 This optional section configures the Sidecar's administrative server. If this section is not specified, the Sidecar will not start an admin server.
 
