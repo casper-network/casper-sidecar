@@ -131,7 +131,7 @@ Note that the Sidecar can emit another type of shutdown event on the `events/sid
 
 If the Sidecar attempts to connect to a node that does not come back online within the maximum number of reconnection attempts, the Sidecar will start a controlled shutdown process. It will emit a Sidecar-specific Shutdown event on the [events/sidecar](#the-sidecar-shutdown-event) endpoint, designated for events originating solely from the Sidecar service. The other event streams do not get this message because they only emit messages from the node.
 
-The message structure of the Sidecar shutdown event is the same as the [node shutdown event](#the-node-shutdown-event). The sidecar event stream would look like this:
+The message structure of the Sidecar shutdown event is the same as the [node shutdown event](#the-node-shutdown-event). The Sidecar event stream would look like this:
 
 ```
 curl -sN http://127.0.0.1:19999/events/sidecar
