@@ -107,13 +107,14 @@ The SSE Listener processes events in this order:
 2. Store the event.
 3. Publish the event to the SSE API.
 
-Casper nodes stream server-sent events with JSON-encoded data to the Sidecar. The Sidecar reads the event stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes. Enabling and configuring the SSE Server of the Sidecar is optional.
+Casper nodes offer an event stream API that returns server-sent events (SSEs) with JSON-encoded data. The Sidecar reads the event stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes. The Sidecar can:
 
 The Sidecar can:
 * Republish the current events from the node to clients listening to Sidecar's SSE API.
-* Publish a configurable number of previous events to clients connecting to the Sidecar's SSE API with `?start_from=` query.
+* Publish a configurable number of previous events to clients connecting to the Sidecar's SSE API with `?start_from=` query (similar to the node's SSE API).
 * Store the events in external storage for clients to query them via the Sidecar's REST API.
 
+Enabling and configuring the SSE Server of the Sidecar is optional.
 
 ### The REST API server
 
@@ -263,7 +264,6 @@ emulate_legacy_sse_apis = ["V1"]
 
 #### Configuring SSE node connections
 
-<!--TODO check if this needs to be reworded -->
 The Sidecar's SSE component can connect to Casper nodes' SSE endpoints with versions greater or equal to `2.0.0`.
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[sse_server.connections]]` sections.
