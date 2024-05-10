@@ -83,7 +83,7 @@ where
         let protocol_version = block_v2.header().protocol_version();
         let block_hash = block_v2.hash();
         let body = block_v2.body();
-        let proposer = body.proposer().clone();
+        let proposer = header.proposer().clone();
         let deploy_hashes = self.deploy_hash_translator.translate(body);
         let transfer_hashes = self.transfer_hash_translator.translate(body);
         let block_v1 = structs::BlockV1::new(
