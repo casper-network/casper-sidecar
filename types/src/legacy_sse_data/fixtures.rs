@@ -1,16 +1,16 @@
-use casper_types::{Block, TestBlockBuilder};
-use casper_types::testing::TestRng;
 use super::LegacySseData;
 use crate::sse_data::SseData;
+use casper_types::testing::TestRng;
+use casper_types::{Block, TestBlockBuilder};
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()
 }
 
 pub fn legacy_block_added_from_v2(block_added: &SseData) -> LegacySseData {
-    if let SseData::BlockAdded {..} = block_added  {
+    if let SseData::BlockAdded { .. } = block_added {
         LegacySseData::from(block_added).expect("did not convert to legacy see data")
-    }else {
+    } else {
         panic!("did not get legacy block added sse data")
     }
 }
@@ -23,7 +23,10 @@ pub fn block_added_v2() -> SseData {
     let mut rng = TestRng::new();
     let block = Box::new(Block::V2(TestBlockBuilder::new().build(&mut rng)));
     let block_hash = block.hash();
-    let block_added = SseData::BlockAdded {block_hash: block_hash.clone(), block};
+    let block_added = SseData::BlockAdded {
+        block_hash: block_hash.clone(),
+        block,
+    };
     let str = serde_json::to_string(&block_added).expect("must get string");
     serde_json::from_str(&str).unwrap()
 }
