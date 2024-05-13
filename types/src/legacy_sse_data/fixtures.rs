@@ -24,7 +24,7 @@ pub fn block_added_v2() -> SseData {
     let block = Box::new(Block::V2(TestBlockBuilder::new().build(&mut rng)));
     let block_hash = block.hash();
     let block_added = SseData::BlockAdded {
-        block_hash: block_hash.clone(),
+        block_hash: *block_hash,
         block,
     };
     let str = serde_json::to_string(&block_added).expect("must get string");
