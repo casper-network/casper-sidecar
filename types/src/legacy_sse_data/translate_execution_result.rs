@@ -164,7 +164,6 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         StoredValue::MessageTopic(_) => None,
         StoredValue::Message(_) => None,
         StoredValue::Reservation(_) => None,
-        StoredValue::EntryPoint(_) => None,
     }
 }
 

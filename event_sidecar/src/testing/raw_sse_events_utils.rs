@@ -15,7 +15,7 @@ pub(crate) mod tests {
             (None, "{\"ApiVersion\":\"2.0.1\"}".to_string()),
             (
                 Some("0".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_3, "3"),
+                example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
             ),
         ]
     }
@@ -26,7 +26,7 @@ pub(crate) mod tests {
             (Some("0".to_string()), shutdown()),
             (
                 Some("1".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_1, "1"),
+                example_block_added_2_0_0(BLOCK_HASH_1, 1u64),
             ),
         ]
     }
@@ -50,7 +50,7 @@ pub(crate) mod tests {
             (None, format!("{{\"ApiVersion\":\"{version}\"}}")),
             (
                 Some("1".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_2, "2"),
+                example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
             ),
         ]
     }
@@ -60,7 +60,7 @@ pub(crate) mod tests {
             (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("1".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_2, "2"),
+                example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
             ),
         ]
     }
@@ -80,7 +80,7 @@ pub(crate) mod tests {
             (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("3".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_3, "3"),
+                example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
             ),
         ]
     }
@@ -90,11 +90,11 @@ pub(crate) mod tests {
             (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
             (
                 Some("1".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_3, "3"),
+                example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
             ),
             (
                 Some("1".to_string()),
-                example_block_added_2_0_0(BLOCK_HASH_4, "4"),
+                example_block_added_2_0_0(BLOCK_HASH_4, 4u64),
             ),
         ]
     }
@@ -135,7 +135,7 @@ pub(crate) mod tests {
             if let SseData::BlockAdded { block_hash, .. } = block_added {
                 let encoded_hash = HexFmt(block_hash.inner()).to_string();
                 let block_added_raw =
-                    example_block_added_2_0_0(encoded_hash.as_str(), index.as_str());
+                    example_block_added_2_0_0(encoded_hash.as_str(), (i + start_index) as u64);
                 blocks_added.push((Some(index), block_added_raw));
             } else {
                 panic!("random_block_added didn't return SseData::BlockAdded");

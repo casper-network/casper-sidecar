@@ -3,6 +3,8 @@ use serde_json::Value;
 
 use super::LegacySseData;
 use crate::sse_data::SseData;
+use casper_types::testing::TestRng;
+use casper_types::{Block, TestBlockBuilder};
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()

@@ -407,8 +407,8 @@ pub mod tests {
     #[tokio::test]
     async fn given_data_without_api_version_should_fail() {
         let data = vec![
-            example_block_added_2_0_0(BLOCK_HASH_1, "1"),
-            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_1, 1u64),
+            example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
@@ -426,8 +426,8 @@ pub mod tests {
     async fn given_data_should_pass_data() {
         let data = vec![
             example_api_version(),
-            example_block_added_2_0_0(BLOCK_HASH_1, "1"),
-            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_1, 1u64),
+            example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, event_ids) =
@@ -446,7 +446,7 @@ pub mod tests {
         let data = vec![
             example_api_version(),
             "XYZ".to_string(),
-            example_block_added_2_0_0(BLOCK_HASH_2, "2"),
+            example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
         let connector = Box::new(MockSseConnection::build_with_data(data));
         let (mut connection_manager, data_tx, _event_ids) =

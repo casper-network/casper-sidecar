@@ -243,6 +243,8 @@ impl SseData {
 
 #[cfg(feature = "sse-data-testing")]
 pub mod test_support {
+    use serde_json::json;
+
     pub const BLOCK_HASH_1: &str =
         "ca52062424e9d5631a34b7b401e123927ce29d4bd10bc97c7df0aa752f131bb7";
     pub const BLOCK_HASH_2: &str =
@@ -260,8 +262,8 @@ pub mod test_support {
         "\"Shutdown\"".to_string()
     }
 
-    pub fn example_block_added_2_0_0(hash: &str, height: &str) -> String {
-        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{hash}\",\"block\":{{\"Version2\":{{\"hash\":\"{hash}\",\"header\":{{\"parent_hash\":\"12e135355e7eca479d67809e71c36c2e29060607e34f378037f92e8edf406719\",\"state_root_hash\":\"f3e13be7e02273c9362f7c5eb4483811012f8a5d42b8855910caebdc7d8d3eb4\",\"body_hash\":\"ddebade25c99fb8a81a595d63aafb86a478358907d04d5dd8548e7d2bca9eff7\",\"random_bit\":true,\"accumulated_seed\":\"2966bcd7bda50ca5e904eeadc9284b5c355530641696715c02b7828ae5e13b37\",\"era_end\":null,\"timestamp\":\"2024-03-21T09:57:44.123Z\",\"era_id\":116390,\"height\":{height},\"protocol_version\":\"1.0.0\",\"current_gas_price\":1}},\"body\":{{\"proposer\":\"02034aeded2db627239d86eda1f5c8c01f14e26840007af1af698567e13fcef18fa7\",\"mint\":[],\"auction\":[],\"install_upgrade\":[],\"standard\":[],\"rewarded_signatures\":[]}}}}}}}}}}");
+    pub fn example_block_added_2_0_0(hash: &str, height: u64) -> String {
+        let raw_block_added = json!({"BlockAdded":{"block_hash":"0afaafa0983eeb216049d2be396d7689119bd2367087a94a30de53b1887ec592","block":{"Version2":{"hash":hash,"header":{"parent_hash":"327a6be4f8b23115e089875428ff03d9071a7020ce3e0f4734c43e4279ad77fc","state_root_hash":"4f1638725e8a92ad6432a76124ba4a6db365b00ff352beb58b8c48ed9ed4b68d","body_hash":"337a4c9e510e01e142a19e5d81203bdc43e59a4f9039288c01f7b89370e1d104","random_bit":true,"accumulated_seed":"7b7d7b18668dcc8ffecda5f5de1037f26cd61394f72357cdc9ba84f0f48e37c8","era_end":null,"timestamp":"2024-05-10T19:55:20.415Z","era_id":77,"height":height,"protocol_version":"2.0.0","proposer":"01cee2ff4318180282a73bfcd1446f8145e4d80508fecd76fc38dce13af491f0e5","current_gas_price":1,"last_switch_block_hash":"a3533c2625c6413be2287e581c5fca1a0165ebac02b051f9f07ccf1ad483cf2d"},"body":{"transactions":{"0":[],"1":[],"2":[],"3":[]},"rewarded_signatures":[[248],[0],[0]]}}}}}).to_string();
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }
