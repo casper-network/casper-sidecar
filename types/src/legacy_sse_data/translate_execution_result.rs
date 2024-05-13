@@ -221,7 +221,7 @@ mod tests {
 
         let maybe_translated = under_test.translate(&effects);
 
-        assert!(maybe_translated.is_some());
+        assert!(maybe_translated.is_some(), "{:?}", maybe_translated);
         let translated = maybe_translated.unwrap();
         assert!(translated.operations.is_empty());
         assert_eq!(
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn default_execution_effects_translator_should_empty_trnsforms_if_something_was_not_translatable(
+    fn default_execution_effects_translator_should_empty_transforms_if_something_was_not_translatable(
     ) {
         let mut rng = TestRng::new();
         let under_test = DefaultExecutionEffectsTranslator {};
@@ -246,7 +246,7 @@ mod tests {
 
         let maybe_translated = under_test.translate(&effects);
 
-        assert!(maybe_translated.is_some());
+        assert!(maybe_translated.is_some(), "{:?}", maybe_translated);
         let translated = maybe_translated.unwrap();
         assert!(translated.operations.is_empty());
         assert!(translated.transforms.is_empty());

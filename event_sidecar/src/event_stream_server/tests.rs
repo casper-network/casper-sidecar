@@ -678,7 +678,7 @@ async fn should_serve_events_with_no_query(path: &str, is_legacy_endpoint: bool)
     );
 }
 
-/// In legacy endpoints not all input events will be re-emitted to output. If an input (2.x) event is not translatable.
+/// In legacy endpoints not all input events will be re-emitted to output. If an input (2.x) event is not translatable
 /// to 1.x it will be muffled. So we need to adjust the final id to the last event that was 1.x translatable.
 fn adjust_final_id(
     is_legacy_endpoint: bool,

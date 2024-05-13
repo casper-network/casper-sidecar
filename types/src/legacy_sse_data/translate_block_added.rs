@@ -240,7 +240,7 @@ mod tests {
         let under_test = DefaultEraEndV2Translator;
         let era_end_v2 = era_end_v2();
         let maybe_translated = under_test.translate(&era_end_v2);
-        assert!(maybe_translated.is_some());
+        assert!(maybe_translated.is_some(), "{:?}", maybe_translated);
         let translated = maybe_translated.unwrap();
         let mut expected_validator_weights = BTreeMap::new();
         expected_validator_weights.insert(
