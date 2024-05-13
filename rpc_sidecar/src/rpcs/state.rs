@@ -1125,7 +1125,7 @@ mod tests {
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
         AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCodeHash, EntityKind,
-        PackageHash, ProtocolVersion, TestBlockBuilder, TransactionRuntime,
+        EntryPoints, PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1473,12 +1473,13 @@ mod tests {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
+            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
+            EntityKind::SmartContract,
         );
         let entity_hash: AddressableEntityHash = rng.gen();
         let entity_identifier = EntityIdentifier::random(rng);
@@ -2079,7 +2080,7 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
+                    if matches!(&*req, GlobalStateRequest::BalanceByStateRoot { .. }) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),

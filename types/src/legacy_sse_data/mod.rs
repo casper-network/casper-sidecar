@@ -210,6 +210,8 @@ mod tests {
     }
 
     fn sse_translation_scenarios() -> Vec<(SseData, Option<LegacySseData>)> {
+        let block_added_v2_sse_data = block_added_v2();
+        let legacy_repr = Some(legacy_block_added_from_v2(&block_added_v2_sse_data));
         vec![
             (api_version(), Some(legacy_api_version())),
             (finality_signature_v1(), Some(legacy_finality_signature())),
@@ -220,7 +222,7 @@ mod tests {
             (transaction_expired(), None),
             (fault(), Some(legacy_fault())),
             (block_added_v1(), Some(legacy_block_added())),
-            (block_added_v2(), Some(legacy_block_added_from_v2())),
+            (block_added_v2_sse_data, legacy_repr),
             (deploy_processed(), Some(legacy_deploy_processed())),
         ]
     }

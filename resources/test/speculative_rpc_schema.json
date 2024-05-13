@@ -1726,19 +1726,6 @@
               }
             },
             "additionalProperties": false
-          },
-          {
-            "description": "An entrypoint record.",
-            "type": "object",
-            "required": [
-              "EntryPoint"
-            ],
-            "properties": {
-              "EntryPoint": {
-                "$ref": "#/components/schemas/EntryPointValue"
-              }
-            },
-            "additionalProperties": false
           }
         ]
       },
@@ -2659,6 +2646,7 @@
           "associated_keys",
           "byte_code_hash",
           "entity_kind",
+          "entry_points",
           "main_purse",
           "message_topics",
           "package_hash",
@@ -2679,6 +2667,9 @@
           },
           "main_purse": {
             "$ref": "#/components/schemas/URef"
+          },
+          "entry_points": {
+            "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
           },
           "associated_keys": {
             "$ref": "#/components/schemas/EntityAssociatedKeys"
@@ -2722,16 +2713,10 @@
           },
           {
             "description": "Packages associated with Wasm stored on chain.",
-            "type": "object",
-            "required": [
+            "type": "string",
+            "enum": [
               "SmartContract"
-            ],
-            "properties": {
-              "SmartContract": {
-                "$ref": "#/components/schemas/TransactionRuntime"
-              }
-            },
-            "additionalProperties": false
+            ]
           }
         ]
       },
@@ -2764,25 +2749,6 @@
             "type": "string",
             "enum": [
               "Auction"
-            ]
-          }
-        ]
-      },
-      "TransactionRuntime": {
-        "description": "Runtime used to execute a Transaction.",
-        "oneOf": [
-          {
-            "description": "The Casper Version 1 Virtual Machine.",
-            "type": "string",
-            "enum": [
-              "VmCasperV1"
-            ]
-          },
-          {
-            "description": "The Casper Version 2 Virtual Machine.",
-            "type": "string",
-            "enum": [
-              "VmCasperV2"
             ]
           }
         ]
@@ -3249,120 +3215,6 @@
           },
           "reservation_data": {
             "$ref": "#/components/schemas/Bytes"
-          }
-        }
-      },
-      "EntryPointValue": {
-        "description": "The encaspulated representation of entrypoints.",
-        "oneOf": [
-          {
-            "description": "Entrypoints to be executed against the V1 Casper VM.",
-            "type": "object",
-            "required": [
-              "V1CasperVm"
-            ],
-            "properties": {
-              "V1CasperVm": {
-                "$ref": "#/components/schemas/EntryPoint2"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Entrypoints to be executed against the V2 Casper VM.",
-            "type": "object",
-            "required": [
-              "V2CasperVm"
-            ],
-            "properties": {
-              "V2CasperVm": {
-                "$ref": "#/components/schemas/EntryPointV2"
-              }
-            },
-            "additionalProperties": false
-          }
-        ]
-      },
-      "EntryPoint2": {
-        "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
-        "type": "object",
-        "required": [
-          "access",
-          "args",
-          "entry_point_payment",
-          "entry_point_type",
-          "name",
-          "ret"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "args": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Parameter"
-            }
-          },
-          "ret": {
-            "$ref": "#/components/schemas/CLType"
-          },
-          "access": {
-            "$ref": "#/components/schemas/EntryPointAccess"
-          },
-          "entry_point_type": {
-            "$ref": "#/components/schemas/EntryPointType"
-          },
-          "entry_point_payment": {
-            "$ref": "#/components/schemas/EntryPointPayment"
-          }
-        }
-      },
-      "EntryPointPayment": {
-        "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
-        "oneOf": [
-          {
-            "description": "The caller must cover cost",
-            "type": "string",
-            "enum": [
-              "Caller"
-            ]
-          },
-          {
-            "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
-            "type": "string",
-            "enum": [
-              "SelfOnly"
-            ]
-          },
-          {
-            "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
-            "type": "string",
-            "enum": [
-              "SelfOnward"
-            ]
-          }
-        ]
-      },
-      "EntryPointV2": {
-        "description": "The entry point for the V2 Casper VM.",
-        "type": "object",
-        "required": [
-          "flags",
-          "function_index"
-        ],
-        "properties": {
-          "function_index": {
-            "description": "The selector.",
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
-          },
-          "flags": {
-            "description": "The flags.",
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
           }
         }
       },
@@ -3976,6 +3828,18 @@
               }
             },
             "additionalProperties": false
+          }
+        ]
+      },
+      "TransactionRuntime": {
+        "description": "Runtime used to execute a Transaction.",
+        "oneOf": [
+          {
+            "description": "The Casper Version 1 Virtual Machine.",
+            "type": "string",
+            "enum": [
+              "VmCasperV1"
+            ]
           }
         ]
       },
