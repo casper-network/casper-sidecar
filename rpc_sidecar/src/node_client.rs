@@ -92,7 +92,7 @@ pub trait NodeClient: Send + Sync {
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
     ) -> Result<BalanceResponse, Error> {
-        let get = GlobalStateRequest::Balance {
+        let get = GlobalStateRequest::BalanceByStateRoot {
             state_identifier,
             purse_identifier,
         };
