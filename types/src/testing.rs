@@ -3,11 +3,13 @@
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
 
+#[cfg(feature = "sse-data-testing")]
 use casper_types::{
     testing::TestRng, Deploy, TimeDiff, Timestamp, Transaction, TransactionV1Builder,
 };
 #[cfg(test)]
-use casper_types::{DeployHash, PublicKey};
+use casper_types::{BlockHash, Digest, PublicKey};
+#[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 
 #[cfg(feature = "sse-data-testing")]
@@ -53,7 +55,13 @@ pub fn parse_public_key(arg: &str) -> PublicKey {
 }
 
 #[cfg(test)]
-pub fn parse_deploy_hash(arg: &str) -> DeployHash {
+pub fn parse_block_hash(arg: &str) -> BlockHash {
+    let escaped = format!("\"{}\"", arg);
+    serde_json::from_str(&escaped).unwrap()
+}
+
+#[cfg(test)]
+pub fn parse_digest(arg: &str) -> Digest {
     let escaped = format!("\"{}\"", arg);
     serde_json::from_str(&escaped).unwrap()
 }

@@ -36,6 +36,7 @@ impl EraEndV2Translator for DefaultEraEndV2Translator {
                 //We're not able to cast the reward to u64, so we skip this era end.
                 return None;
             }
+            println!("Reward: {:?} {:?} {:?}", k.clone(), v, v.as_u64());
             rewards.insert(k.clone(), v.as_u64());
         }
         let era_report = EraReport::new(
@@ -162,7 +163,7 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
-    use casper_types::{testing::TestRng, DeployHash, EraEndV1, EraReport, PublicKey, U512};
+    use casper_types::{testing::TestRng, DeployHash, EraEndV1, EraId, EraReport, PublicKey, U512};
     use mockall::predicate;
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -179,9 +180,18 @@ mod tests {
 
     #[test]
     pub fn default_block_v2_translator_translates_without_era_end_and_deploys() {
+        let mut test_rng = TestRng::new();
         let (mut era_end_translator, mut deploy_hash_translator, mut transfer_hash_translator) =
             prepare_mocks();
-        let block_v2 = block_v2();
+        let block_v2 = block_v2(
+            &mut test_rng,
+            parent_hash(),
+            state_root_hash(),
+            timestamp(),
+            EraId::new(15678276),
+            345678987,
+            proposer(),
+        );
         let era_end_ref = block_v2.header().era_end().unwrap();
         prepare_era_end_mock(&mut era_end_translator, era_end_ref, None);
         prepare_deploys_mock(&mut deploy_hash_translator, &block_v2, vec![]);
@@ -193,8 +203,20 @@ mod tests {
         };
 
         let got = under_test.translate(&block_v2);
+
         assert!(got.is_some());
-        let expected = block_v1_no_deploys_no_era();
+        let expected = block_v1_no_deploys_no_era(
+            *block_v2.parent_hash(),
+            *block_v2.state_root_hash(),
+            *block_v2.body_hash(),
+            block_v2.random_bit(),
+            *block_v2.accumulated_seed(),
+            block_v2.timestamp(),
+            block_v2.era_id(),
+            block_v2.height(),
+            block_v2.proposer().clone(),
+            *block_v2.hash(),
+        );
         compare_as_json(&expected, &got.unwrap());
     }
 
@@ -203,7 +225,15 @@ mod tests {
         let mut test_rng = TestRng::new();
         let (mut era_end_translator, mut deploy_hash_translator, mut transfer_hash_translator) =
             prepare_mocks();
-        let block_v2 = block_v2();
+        let block_v2 = block_v2(
+            &mut test_rng,
+            parent_hash(),
+            state_root_hash(),
+            timestamp(),
+            EraId::new(15678276),
+            345678987,
+            proposer(),
+        );
         let era_end_ref = block_v2.header().era_end().unwrap();
         let report = EraReport::random(&mut test_rng);
         let validator_weights = random_validator_weights(&mut test_rng);
@@ -244,19 +274,19 @@ mod tests {
         let translated = maybe_translated.unwrap();
         let mut expected_validator_weights = BTreeMap::new();
         expected_validator_weights.insert(
-            parse_public_key("013183e7169846881fb6ae07dc5ba63d92bd592d67681a765cf9813d5146de97f3"),
-            U512::from(277433153),
+            parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b"),
+            U512::from(1),
         );
         expected_validator_weights.insert(
             parse_public_key(
-                "0203ff1caebb0fd53fb4c52f8cf18d0e3257f6b075a16f0fd6aa5499ddb28a8d82ab",
+                "02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c",
             ),
-            U512::from(818689728),
+            U512::from(2),
         );
         let mut rewards = BTreeMap::new();
         rewards.insert(
-            parse_public_key("010d2d4fdda5ff7a9820de2fe18a262b29bb2df36cbc767446e1dcd015e9c5ea98"),
-            155246594,
+            parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
+            129457537,
         );
         let report = EraReport::new(
             vec![

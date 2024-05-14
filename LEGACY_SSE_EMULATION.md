@@ -83,7 +83,7 @@ Legacy SSE event will be the same
             "protocol_version": "1.0.0"
           },
           "body": {
-            "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+            "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
             "deploy_hashes": [
               "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
               "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"
@@ -144,7 +144,7 @@ Legacy SSE event will be the same
           "protocol_version": "1.0.0"
         },
         "body": {
-          "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+          "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
           "deploy_hashes": [
             "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
             "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"

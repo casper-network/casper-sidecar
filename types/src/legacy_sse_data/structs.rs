@@ -45,12 +45,11 @@ impl BlockV1 {
             protocol_version,
             OnceCell::from(block_hash),
         );
-        Self::new_from_header_and_body(header, body)
-    }
-
-    pub fn new_from_header_and_body(header: BlockHeaderV1, body: BlockBodyV1) -> Self {
-        let hash = header.block_hash();
-        BlockV1 { hash, header, body }
+        Self {
+            hash: block_hash,
+            header,
+            body,
+        }
     }
 
     pub fn from(hash: BlockHash, header: &BlockHeaderV1, body: &casper_types::BlockBodyV1) -> Self {

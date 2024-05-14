@@ -38,44 +38,67 @@ impl DeployHashTranslator for TransferDeployHashesTranslator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{legacy_sse_data::fixtures::block_v2, testing::parse_deploy_hash};
+    use casper_types::{testing::TestRng, EraId};
+
+    use crate::legacy_sse_data::fixtures::*;
 
     use super::*;
 
     #[test]
     fn standard_deploy_hashes_translator_uses_standard_deploy_transaction_hashes() {
+        let mut test_rng = TestRng::new();
         let under_test = StandardDeployHashesTranslator;
-        let block_v2 = block_v2();
+        let (
+            transactions,
+            standard_deploy_hash,
+            _standard_v1_hash,
+            _mint_deploy_hash,
+            _mint_v1_hash,
+            _install_upgrade_v1,
+            _auction_v1,
+        ) = sample_transactions(&mut test_rng);
+        let block_v2 = block_v2_with_transactions(
+            &mut test_rng,
+            parent_hash(),
+            state_root_hash(),
+            timestamp(),
+            EraId::new(15678276),
+            345678987,
+            proposer(),
+            transactions.iter().collect(),
+        );
         let block_body = block_v2.body();
+        assert_eq!(block_body.all_transactions().collect::<Vec<_>>().len(), 6);
         let translated = under_test.translate(block_body);
-        assert_eq!(
-            translated,
-            vec![
-                parse_deploy_hash(
-                    "e185793e2a6214542ffee6de0ede37d7dd9748b429e4586d73fd2abdd100bd7c"
-                ),
-                parse_deploy_hash(
-                    "c4f7acd014ef88af95ebf338e8dd29b95b161a6a812a6764112bf9d09abc399a"
-                )
-            ]
-        )
+        assert_eq!(translated, vec![standard_deploy_hash,])
     }
+
     #[test]
     fn transfer_deploy_hashes_translator_uses_mint_deploy_transaction_hashes() {
+        let mut test_rng = TestRng::new();
         let under_test = TransferDeployHashesTranslator;
-        let block_v2 = block_v2();
+        let (
+            transactions,
+            _standard_deploy_hash,
+            _standard_v1_hash,
+            mint_deploy_hash,
+            _mint_v1_hash,
+            _install_upgrade_v1,
+            _auction_v1,
+        ) = sample_transactions(&mut test_rng);
+        let block_v2 = block_v2_with_transactions(
+            &mut test_rng,
+            parent_hash(),
+            state_root_hash(),
+            timestamp(),
+            EraId::new(15678276),
+            345678987,
+            proposer(),
+            transactions.iter().collect(),
+        );
         let block_body = block_v2.body();
+        assert_eq!(block_body.all_transactions().collect::<Vec<_>>().len(), 6);
         let translated = under_test.translate(block_body);
-        assert_eq!(
-            translated,
-            vec![
-                parse_deploy_hash(
-                    "19cd7acc75ffe58e6dd5f3f1a6b7c08f8d02bf47928926054d4818e6eb41ca74"
-                ),
-                parse_deploy_hash(
-                    "5e50ebcf0190ef2be4182fe7940f4d68dde8210f42c75ca9478fc1be765c5751"
-                )
-            ]
-        )
+        assert_eq!(translated, vec![mint_deploy_hash,])
     }
 }
