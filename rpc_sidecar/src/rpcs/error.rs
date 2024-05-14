@@ -55,6 +55,10 @@ pub enum Error {
     InvalidAddressableEntity,
     #[error("the auction state was invalid")]
     InvalidAuctionState,
+    #[error("the named keys were invalid: {0}")]
+    InvalidNamedKeys(String),
+    #[error("the entry points were invalid: {0}")]
+    InvalidEntryPoints(String),
     #[error("speculative execution returned nothing")]
     SpecExecReturnedNothing,
     #[error("unexpected bytesrepr failure: {0}")]
@@ -98,6 +102,8 @@ impl Error {
             Error::InvalidAccountInfo
             | Error::InvalidAddressableEntity
             | Error::InvalidAuctionState
+            | Error::InvalidNamedKeys(_)
+            | Error::InvalidEntryPoints(_)
             | Error::BytesreprFailure(_) => None,
         }
     }

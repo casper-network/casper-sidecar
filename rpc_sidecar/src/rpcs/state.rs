@@ -29,8 +29,8 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
+    GlobalStateIdentifier, Key, KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -87,7 +87,17 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
     Lazy::new(|| GetAddressableEntityResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         merkle_proof: MERKLE_PROOF.clone(),
-        entity: EntityOrAccount::AddressableEntity(AddressableEntity::example().clone()),
+        entity: EntityOrAccount::AddressableEntity {
+            entity: AddressableEntity::example().clone(),
+            named_keys: [("key".to_string(), Key::Hash([0u8; 32]))]
+                .iter()
+                .cloned()
+                .collect::<BTreeMap<_, _>>()
+                .into(),
+            entry_points: vec![EntryPointValue::new_v1_entry_point_value(
+                EntryPoint::default_with_name("entry_point"),
+            )],
+        },
     });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
@@ -334,11 +344,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let block_identifier = maybe_params.map(|params| params.block_identifier);
-        let block_header = node_client
-            .read_block_header(block_identifier)
-            .await
-            .map_err(|err| Error::NodeRequest("block header", err))?
-            .unwrap();
+        let block_header = common::get_block_header(&*node_client, block_identifier).await?;
 
         let state_identifier = block_identifier.map(GlobalStateIdentifier::from);
         let legacy_bid_stored_values = node_client
@@ -580,8 +586,16 @@ impl RpcWithParams for GetAddressableEntity {
                 let result = common::resolve_entity_addr(&*node_client, addr, state_identifier)
                     .await?
                     .ok_or(Error::AddressableEntityNotFound)?;
+                let named_keys =
+                    common::get_entity_named_keys(&*node_client, addr, state_identifier).await?;
+                let entry_points =
+                    common::get_entity_entry_points(&*node_client, addr, state_identifier).await?;
                 (
-                    EntityOrAccount::AddressableEntity(result.value),
+                    EntityOrAccount::AddressableEntity {
+                        entity: result.value,
+                        named_keys,
+                        entry_points,
+                    },
                     result.merkle_proof,
                 )
             }
@@ -1121,15 +1135,15 @@ mod tests {
     use casper_binary_port::{
         BalanceResponse, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
         DictionaryQueryResult, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
-        InformationRequestTag,
+        InformationRequestTag, KeyPrefix,
     };
     use casper_types::{
-        addressable_entity::{MessageTopics, NamedKeys},
+        addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, Block, ByteCodeHash, EntityKind, EntryPoints, PackageHash,
-        ProtocolVersion, TestBlockBuilder,
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCodeHash, EntityKind,
+        PackageHash, ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1352,14 +1366,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_read_entity() {
-        use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys};
-
-        struct ClientMock {
-            block: Block,
-            entity: AddressableEntity,
-            entity_hash: AddressableEntityHash,
-        }
+    async fn should_fail_auction_info_when_block_not_found() {
+        struct ClientMock;
 
         #[async_trait]
         impl NodeClient for ClientMock {
@@ -1373,13 +1381,52 @@ mod tests {
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::AvailableBlockRange) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(
-                                self.block.clone_header(),
+                                AvailableBlockRange::RANGE_0_0,
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
                         ))
                     }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let err = GetAuctionInfo::do_handle_request(Arc::new(ClientMock), None)
+            .await
+            .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::NoSuchBlock as i64);
+    }
+
+    #[tokio::test]
+    async fn should_read_entity() {
+        use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys};
+
+        struct ClientMock {
+            entity: AddressableEntity,
+            named_keys: NamedKeys,
+            entry_points: Vec<EntryPointValue>,
+            entity_hash: AddressableEntityHash,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
                             &*req,
@@ -1423,31 +1470,109 @@ mod tests {
                             &[],
                         ))
                     }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::NamedKeysByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.named_keys
+                                    .iter()
+                                    .map(|(name, key)| {
+                                        StoredValue::NamedKey(
+                                            NamedKeyValue::from_concrete_values(*key, name.clone())
+                                                .expect("should create named key"),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::EntryPointsV1ByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.entry_points
+                                    .iter()
+                                    .cloned()
+                                    .map(StoredValue::EntryPoint)
+                                    .collect::<Vec<_>>(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::ItemsByPrefix {
+                                key_prefix: KeyPrefix::EntryPointsV2ByEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                Vec::<StoredValue>::new(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
         }
 
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
         );
         let entity_hash: AddressableEntityHash = rng.gen();
+
+        let named_key_count = rng.gen_range(0..10);
+        let named_keys: NamedKeys =
+            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.gen())))
+                .take(named_key_count)
+                .collect::<BTreeMap<_, _>>()
+                .into();
+        let entry_point_count = rng.gen_range(0..10);
+        let entry_points = iter::repeat_with(|| {
+            EntryPointValue::new_v1_entry_point_value(EntryPoint::default_with_name(
+                rng.random_string(1..10),
+            ))
+        })
+        .take(entry_point_count)
+        .collect::<Vec<_>>();
+
         let entity_identifier = EntityIdentifier::random(rng);
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock {
-                block: block.clone(),
                 entity: entity.clone(),
+                named_keys: named_keys.clone(),
+                entry_points: entry_points.clone(),
                 entity_hash,
             }),
             GetAddressableEntityParams {
@@ -1462,7 +1587,11 @@ mod tests {
             resp,
             GetAddressableEntityResult {
                 api_version: CURRENT_API_VERSION,
-                entity: EntityOrAccount::AddressableEntity(entity),
+                entity: EntityOrAccount::AddressableEntity {
+                    entity,
+                    named_keys,
+                    entry_points
+                },
                 merkle_proof: String::from("00000000"),
             }
         );
@@ -2040,7 +2169,7 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::BalanceByStateRoot { .. }) =>
+                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),

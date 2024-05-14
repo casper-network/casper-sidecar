@@ -800,40 +800,48 @@
               "api_version": "2.0.0",
               "entity": {
                 "AddressableEntity": {
-                  "protocol_version": "2.0.0",
-                  "entity_kind": {
-                    "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
+                  "entity": {
+                    "protocol_version": "2.0.0",
+                    "entity_kind": {
+                      "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
+                    },
+                    "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
+                    "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
+                    "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                    "associated_keys": [
+                      {
+                        "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                        "weight": 1
+                      }
+                    ],
+                    "action_thresholds": {
+                      "deployment": 1,
+                      "upgrade_management": 1,
+                      "key_management": 1
+                    },
+                    "message_topics": [
+                      {
+                        "topic_name": "topic",
+                        "topic_name_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+                      }
+                    ]
                   },
-                  "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
-                  "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
-                  "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                  "named_keys": [
+                    {
+                      "name": "key",
+                      "key": "hash-0000000000000000000000000000000000000000000000000000000000000000"
+                    }
+                  ],
                   "entry_points": [
                     {
-                      "name": "call",
-                      "entry_point": {
-                        "name": "call",
+                      "V1CasperVm": {
+                        "name": "entry_point",
                         "args": [],
                         "ret": "Unit",
                         "access": "Public",
-                        "entry_point_type": "Caller"
+                        "entry_point_type": "Caller",
+                        "entry_point_payment": "Caller"
                       }
-                    }
-                  ],
-                  "associated_keys": [
-                    {
-                      "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
-                      "weight": 1
-                    }
-                  ],
-                  "action_thresholds": {
-                    "deployment": 1,
-                    "upgrade_management": 1,
-                    "key_management": 1
-                  },
-                  "message_topics": [
-                    {
-                      "topic_name": "topic",
-                      "topic_name_hash": "0000000000000000000000000000000000000000000000000000000000000000"
                     }
                   ]
                 }
@@ -3459,6 +3467,13 @@
             "enum": [
               "VmCasperV1"
             ]
+          },
+          {
+            "description": "The Casper Version 2 Virtual Machine.",
+            "type": "string",
+            "enum": [
+              "VmCasperV2"
+            ]
           }
         ]
       },
@@ -5551,6 +5566,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "An entrypoint record.",
+            "type": "object",
+            "required": [
+              "EntryPoint"
+            ],
+            "properties": {
+              "EntryPoint": {
+                "$ref": "#/components/schemas/EntryPointValue"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6004,7 +6032,6 @@
           "associated_keys",
           "byte_code_hash",
           "entity_kind",
-          "entry_points",
           "main_purse",
           "message_topics",
           "package_hash",
@@ -6025,9 +6052,6 @@
           },
           "main_purse": {
             "$ref": "#/components/schemas/URef"
-          },
-          "entry_points": {
-            "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
           },
           "associated_keys": {
             "$ref": "#/components/schemas/EntityAssociatedKeys"
@@ -6071,10 +6095,16 @@
           },
           {
             "description": "Packages associated with Wasm stored on chain.",
-            "type": "string",
-            "enum": [
+            "type": "object",
+            "required": [
               "SmartContract"
-            ]
+            ],
+            "properties": {
+              "SmartContract": {
+                "$ref": "#/components/schemas/TransactionRuntime"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6424,6 +6454,120 @@
           }
         }
       },
+      "EntryPointValue": {
+        "description": "The encaspulated representation of entrypoints.",
+        "oneOf": [
+          {
+            "description": "Entrypoints to be executed against the V1 Casper VM.",
+            "type": "object",
+            "required": [
+              "V1CasperVm"
+            ],
+            "properties": {
+              "V1CasperVm": {
+                "$ref": "#/components/schemas/EntryPoint2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Entrypoints to be executed against the V2 Casper VM.",
+            "type": "object",
+            "required": [
+              "V2CasperVm"
+            ],
+            "properties": {
+              "V2CasperVm": {
+                "$ref": "#/components/schemas/EntryPointV2"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EntryPoint2": {
+        "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+        "type": "object",
+        "required": [
+          "access",
+          "args",
+          "entry_point_payment",
+          "entry_point_type",
+          "name",
+          "ret"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Parameter"
+            }
+          },
+          "ret": {
+            "$ref": "#/components/schemas/CLType"
+          },
+          "access": {
+            "$ref": "#/components/schemas/EntryPointAccess"
+          },
+          "entry_point_type": {
+            "$ref": "#/components/schemas/EntryPointType"
+          },
+          "entry_point_payment": {
+            "$ref": "#/components/schemas/EntryPointPayment"
+          }
+        }
+      },
+      "EntryPointPayment": {
+        "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
+        "oneOf": [
+          {
+            "description": "The caller must cover cost",
+            "type": "string",
+            "enum": [
+              "Caller"
+            ]
+          },
+          {
+            "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+            "type": "string",
+            "enum": [
+              "SelfOnly"
+            ]
+          },
+          {
+            "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+            "type": "string",
+            "enum": [
+              "SelfOnward"
+            ]
+          }
+        ]
+      },
+      "EntryPointV2": {
+        "description": "The entry point for the V2 Casper VM.",
+        "type": "object",
+        "required": [
+          "flags",
+          "function_index"
+        ],
+        "properties": {
+          "function_index": {
+            "description": "The selector.",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          },
+          "flags": {
+            "description": "The flags.",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        }
+      },
       "TransformError": {
         "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
         "oneOf": [
@@ -6653,7 +6797,37 @@
             ],
             "properties": {
               "AddressableEntity": {
-                "$ref": "#/components/schemas/AddressableEntity"
+                "type": "object",
+                "required": [
+                  "entity",
+                  "entry_points",
+                  "named_keys"
+                ],
+                "properties": {
+                  "entity": {
+                    "description": "The addressable entity.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/AddressableEntity"
+                      }
+                    ]
+                  },
+                  "named_keys": {
+                    "description": "The named keys of the addressable entity.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/NamedKeys"
+                      }
+                    ]
+                  },
+                  "entry_points": {
+                    "description": "The entry points of the addressable entity.",
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EntryPointValue"
+                    }
+                  }
+                }
               }
             },
             "additionalProperties": false

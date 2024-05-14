@@ -15,8 +15,8 @@ use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, NodeStatus, PayloadEntity, PurseIdentifier, RecordId,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus, PayloadEntity, PurseIdentifier,
+    RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -87,12 +87,27 @@ pub trait NodeClient: Send + Sync {
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
+    async fn query_global_state_by_prefix(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        key_prefix: KeyPrefix,
+    ) -> Result<Vec<StoredValue>, Error> {
+        let get = GlobalStateRequest::ItemsByPrefix {
+            state_identifier,
+            key_prefix,
+        };
+        let resp = self
+            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .await?;
+        parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
     async fn read_balance(
         &self,
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
     ) -> Result<BalanceResponse, Error> {
-        let get = GlobalStateRequest::BalanceByStateRoot {
+        let get = GlobalStateRequest::Balance {
             state_identifier,
             purse_identifier,
         };
@@ -261,9 +276,55 @@ impl Error {
     fn from_error_code(code: u8) -> Self {
         match ErrorCode::try_from(code) {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
-            Ok(ErrorCode::InvalidTransaction) => Self::InvalidTransaction,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(
+                ErrorCode::InvalidDeployChainName
+                | ErrorCode::InvalidDeployDependenciesNoLongerSupported
+                | ErrorCode::InvalidDeployExcessiveSize
+                | ErrorCode::InvalidDeployExcessiveTimeToLive
+                | ErrorCode::InvalidDeployTimestampInFuture
+                | ErrorCode::InvalidDeployBodyHash
+                | ErrorCode::InvalidDeployHash
+                | ErrorCode::InvalidDeployEmptyApprovals
+                | ErrorCode::InvalidDeployApproval
+                | ErrorCode::InvalidDeployExcessiveSessionArgsLength
+                | ErrorCode::InvalidDeployExcessivePaymentArgsLength
+                | ErrorCode::InvalidDeployMissingPaymentAmount
+                | ErrorCode::InvalidDeployFailedToParsePaymentAmount
+                | ErrorCode::InvalidDeployExceededBlockGasLimit
+                | ErrorCode::InvalidDeployMissingTransferAmount
+                | ErrorCode::InvalidDeployFailedToParseTransferAmount
+                | ErrorCode::InvalidDeployInsufficientTransferAmount
+                | ErrorCode::InvalidDeployExcessiveApprovals
+                | ErrorCode::InvalidDeployUnableToCalculateGasLimit
+                | ErrorCode::InvalidDeployUnableToCalculateGasCost
+                | ErrorCode::InvalidDeployUnspecified
+                | ErrorCode::InvalidTransactionChainName
+                | ErrorCode::InvalidTransactionExcessiveSize
+                | ErrorCode::InvalidTransactionExcessiveTimeToLive
+                | ErrorCode::InvalidTransactionTimestampInFuture
+                | ErrorCode::InvalidTransactionBodyHash
+                | ErrorCode::InvalidTransactionHash
+                | ErrorCode::InvalidTransactionEmptyApprovals
+                | ErrorCode::InvalidTransactionInvalidApproval
+                | ErrorCode::InvalidTransactionExcessiveArgsLength
+                | ErrorCode::InvalidTransactionExcessiveApprovals
+                | ErrorCode::InvalidTransactionExceedsBlockGasLimit
+                | ErrorCode::InvalidTransactionMissingArg
+                | ErrorCode::InvalidTransactionUnexpectedArgType
+                | ErrorCode::InvalidTransactionInvalidArg
+                | ErrorCode::InvalidTransactionInsufficientTransferAmount
+                | ErrorCode::InvalidTransactionEntryPointCannotBeCustom
+                | ErrorCode::InvalidTransactionEntryPointMustBeCustom
+                | ErrorCode::InvalidTransactionEmptyModuleBytes
+                | ErrorCode::InvalidTransactionGasPriceConversion
+                | ErrorCode::InvalidTransactionUnableToCalculateGasLimit
+                | ErrorCode::InvalidTransactionUnableToCalculateGasCost
+                | ErrorCode::InvalidTransactionPricingMode
+                | ErrorCode::InvalidTransactionUnspecified
+                | ErrorCode::InvalidTransactionOrDeployUnspecified,
+            ) => Self::InvalidTransaction, // TODO: map transaction errors to proper variants
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
