@@ -187,6 +187,7 @@ Legacy SSE event will be the same
         "Version2": {
           "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
           "header": {
+            "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
             "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
             "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
             "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
@@ -227,9 +228,8 @@ Legacy SSE event will be the same
             "current_gas_price": 1
           },
           "body": {
-            "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
-            "mint": [
-              {
+            "transactions": {
+              "0": [{
                 "Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"
               },
               {
@@ -237,10 +237,8 @@ Legacy SSE event will be the same
               },
               {
                 "Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"
-              }
-            ],
-            "auction": [
-              {
+              }],
+              "1": [{
                 "Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"
               },
               {
@@ -248,10 +246,8 @@ Legacy SSE event will be the same
               },
               {
                 "Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"
-              }
-            ],
-            "install_upgrade": [
-              {
+              }],
+              "2": [{
                 "Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"
               },
               {
@@ -259,10 +255,8 @@ Legacy SSE event will be the same
               },
               {
                 "Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"
-              }
-            ],
-            "standard": [
-              {
+              }],
+              "3": [{
                 "Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"
               },
               {
@@ -270,8 +264,8 @@ Legacy SSE event will be the same
               },
               {
                 "Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"
-              }
-            ],
+              }]
+            }
             "rewarded_signatures": [[240], [0], [0]]
           }
         }
