@@ -17,9 +17,8 @@ use tokio::{
 };
 use tracing::{error, info, trace};
 use wheelbuf::WheelBuf;
-pub type InboundData = (Option<u32>, SseData, Option<Filter>, Option<String>);
-pub type OutboundReceiver =
-    mpsc::UnboundedReceiver<(Option<EventIndex>, SseData, Option<Filter>, Option<String>)>;
+pub type InboundData = (Option<u32>, SseData, Option<Filter>);
+pub type OutboundReceiver = mpsc::UnboundedReceiver<(Option<EventIndex>, SseData, Option<Filter>)>;
 /// Run the HTTP server.
 ///
 /// * `server_with_shutdown` is the actual server as a future which can be gracefully shut down.
@@ -109,13 +108,12 @@ async fn handle_incoming_data(
     broadcaster: &broadcast::Sender<BroadcastChannelMessage>,
 ) -> Result<(), ()> {
     match maybe_data {
-        Some((maybe_event_index, data, inbound_filter, maybe_json_data)) => {
+        Some((maybe_event_index, data, inbound_filter)) => {
             // Buffer the data and broadcast it to subscribed clients.
             trace!("Event stream server received {:?}", data);
             let event = ServerSentEvent {
                 id: maybe_event_index,
                 data: data.clone(),
-                json_data: maybe_json_data,
                 inbound_filter,
             };
             match data {

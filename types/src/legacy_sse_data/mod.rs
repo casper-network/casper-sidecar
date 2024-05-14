@@ -203,27 +203,71 @@ mod tests {
 
     #[test]
     fn should_translate_sse_to_legacy() {
-        for (sse_data, expected) in sse_translation_scenarios() {
+        for (sse_data, expected, scenario_name) in sse_translation_scenarios() {
             let legacy_fs = LegacySseData::from(&sse_data);
-            assert_eq!(legacy_fs, expected);
+            assert_eq!(
+                legacy_fs,
+                expected,
+                "Failed when executing scenario {}",
+                scenario_name.as_str()
+            );
         }
     }
 
-    fn sse_translation_scenarios() -> Vec<(SseData, Option<LegacySseData>)> {
-        let block_added_v2_sse_data = block_added_v2();
-        let legacy_repr = Some(legacy_block_added_from_v2(&block_added_v2_sse_data));
+    #[allow(clippy::too_many_lines)]
+    fn sse_translation_scenarios() -> Vec<(SseData, Option<LegacySseData>, String)> {
         vec![
-            (api_version(), Some(legacy_api_version())),
-            (finality_signature_v1(), Some(legacy_finality_signature())),
-            (finality_signature_v2(), Some(legacy_finality_signature())),
-            (transaction_accepted(), None),
-            (deploy_accepted(), Some(legacy_deploy_accepted())),
-            (deploy_expired(), Some(legacy_deploy_expired())),
-            (transaction_expired(), None),
-            (fault(), Some(legacy_fault())),
-            (block_added_v1(), Some(legacy_block_added())),
-            (block_added_v2_sse_data, legacy_repr),
-            (deploy_processed(), Some(legacy_deploy_processed())),
+            (
+                api_version(),
+                Some(legacy_api_version()),
+                "api_version".to_string(),
+            ),
+            (
+                finality_signature_v1(),
+                Some(legacy_finality_signature()),
+                "finality_signature_v1".to_string(),
+            ),
+            (
+                finality_signature_v2(),
+                Some(legacy_finality_signature()),
+                "finality_signature_v2".to_string(),
+            ),
+            (
+                transaction_accepted(),
+                None,
+                "transaction_accepted".to_string(),
+            ),
+            (
+                deploy_accepted(),
+                Some(legacy_deploy_accepted()),
+                "legacy_deploy_accepted".to_string(),
+            ),
+            (
+                deploy_expired(),
+                Some(legacy_deploy_expired()),
+                "legacy_deploy_expired".to_string(),
+            ),
+            (
+                transaction_expired(),
+                None,
+                "transaction_expired".to_string(),
+            ),
+            (fault(), Some(legacy_fault()), "fault".to_string()),
+            (
+                block_added_v1(),
+                Some(legacy_block_added()),
+                "block_added_v1".to_string(),
+            ),
+            (
+                block_added_v2(),
+                Some(legacy_block_added_from_v2()),
+                "block_added_v2".to_string(),
+            ),
+            (
+                deploy_processed(),
+                Some(legacy_deploy_processed()),
+                "deploy_processed".to_string(),
+            ),
         ]
     }
 }

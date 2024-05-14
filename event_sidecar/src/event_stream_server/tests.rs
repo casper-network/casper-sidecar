@@ -1,11 +1,16 @@
 use super::*;
+use casper_event_types::legacy_sse_data::LegacySseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 use futures::{join, Stream, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use serde_json::Value;
-use sse_server::{Id, TransactionAccepted, QUERY_FIELD, SSE_API_ROOT_PATH as ROOT_PATH};
+use sse_server::{
+    Id, TransactionAccepted, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
+    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
+    SSE_API_SIGNATURES_PATH as SIGS_PATH,
+};
 use std::{
     collections::HashMap,
     error::Error,
@@ -190,7 +195,7 @@ impl Drop for ServerStopper {
 struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
-    events: Vec<(SseData, Option<String>)>,
+    events: Vec<SseData>,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -206,7 +211,7 @@ impl TestFixture {
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
         let mut transactions = HashMap::new();
-        let events: Vec<(SseData, Option<String>)> = (0..EVENT_COUNT)
+        let events: Vec<SseData> = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
@@ -223,7 +228,6 @@ impl TestFixture {
                 6 => SseData::random_finality_signature(rng),
                 _ => unreachable!(),
             })
-            .map(|x| (x, None))
             .collect();
         TestFixture {
             storage_dir,
@@ -284,10 +288,8 @@ impl TestFixture {
             };
             let api_version_event = SseData::ApiVersion(protocol_version);
 
-            server.broadcast(api_version_event.clone(), Some(SseFilter::Events), None);
-            for (id, (event, maybe_json_data)) in
-                events.iter().cycle().enumerate().take(event_count as usize)
-            {
+            server.broadcast(api_version_event.clone(), Some(SseFilter::Events));
+            for (id, event) in events.iter().cycle().enumerate().take(event_count as usize) {
                 if server_stopper.should_stop() {
                     debug!("stopping server early");
                     return;
@@ -295,13 +297,7 @@ impl TestFixture {
                 server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                server.broadcast(
-                    event.clone(),
-                    Some(SseFilter::Events),
-                    maybe_json_data
-                        .as_ref()
-                        .map(|el| serde_json::from_str(el.as_str()).unwrap()),
-                );
+                server.broadcast(event.clone(), Some(SseFilter::Events));
                 server_behavior.sleep_if_required().await;
             }
 
@@ -361,12 +357,12 @@ impl TestFixture {
             .chain(
                 self.events
                     .iter()
-                    .filter(|(event, _)| !matches!(event, SseData::ApiVersion(..)))
+                    .filter(|event| !matches!(event, SseData::ApiVersion(..)))
                     .enumerate()
                     .filter_map(|(id, event)| {
                         let id = id as u128 + self.first_event_id as u128;
-                        if event.0.should_include(filter) {
-                            id_filter(id, &event.0)
+                        if event.should_include(filter) {
+                            id_filter(id, event)
                         } else {
                             None
                         }
@@ -661,7 +657,7 @@ fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> 
 ///   * connected before first event
 ///
 /// Expected to receive all main, transaction-accepted or signature events depending on `filter`.
-async fn should_serve_events_with_no_query(path: &str) {
+async fn should_serve_events_with_no_query(path: &str, is_legacy_endpoint: bool) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -671,15 +667,83 @@ async fn should_serve_events_with_no_query(path: &str) {
 
     let url = url(server_address, path, None);
     let (expected_events, final_id) = fixture.all_filtered_events(path);
+    let (expected_events, final_id) =
+        adjust_final_id(is_legacy_endpoint, expected_events, final_id);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
+    compare_received_events_for_legacy_endpoints(
+        is_legacy_endpoint,
+        expected_events,
+        received_events,
+    );
+}
 
-    assert_eq!(received_events, expected_events);
+/// In legacy endpoints not all input events will be re-emitted to output. If an input (2.x) event is not translatable
+/// to 1.x it will be muffled. So we need to adjust the final id to the last event that was 1.x translatable.
+fn adjust_final_id(
+    is_legacy_endpoint: bool,
+    expected_events: Vec<ReceivedEvent>,
+    final_id: u32,
+) -> (Vec<ReceivedEvent>, u32) {
+    let (expected_events, final_id) = if is_legacy_endpoint {
+        let legacy_compliant_events: Vec<ReceivedEvent> = expected_events
+            .iter()
+            .filter_map(|event| {
+                let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
+                LegacySseData::from(&sse_data).map(|_| event.clone())
+            })
+            .collect();
+        let id = legacy_compliant_events.last().and_then(|el| el.id).unwrap();
+        (legacy_compliant_events, id)
+    } else {
+        (expected_events, final_id)
+    };
+    (expected_events, final_id)
+}
+
+/// In legacy endpoints the node produces 2.x compliant sse events, but the node transforms them into legacy format.
+/// So to compare we need to apply the translation logic to input 2.x events.
+fn compare_received_events_for_legacy_endpoints(
+    is_legacy_endpoint: bool,
+    expected_events: Vec<ReceivedEvent>,
+    received_events: Vec<ReceivedEvent>,
+) {
+    if is_legacy_endpoint {
+        let expected_legacy_events: Vec<LegacySseData> = expected_events
+            .iter()
+            .filter_map(|event| {
+                let sse_data = serde_json::from_str::<SseData>(&event.data).unwrap();
+                LegacySseData::from(&sse_data)
+            })
+            .collect();
+        let received_legacy_events: Vec<LegacySseData> = received_events
+            .iter()
+            .map(|event| serde_json::from_str::<LegacySseData>(&event.data).unwrap())
+            .collect();
+        assert_eq!(received_legacy_events, expected_legacy_events);
+    } else {
+        assert_eq!(received_events, expected_events);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_no_query() {
+    should_serve_events_with_no_query(MAIN_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_no_query() {
+    should_serve_events_with_no_query(DEPLOYS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_no_query() {
+    should_serve_events_with_no_query(SIGS_PATH, true).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_firehose_events_with_no_query() {
-    should_serve_events_with_no_query(ROOT_PATH).await;
+    should_serve_events_with_no_query(ROOT_PATH, false).await;
 }
 
 /// Client setup:
@@ -688,7 +752,7 @@ async fn should_serve_firehose_events_with_no_query() {
 ///
 /// Expected to receive main, transaction-accepted or signature events (depending on `path`) from ID 25
 /// onwards, as events 25 to 49 should still be in the server buffer.
-async fn should_serve_events_with_query(path: &str) {
+async fn should_serve_events_with_query(path: &str, is_legacy_endpoint: bool) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -701,15 +765,36 @@ async fn should_serve_events_with_query(path: &str) {
 
     let url = url(server_address, path, Some(start_from_event_id));
     let (expected_events, final_id) = fixture.filtered_events(path, start_from_event_id);
+    let (expected_events, final_id) =
+        adjust_final_id(is_legacy_endpoint, expected_events, final_id);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    assert_eq!(received_events, expected_events);
+    compare_received_events_for_legacy_endpoints(
+        is_legacy_endpoint,
+        expected_events,
+        received_events,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_query() {
+    should_serve_events_with_query(MAIN_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_query() {
+    should_serve_events_with_query(DEPLOYS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_query() {
+    should_serve_events_with_query(SIGS_PATH, true).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_firehose_events_with_query() {
-    should_serve_events_with_query(ROOT_PATH).await;
+    should_serve_events_with_query(ROOT_PATH, false).await;
 }
 
 /// Client setup:
@@ -718,7 +803,7 @@ async fn should_serve_firehose_events_with_query() {
 ///
 /// Expected to receive main, transaction-accepted or signature events (depending on `path`) from ID 25
 /// onwards, as events 0 to 24 should have been purged from the server buffer.
-async fn should_serve_remaining_events_with_query(path: &str) {
+async fn should_serve_remaining_events_with_query(path: &str, is_legacy_endpoint: bool) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -732,15 +817,36 @@ async fn should_serve_remaining_events_with_query(path: &str) {
     let url = url(server_address, path, Some(start_from_event_id));
     let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
     let (expected_events, final_id) = fixture.filtered_events(path, expected_first_event);
+    let (expected_events, final_id) =
+        adjust_final_id(is_legacy_endpoint, expected_events, final_id);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    assert_eq!(received_events, expected_events);
+    compare_received_events_for_legacy_endpoints(
+        is_legacy_endpoint,
+        expected_events,
+        received_events,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_main_events_with_query() {
+    should_serve_remaining_events_with_query(MAIN_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_deploy_accepted_events_with_query() {
+    should_serve_remaining_events_with_query(DEPLOYS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_remaining_signature_events_with_query() {
+    should_serve_remaining_events_with_query(SIGS_PATH, true).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_remaining_firehose_events_with_query() {
-    should_serve_remaining_events_with_query(ROOT_PATH).await;
+    should_serve_remaining_events_with_query(ROOT_PATH, false).await;
 }
 
 /// Client setup:
@@ -749,7 +855,7 @@ async fn should_serve_remaining_firehose_events_with_query() {
 ///
 /// Expected to receive all main, transaction-accepted or signature events (depending on `path`), as
 /// event 25 hasn't been added to the server buffer yet.
-async fn should_serve_events_with_query_for_future_event(path: &str) {
+async fn should_serve_events_with_query_for_future_event(path: &str, is_legacy_endpoint: bool) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -759,15 +865,36 @@ async fn should_serve_events_with_query_for_future_event(path: &str) {
 
     let url = url(server_address, path, Some(25));
     let (expected_events, final_id) = fixture.all_filtered_events(path);
+    let (expected_events, final_id) =
+        adjust_final_id(is_legacy_endpoint, expected_events, final_id);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    assert_eq!(received_events, expected_events);
+    compare_received_events_for_legacy_endpoints(
+        is_legacy_endpoint,
+        expected_events,
+        received_events,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_main_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(MAIN_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_deploy_accepted_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(DEPLOYS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_serve_signature_events_with_query_for_future_event() {
+    should_serve_events_with_query_for_future_event(SIGS_PATH, true).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_serve_firehose_events_with_query_for_future_event() {
-    should_serve_events_with_query_for_future_event(ROOT_PATH).await;
+    should_serve_events_with_query_for_future_event(ROOT_PATH, false).await;
 }
 
 /// Checks that when a server is shut down (e.g. for a node upgrade), connected clients don't have
@@ -917,8 +1044,9 @@ async fn should_handle_bad_url_query() {
     fixture.stop_server().await;
 }
 
+#[allow(clippy::too_many_lines)]
 /// Check that a server which restarts continues from the previous numbering of event IDs.
-async fn should_persist_event_ids(path: &str) {
+async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -930,7 +1058,9 @@ async fn should_persist_event_ids(path: &str) {
 
         // Consume these and stop the server.
         let url = url(server_address, path, None);
-        let (_expected_events, final_id) = fixture.all_filtered_events(path);
+        let (expected_events, final_id) = fixture.all_filtered_events(path);
+        let (_expected_events, final_id) =
+            adjust_final_id(is_legacy_endpoint, expected_events, final_id);
         let _ = subscribe(&url, barrier, final_id, "client 1")
             .await
             .unwrap();
@@ -939,7 +1069,6 @@ async fn should_persist_event_ids(path: &str) {
     };
 
     assert!(first_run_final_id > 0);
-
     {
         // Start a new server with a client barrier set for just before event ID 100 + 1 (the extra
         // event being the `Shutdown`).
@@ -954,22 +1083,37 @@ async fn should_persist_event_ids(path: &str) {
         // Consume the events and assert their IDs are all >= `first_run_final_id`.
         let url = url(server_address, path, None);
         let (expected_events, final_id) = fixture.filtered_events(path, EVENT_COUNT + 1);
+        let (expected_events, final_id) =
+            adjust_final_id(is_legacy_endpoint, expected_events, final_id);
         let received_events = subscribe(&url, barrier, final_id, "client 2")
             .await
             .unwrap();
         fixture.stop_server().await;
-
-        assert_eq!(received_events, expected_events);
         assert!(received_events
             .iter()
             .skip(1)
             .all(|event| event.id.unwrap() >= first_run_final_id));
+        compare_received_events_for_legacy_endpoints(
+            is_legacy_endpoint,
+            expected_events,
+            received_events,
+        );
     }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_persist_deploy_accepted_event_ids() {
+    should_persist_event_ids(DEPLOYS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_persist_signature_event_ids() {
+    should_persist_event_ids(SIGS_PATH, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_persist_firehose_event_ids() {
-    should_persist_event_ids(ROOT_PATH).await;
+    should_persist_event_ids(ROOT_PATH, false).await;
 }
 
 /// Check that a server handles wrapping round past the maximum value for event IDs.

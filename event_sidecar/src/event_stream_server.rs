@@ -50,12 +50,7 @@ use warp::Filter;
 /// that a new client can retrieve the entire set of buffered events if desired.
 const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
-pub type OutboundSender = UnboundedSender<(
-    Option<EventIndex>,
-    SseData,
-    Option<SseFilter>,
-    Option<String>,
-)>;
+pub type OutboundSender = UnboundedSender<(Option<EventIndex>, SseData, Option<SseFilter>)>;
 
 #[derive(Debug)]
 pub(crate) struct EventStreamServer {
@@ -115,19 +110,14 @@ impl EventStreamServer {
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
-    pub(crate) fn broadcast(
-        &mut self,
-        sse_data: SseData,
-        inbound_filter: Option<SseFilter>,
-        maybe_json_data: Option<String>,
-    ) {
+    pub(crate) fn broadcast(&mut self, sse_data: SseData, inbound_filter: Option<SseFilter>) {
         let event_index = match sse_data {
             SseData::ApiVersion(..) => None,
             _ => Some(self.event_indexer.next_index()),
         };
         let _ = self
             .sse_data_sender
-            .send((event_index, sse_data, inbound_filter, maybe_json_data));
+            .send((event_index, sse_data, inbound_filter));
     }
 }
 

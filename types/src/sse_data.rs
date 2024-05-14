@@ -48,13 +48,11 @@ pub(crate) fn to_error(msg: String) -> SseDataDeserializeError {
 /// Deserializes a string which should contain json data and returns a result of either SseData (which is 2.0.x compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
-pub fn deserialize(json_raw: &str) -> Result<(SseData, bool), SseDataDeserializeError> {
-    serde_json::from_str::<SseData>(json_raw)
-        .map(|el| (el, false))
-        .map_err(|err| {
-            let error_message = format!("Serde Error: {}", err);
-            to_error(error_message)
-        })
+pub fn deserialize(json_raw: &str) -> Result<SseData, SseDataDeserializeError> {
+    serde_json::from_str::<SseData>(json_raw).map_err(|err| {
+        let error_message = format!("Serde Error: {}", err);
+        to_error(error_message)
+    })
 }
 
 /// The "data" field of the events sent on the event stream to clients.
@@ -265,7 +263,7 @@ pub mod test_support {
     }
 
     pub fn example_block_added_2_0_0(hash: &str, height: u64) -> String {
-        let raw_block_added = json!({"BlockAdded":{"block_hash":"0afaafa0983eeb216049d2be396d7689119bd2367087a94a30de53b1887ec592","block":{"Version2":{"hash":hash,"header":{"parent_hash":"327a6be4f8b23115e089875428ff03d9071a7020ce3e0f4734c43e4279ad77fc","state_root_hash":"4f1638725e8a92ad6432a76124ba4a6db365b00ff352beb58b8c48ed9ed4b68d","body_hash":"337a4c9e510e01e142a19e5d81203bdc43e59a4f9039288c01f7b89370e1d104","random_bit":true,"accumulated_seed":"7b7d7b18668dcc8ffecda5f5de1037f26cd61394f72357cdc9ba84f0f48e37c8","era_end":null,"timestamp":"2024-05-10T19:55:20.415Z","era_id":77,"height":height,"protocol_version":"2.0.0","proposer":"01cee2ff4318180282a73bfcd1446f8145e4d80508fecd76fc38dce13af491f0e5","current_gas_price":1,"last_switch_block_hash":"a3533c2625c6413be2287e581c5fca1a0165ebac02b051f9f07ccf1ad483cf2d"},"body":{"transactions":{"0":[],"1":[],"2":[],"3":[]},"rewarded_signatures":[[248],[0],[0]]}}}}}).to_string();
+        let raw_block_added = json!({"BlockAdded":{"block_hash":hash,"block":{"Version2":{"hash":hash,"header":{"parent_hash":"327a6be4f8b23115e089875428ff03d9071a7020ce3e0f4734c43e4279ad77fc","state_root_hash":"4f1638725e8a92ad6432a76124ba4a6db365b00ff352beb58b8c48ed9ed4b68d","body_hash":"337a4c9e510e01e142a19e5d81203bdc43e59a4f9039288c01f7b89370e1d104","random_bit":true,"accumulated_seed":"7b7d7b18668dcc8ffecda5f5de1037f26cd61394f72357cdc9ba84f0f48e37c8","era_end":null,"timestamp":"2024-05-10T19:55:20.415Z","era_id":77,"height":height,"protocol_version":"2.0.0","proposer":"01cee2ff4318180282a73bfcd1446f8145e4d80508fecd76fc38dce13af491f0e5","current_gas_price":1,"last_switch_block_hash":"a3533c2625c6413be2287e581c5fca1a0165ebac02b051f9f07ccf1ad483cf2d"},"body":{"transactions":{"0":[],"1":[],"2":[],"3":[]},"rewarded_signatures":[[248],[0],[0]]}}}}}).to_string();
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }

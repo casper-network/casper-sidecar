@@ -1,18 +1,26 @@
-use super::LegacySseData;
+use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+
+use casper_types::system::auction::ValidatorWeights;
+use casper_types::{
+    BlockHash, BlockV2, Deploy, DeployHash, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionV1, TransactionV1Hash, U512,
+};
+use rand::Rng;
+
+use super::{structs, LegacySseData};
 use crate::sse_data::SseData;
+use crate::testing::{parse_block_hash, parse_digest, parse_public_key};
 use casper_types::testing::TestRng;
-use casper_types::{Block, TestBlockBuilder};
+use casper_types::TestBlockBuilder;
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()
 }
 
-pub fn legacy_block_added_from_v2(block_added: &SseData) -> LegacySseData {
-    if let SseData::BlockAdded { .. } = block_added {
-        LegacySseData::from(block_added).expect("did not convert to legacy see data")
-    } else {
-        panic!("did not get legacy block added sse data")
-    }
+pub fn legacy_block_added_from_v2() -> LegacySseData {
+    serde_json::from_str(RAW_LEGACY_BLOCK_ADDED_FROM_V2).unwrap()
 }
 
 pub fn block_added_v1() -> SseData {
@@ -20,15 +28,7 @@ pub fn block_added_v1() -> SseData {
 }
 
 pub fn block_added_v2() -> SseData {
-    let mut rng = TestRng::new();
-    let block = Box::new(Block::V2(TestBlockBuilder::new().build(&mut rng)));
-    let block_hash = block.hash();
-    let block_added = SseData::BlockAdded {
-        block_hash: *block_hash,
-        block,
-    };
-    let str = serde_json::to_string(&block_added).expect("must get string");
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_str(RAW_BLOCK_ADDED_V2).unwrap()
 }
 
 pub fn api_version() -> SseData {
@@ -89,6 +89,242 @@ pub fn deploy_processed() -> SseData {
 
 pub fn legacy_deploy_processed() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_DEPLOY_PROCESSED).unwrap()
+}
+
+pub fn parent_hash() -> BlockHash {
+    parse_block_hash("90a4ade2849634e9c1ad0e02cb30645d0984056f68075cad8f6cad2b42a824ba")
+}
+
+pub fn state_root_hash() -> Digest {
+    parse_digest("9cce223fdbeab41dbbcf0b62f3fd857373131378d51776de26bb9f4fefe1e849")
+}
+
+pub fn timestamp() -> Timestamp {
+    Timestamp::from_str("2020-08-07T01:30:25.521Z").unwrap()
+}
+
+pub fn proposer() -> PublicKey {
+    parse_public_key("0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn block_v2_with_transactions(
+    rng: &mut TestRng,
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+    transactions: Vec<&Transaction>,
+) -> BlockV2 {
+    let mut validator_weights = ValidatorWeights::new();
+    let key_1 =
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b");
+    let key_2 =
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c");
+    let key_3 =
+        parse_public_key("0202fd52dbda97f41def3e3252704d5f8f5adbec1919368282e02e9500bd88845a80");
+    let key_4 =
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027e");
+    validator_weights.insert(key_1.clone(), U512::from_dec_str("1").unwrap());
+    validator_weights.insert(key_2.clone(), U512::from_dec_str("2").unwrap());
+    let mut public_keys = BTreeSet::new();
+    public_keys.insert(key_1.clone());
+    public_keys.insert(key_4.clone());
+    let all_validators = vec![&key_1, &key_2, &key_3, &key_4];
+    let single_block_sigs =
+        SingleBlockRewardedSignatures::from_validator_set(&public_keys, all_validators);
+    let rewarded_signatures = RewardedSignatures::new(vec![single_block_sigs]);
+    TestBlockBuilder::default()
+        .parent_hash(parent_hash)
+        .state_root_hash(state_root_hash)
+        .timestamp(timestamp)
+        .era(era_id)
+        .height(height)
+        .protocol_version(ProtocolVersion::V2_0_0)
+        .proposer(proposer)
+        .switch_block(true)
+        .validator_weights(validator_weights)
+        .rewarded_signatures(rewarded_signatures)
+        .transactions(transactions)
+        .build(rng)
+}
+
+pub fn sample_transactions(
+    rng: &mut TestRng,
+) -> (
+    Vec<Transaction>,
+    DeployHash,
+    TransactionV1Hash,
+    DeployHash,
+    TransactionV1Hash,
+    TransactionV1Hash,
+    TransactionV1Hash,
+) {
+    let timestamp = Timestamp::now();
+    let ttl = TimeDiff::from_seconds(rng.gen_range(60..300));
+
+    let deploy = Deploy::random_with_valid_session_package_by_name(rng);
+    let standard_deploy_hash = *deploy.hash();
+    let standard_deploy = Transaction::Deploy(deploy);
+
+    let version_1 = TransactionV1::random_standard(rng, None, None);
+    let standard_version_1_hash = *version_1.hash();
+    let standard_version_1 = Transaction::V1(version_1);
+
+    let deploy = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, timestamp, ttl);
+    let mint_deploy_hash = *deploy.hash();
+    let mint_deploy = Transaction::Deploy(deploy);
+
+    let version_1 = TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl));
+    let mint_version_1_hash = *version_1.hash();
+    let mint_version_1 = Transaction::V1(version_1);
+
+    let version_1 = TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl));
+    let install_upgrade_v1_hash = *version_1.hash();
+    let install_upgrade_v1 = Transaction::V1(version_1);
+
+    let version_1 = TransactionV1::random_staking(rng, Some(timestamp), Some(ttl));
+    let auction_v1_hash = *version_1.hash();
+    let auction_v1 = Transaction::V1(version_1);
+
+    (
+        vec![
+            standard_deploy,
+            standard_version_1,
+            mint_deploy,
+            mint_version_1,
+            install_upgrade_v1,
+            auction_v1,
+        ],
+        standard_deploy_hash,
+        standard_version_1_hash,
+        mint_deploy_hash,
+        mint_version_1_hash,
+        install_upgrade_v1_hash,
+        auction_v1_hash,
+    )
+}
+
+pub fn block_v2(
+    rng: &mut TestRng,
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+) -> BlockV2 {
+    block_v2_with_transactions(
+        rng,
+        parent_hash,
+        state_root_hash,
+        timestamp,
+        era_id,
+        height,
+        proposer,
+        vec![],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn block_v1_no_deploys_no_era(
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    body_hash: Digest,
+    random_bit: bool,
+    accumulated_seed: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+    block_hash: BlockHash,
+) -> structs::BlockV1 {
+    structs::BlockV1::new(
+        parent_hash,
+        state_root_hash,
+        body_hash,
+        random_bit,
+        accumulated_seed,
+        None,
+        timestamp,
+        era_id,
+        height,
+        ProtocolVersion::V2_0_0,
+        proposer,
+        block_hash,
+        vec![],
+        vec![],
+    )
+}
+
+pub fn era_end_v2() -> EraEndV2 {
+    let mut next_era_validator_weights = BTreeMap::new();
+    next_era_validator_weights.insert(
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b"),
+        U512::from_dec_str("1").unwrap(),
+    );
+    next_era_validator_weights.insert(
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c"),
+        U512::from_dec_str("2").unwrap(),
+    );
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
+        U512::from_dec_str("129457537").unwrap(),
+    );
+    EraEndV2::new(
+        vec![
+            parse_public_key("010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50"),
+            parse_public_key(
+                "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+            ),
+            parse_public_key(
+                "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05",
+            ),
+        ],
+        vec![parse_public_key(
+            "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51",
+        )],
+        next_era_validator_weights,
+        rewards,
+        1,
+    )
+}
+
+pub fn era_end_v2_with_reward_exceeding_u64() -> EraEndV2 {
+    let mut next_era_validator_weights = BTreeMap::new();
+    next_era_validator_weights.insert(
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b"),
+        U512::from_dec_str("1").unwrap(),
+    );
+    next_era_validator_weights.insert(
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c"),
+        U512::from_dec_str("2").unwrap(),
+    );
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
+        U512::from_dec_str("18446744073709551616").unwrap(),
+    );
+    EraEndV2::new(
+        vec![
+            parse_public_key("010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50"),
+            parse_public_key(
+                "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+            ),
+            parse_public_key(
+                "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05",
+            ),
+        ],
+        vec![parse_public_key(
+            "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51",
+        )],
+        next_era_validator_weights,
+        rewards,
+        1,
+    )
 }
 
 const RAW_API_VERSION: &str = r#"{"ApiVersion":"2.0.0"}"#;
@@ -419,7 +655,7 @@ const RAW_LEGACY_BLOCK_ADDED: &str = r#"
                 "protocol_version": "1.0.0"
             },
             "body": {
-                "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+                "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
                 "deploy_hashes": [
                     "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
                     "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"
@@ -477,7 +713,7 @@ const RAW_BLOCK_ADDED_V1: &str = r#"
                     "protocol_version": "1.0.0"
                 },
                 "body": {
-                    "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+                    "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
                     "deploy_hashes": [
                     "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
                     "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"
@@ -492,6 +728,130 @@ const RAW_BLOCK_ADDED_V1: &str = r#"
     }
 }
 "#;
+
+const RAW_BLOCK_ADDED_V2: &str = r#"{
+    "BlockAdded": {
+        "block_hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
+        "block": {
+            "Version2": {
+                "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
+                "header": {
+                    "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
+                    "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
+                    "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
+                    "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
+                    "random_bit": false,
+                    "accumulated_seed": "a0e424710f4fba036ba450b40f2bd7a842b176cf136f3af1952a2a13eb02616c",
+                    "era_end": {
+                        "equivocators": [
+                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc54",
+                            "0203e4532e401326892aa8ebc16b6986bd35a6c96a1f16c28db67fd7e87cb6913817",
+                            "020318a52d5b2d545def8bf0ee5ea7ddea52f1fbf106c8b69848e40c5460e20c9f62"
+                        ],
+                        "inactive_validators": ["01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc55", "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc56"],
+                        "next_era_validator_weights": [
+                            {"validator": "02038b238d774c3c4228a0430e3a078e1a2533f9c87cccbcf695637502d8d6057a63", "weight": "1"},
+                            {"validator": "0102ffd4d2812d68c928712edd012fbcad54367bc6c5c254db22cf696772856566", "weight": "2"}
+                        ],
+                        "rewards": {
+                            "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc": "749546792",
+                            "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2": "788342677",
+                            "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec": "86241635",
+                            "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c": "941794198"
+                        },
+                        "next_era_gas_price": 1
+                    },
+                    "timestamp": "2024-04-25T20:31:39.895Z",
+                    "era_id": 419571,
+                    "height": 4195710,
+                    "protocol_version": "1.0.0",
+                    "current_gas_price": 1
+                },
+                "body": {
+                    "transactions": {
+                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
+                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
+                        "2": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
+                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}]
+                    },
+                    "rewarded_signatures": [[240],[0],[0]]
+                }
+            }
+        }
+    }
+}"#;
+
+const RAW_LEGACY_BLOCK_ADDED_FROM_V2: &str = r#"{
+    "BlockAdded": {
+        "block_hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
+        "block": {
+            "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
+            "header": {
+                "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
+                "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
+                "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
+                "random_bit": false,
+                "accumulated_seed": "a0e424710f4fba036ba450b40f2bd7a842b176cf136f3af1952a2a13eb02616c",
+                "era_end": {
+                    "era_report": {
+                        "equivocators": [
+                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc54",
+                            "0203e4532e401326892aa8ebc16b6986bd35a6c96a1f16c28db67fd7e87cb6913817",
+                            "020318a52d5b2d545def8bf0ee5ea7ddea52f1fbf106c8b69848e40c5460e20c9f62"
+                        ],
+                        "rewards": [
+                            {
+                                "validator": "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c",
+                                "amount": 941794198
+                            },
+                            {
+                                "validator": "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2",
+                                "amount": 788342677
+                            },
+                            {
+                                "validator": "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc",
+                                "amount": 749546792
+                            },
+                            {
+                                "validator": "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec",
+                                "amount": 86241635
+                            }
+                        ],
+                        "inactive_validators": [
+                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc55",
+                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc56"
+                        ]
+                    },
+                    "next_era_validator_weights": [
+                        {
+                            "validator": "0102ffd4d2812d68c928712edd012fbcad54367bc6c5c254db22cf696772856566",
+                            "weight": "2"
+                        },
+                        {
+                            "validator": "02038b238d774c3c4228a0430e3a078e1a2533f9c87cccbcf695637502d8d6057a63",
+                            "weight": "1"
+                        }
+                    ]
+                },
+                "timestamp": "2024-04-25T20:31:39.895Z",
+                "era_id": 419571,
+                "height": 4195710,
+                "protocol_version": "1.0.0"
+            },
+            "body": {
+                "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
+                "deploy_hashes": [
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"
+                ],
+                "transfer_hashes": [
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"
+                ]
+            }
+        }
+    }
+}"#;
 
 const RAW_DEPLOY_PROCESSED: &str = r#"{
     "TransactionProcessed": {
