@@ -257,7 +257,7 @@ mod tests {
                     BinaryRequest::TryAcceptTransaction { .. } => {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_error(
-                                BinaryPortErrorCode::InvalidTransaction,
+                                BinaryPortErrorCode::InvalidTransactionBodyHash,
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
