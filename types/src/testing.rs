@@ -13,8 +13,6 @@ use casper_types::{BlockHash, Digest, PublicKey};
 use rand::Rng;
 #[cfg(test)]
 use serde_json::Value;
-#[cfg(test)]
-use std::str::FromStr;
 
 #[cfg(feature = "sse-data-testing")]
 /// Creates a test deploy created at given instant and with given ttl.
