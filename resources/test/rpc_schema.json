@@ -369,7 +369,7 @@
                 ]
               },
               "execution_info": {
-                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                 "block_height": 10,
                 "execution_result": {
                   "Version2": {
@@ -567,7 +567,7 @@
                 }
               },
               "execution_info": {
-                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                 "block_height": 10,
                 "execution_result": {
                   "Version2": {
@@ -1026,7 +1026,7 @@
             {
               "name": "state_identifier",
               "value": {
-                "BlockHash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
+                "BlockHash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
               }
             },
             {
@@ -1077,7 +1077,9 @@
                   "era_id": 1,
                   "height": 10,
                   "protocol_version": "1.0.0",
-                  "current_gas_price": 1
+                  "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                  "current_gas_price": 1,
+                  "last_switch_block_hash": "0909090909090909090909090909090909090909090909090909090909090909"
                 }
               },
               "stored_value": {
@@ -1471,7 +1473,7 @@
               "chainspec_name": "casper-example",
               "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
               "last_added_block_info": {
-                "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                 "timestamp": "2020-11-17T00:39:24.072Z",
                 "era_id": 1,
                 "height": 10,
@@ -1653,7 +1655,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
+                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
               }
             }
           ],
@@ -1664,11 +1666,11 @@
               "block_with_signatures": {
                 "block": {
                   "Version2": {
-                    "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                    "hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "e49c0b878951cb6685cbfe86aa830090b2f8dab96304cb46ffa466879fdc8ae4",
+                      "body_hash": "7929063af6c8431a679fd0fda108fa7e64e42a9e264df4ec8bb42ca877373631",
                       "random_bit": true,
                       "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                       "era_end": {
@@ -1699,30 +1701,33 @@
                       "era_id": 1,
                       "height": 10,
                       "protocol_version": "1.0.0",
-                      "current_gas_price": 1
+                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "current_gas_price": 1,
+                      "last_switch_block_hash": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
                     },
                     "body": {
-                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "mint": [
-                        {
-                          "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
-                        }
-                      ],
-                      "auction": [
-                        {
-                          "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
-                        }
-                      ],
-                      "install_upgrade": [
-                        {
-                          "Version1": "1616161616161616161616161616161616161616161616161616161616161616"
-                        }
-                      ],
-                      "standard": [
-                        {
-                          "Version1": "1717171717171717171717171717171717171717171717171717171717171717"
-                        }
-                      ],
+                      "transactions": {
+                        "0": [
+                          {
+                            "Version1": "1717171717171717171717171717171717171717171717171717171717171717"
+                          }
+                        ],
+                        "1": [
+                          {
+                            "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
+                          }
+                        ],
+                        "2": [
+                          {
+                            "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
+                          }
+                        ],
+                        "3": [
+                          {
+                            "Version1": "1616161616161616161616161616161616161616161616161616161616161616"
+                          }
+                        ]
+                      },
                       "rewarded_signatures": []
                     }
                   }
@@ -1730,7 +1735,7 @@
                 "proofs": [
                   {
                     "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                    "signature": "010dae9911fdb2e62b525e13828935b93dcee028670e1479393a0e21f700e868f85fb5d8d90ad7a23e1c3e6aaabbaa3f1fdd0dfa962461c4208d02fd8e398bb90c"
+                    "signature": "01641f904df4c58b81b5fdae972186a9d709f1c03f3da4f5c4c9b80fbf98254056fc6048c64784c238811e4580bd46a10fe97be676cde5dd6a6d2be7dafedf7005"
                   }
                 ]
               }
@@ -2107,7 +2112,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
+                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
               }
             }
           ],
@@ -2116,7 +2121,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -2282,7 +2287,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
+                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
               }
             }
           ],
@@ -2291,7 +2296,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
+                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -7285,6 +7290,7 @@
           "era_id",
           "height",
           "parent_hash",
+          "proposer",
           "protocol_version",
           "random_bit",
           "state_root_hash",
@@ -7368,11 +7374,30 @@
               }
             ]
           },
+          "proposer": {
+            "description": "The public key of the validator which proposed the block.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            ]
+          },
           "current_gas_price": {
             "description": "The gas price of the era",
             "type": "integer",
             "format": "uint8",
             "minimum": 0.0
+          },
+          "last_switch_block_hash": {
+            "description": "The most recent switch block hash.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -7989,48 +8014,18 @@
         "description": "The body portion of a block. Version 2.",
         "type": "object",
         "required": [
-          "auction",
-          "install_upgrade",
-          "mint",
-          "proposer",
           "rewarded_signatures",
-          "standard"
+          "transactions"
         ],
         "properties": {
-          "proposer": {
-            "description": "The public key of the validator which proposed the block.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PublicKey"
+          "transactions": {
+            "description": "Map of transactions mapping categories to a list of transaction hashes.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/TransactionHash"
               }
-            ]
-          },
-          "mint": {
-            "description": "The hashes of the mint transactions within the block.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TransactionHash"
-            }
-          },
-          "auction": {
-            "description": "The hashes of the auction transactions within the block.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TransactionHash"
-            }
-          },
-          "install_upgrade": {
-            "description": "The hashes of the installer/upgrader transactions within the block.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TransactionHash"
-            }
-          },
-          "standard": {
-            "description": "The hashes of all other transactions within the block.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TransactionHash"
             }
           },
           "rewarded_signatures": {

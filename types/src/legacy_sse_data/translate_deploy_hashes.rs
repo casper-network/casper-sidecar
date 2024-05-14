@@ -17,7 +17,7 @@ impl DeployHashTranslator for StandardDeployHashesTranslator {
         block_body_v2
             .standard()
             .filter_map(|el| match el {
-                TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
+                TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
                 TransactionHash::V1(_) => None,
             })
             .collect()
@@ -29,7 +29,7 @@ impl DeployHashTranslator for TransferDeployHashesTranslator {
         block_body_v2
             .mint()
             .filter_map(|el| match el {
-                TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
+                TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
                 TransactionHash::V1(_) => None,
             })
             .collect()

@@ -1,12 +1,18 @@
 use super::LegacySseData;
 use crate::sse_data::SseData;
+use casper_types::testing::TestRng;
+use casper_types::{Block, TestBlockBuilder};
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()
 }
 
-pub fn legacy_block_added_from_v2() -> LegacySseData {
-    serde_json::from_str(RAW_LEGACY_BLOCK_ADDED_FROM_V2).unwrap()
+pub fn legacy_block_added_from_v2(block_added: &SseData) -> LegacySseData {
+    if let SseData::BlockAdded { .. } = block_added {
+        LegacySseData::from(block_added).expect("did not convert to legacy see data")
+    } else {
+        panic!("did not get legacy block added sse data")
+    }
 }
 
 pub fn block_added_v1() -> SseData {
@@ -14,7 +20,15 @@ pub fn block_added_v1() -> SseData {
 }
 
 pub fn block_added_v2() -> SseData {
-    serde_json::from_str(RAW_BLOCK_ADDED_V2).unwrap()
+    let mut rng = TestRng::new();
+    let block = Box::new(Block::V2(TestBlockBuilder::new().build(&mut rng)));
+    let block_hash = block.hash();
+    let block_added = SseData::BlockAdded {
+        block_hash: *block_hash,
+        block,
+    };
+    let str = serde_json::to_string(&block_added).expect("must get string");
+    serde_json::from_str(&str).unwrap()
 }
 
 pub fn api_version() -> SseData {
@@ -478,128 +492,6 @@ const RAW_BLOCK_ADDED_V1: &str = r#"
     }
 }
 "#;
-
-const RAW_BLOCK_ADDED_V2: &str = r#"{
-    "BlockAdded": {
-        "block_hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
-        "block": {
-            "Version2": {
-                "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
-                "header": {
-                    "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
-                    "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
-                    "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
-                    "random_bit": false,
-                    "accumulated_seed": "a0e424710f4fba036ba450b40f2bd7a842b176cf136f3af1952a2a13eb02616c",
-                    "era_end": {
-                        "equivocators": [
-                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc54",
-                            "0203e4532e401326892aa8ebc16b6986bd35a6c96a1f16c28db67fd7e87cb6913817",
-                            "020318a52d5b2d545def8bf0ee5ea7ddea52f1fbf106c8b69848e40c5460e20c9f62"
-                        ],
-                        "inactive_validators": ["01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc55", "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc56"],
-                        "next_era_validator_weights": [
-                            {"validator": "02038b238d774c3c4228a0430e3a078e1a2533f9c87cccbcf695637502d8d6057a63", "weight": "1"},
-                            {"validator": "0102ffd4d2812d68c928712edd012fbcad54367bc6c5c254db22cf696772856566", "weight": "2"}
-                        ],
-                        "rewards": {
-                            "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc": "749546792",
-                            "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2": "788342677",
-                            "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec": "86241635",
-                            "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c": "941794198"
-                        },
-                        "next_era_gas_price": 1
-                    },
-                    "timestamp": "2024-04-25T20:31:39.895Z",
-                    "era_id": 419571,
-                    "height": 4195710,
-                    "protocol_version": "1.0.0",
-                    "current_gas_price": 1
-                },
-                "body": {
-                    "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
-                    "mint": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
-                    "auction": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
-                    "install_upgrade": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}],
-                    "standard": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
-                    "rewarded_signatures": [[240],[0],[0]]
-                }
-            }
-        }
-    }
-}"#;
-
-const RAW_LEGACY_BLOCK_ADDED_FROM_V2: &str = r#"{
-    "BlockAdded": {
-        "block_hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
-        "block": {
-            "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
-            "header": {
-                "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
-                "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
-                "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
-                "random_bit": false,
-                "accumulated_seed": "a0e424710f4fba036ba450b40f2bd7a842b176cf136f3af1952a2a13eb02616c",
-                "era_end": {
-                    "era_report": {
-                        "equivocators": [
-                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc54",
-                            "0203e4532e401326892aa8ebc16b6986bd35a6c96a1f16c28db67fd7e87cb6913817",
-                            "020318a52d5b2d545def8bf0ee5ea7ddea52f1fbf106c8b69848e40c5460e20c9f62"
-                        ],
-                        "rewards": [
-                            {
-                                "validator": "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c",
-                                "amount": 941794198
-                            },
-                            {
-                                "validator": "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2",
-                                "amount": 788342677
-                            },
-                            {
-                                "validator": "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc",
-                                "amount": 749546792
-                            },
-                            {
-                                "validator": "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec",
-                                "amount": 86241635
-                            }
-                        ],
-                        "inactive_validators": [
-                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc55",
-                            "01cc718e9dea652577bffad3471d0db7d03ba30923780a2a8fd1e3dd9b4e72dc56"
-                        ]
-                    },
-                    "next_era_validator_weights": [
-                        {
-                            "validator": "0102ffd4d2812d68c928712edd012fbcad54367bc6c5c254db22cf696772856566",
-                            "weight": "2"
-                        },
-                        {
-                            "validator": "02038b238d774c3c4228a0430e3a078e1a2533f9c87cccbcf695637502d8d6057a63",
-                            "weight": "1"
-                        }
-                    ]
-                },
-                "timestamp": "2024-04-25T20:31:39.895Z",
-                "era_id": 419571,
-                "height": 4195710,
-                "protocol_version": "1.0.0"
-            },
-            "body": {
-                "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
-                "deploy_hashes": [
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89",
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"
-                ],
-                "transfer_hashes": [
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80",
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"
-                ]
-            }
-        }
-    }
-}"#;
 
 const RAW_DEPLOY_PROCESSED: &str = r#"{
     "TransactionProcessed": {
