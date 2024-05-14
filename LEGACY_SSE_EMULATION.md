@@ -171,8 +171,8 @@ Legacy SSE event will be the same
       - IF one of the `rewards` contains a reward that doesn't fit in a u64 (because V2 has U512 type in rewards values) - the whole `era_end` **WILL BE OMITTED** from the legacy V1 block (value None)
       - V2 field `next_era_gas_price` has no equivalent in V1 and will be omitted
   - `block.header.current_gas_price` this field only exists in V2 and will be omitted from the V1 block header
+  - `block.header.proposer` will be copied from V2 to V1 `block.body.proposer`
   - other `block.header.*` fields will be copied from V2 to V1
-  - `block.body.proposer` will be copied from V2 to V1
   - `block.body.deploy_hashes` will be based on V2 `block.body.standard` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to V1 `block.body.deploy_hashes` array
   - `block.body.transfer_hashes` will be based on V2 `block.body.mint` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to V1 `block.body.transfer_hashes` array.
 
