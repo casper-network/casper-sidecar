@@ -11,6 +11,10 @@ use casper_types::{
 use casper_types::{BlockHash, Digest, PublicKey};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
+#[cfg(test)]
+use serde_json::Value;
+#[cfg(test)]
+use std::str::FromStr;
 
 #[cfg(feature = "sse-data-testing")]
 /// Creates a test deploy created at given instant and with given ttl.
@@ -50,18 +54,15 @@ pub fn create_expired_transaction(now: Timestamp, test_rng: &mut TestRng) -> Tra
 
 #[cfg(test)]
 pub fn parse_public_key(arg: &str) -> PublicKey {
-    let escaped = format!("\"{}\"", arg);
-    serde_json::from_str(&escaped).unwrap()
+    serde_json::from_value(Value::String(arg.to_string())).unwrap()
 }
 
 #[cfg(test)]
 pub fn parse_block_hash(arg: &str) -> BlockHash {
-    let escaped = format!("\"{}\"", arg);
-    serde_json::from_str(&escaped).unwrap()
+    serde_json::from_value(Value::String(arg.to_string())).unwrap()
 }
 
 #[cfg(test)]
 pub fn parse_digest(arg: &str) -> Digest {
-    let escaped = format!("\"{}\"", arg);
-    serde_json::from_str(&escaped).unwrap()
+    serde_json::from_value(Value::String(arg.to_string())).unwrap()
 }
