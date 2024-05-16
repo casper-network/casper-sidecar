@@ -1,5 +1,19 @@
-use super::LegacySseData;
+use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+
+use casper_types::system::auction::ValidatorWeights;
+use casper_types::{
+    BlockHash, BlockV2, Deploy, DeployHash, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionV1, TransactionV1Hash, U512,
+};
+use rand::Rng;
+
+use super::{structs, LegacySseData};
 use crate::sse_data::SseData;
+use crate::testing::{parse_block_hash, parse_digest, parse_public_key};
+use casper_types::testing::TestRng;
+use casper_types::TestBlockBuilder;
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()
@@ -75,6 +89,242 @@ pub fn deploy_processed() -> SseData {
 
 pub fn legacy_deploy_processed() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_DEPLOY_PROCESSED).unwrap()
+}
+
+pub fn parent_hash() -> BlockHash {
+    parse_block_hash("90a4ade2849634e9c1ad0e02cb30645d0984056f68075cad8f6cad2b42a824ba")
+}
+
+pub fn state_root_hash() -> Digest {
+    parse_digest("9cce223fdbeab41dbbcf0b62f3fd857373131378d51776de26bb9f4fefe1e849")
+}
+
+pub fn timestamp() -> Timestamp {
+    Timestamp::from_str("2020-08-07T01:30:25.521Z").unwrap()
+}
+
+pub fn proposer() -> PublicKey {
+    parse_public_key("0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn block_v2_with_transactions(
+    rng: &mut TestRng,
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+    transactions: Vec<&Transaction>,
+) -> BlockV2 {
+    let mut validator_weights = ValidatorWeights::new();
+    let key_1 =
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b");
+    let key_2 =
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c");
+    let key_3 =
+        parse_public_key("0202fd52dbda97f41def3e3252704d5f8f5adbec1919368282e02e9500bd88845a80");
+    let key_4 =
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027e");
+    validator_weights.insert(key_1.clone(), U512::from_dec_str("1").unwrap());
+    validator_weights.insert(key_2.clone(), U512::from_dec_str("2").unwrap());
+    let mut public_keys = BTreeSet::new();
+    public_keys.insert(key_1.clone());
+    public_keys.insert(key_4.clone());
+    let all_validators = vec![&key_1, &key_2, &key_3, &key_4];
+    let single_block_sigs =
+        SingleBlockRewardedSignatures::from_validator_set(&public_keys, all_validators);
+    let rewarded_signatures = RewardedSignatures::new(vec![single_block_sigs]);
+    TestBlockBuilder::default()
+        .parent_hash(parent_hash)
+        .state_root_hash(state_root_hash)
+        .timestamp(timestamp)
+        .era(era_id)
+        .height(height)
+        .protocol_version(ProtocolVersion::V2_0_0)
+        .proposer(proposer)
+        .switch_block(true)
+        .validator_weights(validator_weights)
+        .rewarded_signatures(rewarded_signatures)
+        .transactions(transactions)
+        .build(rng)
+}
+
+pub fn sample_transactions(
+    rng: &mut TestRng,
+) -> (
+    Vec<Transaction>,
+    DeployHash,
+    TransactionV1Hash,
+    DeployHash,
+    TransactionV1Hash,
+    TransactionV1Hash,
+    TransactionV1Hash,
+) {
+    let timestamp = Timestamp::now();
+    let ttl = TimeDiff::from_seconds(rng.gen_range(60..300));
+
+    let deploy = Deploy::random_with_valid_session_package_by_name(rng);
+    let standard_deploy_hash = *deploy.hash();
+    let standard_deploy = Transaction::Deploy(deploy);
+
+    let version_1 = TransactionV1::random_standard(rng, None, None);
+    let standard_version_1_hash = *version_1.hash();
+    let standard_version_1 = Transaction::V1(version_1);
+
+    let deploy = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, timestamp, ttl);
+    let mint_deploy_hash = *deploy.hash();
+    let mint_deploy = Transaction::Deploy(deploy);
+
+    let version_1 = TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl));
+    let mint_version_1_hash = *version_1.hash();
+    let mint_version_1 = Transaction::V1(version_1);
+
+    let version_1 = TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl));
+    let install_upgrade_v1_hash = *version_1.hash();
+    let install_upgrade_v1 = Transaction::V1(version_1);
+
+    let version_1 = TransactionV1::random_staking(rng, Some(timestamp), Some(ttl));
+    let auction_v1_hash = *version_1.hash();
+    let auction_v1 = Transaction::V1(version_1);
+
+    (
+        vec![
+            standard_deploy,
+            standard_version_1,
+            mint_deploy,
+            mint_version_1,
+            install_upgrade_v1,
+            auction_v1,
+        ],
+        standard_deploy_hash,
+        standard_version_1_hash,
+        mint_deploy_hash,
+        mint_version_1_hash,
+        install_upgrade_v1_hash,
+        auction_v1_hash,
+    )
+}
+
+pub fn block_v2(
+    rng: &mut TestRng,
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+) -> BlockV2 {
+    block_v2_with_transactions(
+        rng,
+        parent_hash,
+        state_root_hash,
+        timestamp,
+        era_id,
+        height,
+        proposer,
+        vec![],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn block_v1_no_deploys_no_era(
+    parent_hash: BlockHash,
+    state_root_hash: Digest,
+    body_hash: Digest,
+    random_bit: bool,
+    accumulated_seed: Digest,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    proposer: PublicKey,
+    block_hash: BlockHash,
+) -> structs::BlockV1 {
+    structs::BlockV1::new(
+        parent_hash,
+        state_root_hash,
+        body_hash,
+        random_bit,
+        accumulated_seed,
+        None,
+        timestamp,
+        era_id,
+        height,
+        ProtocolVersion::V2_0_0,
+        proposer,
+        block_hash,
+        vec![],
+        vec![],
+    )
+}
+
+pub fn era_end_v2() -> EraEndV2 {
+    let mut next_era_validator_weights = BTreeMap::new();
+    next_era_validator_weights.insert(
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b"),
+        U512::from_dec_str("1").unwrap(),
+    );
+    next_era_validator_weights.insert(
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c"),
+        U512::from_dec_str("2").unwrap(),
+    );
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
+        U512::from_dec_str("129457537").unwrap(),
+    );
+    EraEndV2::new(
+        vec![
+            parse_public_key("010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50"),
+            parse_public_key(
+                "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+            ),
+            parse_public_key(
+                "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05",
+            ),
+        ],
+        vec![parse_public_key(
+            "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51",
+        )],
+        next_era_validator_weights,
+        rewards,
+        1,
+    )
+}
+
+pub fn era_end_v2_with_reward_exceeding_u64() -> EraEndV2 {
+    let mut next_era_validator_weights = BTreeMap::new();
+    next_era_validator_weights.insert(
+        parse_public_key("0198957673ad060503e2ec7d98dc71af6f90ad1f854fe18025e3e7d0d1bbe5e32b"),
+        U512::from_dec_str("1").unwrap(),
+    );
+    next_era_validator_weights.insert(
+        parse_public_key("02022d6bc4e3012cc4ae467b5525111cf7ed65883b05a1d924f1e654c64fad3a027c"),
+        U512::from_dec_str("2").unwrap(),
+    );
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
+        U512::from_dec_str("18446744073709551616").unwrap(),
+    );
+    EraEndV2::new(
+        vec![
+            parse_public_key("010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b50"),
+            parse_public_key(
+                "02037c17d279d6e54375f7cfb3559730d5434bfedc8638a3f95e55f6e85fc9e8f611",
+            ),
+            parse_public_key(
+                "02026d4b741a0ece4b3d6d61294a8db28a28dbd734133694582d38f240686ec61d05",
+            ),
+        ],
+        vec![parse_public_key(
+            "010a10a45ea0aff7af1ffef92287d00ec4cf01c5e9e2952e018a2fbb0f0ede2b51",
+        )],
+        next_era_validator_weights,
+        rewards,
+        1,
+    )
 }
 
 const RAW_API_VERSION: &str = r#"{"ApiVersion":"2.0.0"}"#;
@@ -405,7 +655,7 @@ const RAW_LEGACY_BLOCK_ADDED: &str = r#"
                 "protocol_version": "1.0.0"
             },
             "body": {
-                "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+                "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
                 "deploy_hashes": [
                     "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
                     "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"
@@ -463,7 +713,7 @@ const RAW_BLOCK_ADDED_V1: &str = r#"
                     "protocol_version": "1.0.0"
                 },
                 "body": {
-                    "proposer": "0108c3b531fbbbb53f4752ab3c3c6ba72c9fb4b9852e2822622d8f936428819881",
+                    "proposer": "0203426736da2554ebf1f8ee1d2ce4ab11b1e33419d7dfc1ce2fe1945faf00bacc9e",
                     "deploy_hashes": [
                     "06950e4374dc88685634ec30bcddd68e6b46c109ccf6d29e2dfcf5367df75571",
                     "27a89dd58e6297a5244342b68b117afe2555131b896ad6ed4321edcd4130ae7b"
@@ -486,6 +736,7 @@ const RAW_BLOCK_ADDED_V2: &str = r#"{
             "Version2": {
                 "hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
                 "header": {
+                    "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
                     "parent_hash": "b8f5e9afd2e54856aa1656f962d07158f0fdf9cfac0f9992875f31f6bf2623a2",
                     "state_root_hash": "cbf02d08bb263aa8915507c172b5f590bbddcd68693fb1c71758b5684b011730",
                     "body_hash": "6041ab862a1e14a43a8e8a9a42dad27091915a337d18060c22bd3fe7b4f39607",
@@ -517,11 +768,12 @@ const RAW_BLOCK_ADDED_V2: &str = r#"{
                     "current_gas_price": 1
                 },
                 "body": {
-                    "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
-                    "mint": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
-                    "auction": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
-                    "install_upgrade": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}],
-                    "standard": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
+                    "transactions": {
+                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
+                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
+                        "2": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
+                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}]
+                    },
                     "rewarded_signatures": [[240],[0],[0]]
                 }
             }

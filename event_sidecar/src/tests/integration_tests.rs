@@ -495,7 +495,7 @@ async fn sidecar_should_use_start_from_if_database_is_empty() {
     ) = build_test_config();
     let data_of_node = vec![(
         Some("2".to_string()),
-        example_block_added_2_0_0(BLOCK_HASH_3, "3"),
+        example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
     )];
     let mut node_mock = MockNodeBuilder {
         version: "2.0.0".to_string(),

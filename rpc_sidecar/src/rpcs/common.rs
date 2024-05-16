@@ -1,13 +1,16 @@
-use casper_binary_port::GlobalStateQueryResult;
+use std::collections::BTreeMap;
+
+use casper_binary_port::{GlobalStateQueryResult, KeyPrefix};
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, global_state::TrieMerkleProof, Account,
-    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, EntityAddr,
-    GlobalStateIdentifier, Key, SignedBlock, StoredValue,
+    account::AccountHash, addressable_entity::NamedKeys, bytesrepr::ToBytes,
+    global_state::TrieMerkleProof, Account, AddressableEntity, AvailableBlockRange, BlockHeader,
+    BlockIdentifier, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, SignedBlock,
+    StoredValue,
 };
 
 use crate::NodeClient;
@@ -44,7 +47,14 @@ pub enum ErrorData {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum EntityOrAccount {
     /// An addressable entity.
-    AddressableEntity(AddressableEntity),
+    AddressableEntity {
+        /// The addressable entity.
+        entity: AddressableEntity,
+        /// The named keys of the addressable entity.
+        named_keys: NamedKeys,
+        /// The entry points of the addressable entity.
+        entry_points: Vec<EntryPointValue>,
+    },
     /// A legacy account.
     LegacyAccount(Account),
 }
@@ -140,10 +150,23 @@ pub async fn resolve_account_hash(
             else {
                 return Ok(None);
             };
-            let entity = value
-                .into_addressable_entity()
-                .ok_or(Error::InvalidAddressableEntity)?;
-            (EntityOrAccount::AddressableEntity(entity), merkle_proof)
+            let (Key::AddressableEntity(entity_addr), StoredValue::AddressableEntity(entity)) =
+                (key, value)
+            else {
+                return Err(Error::InvalidAddressableEntity);
+            };
+            let named_keys =
+                get_entity_named_keys(node_client, entity_addr, state_identifier).await?;
+            let entry_points =
+                get_entity_entry_points(node_client, entity_addr, state_identifier).await?;
+            (
+                EntityOrAccount::AddressableEntity {
+                    entity,
+                    named_keys,
+                    entry_points,
+                },
+                merkle_proof,
+            )
         }
         _ => return Err(Error::InvalidAccountInfo),
     };
@@ -174,6 +197,73 @@ pub async fn resolve_entity_addr(
             .ok_or(Error::InvalidAddressableEntity)?,
         merkle_proof,
     }))
+}
+
+pub async fn get_entity_named_keys(
+    node_client: &dyn NodeClient,
+    entity_addr: EntityAddr,
+    state_identifier: Option<GlobalStateIdentifier>,
+) -> Result<NamedKeys, Error> {
+    let stored_values = node_client
+        .query_global_state_by_prefix(state_identifier, KeyPrefix::NamedKeysByEntity(entity_addr))
+        .await
+        .map_err(|err| Error::NodeRequest("entity named keys", err))?;
+    let named_keys = stored_values
+        .into_iter()
+        .map(|stored_value| {
+            if let StoredValue::NamedKey(named_key) = stored_value {
+                let key = named_key
+                    .get_key()
+                    .map_err(|err| Error::InvalidNamedKeys(err.to_string()))?;
+                let name = named_key
+                    .get_name()
+                    .map_err(|err| Error::InvalidNamedKeys(err.to_string()))?;
+                Ok((name, key))
+            } else {
+                Err(Error::InvalidNamedKeys(format!(
+                    "unexpected stored value: {}",
+                    stored_value.type_name()
+                )))
+            }
+        })
+        .collect::<Result<BTreeMap<String, Key>, Error>>()?;
+    Ok(NamedKeys::from(named_keys))
+}
+
+pub async fn get_entity_entry_points(
+    node_client: &dyn NodeClient,
+    entity_addr: EntityAddr,
+    state_identifier: Option<GlobalStateIdentifier>,
+) -> Result<Vec<EntryPointValue>, Error> {
+    let stored_values_v1 = node_client
+        .query_global_state_by_prefix(
+            state_identifier,
+            KeyPrefix::EntryPointsV1ByEntity(entity_addr),
+        )
+        .await
+        .map_err(|err| Error::NodeRequest("entity named keys", err))?;
+    let stored_values_v2 = node_client
+        .query_global_state_by_prefix(
+            state_identifier,
+            KeyPrefix::EntryPointsV2ByEntity(entity_addr),
+        )
+        .await
+        .map_err(|err| Error::NodeRequest("entity named keys", err))?;
+
+    stored_values_v1
+        .into_iter()
+        .chain(stored_values_v2)
+        .map(|stored_value| {
+            if let StoredValue::EntryPoint(entry_point) = stored_value {
+                Ok(entry_point)
+            } else {
+                Err(Error::InvalidNamedKeys(format!(
+                    "unexpected stored value: {}",
+                    stored_value.type_name()
+                )))
+            }
+        })
+        .collect::<Result<_, _>>()
 }
 
 pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<String, Error> {

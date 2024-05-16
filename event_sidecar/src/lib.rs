@@ -104,7 +104,7 @@ pub async fn run(
 fn start_event_broadcasting(
     config: &SseEventServerConfig,
     storage_path: String,
-    mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>, Option<String>)>,
+    mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>)>,
     enable_legacy_filters: bool,
 ) -> JoinHandle<Result<(), Error>> {
     let event_stream_server_port = config.event_stream_server.port;
@@ -122,10 +122,8 @@ fn start_event_broadcasting(
             enable_legacy_filters,
         )
         .context("Error starting EventStreamServer")?;
-        while let Some((sse_data, inbound_filter, maybe_json_data)) =
-            outbound_sse_data_receiver.recv().await
-        {
-            event_stream_server.broadcast(sse_data, inbound_filter, maybe_json_data);
+        while let Some((sse_data, inbound_filter)) = outbound_sse_data_receiver.recv().await {
+            event_stream_server.broadcast(sse_data, inbound_filter);
         }
         Err::<(), Error>(Error::msg("Event broadcasting finished"))
     })
@@ -136,7 +134,7 @@ fn start_sse_processors(
     event_listeners: Vec<EventListener>,
     sse_data_receivers: Vec<Receiver<SseEvent>>,
     database: Database,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
 ) -> JoinHandle<Result<(), Error>> {
     tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
@@ -167,7 +165,7 @@ fn start_sse_processors(
         let _ = join_all(join_handles).await;
         //Send Shutdown to the sidecar sse endpoint
         let _ = outbound_sse_data_sender
-            .send((SseData::Shutdown, None, None))
+            .send((SseData::Shutdown, None))
             .await;
         // Below sleep is a workaround to allow the above Shutdown to propagate.
         // If we don't do this there is a race condition between handling of the message and dropping of the outbound server
@@ -183,7 +181,7 @@ fn start_sse_processors(
 fn spawn_sse_processor(
     database: &Database,
     sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
     connection_config: Connection,
     api_version_manager: &std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
 ) -> JoinHandle<Result<(), Error>> {
@@ -290,9 +288,8 @@ async fn handle_database_save_result<F>(
     entity_name: &str,
     entity_identifier: &str,
     res: Result<u64, DatabaseWriteError>,
-    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
     inbound_filter: Filter,
-    json_data: Option<String>,
     build_sse_data: F,
 ) where
     F: FnOnce() -> SseData,
@@ -300,7 +297,7 @@ async fn handle_database_save_result<F>(
     match res {
         Ok(_) => {
             if let Err(error) = outbound_sse_data_sender
-                .send((build_sse_data(), Some(inbound_filter), json_data))
+                .send((build_sse_data(), Some(inbound_filter)))
                 .await
             {
                 debug!(
@@ -331,7 +328,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
     sse_event: SseEvent,
     database: Db,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     api_version_manager: GuardedApiVersionManager,
 ) {
     match sse_event.data {
@@ -369,7 +366,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::BlockAdded { block, block_hash },
             )
             .await;
@@ -396,7 +392,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::TransactionAccepted(transaction),
             )
             .await;
@@ -423,7 +418,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::TransactionExpired { transaction_hash },
             )
             .await;
@@ -472,7 +466,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::TransactionProcessed {
                     transaction_hash,
                     initiator_addr,
@@ -508,7 +501,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::Fault {
                     era_id,
                     timestamp,
@@ -541,7 +533,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::FinalitySignature(fs),
             )
             .await;
@@ -569,7 +560,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 res,
                 &outbound_sse_data_sender,
                 sse_event.inbound_filter,
-                sse_event.json_data,
                 || SseData::Step {
                     era_id,
                     execution_effects,
@@ -584,7 +574,7 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
 async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
     sse_event: SseEvent,
     sqlite_database: Db,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
 ) {
     warn!("Node ({}) is unavailable", sse_event.source.to_string());
     let res = sqlite_database
@@ -601,11 +591,7 @@ async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sy
             // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we
             // don't store in DB the information from which filter did shutdown came).
             if let Err(error) = outbound_sse_data_sender
-                .send((
-                    SseData::Shutdown,
-                    Some(sse_event.inbound_filter),
-                    sse_event.json_data,
-                ))
+                .send((SseData::Shutdown, Some(sse_event.inbound_filter)))
                 .await
             {
                 debug!(
@@ -624,7 +610,7 @@ async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sy
 async fn handle_api_version(
     api_version_manager: std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
     version: ProtocolVersion,
-    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
     filter: Filter,
     enable_event_logging: bool,
 ) {
@@ -632,7 +618,7 @@ async fn handle_api_version(
     let changed_newest_version = manager_guard.store_version(version);
     if changed_newest_version {
         if let Err(error) = outbound_sse_data_sender
-            .send((SseData::ApiVersion(version), Some(filter), None))
+            .send((SseData::ApiVersion(version), Some(filter)))
             .await
         {
             debug!(
@@ -649,7 +635,7 @@ async fn handle_api_version(
 
 async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
     inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     database: Db,
     database_supports_multithreaded_processing: bool,
     enable_event_logging: bool,
@@ -687,7 +673,7 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
 fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
     mut queue_rx: Receiver<SseEvent>,
     database: Db,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     api_version_manager: GuardedApiVersionManager,
     enable_event_logging: bool,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
@@ -718,7 +704,7 @@ async fn start_multi_threaded_events_consumer<
     Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static,
 >(
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     database: Db,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
@@ -756,7 +742,7 @@ async fn start_single_threaded_events_consumer<
     Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync,
 >(
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>, Option<String>)>,
+    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     database: Db,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,

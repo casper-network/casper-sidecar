@@ -260,7 +260,7 @@ emulate_legacy_sse_apis = ["V1"]
 ```
 
 * `sse_server.enable_server` - If set to true, the SSE server will be enabled.
-* `sse_server.emulate_legacy_sse_apis` - A list of legacy Casper node SSE APIs to emulate. The Sidecar will expose SSE endpoints that are compatible with specified versions. Please bear in mind that this feature is an emulation and should be used only for transition periods. In most scenarios, having a 1-to-1 mapping of new messages into old formats is impossible, so this can be a process that loses some data and/or doesn't emit all messages that come from the Casper node. <!--TODO link to new document The details of the emulation are described in the [Event Stream Server SSE legacy emulations](#event-stream-server-sse-legacy-emulations) section.-->
+* `sse_server.emulate_legacy_sse_apis` - A list of legacy Casper node SSE APIs to emulate. The Sidecar will expose SSE endpoints that are compatible with specified versions. Please bear in mind that this feature is an emulation and should be used only for transition periods. In most scenarios, having a 1-to-1 mapping of new messages into old formats is impossible, so this can be a process that loses some data and/or doesn't emit all messages that come from the Casper node. See the [Legacy SSE Emulation](./LEGACY_SSE_EMULATION.md) page for more details.
 
 #### Configuring SSE node connections
 
@@ -335,9 +335,7 @@ This setting will expose three legacy SSE endpoints with the following events st
 * `/events/deploys` - DeployAccepted events
 * `/events/main` - All other legacy events, including BlockAdded, DeployProcessed, DeployExpired, Fault, Step, and Shutdown events
 
-<!-- TODO -> fill this in the next PR when mapping is implemented 
-Those endpoints will emit events in the same format as the V1 SSE API of the Casper node. There are limitations to what the Casper Sidecar can and will do. Here is a list of assumptions:
--->
+See the [Legacy SSE Emulation](./LEGACY_SSE_EMULATION.md) page for more details.
 
 #### Configuring the event stream
 

@@ -66,7 +66,7 @@ impl ExecutionEffectsTranslator for DefaultExecutionEffectsTranslator {
             let maybe_transform_kind = map_transform_v2(ex_ef);
             if let Some(transform_kind) = maybe_transform_kind {
                 let transform = TransformV1 {
-                    key: key.to_string(),
+                    key: key.to_formatted_string(),
                     transform: transform_kind,
                 };
                 transforms.push(transform);
@@ -120,7 +120,7 @@ fn handle_named_keys(keys: &NamedKeys) -> Option<TransformKindV1> {
     for (name, key) in keys.iter() {
         let named_key = NamedKey {
             name: name.to_string(),
-            key: key.to_string(),
+            key: key.to_formatted_string(),
         };
         named_keys.push(named_key);
     }
@@ -128,7 +128,6 @@ fn handle_named_keys(keys: &NamedKeys) -> Option<TransformKindV1> {
 }
 
 fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKindV1> {
-    //TODO stored_value this shouldn't be a reference. we should take ownership and reassign to V1 enum to avoid potentially expensive clones.
     match stored_value {
         StoredValue::CLValue(cl_value) => Some(TransformKindV1::WriteCLValue(cl_value.clone())),
         StoredValue::Account(acc) => Some(TransformKindV1::WriteAccount(acc.account_hash())),
@@ -157,7 +156,7 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
                 None
             }
         }
-        // following variuant will not be understood by old clients since they are introduced in 2.x
+        // following variants will not be understood by old clients since they were introduced in 2.x
         StoredValue::AddressableEntity(_) => None,
         StoredValue::BidKind(_) => None,
         StoredValue::Package(_) => None,
@@ -171,14 +170,23 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
 
 #[cfg(test)]
 mod tests {
-    use super::maybe_tanslate_stored_value;
+    use super::{
+        maybe_tanslate_stored_value, DefaultExecutionEffectsTranslator, ExecutionEffectsTranslator,
+    };
     use casper_types::{
         account::{AccountHash, ActionThresholds, AssociatedKeys, Weight},
         addressable_entity::NamedKeys,
+        contract_messages::MessageChecksum,
         contracts::{ContractPackage, ContractPackageStatus, ContractVersions, DisabledVersions},
-        execution::execution_result_v1::TransformKindV1,
-        AccessRights, Account, CLValue, Groups, StoredValue, URef,
+        execution::{
+            execution_result_v1::{NamedKey, TransformKindV1, TransformV1},
+            Effects, TransformKindV2, TransformV2,
+        },
+        testing::TestRng,
+        AccessRights, Account, CLValue, Groups, Key, StoredValue, URef,
     };
+    use pretty_assertions::assert_eq;
+    use rand::Rng;
 
     #[test]
     fn maybe_tanslate_stored_value_should_translate_values() {
@@ -201,7 +209,88 @@ mod tests {
             Some(TransformKindV1::WriteContractPackage),
             maybe_tanslate_stored_value(&stored_value)
         );
-        //TODO wrtite tests for rest of cases
+    }
+
+    #[test]
+    fn default_execution_effects_translator_should_translate_effects_v2() {
+        let mut rng = TestRng::new();
+        let under_test = DefaultExecutionEffectsTranslator {};
+        let key_1: Key = rng.gen();
+        let key_2: Key = rng.gen();
+        let key_3: Key = rng.gen();
+        let effects = build_example_effects(key_1, key_2, key_3);
+
+        let maybe_translated = under_test.translate(&effects);
+
+        assert!(maybe_translated.is_some(), "{:?}", maybe_translated);
+        let translated = maybe_translated.unwrap();
+        assert!(translated.operations.is_empty());
+        assert_eq!(
+            translated.transforms,
+            build_expected_transforms(key_1, key_2, key_3)
+        );
+    }
+
+    #[test]
+    fn default_execution_effects_translator_should_empty_transforms_if_something_was_not_translatable(
+    ) {
+        let mut rng = TestRng::new();
+        let under_test = DefaultExecutionEffectsTranslator {};
+        let key_1: Key = rng.gen();
+        let key_2: Key = rng.gen();
+        let key_3: Key = rng.gen();
+        let mut effects = build_example_effects(key_1, key_2, key_3);
+        effects.push(TransformV2::new(
+            Key::Account(rng.gen()),
+            TransformKindV2::Write(StoredValue::Message(MessageChecksum([1; 32]))),
+        ));
+
+        let maybe_translated = under_test.translate(&effects);
+
+        assert!(maybe_translated.is_some(), "{:?}", maybe_translated);
+        let translated = maybe_translated.unwrap();
+        assert!(translated.operations.is_empty());
+        assert!(translated.transforms.is_empty());
+    }
+
+    fn build_expected_transforms(key_1: Key, key_2: Key, key_3: Key) -> Vec<TransformV1> {
+        let transform_1 = TransformV1 {
+            key: key_1.to_formatted_string(),
+            transform: TransformKindV1::Identity,
+        };
+        let transform_2 = TransformV1 {
+            key: key_2.to_formatted_string(),
+            transform: TransformKindV1::AddKeys(vec![
+                NamedKey {
+                    name: "key_1".to_string(),
+                    key: key_1.to_formatted_string(),
+                },
+                NamedKey {
+                    name: "key_2".to_string(),
+                    key: key_2.to_formatted_string(),
+                },
+            ]),
+        };
+        let transform_3 = TransformV1 {
+            key: key_3.to_formatted_string(),
+            transform: TransformKindV1::AddUInt64(1235),
+        };
+        let expected_transforms = vec![transform_1, transform_2, transform_3];
+        expected_transforms
+    }
+
+    fn build_example_effects(key_1: Key, key_2: Key, key_3: Key) -> Effects {
+        let mut effects = Effects::new();
+        effects.push(TransformV2::new(key_1, TransformKindV2::Identity));
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("key_1".to_string(), key_1);
+        named_keys.insert("key_2".to_string(), key_2);
+        effects.push(TransformV2::new(
+            key_2,
+            TransformKindV2::AddKeys(named_keys),
+        ));
+        effects.push(TransformV2::new(key_3, TransformKindV2::AddUInt64(1235)));
+        effects
     }
 
     fn random_account() -> Account {

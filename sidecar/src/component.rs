@@ -234,6 +234,8 @@ impl Component for RpcApiComponent {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::config::SidecarConfig;
     use casper_rpc_sidecar::{
@@ -355,11 +357,13 @@ mod tests {
     #[tokio::test]
     async fn given_rpc_api_server_component_when_config_should_return_some() {
         let port = get_port();
-        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(port).await;
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle =
+            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
         let component = RpcApiComponent::new();
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
-            NodeClientConfig::finite_retries_config(port, 1);
+            NodeClientConfig::new_with_port_and_retries(port, 1);
         config.rpc_server.as_mut().unwrap().main_server.address = format!("0.0.0.0:{}", port);
         config
             .rpc_server

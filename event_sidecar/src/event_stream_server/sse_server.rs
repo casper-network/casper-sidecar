@@ -107,10 +107,6 @@ pub(super) struct ServerSentEvent {
     pub(super) id: Option<Id>,
     /// Payload of the event
     pub(super) data: SseData,
-    #[allow(dead_code)]
-    /// TODO remove this field in another PR.
-    /// Optional raw input for the edge-case scenario in which the output needs to receive exactly the same text as we got from inbound.
-    pub(super) json_data: Option<String>,
     /// Information which endpoint we got the event from
     pub(super) inbound_filter: Option<SseFilter>,
 }
@@ -121,7 +117,6 @@ impl ServerSentEvent {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),
-            json_data: None,
             inbound_filter: None,
         }
     }
@@ -129,7 +124,6 @@ impl ServerSentEvent {
         ServerSentEvent {
             id: None,
             data: SseData::SidecarVersion(version),
-            json_data: None,
             inbound_filter: None,
         }
     }
@@ -672,20 +666,17 @@ mod tests {
         let api_version = ServerSentEvent {
             id: None,
             data: SseData::random_api_version(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let block_added = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_block_added(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
         let transaction_accepted = ServerSentEvent {
             id: Some(rng.gen()),
             data: sse_data,
-            json_data: None,
             inbound_filter: None,
         };
         let mut transactions = HashMap::new();
@@ -693,43 +684,36 @@ mod tests {
         let transaction_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_transaction_processed(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let transaction_expired = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_transaction_expired(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_fault(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let finality_signature = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_finality_signature(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let step = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_step(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let shutdown = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::Shutdown,
-            json_data: None,
             inbound_filter: Some(SseFilter::Events),
         };
         let sidecar_api_version = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_sidecar_version(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
 
@@ -801,20 +785,17 @@ mod tests {
         let malformed_api_version = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_api_version(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_block_added = ServerSentEvent {
             id: None,
             data: SseData::random_block_added(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
         let malformed_transaction_accepted = ServerSentEvent {
             id: None,
             data: sse_data,
-            json_data: None,
             inbound_filter: None,
         };
         let mut transactions = HashMap::new();
@@ -822,37 +803,31 @@ mod tests {
         let malformed_transaction_processed = ServerSentEvent {
             id: None,
             data: SseData::random_transaction_processed(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_transaction_expired = ServerSentEvent {
             id: None,
             data: SseData::random_transaction_expired(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_fault = ServerSentEvent {
             id: None,
             data: SseData::random_fault(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_finality_signature = ServerSentEvent {
             id: None,
             data: SseData::random_finality_signature(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_step = ServerSentEvent {
             id: None,
             data: SseData::random_step(&mut rng),
-            json_data: None,
             inbound_filter: None,
         };
         let malformed_shutdown = ServerSentEvent {
             id: None,
             data: SseData::Shutdown,
-            json_data: None,
             inbound_filter: None,
         };
 
@@ -876,7 +851,7 @@ mod tests {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn should_filter_duplicate_events(path_filter: &str) {
+    async fn should_filter_duplicate_events(path_filter: &str, is_legacy_endpoint: bool) {
         let mut rng = TestRng::new();
 
         let mut transactions = HashMap::new();
@@ -972,19 +947,46 @@ mod tests {
                 received_event_str = starts_with_data
                     .replace_all(received_event_str.as_str(), "")
                     .into_owned();
-                let received_data =
-                    serde_json::from_str::<Value>(received_event_str.as_str()).unwrap();
-                let expected_data = serde_json::to_value(&expected_data).unwrap();
-                assert_eq!(expected_data, received_data);
+                if is_legacy_endpoint {
+                    let maybe_legacy = LegacySseData::from(&expected_data);
+                    assert!(maybe_legacy.is_some());
+                    let input_legacy = maybe_legacy.unwrap();
+                    let got_legacy =
+                        serde_json::from_str::<LegacySseData>(received_event_str.as_str()).unwrap();
+                    assert_eq!(got_legacy, input_legacy);
+                } else {
+                    let received_data =
+                        serde_json::from_str::<Value>(received_event_str.as_str()).unwrap();
+                    let expected_data = serde_json::to_value(&expected_data).unwrap();
+                    assert_eq!(expected_data, received_data);
+                }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn should_filter_duplicate_main_events() {
+        should_filter_duplicate_events(SSE_API_MAIN_PATH, true).await
+    }
+    /// This test checks that deploy-accepted events from the initial stream which are duplicated in
+    /// the ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_deploys_events() {
+        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH, true).await
+    }
+
+    /// This test checks that signature events from the initial stream which are duplicated in the
+    /// ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_signature_events() {
+        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH, true).await
     }
 
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
     async fn should_filter_duplicate_firehose_events() {
-        should_filter_duplicate_events(SSE_API_ROOT_PATH).await
+        should_filter_duplicate_events(SSE_API_ROOT_PATH, false).await
     }
 
     // Returns `count` random SSE events.  The events will have sequential IDs starting from `start_id`, and if the path filter
@@ -1000,9 +1002,9 @@ mod tests {
         (start_id..(start_id + count as u32))
             .map(|id| {
                 let data = match path_filter {
-                    SSE_API_MAIN_PATH => SseData::random_block_added(rng),
+                    SSE_API_MAIN_PATH => make_legacy_compliant_random_block(rng),
                     SSE_API_DEPLOYS_PATH => {
-                        let (event, transaction) = SseData::random_transaction_accepted(rng);
+                        let (event, transaction) = make_legacy_compliant_random_transaction(rng);
                         assert!(transactions
                             .insert(transaction.hash(), transaction)
                             .is_none());
@@ -1030,11 +1032,30 @@ mod tests {
                 ServerSentEvent {
                     id: Some(id),
                     data,
-                    json_data: None,
                     inbound_filter: None,
                 }
             })
             .collect()
+    }
+
+    fn make_legacy_compliant_random_transaction(rng: &mut TestRng) -> (SseData, Transaction) {
+        loop {
+            let (event, transaction) = SseData::random_transaction_accepted(rng);
+            let legacy = LegacySseData::from(&event);
+            if legacy.is_some() {
+                return (event, transaction);
+            }
+        }
+    }
+
+    fn make_legacy_compliant_random_block(rng: &mut TestRng) -> SseData {
+        loop {
+            let block = SseData::random_block_added(rng);
+            let legacy = LegacySseData::from(&block);
+            if legacy.is_some() {
+                return block;
+            }
+        }
     }
 
     // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
