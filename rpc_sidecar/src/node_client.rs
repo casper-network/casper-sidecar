@@ -555,7 +555,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionPricingMode
                 | ErrorCode::InvalidTransactionUnspecified
                 | ErrorCode::InvalidTransactionOrDeployUnspecified),
-            ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)), // TODO: map transaction errors to proper variants
+            ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
