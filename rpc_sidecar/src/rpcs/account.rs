@@ -83,9 +83,7 @@ impl RpcWithParams for PutDeploy {
                 api_version: CURRENT_API_VERSION,
                 deploy_hash,
             }),
-            Err(err @ ClientError::InvalidTransaction) => {
-                Err(Error::InvalidDeploy(err.to_string()).into())
-            }
+            Err(ClientError::InvalidTransaction(err)) => Err(Error::InvalidDeploy(err).into()),
             Err(err) => Err(Error::NodeRequest("submitting a deploy", err).into()),
         }
     }
@@ -141,9 +139,7 @@ impl RpcWithParams for PutTransaction {
                 api_version: CURRENT_API_VERSION,
                 transaction_hash,
             }),
-            Err(err @ ClientError::InvalidTransaction) => {
-                Err(Error::InvalidTransaction(err.to_string()).into())
-            }
+            Err(ClientError::InvalidTransaction(err)) => Err(Error::InvalidTransaction(err).into()),
             Err(err) => Err(Error::NodeRequest("submitting a transaction", err).into()),
         }
     }
