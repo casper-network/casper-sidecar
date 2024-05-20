@@ -367,8 +367,10 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .chain(bid_stored_values)
             .collect::<Result<Vec<_>, Error>>()?;
 
+        // always retrieve the latest system contract registry, old versions of the node
+        // did not write it to the global state
         let (registry_value, _) = node_client
-            .query_global_state(state_identifier, Key::SystemEntityRegistry, vec![])
+            .query_global_state(None, Key::SystemEntityRegistry, vec![])
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -380,17 +382,28 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map_err(|_| Error::InvalidAuctionState)?;
 
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
-        let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
-        let (snapshot_value, _) = node_client
+        let (snapshot_value, _) = if let Some(result) = node_client
             .query_global_state(
                 state_identifier,
-                auction_key,
+                Key::addressable_entity_key(EntityKindTag::System, auction_hash),
                 vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
             )
             .await
             .map_err(|err| Error::NodeRequest("auction snapshot", err))?
-            .ok_or(Error::GlobalStateEntryNotFound)?
-            .into_inner();
+        {
+            result.into_inner()
+        } else {
+            node_client
+                .query_global_state(
+                    state_identifier,
+                    Key::Hash(auction_hash.value()),
+                    vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
+                )
+                .await
+                .map_err(|err| Error::NodeRequest("auction snapshot", err))?
+                .ok_or(Error::GlobalStateEntryNotFound)?
+                .into_inner()
+        };
         let snapshot = snapshot_value
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?
@@ -1315,6 +1328,169 @@ mod tests {
                             &*req,
                             GlobalStateRequest::Item {
                                 base_key: Key::AddressableEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        let result = GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
+                            vec![],
+                        );
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
+
+        let resp = GetAuctionInfo::do_handle_request(
+            Arc::new(ClientMock {
+                block: Block::V2(block.clone()),
+                bids: vec![bid.clone()],
+                legacy_bids: vec![legacy_bid.clone()],
+                contract_hash: rng.gen(),
+                snapshot: Default::default(),
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAuctionInfoResult {
+                api_version: CURRENT_API_VERSION,
+                auction_state: AuctionState::new(
+                    *block.state_root_hash(),
+                    block.height(),
+                    Default::default(),
+                    vec![bid, BidKind::Unified(legacy_bid.into())]
+                ),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_pre_1_5_auction_info() {
+        struct ClientMock {
+            block: Block,
+            bids: Vec<BidKind>,
+            legacy_bids: Vec<Bid>,
+            contract_hash: AddressableEntityHash,
+            snapshot: SeigniorageRecipientsSnapshot,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                self.block.clone_header(),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::AllItems {
+                                key_tag: KeyTag::Bid,
+                                ..
+                            }
+                        ) =>
+                    {
+                        let bids = self
+                            .legacy_bids
+                            .iter()
+                            .cloned()
+                            .map(|bid| StoredValue::Bid(bid.into()))
+                            .collect::<Vec<_>>();
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::AllItems {
+                                key_tag: KeyTag::BidAddr,
+                                ..
+                            }
+                        ) =>
+                    {
+                        let bids = self
+                            .bids
+                            .iter()
+                            .cloned()
+                            .map(StoredValue::BidKind)
+                            .collect::<Vec<_>>();
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                base_key: Key::SystemEntityRegistry,
+                                // system entity registry is not present in pre-1.5 state
+                                state_identifier: None,
+                                ..
+                            }
+                        ) =>
+                    {
+                        let system_contracts =
+                            iter::once((AUCTION.to_string(), self.contract_hash))
+                                .collect::<BTreeMap<_, _>>();
+                        let result = GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(system_contracts).unwrap()),
+                            vec![],
+                        );
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                // we should return nothing for entity hash in pre-1.5 state
+                                base_key: Key::AddressableEntity(_),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State(req))
+                        if matches!(
+                            &*req,
+                            GlobalStateRequest::Item {
+                                // we should query by contract hash in pre-1.5 state
+                                base_key: Key::Hash(_),
                                 ..
                             }
                         ) =>

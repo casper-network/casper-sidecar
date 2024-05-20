@@ -241,6 +241,237 @@ pub trait NodeClient: Send + Sync {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
+
+pub enum InvalidTransactionOrDeploy {
+    ///The deploy had an invalid chain name
+    #[error("The deploy had an invalid chain name")]
+    DeployChainName,
+    ///Deploy dependencies are no longer supported
+    #[error("The dependencies for this transaction are no longer supported")]
+    DeployDependenciesNoLongerSupported,
+    ///The deploy sent to the network had an excessive size
+    #[error("The deploy had an excessive size")]
+    DeployExcessiveSize,
+    ///The deploy sent to the network had an excessive time to live
+    #[error("The deploy had an excessive time to live")]
+    DeployExcessiveTimeToLive,
+    ///The deploy sent to the network had a timestamp referencing a time that has yet to occur.
+    #[error("The deploys timestamp is in the future")]
+    DeployTimestampInFuture,
+    ///The deploy sent to the network had an invalid body hash
+    #[error("The deploy had an invalid body hash")]
+    DeployBodyHash,
+    ///The deploy sent to the network had an invalid deploy hash i.e. the provided deploy hash
+    /// didn't match the derived deploy hash
+    #[error("The deploy had an invalid deploy hash")]
+    DeployHash,
+    ///The deploy sent to the network had an empty approval set
+    #[error("The deploy had no approvals")]
+    DeployEmptyApprovals,
+    ///The deploy sent to the network had an invalid approval
+    #[error("The deploy had an invalid approval")]
+    DeployApproval,
+    ///The deploy sent to the network had an excessive session args length
+    #[error("The deploy had an excessive session args length")]
+    DeployExcessiveSessionArgsLength,
+    ///The deploy sent to the network had an excessive payment args length
+    #[error("The deploy had an excessive payment args length")]
+    DeployExcessivePaymentArgsLength,
+    ///The deploy sent to the network had a missing payment amount
+    #[error("The deploy had a missing payment amount")]
+    DeployMissingPaymentAmount,
+    ///The deploy sent to the network had a payment amount that was not parseable
+    #[error("The deploy sent to the network had a payment amount that was unable to be parsed")]
+    DeployFailedToParsePaymentAmount,
+    ///The deploy sent to the network exceeded the block gas limit
+    #[error("The deploy sent to the network exceeded the block gas limit")]
+    DeployExceededBlockGasLimit,
+    ///The deploy sent to the network was missing a transfer amount
+    #[error("The deploy sent to the network was missing a transfer amount")]
+    DeployMissingTransferAmount,
+    ///The deploy sent to the network had a transfer amount that was unable to be parseable
+    #[error("The deploy sent to the network had a transfer amount that was unable to be parsed")]
+    DeployFailedToParseTransferAmount,
+    ///The deploy sent to the network had a transfer amount that was insufficient
+    #[error("The deploy sent to the network had an insufficient transfer amount")]
+    DeployInsufficientTransferAmount,
+    ///The deploy sent to the network had excessive approvals
+    #[error("The deploy sent to the network had excessive approvals")]
+    DeployExcessiveApprovals,
+    ///The network was unable to calculate the gas limit for the deploy
+    #[error("The network was unable to calculate the gas limit associated with the deploy")]
+    DeployUnableToCalculateGasLimit,
+    ///The network was unable to calculate the gas cost for the deploy
+    #[error("The network was unable to calculate the gas cost for the deploy")]
+    DeployUnableToCalculateGasCost,
+    ///The deploy sent to the network was invalid for an unspecified reason
+    #[error("The deploy sent to the network was invalid for an unspecified reason")]
+    DeployUnspecified,
+    /// The transaction sent to the network had an invalid chain name
+    #[error("The transaction sent to the network had an invalid chain name")]
+    TransactionChainName,
+    /// The transaction sent to the network had an excessive size
+    #[error("The transaction sent to the network had an excessive size")]
+    TransactionExcessiveSize,
+    /// The transaction sent to the network had an excessive time to live
+    #[error("The transaction sent to the network had an excessive time to live")]
+    TransactionExcessiveTimeToLive,
+    /// The transaction sent to the network had a timestamp located in the future.
+    #[error("The transaction sent to the network had a timestamp that has not yet occurred")]
+    TransactionTimestampInFuture,
+    /// The transaction sent to the network had a provided body hash that conflicted with hash
+    /// derived by the network
+    #[error("The transaction sent to the network had an invalid body hash")]
+    TransactionBodyHash,
+    /// The transaction sent to the network had a provided hash that conflicted with the hash
+    /// derived by the network
+    #[error("The transaction sent to the network had an invalid hash")]
+    TransactionHash,
+    /// The transaction sent to the network had an empty approvals set
+    #[error("The transaction sent to the network had no approvals")]
+    TransactionEmptyApprovals,
+    /// The transaction sent to the network had an invalid approval
+    #[error("The transaction sent to the network had an invalid approval")]
+    TransactionInvalidApproval,
+    /// The transaction sent to the network had excessive args length
+    #[error("The transaction sent to the network had excessive args length")]
+    TransactionExcessiveArgsLength,
+    /// The transaction sent to the network had excessive approvals
+    #[error("The transaction sent to the network had excessive approvals")]
+    TransactionExcessiveApprovals,
+    /// The transaction sent to the network exceeds the block gas limit
+    #[error("The transaction sent to the network exceeds the networks block gas limit")]
+    TransactionExceedsBlockGasLimit,
+    /// The transaction sent to the network had a missing arg
+    #[error("The transaction sent to the network was missing an argument")]
+    TransactionMissingArg,
+    /// The transaction sent to the network had an argument with an unexpected type
+    #[error("The transaction sent to the network had an unexpected argument type")]
+    TransactionUnexpectedArgType,
+    /// The transaction sent to the network had an invalid argument
+    #[error("The transaction sent to the network had an invalid argument")]
+    TransactionInvalidArg,
+    /// The transaction sent to the network had an insufficient transfer amount
+    #[error("The transaction sent to the network had an insufficient transfer amount")]
+    TransactionInsufficientTransferAmount,
+    /// The transaction sent to the network had a custom entry point when it should have a non
+    /// custom entry point.
+    #[error("The native transaction sent to the network should not have a custom entry point")]
+    TransactionEntryPointCannotBeCustom,
+    /// The transaction sent to the network had a standard entry point when it must be custom.
+    #[error("The non-native transaction sent to the network must have a custom entry point")]
+    TransactionEntryPointMustBeCustom,
+    /// The transaction sent to the network had empty module bytes
+    #[error("The transaction sent to the network had empty module bytes")]
+    TransactionEmptyModuleBytes,
+    /// The transaction sent to the network had an invalid gas price conversion
+    #[error("The transaction sent to the network had an invalid gas price conversion")]
+    TransactionGasPriceConversion,
+    /// The network was unable to calculate the gas limit for the transaction sent.
+    #[error("The network was unable to calculate the gas limit for the transaction sent")]
+    TransactionUnableToCalculateGasLimit,
+    /// The network was unable to calculate the gas cost for the transaction sent.
+    #[error("The network was unable to calculate the gas cost for the transaction sent.")]
+    TransactionUnableToCalculateGasCost,
+    /// The transaction sent to the network had an invalid pricing mode
+    #[error("The transaction sent to the network had an invalid pricing mode")]
+    TransactionPricingMode,
+    /// The transaction sent to the network was invalid for an unspecified reason
+    #[error("The transaction sent to the network was invalid for an unspecified reason")]
+    TransactionUnspecified,
+    /// The catchall error from a casper node
+    #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
+    TransactionOrDeployUnspecified,
+}
+
+impl From<ErrorCode> for InvalidTransactionOrDeploy {
+    fn from(value: ErrorCode) -> Self {
+        match value {
+            ErrorCode::InvalidDeployChainName => Self::DeployChainName,
+            ErrorCode::InvalidDeployDependenciesNoLongerSupported => {
+                Self::DeployDependenciesNoLongerSupported
+            }
+            ErrorCode::InvalidDeployExcessiveSize => Self::DeployExcessiveSize,
+            ErrorCode::InvalidDeployExcessiveTimeToLive => Self::DeployExcessiveTimeToLive,
+            ErrorCode::InvalidDeployTimestampInFuture => Self::DeployTimestampInFuture,
+            ErrorCode::InvalidDeployBodyHash => Self::DeployBodyHash,
+            ErrorCode::InvalidDeployHash => Self::DeployHash,
+            ErrorCode::InvalidDeployEmptyApprovals => Self::DeployEmptyApprovals,
+            ErrorCode::InvalidDeployApproval => Self::DeployApproval,
+            ErrorCode::InvalidDeployExcessiveSessionArgsLength => {
+                Self::DeployExcessiveSessionArgsLength
+            }
+            ErrorCode::InvalidDeployExcessivePaymentArgsLength => {
+                Self::DeployExcessivePaymentArgsLength
+            }
+            ErrorCode::InvalidDeployMissingPaymentAmount => Self::DeployMissingPaymentAmount,
+            ErrorCode::InvalidDeployFailedToParsePaymentAmount => {
+                Self::DeployFailedToParsePaymentAmount
+            }
+            ErrorCode::InvalidDeployExceededBlockGasLimit => Self::DeployExceededBlockGasLimit,
+            ErrorCode::InvalidDeployMissingTransferAmount => Self::DeployMissingTransferAmount,
+            ErrorCode::InvalidDeployFailedToParseTransferAmount => {
+                Self::DeployFailedToParseTransferAmount
+            }
+            ErrorCode::InvalidDeployInsufficientTransferAmount => {
+                Self::DeployInsufficientTransferAmount
+            }
+            ErrorCode::InvalidDeployExcessiveApprovals => Self::DeployExcessiveApprovals,
+            ErrorCode::InvalidDeployUnableToCalculateGasLimit => {
+                Self::DeployUnableToCalculateGasLimit
+            }
+            ErrorCode::InvalidDeployUnableToCalculateGasCost => {
+                Self::DeployUnableToCalculateGasCost
+            }
+            ErrorCode::InvalidDeployUnspecified => Self::DeployUnspecified,
+            ErrorCode::InvalidTransactionChainName => Self::TransactionChainName,
+            ErrorCode::InvalidTransactionExcessiveSize => Self::TransactionExcessiveSize,
+            ErrorCode::InvalidTransactionExcessiveTimeToLive => {
+                Self::TransactionExcessiveTimeToLive
+            }
+            ErrorCode::InvalidTransactionTimestampInFuture => Self::TransactionTimestampInFuture,
+            ErrorCode::InvalidTransactionBodyHash => Self::TransactionBodyHash,
+            ErrorCode::InvalidTransactionHash => Self::TransactionHash,
+            ErrorCode::InvalidTransactionEmptyApprovals => Self::TransactionEmptyApprovals,
+            ErrorCode::InvalidTransactionInvalidApproval => Self::TransactionInvalidApproval,
+            ErrorCode::InvalidTransactionExcessiveArgsLength => {
+                Self::TransactionExcessiveArgsLength
+            }
+            ErrorCode::InvalidTransactionExcessiveApprovals => Self::TransactionExcessiveApprovals,
+            ErrorCode::InvalidTransactionExceedsBlockGasLimit => {
+                Self::TransactionExceedsBlockGasLimit
+            }
+            ErrorCode::InvalidTransactionMissingArg => Self::TransactionMissingArg,
+            ErrorCode::InvalidTransactionUnexpectedArgType => Self::TransactionUnexpectedArgType,
+            ErrorCode::InvalidTransactionInvalidArg => Self::TransactionInvalidArg,
+            ErrorCode::InvalidTransactionInsufficientTransferAmount => {
+                Self::TransactionInsufficientTransferAmount
+            }
+            ErrorCode::InvalidTransactionEntryPointCannotBeCustom => {
+                Self::TransactionEntryPointCannotBeCustom
+            }
+            ErrorCode::InvalidTransactionEntryPointMustBeCustom => {
+                Self::TransactionEntryPointMustBeCustom
+            }
+            ErrorCode::InvalidTransactionEmptyModuleBytes => Self::TransactionEmptyModuleBytes,
+            ErrorCode::InvalidTransactionGasPriceConversion => Self::TransactionGasPriceConversion,
+            ErrorCode::InvalidTransactionUnableToCalculateGasLimit => {
+                Self::TransactionUnableToCalculateGasLimit
+            }
+            ErrorCode::InvalidTransactionUnableToCalculateGasCost => {
+                Self::TransactionUnableToCalculateGasCost
+            }
+            ErrorCode::InvalidTransactionPricingMode => Self::TransactionPricingMode,
+            ErrorCode::InvalidTransactionUnspecified => Self::TransactionUnspecified,
+            ErrorCode::InvalidTransactionOrDeployUnspecified => {
+                Self::TransactionOrDeployUnspecified
+            }
+            _ => Self::TransactionOrDeployUnspecified,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
@@ -262,8 +493,8 @@ pub enum Error {
     UnknownStateRootHash,
     #[error("the provided global state query failed to execute")]
     QueryFailedToExecute,
-    #[error("could not execute the provided transaction")]
-    InvalidTransaction,
+    #[error("could not execute the provided transaction: {0}")]
+    InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
     #[error("received a response with an unsupported protocol version: {0}")]
@@ -279,7 +510,7 @@ impl Error {
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
             Ok(
-                ErrorCode::InvalidDeployChainName
+                err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported
                 | ErrorCode::InvalidDeployExcessiveSize
                 | ErrorCode::InvalidDeployExcessiveTimeToLive
@@ -323,8 +554,8 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnableToCalculateGasCost
                 | ErrorCode::InvalidTransactionPricingMode
                 | ErrorCode::InvalidTransactionUnspecified
-                | ErrorCode::InvalidTransactionOrDeployUnspecified,
-            ) => Self::InvalidTransaction, // TODO: map transaction errors to proper variants
+                | ErrorCode::InvalidTransactionOrDeployUnspecified),
+            ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
