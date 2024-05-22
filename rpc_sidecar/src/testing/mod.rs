@@ -85,7 +85,7 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     start_mock_binary_port(port, response.to_bytes().unwrap(), shutdown).await
 }
 
-async fn start_mock_binary_port(port: u16, data: Vec<u8>, shutdown: Arc<Notify>) -> JoinHandle<()> {
+pub async fn start_mock_binary_port(port: u16, data: Vec<u8>, shutdown: Arc<Notify>) -> JoinHandle<()> {
     let handler = tokio::spawn(async move {
         let binary_port = BinaryPortMock::new(port, data);
         binary_port.start(shutdown).await;

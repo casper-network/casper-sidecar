@@ -6,7 +6,10 @@ use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tokio_util::codec::Framed;
@@ -602,6 +605,7 @@ pub struct FramedNodeClient {
     shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
     request_limit: Semaphore,
+    current_request_id: AtomicU64,
 }
 
 impl FramedNodeClient {
@@ -626,9 +630,14 @@ impl FramedNodeClient {
                 reconnect,
                 shutdown,
                 config,
+                current_request_id: AtomicU64::new(0),
             },
             reconnect_loop,
         ))
+    }
+
+    fn next_id(&self) -> u64 {
+        self.current_request_id.fetch_add(1, Ordering::Relaxed)
     }
 
     async fn reconnect_loop(
@@ -657,8 +666,7 @@ impl FramedNodeClient {
         req: BinaryRequest,
         client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
     ) -> Result<BinaryResponseAndRequest, Error> {
-        let payload =
-            BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
+        let payload = self.generate_payload(req);
 
         if let Err(err) = tokio::time::timeout(
             Duration::from_secs(self.config.message_timeout_secs),
@@ -690,6 +698,12 @@ impl FramedNodeClient {
         } else {
             Err(Error::RequestFailed("disconnected".to_owned()))
         }
+    }
+
+    fn generate_payload(&self, req: BinaryRequest) -> BinaryMessage {
+        BinaryMessage::new(
+            encode_request(&req, self.next_id()).expect("should always serialize a request"),
+        )
     }
 
     async fn connect_with_retries(
@@ -790,8 +804,8 @@ fn handle_response(
     }
 }
 
-fn encode_request(req: &BinaryRequest) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag());
+fn encode_request(req: &BinaryRequest, id: u64) -> Result<Vec<u8>, bytesrepr::Error> {
+    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag(), id);
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;
@@ -872,7 +886,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::{get_port, start_mock_binary_port_responding_with_stored_value};
+    use crate::testing::{
+        get_port, start_mock_binary_port, start_mock_binary_port_responding_with_stored_value,
+    };
 
     use super::*;
     use casper_types::testing::TestRng;
@@ -1057,5 +1073,31 @@ mod tests {
             _ = scenario => (),
             _ = reconnect_loop => panic!("reconnect loop should not exit"),
         }
+    }
+
+    #[tokio::test]
+    async fn should_generate_payload_with_incrementing_id() {
+        let port = get_port();
+        let config = NodeClientConfig::new_with_port(port);
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _ = start_mock_binary_port(port, vec![], Arc::clone(&shutdown)).await;
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let generated_ids: Vec<_> = (0..10)
+            .map(|i| {
+                println!("{i}");
+                let binary_message =
+                    c.generate_payload(BinaryRequest::Get(GetRequest::Information {
+                        info_type_tag: 0,
+                        key: vec![],
+                    }));
+                let header = BinaryRequestHeader::from_bytes(&binary_message.payload())
+                    .unwrap()
+                    .0;
+                header.id()
+            })
+            .collect();
+
+        assert_eq!(generated_ids, (0..10).collect::<Vec<_>>());
     }
 }
