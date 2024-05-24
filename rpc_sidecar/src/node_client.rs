@@ -699,7 +699,7 @@ impl FramedNodeClient {
                         .payload(),
                 )
                 .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-                match handle_response(resp, request_id, &self.shutdown) {
+                match validate_response(resp, request_id, &self.shutdown) {
                     Ok(response) => return Ok(response),
                     Err(err) if matches!(err, Error::RequestResponseIdMismatch { expected, got } if expected > got) =>
                     {
@@ -809,7 +809,7 @@ impl NodeClient for FramedNodeClient {
     }
 }
 
-fn handle_response(
+fn validate_response(
     resp: BinaryResponseAndRequest,
     expected_id: u64,
     shutdown: &Notify<Shutdown>,
@@ -927,7 +927,7 @@ mod tests {
 
         let request = get_dummy_request_payload(None);
 
-        let result = handle_response(
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
                 &request,
@@ -950,7 +950,7 @@ mod tests {
 
         let request = get_dummy_request_payload(None);
 
-        let result = handle_response(
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
                 &request,
@@ -979,7 +979,7 @@ mod tests {
 
         let request = get_dummy_request_payload(None);
 
-        let result = handle_response(
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
                 &request,
@@ -1141,5 +1141,52 @@ mod tests {
             .collect();
 
         assert_eq!(generated_ids, (0..10).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn should_reject_mismatched_request_id() {
+        let notify = Notify::<Shutdown>::new();
+
+        let expected_id = 1;
+        let actual_id = 2;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        assert!(matches!(
+            result,
+            Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 1 && got == 2
+        ));
+
+        let expected_id = 2;
+        let actual_id = 1;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        assert!(matches!(
+            result,
+            Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 2 && got == 1
+        ));
+    }
+
+    #[test]
+    fn should_accept_matching_request_id() {
+        let notify = Notify::<Shutdown>::new();
+
+        let expected_id = 1;
+        let actual_id = 1;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        dbg!(&result);
+        assert!(result.is_ok())
     }
 }
