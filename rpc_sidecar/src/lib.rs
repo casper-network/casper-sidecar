@@ -8,7 +8,9 @@ mod speculative_exec_server;
 pub mod testing;
 
 use anyhow::Error;
-use casper_types::ProtocolVersion;
+use casper_binary_port::{BinaryRequest, BinaryRequestHeader};
+use casper_types::bytesrepr::ToBytes;
+use casper_types::{bytesrepr, ProtocolVersion};
 pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
 pub use config::{NodeClientConfig, RpcConfig};
 use futures::future::BoxFuture;
@@ -114,6 +116,14 @@ fn resolve_address(address: &str) -> anyhow::Result<SocketAddr> {
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| anyhow::anyhow!("failed to resolve address"))
+}
+
+fn encode_request(req: &BinaryRequest, id: u64) -> Result<Vec<u8>, bytesrepr::Error> {
+    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag(), id);
+    let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
+    header.write_bytes(&mut bytes)?;
+    req.write_bytes(&mut bytes)?;
+    Ok(bytes)
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use crate::{NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
+use crate::{encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use futures::{Future, SinkExt, StreamExt};
@@ -478,6 +478,10 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
 pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
+    #[error("request id mismatch: expected {expected}, got {got}")]
+    RequestResponseIdMismatch { expected: u64, got: u64 },
+    #[error("failed to deserialize the original request provided with the response: {0}")]
+    OriginalRequestDeserialization(String),
     #[error("failed to deserialize the envelope of a response: {0}")]
     EnvelopeDeserialization(String),
     #[error("failed to deserialize a response: {0}")]
@@ -666,7 +670,7 @@ impl FramedNodeClient {
         req: BinaryRequest,
         client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
     ) -> Result<BinaryResponseAndRequest, Error> {
-        let payload = self.generate_payload(req);
+        let (request_id, payload) = self.generate_payload(req);
 
         if let Err(err) = tokio::time::timeout(
             Duration::from_secs(self.config.message_timeout_secs),
@@ -678,31 +682,47 @@ impl FramedNodeClient {
             return Err(Error::RequestFailed(err.to_string()));
         };
 
-        let Ok(maybe_response) = tokio::time::timeout(
-            Duration::from_secs(self.config.message_timeout_secs),
-            client.next(),
-        )
-        .await
-        else {
-            return Err(Error::RequestFailed("timeout".to_owned()));
-        };
-
-        if let Some(response) = maybe_response {
-            let resp = bytesrepr::deserialize_from_slice(
-                response
-                    .map_err(|err| Error::RequestFailed(err.to_string()))?
-                    .payload(),
+        loop {
+            let Ok(maybe_response) = tokio::time::timeout(
+                Duration::from_secs(self.config.message_timeout_secs),
+                client.next(),
             )
-            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-            handle_response(resp, &self.shutdown)
-        } else {
-            Err(Error::RequestFailed("disconnected".to_owned()))
+            .await
+            else {
+                return Err(Error::RequestFailed("timeout".to_owned()));
+            };
+
+            if let Some(response) = maybe_response {
+                let resp = bytesrepr::deserialize_from_slice(
+                    response
+                        .map_err(|err| Error::RequestFailed(err.to_string()))?
+                        .payload(),
+                )
+                .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
+                match handle_response(resp, request_id, &self.shutdown) {
+                    Ok(response) => return Ok(response),
+                    Err(err) if matches!(err, Error::RequestResponseIdMismatch { expected, got } if expected > got) =>
+                    {
+                        // If our expected ID is greater than the one we received, it means we can
+                        // try to recover from the situation by reading more responses from the stream.
+                        warn!(%err, "received a response with an outdated id, trying another response");
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                }
+            } else {
+                return Err(Error::RequestFailed("disconnected".to_owned()));
+            }
         }
     }
 
-    fn generate_payload(&self, req: BinaryRequest) -> BinaryMessage {
-        BinaryMessage::new(
-            encode_request(&req, self.next_id()).expect("should always serialize a request"),
+    fn generate_payload(&self, req: BinaryRequest) -> (u64, BinaryMessage) {
+        let next_id = self.next_id();
+        (
+            next_id,
+            BinaryMessage::new(
+                encode_request(&req, next_id).expect("should always serialize a request"),
+            ),
         )
     }
 
@@ -791,10 +811,21 @@ impl NodeClient for FramedNodeClient {
 
 fn handle_response(
     resp: BinaryResponseAndRequest,
+    expected_id: u64,
     shutdown: &Notify<Shutdown>,
 ) -> Result<BinaryResponseAndRequest, Error> {
-    let version = resp.response().protocol_version();
+    let original_request = resp.original_request();
+    let (original_header, _) = BinaryRequestHeader::from_bytes(original_request)
+        .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
+    let original_id = original_header.id();
+    if original_id != expected_id {
+        return Err(Error::RequestResponseIdMismatch {
+            expected: expected_id,
+            got: original_id,
+        });
+    }
 
+    let version = resp.response().protocol_version();
     if version.is_compatible_with(&SUPPORTED_PROTOCOL_VERSION) {
         Ok(resp)
     } else {
@@ -802,14 +833,6 @@ fn handle_response(
         shutdown.notify_one();
         Err(Error::UnsupportedProtocolVersion(version))
     }
-}
-
-fn encode_request(req: &BinaryRequest, id: u64) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag(), id);
-    let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
-    header.write_bytes(&mut bytes)?;
-    req.write_bytes(&mut bytes)?;
-    Ok(bytes)
 }
 
 fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
@@ -887,7 +910,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::testing::{
-        get_port, start_mock_binary_port, start_mock_binary_port_responding_with_stored_value,
+        get_dummy_request, get_dummy_request_payload, get_port, start_mock_binary_port,
+        start_mock_binary_port_responding_with_stored_value,
     };
 
     use super::*;
@@ -901,11 +925,14 @@ mod tests {
         let notify = Notify::<Shutdown>::new();
         let bad_version = ProtocolVersion::from_parts(10, 0, 0);
 
+        let request = get_dummy_request_payload(None);
+
         let result = handle_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
-                &[],
+                &request,
             ),
+            0,
             &notify,
         );
 
@@ -921,11 +948,14 @@ mod tests {
             ..SUPPORTED_PROTOCOL_VERSION.value()
         });
 
+        let request = get_dummy_request_payload(None);
+
         let result = handle_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
             ),
+            0,
             &notify,
         );
 
@@ -933,7 +963,7 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -947,11 +977,14 @@ mod tests {
             ..SUPPORTED_PROTOCOL_VERSION.value()
         });
 
+        let request = get_dummy_request_payload(None);
+
         let result = handle_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
             ),
+            0,
             &notify,
         );
 
@@ -959,7 +992,7 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -983,7 +1016,8 @@ mod tests {
         let mut rng = TestRng::new();
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+            start_mock_binary_port_responding_with_stored_value(port, None, Arc::clone(&shutdown))
+                .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
@@ -1001,9 +1035,12 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         tokio::spawn(async move {
             sleep(Duration::from_secs(5)).await;
-            let _mock_server_handle =
-                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
-                    .await;
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                None,
+                Arc::clone(&shutdown),
+            )
+            .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
         let (client, _) = FramedNodeClient::new(config).await.unwrap();
@@ -1037,12 +1074,17 @@ mod tests {
         let port = get_port();
         let mut rng = TestRng::new();
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+        let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(0),
+            Arc::clone(&shutdown),
+        )
+        .await;
         let config = NodeClientConfig::new_with_port(port);
         let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
+            // Request id = 0
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
@@ -1050,6 +1092,7 @@ mod tests {
             shutdown.notify_one();
             let _ = mock_server_handle.await;
 
+            // Request id = 1
             let err = query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .unwrap_err();
@@ -1058,12 +1101,16 @@ mod tests {
                 Error::RequestFailed(e) if e == "disconnected"
             ));
 
-            let _mock_server_handle =
-                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
-                    .await;
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                Some(2),
+                Arc::clone(&shutdown),
+            )
+            .await;
 
             tokio::time::sleep(Duration::from_secs(2)).await;
 
+            // Request id = 2
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
@@ -1084,13 +1131,8 @@ mod tests {
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
         let generated_ids: Vec<_> = (0..10)
-            .map(|i| {
-                println!("{i}");
-                let binary_message =
-                    c.generate_payload(BinaryRequest::Get(GetRequest::Information {
-                        info_type_tag: 0,
-                        key: vec![],
-                    }));
+            .map(|_| {
+                let (_, binary_message) = c.generate_payload(get_dummy_request());
                 let header = BinaryRequestHeader::from_bytes(&binary_message.payload())
                     .unwrap()
                     .0;

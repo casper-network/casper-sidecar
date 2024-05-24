@@ -359,7 +359,8 @@ mod tests {
         let port = get_port();
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+            start_mock_binary_port_responding_with_stored_value(port, None, Arc::clone(&shutdown))
+                .await;
         let component = RpcApiComponent::new();
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
