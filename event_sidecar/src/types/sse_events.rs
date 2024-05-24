@@ -103,6 +103,10 @@ impl TransactionAccepted {
         }
     }
 
+    pub fn transaction(&self) -> Arc<Transaction> {
+        self.transaction.clone()
+    }
+
     #[cfg(test)]
     pub fn api_transaction_type_id(&self) -> crate::types::database::TransactionTypeId {
         match *self.transaction {
@@ -196,6 +200,10 @@ impl TransactionProcessed {
             TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
         }
     }
+
+    pub fn messages(&self) -> &Messages {
+        &self.messages
+    }
 }
 
 /// The given transaction has expired.
@@ -214,6 +222,9 @@ impl TransactionExpired {
             TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
             TransactionHash::V1(_) => TransactionTypeId::Version1,
         }
+    }
+    pub fn transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash.clone()
     }
 
     #[cfg(test)]

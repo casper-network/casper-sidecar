@@ -48,7 +48,6 @@ async fn should_not_allow_zero_max_attempts() {
     let shutdown_error = run(
         testing_config.inner(),
         Database::SqliteDatabaseWrapper(sqlite_database),
-        testing_config.storage_config.get_storage_path().clone(),
     )
     .await
     .expect_err("Sidecar should return an Err on shutdown");

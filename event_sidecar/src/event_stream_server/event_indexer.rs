@@ -9,16 +9,40 @@ pub(super) type EventIndex = u32;
 #[derive(Debug)]
 pub(super) struct EventIndexer {
     index: EventIndex,
-    persistent_cache: PathBuf,
+    persistent_cache: Option<PathBuf>,
 }
 
 impl EventIndexer {
-    pub(super) fn new(storage_path: PathBuf) -> Self {
+    pub(super) fn new(storage_path: Option<PathBuf>) -> Self {
+        let (index, persistent_cache) = fetch_index_and_storage_path(storage_path);
+        EventIndexer {
+            index,
+            persistent_cache,
+        }
+    }
+
+    pub(super) fn next_index(&mut self) -> EventIndex {
+        let index = self.index;
+        self.index = index.wrapping_add(1);
+        index
+    }
+
+    #[cfg(test)]
+    pub(super) fn current_index(&self) -> EventIndex {
+        self.index
+    }
+}
+
+fn fetch_index_and_storage_path(
+    maybe_storage_path: Option<PathBuf>,
+) -> (EventIndex, Option<PathBuf>) {
+    let mut bytes = EventIndex::default().to_le_bytes();
+    let cache = if let Some(storage_path) = maybe_storage_path {
         fs::create_dir_all(&storage_path).unwrap_or_else(|err| {
             error!("Failed to create directory for sse cache: {}", err);
         });
         let persistent_cache = storage_path.join(CACHE_FILENAME);
-        let mut bytes = EventIndex::default().to_le_bytes();
+
         match fs::read(&persistent_cache) {
             Err(error) => {
                 if persistent_cache.exists() {
@@ -41,38 +65,29 @@ impl EventIndexer {
                 }
             }
         }
-        let index = EventIndex::from_le_bytes(bytes);
-        EventIndexer {
-            index,
-            persistent_cache,
-        }
-    }
-
-    pub(super) fn next_index(&mut self) -> EventIndex {
-        let index = self.index;
-        self.index = index.wrapping_add(1);
-        index
-    }
-
-    #[cfg(test)]
-    pub(super) fn current_index(&self) -> EventIndex {
-        self.index
-    }
+        Some(persistent_cache)
+    } else {
+        None
+    };
+    let index = EventIndex::from_le_bytes(bytes);
+    (index, cache)
 }
 
 impl Drop for EventIndexer {
     fn drop(&mut self) {
-        match fs::write(&self.persistent_cache, self.index.to_le_bytes()) {
-            Err(error) => warn!(
-                file = %self.persistent_cache.display(),
-                %error,
-                "failed to write sse cache file"
-            ),
-            Ok(_) => debug!(
-                file = %self.persistent_cache.display(),
-                index = %self.index,
-                "cached sse index to file"
-            ),
+        if let Some(persistent_cache) = self.persistent_cache.as_ref() {
+            match fs::write(persistent_cache, self.index.to_le_bytes()) {
+                Err(error) => warn!(
+                    file = %persistent_cache.display(),
+                    %error,
+                    "failed to write sse cache file"
+                ),
+                Ok(_) => debug!(
+                    file = %persistent_cache.display(),
+                    index = %self.index,
+                    "cached sse index to file"
+                ),
+            }
         }
     }
 }
@@ -89,7 +104,7 @@ mod tests {
 
         // This represents a single session where five events are produced before the session ends.
         let init_and_increment_by_five = |expected_first_index: EventIndex| {
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+            let mut event_indexer = EventIndexer::new(Some(tempdir.path().to_path_buf()));
             for i in 0..5 {
                 assert_eq!(event_indexer.next_index(), expected_first_index + i);
             }
@@ -110,7 +125,7 @@ mod tests {
     fn should_wrap() {
         let tempdir = tempfile::tempdir().unwrap();
 
-        let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+        let mut event_indexer = EventIndexer::new(Some(tempdir.path().to_path_buf()));
         event_indexer.index = EventIndex::MAX;
 
         assert_eq!(event_indexer.next_index(), EventIndex::MAX);
@@ -123,7 +138,7 @@ mod tests {
 
         // Create a folder with the same name as the cache file to cause reading to fail.
         fs::create_dir(tempdir.path().join(CACHE_FILENAME)).unwrap();
-        let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+        let mut event_indexer = EventIndexer::new(Some(tempdir.path().to_path_buf()));
         assert_eq!(event_indexer.next_index(), 0);
     }
 
@@ -140,7 +155,7 @@ mod tests {
             )
             .unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+            let mut event_indexer = EventIndexer::new(Some(tempdir.path().to_path_buf()));
             assert_eq!(event_indexer.next_index(), 0);
         }
 
@@ -155,7 +170,7 @@ mod tests {
                 .collect();
             fs::write(tempdir.path().join(CACHE_FILENAME), bytes).unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path().to_path_buf());
+            let mut event_indexer = EventIndexer::new(Some(tempdir.path().to_path_buf()));
             assert_eq!(event_indexer.next_index(), 0);
         }
     }

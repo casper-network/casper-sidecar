@@ -65,11 +65,11 @@ pub(crate) struct EventStreamServer {
 impl EventStreamServer {
     pub(crate) fn new(
         config: Config,
-        storage_path: PathBuf,
+        maybe_index_storage_folder: Option<PathBuf>,
         enable_legacy_filters: bool,
     ) -> Result<Self, ListeningError> {
         let required_address = resolve_address_and_retype(&config.address)?;
-        let event_indexer = EventIndexer::new(storage_path);
+        let event_indexer = EventIndexer::new(maybe_index_storage_folder);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.

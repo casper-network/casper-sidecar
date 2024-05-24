@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::OnceCell;
 use utoipa::ToSchema;
 
@@ -90,16 +90,11 @@ impl LazyDatabaseWrapper {
 impl Database {
     pub async fn build(config: &StorageConfig) -> Result<Database, DatabaseInitializationError> {
         match config {
-            StorageConfig::SqliteDbConfig {
-                storage_path,
-                sqlite_config,
-            } => {
-                let path_to_database_dir = Path::new(storage_path);
-                let sqlite_database =
-                    SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
-                        .await
-                        .context("Error instantiating sqlite database")
-                        .map_err(DatabaseInitializationError::from)?;
+            StorageConfig::SqliteDbConfig { sqlite_config, .. } => {
+                let sqlite_database = SqliteDatabase::new(sqlite_config.clone())
+                    .await
+                    .context("Error instantiating sqlite database")
+                    .map_err(DatabaseInitializationError::from)?;
                 Ok(Database::SqliteDatabaseWrapper(sqlite_database))
             }
             StorageConfig::PostgreSqlDbConfig {

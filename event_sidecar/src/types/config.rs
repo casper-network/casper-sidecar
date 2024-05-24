@@ -20,8 +20,6 @@ pub(crate) const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 /// The default postgres port.
 pub(crate) const DEFAULT_PORT: u16 = 5432;
 
-pub(crate) const DEFAULT_POSTGRES_STORAGE_PATH: &str = "/casper/sidecar-storage/casper-sidecar";
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub enum LegacySseApiTag {
     // This tag is to point to sse endpoint of casper node in version 1.x
@@ -37,6 +35,14 @@ pub struct SseEventServerConfig {
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
     pub event_stream_server: EventStreamServerConfig,
+    pub index_storage_folder: Option<String>,
+    disable_event_persistence: Option<bool>,
+}
+
+impl SseEventServerConfig {
+    pub fn is_event_persistence_disabled(&self) -> bool {
+        self.disable_event_persistence.unwrap_or(false)
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -49,7 +55,18 @@ impl Default for SseEventServerConfig {
             outbound_channel_size: Some(100),
             connections: vec![],
             event_stream_server: EventStreamServerConfig::default(),
+            disable_event_persistence: Some(false),
+            index_storage_folder: Some("abc".to_string()),
         }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl SseEventServerConfig {
+    pub fn default_no_persistence() -> Self {
+        let mut default = Self::default();
+        default.disable_event_persistence = Some(true);
+        default
     }
 }
 
@@ -71,11 +88,11 @@ pub struct Connection {
 #[serde(untagged)]
 pub enum StorageConfig {
     SqliteDbConfig {
-        storage_path: String,
+        enabled: bool,
         sqlite_config: SqliteConfig,
     },
     PostgreSqlDbConfig {
-        storage_path: String,
+        enabled: bool,
         postgresql_config: PostgresqlConfig,
     },
 }
@@ -84,15 +101,17 @@ impl StorageConfig {
     #[cfg(test)]
     pub(crate) fn set_storage_path(&mut self, path: String) {
         match self {
-            StorageConfig::SqliteDbConfig { storage_path, .. } => *storage_path = path,
-            StorageConfig::PostgreSqlDbConfig { storage_path, .. } => *storage_path = path,
+            StorageConfig::SqliteDbConfig { sqlite_config, .. } => {
+                sqlite_config.storage_path = path
+            }
+            StorageConfig::PostgreSqlDbConfig { .. } => {}
         }
     }
 
     #[cfg(test)]
     pub fn postgres_with_port(port: u16) -> Self {
         StorageConfig::PostgreSqlDbConfig {
-            storage_path: "/target/test_storage".to_string(),
+            enabled: true,
             postgresql_config: PostgresqlConfig {
                 host: "localhost".to_string(),
                 database_name: "event_sidecar".to_string(),
@@ -104,10 +123,10 @@ impl StorageConfig {
         }
     }
 
-    pub fn get_storage_path(&self) -> String {
+    pub fn is_enabled(&self) -> bool {
         match self {
-            StorageConfig::SqliteDbConfig { storage_path, .. } => storage_path.clone(),
-            StorageConfig::PostgreSqlDbConfig { storage_path, .. } => storage_path.clone(),
+            StorageConfig::SqliteDbConfig { enabled, .. } => *enabled,
+            StorageConfig::PostgreSqlDbConfig { enabled, .. } => *enabled,
         }
     }
 }
@@ -116,11 +135,11 @@ impl StorageConfig {
 #[serde(untagged)]
 pub enum StorageConfigSerdeTarget {
     SqliteDbConfig {
-        storage_path: String,
+        enabled: bool,
         sqlite_config: SqliteConfig,
     },
     PostgreSqlDbConfigSerdeTarget {
-        storage_path: String,
+        enabled: bool,
         postgresql_config: Option<PostgresqlConfigSerdeTarget>,
     },
 }
@@ -128,7 +147,7 @@ pub enum StorageConfigSerdeTarget {
 impl Default for StorageConfigSerdeTarget {
     fn default() -> Self {
         StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget {
-            storage_path: DEFAULT_POSTGRES_STORAGE_PATH.to_string(),
+            enabled: true,
             postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
         }
     }
@@ -139,17 +158,17 @@ impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
     fn try_from(value: StorageConfigSerdeTarget) -> Result<Self, Self::Error> {
         match value {
             StorageConfigSerdeTarget::SqliteDbConfig {
-                storage_path,
+                enabled,
                 sqlite_config,
             } => Ok(StorageConfig::SqliteDbConfig {
-                storage_path,
+                enabled,
                 sqlite_config,
             }),
             StorageConfigSerdeTarget::PostgreSqlDbConfigSerdeTarget {
-                storage_path,
+                enabled,
                 postgresql_config,
             } => Ok(StorageConfig::PostgreSqlDbConfig {
-                storage_path,
+                enabled,
                 postgresql_config: postgresql_config.unwrap_or_default().try_into()?,
             }),
         }
@@ -161,6 +180,7 @@ pub struct SqliteConfig {
     pub file_name: String,
     pub max_connections_in_pool: u32,
     pub wal_autocheckpointing_interval: u16,
+    pub storage_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -338,7 +358,7 @@ mod tests {
     impl Default for StorageConfig {
         fn default() -> Self {
             StorageConfig::SqliteDbConfig {
-                storage_path: "/target/test_storage".to_string(),
+                enabled: true,
                 sqlite_config: SqliteConfig::default(),
             }
         }
@@ -350,6 +370,7 @@ mod tests {
                 file_name: "test_sqlite_database".to_string(),
                 max_connections_in_pool: 100,
                 wal_autocheckpointing_interval: 1000,
+                storage_path: "/target/test_storage".to_string(),
             }
         }
     }

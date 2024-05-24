@@ -98,12 +98,8 @@ impl Component for SseServerComponent {
                         ComponentError::runtime_error(self.name(), db_err.into())
                     })?;
                 // If sse server is configured, both storage config and database must be "Some" here. This should be ensured by prior validation.
-                let future = run_sse_sidecar(
-                    sse_server_config.clone(),
-                    database.clone(),
-                    storage_config.get_storage_path(),
-                )
-                .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
+                let future = run_sse_sidecar(sse_server_config.clone(), database.clone())
+                    .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
             } else {
                 info!("SSE server is disabled. Skipping...");

@@ -35,7 +35,8 @@ pub struct SqliteDatabase {
 }
 
 impl SqliteDatabase {
-    pub async fn new(database_dir: &Path, config: SqliteConfig) -> Result<SqliteDatabase, Error> {
+    pub async fn new(config: SqliteConfig) -> Result<SqliteDatabase, Error> {
+        let database_dir = Path::new(&config.storage_path);
         fs::create_dir_all(database_dir)?;
 
         match database_dir.join(config.file_name).to_str() {
@@ -100,10 +101,9 @@ impl SqliteDatabase {
 impl SqliteDatabase {
     pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
         match storage_config {
-            StorageConfig::SqliteDbConfig {
-                storage_path,
-                sqlite_config,
-            } => SqliteDatabase::new(Path::new(storage_path), sqlite_config.clone()).await,
+            StorageConfig::SqliteDbConfig { sqlite_config, .. } => {
+                SqliteDatabase::new(sqlite_config.clone()).await
+            }
             StorageConfig::PostgreSqlDbConfig { .. } => Err(Error::msg(
                 "can't build Sqlite database from postgres config",
             )),

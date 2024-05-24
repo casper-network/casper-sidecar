@@ -273,7 +273,8 @@ impl TestFixture {
             ..Default::default()
         };
         let mut server =
-            EventStreamServer::new(config, self.storage_dir.path().to_path_buf(), true).unwrap();
+            EventStreamServer::new(config, Some(self.storage_dir.path().to_path_buf()), true)
+                .unwrap();
 
         self.first_event_id = server.event_indexer.current_index();
 

@@ -6,6 +6,7 @@ extern crate core;
 mod admin_server;
 mod api_version_manager;
 mod database;
+mod event_handling_service;
 mod event_stream_server;
 pub mod rest_server;
 mod sql;
@@ -15,7 +16,6 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
-
 use std::collections::HashMap;
 use std::process::ExitCode;
 use std::{net::IpAddr, path::PathBuf, str::FromStr, time::Duration};
@@ -36,6 +36,7 @@ use casper_event_listener::{
 };
 use casper_event_types::{sse_data::SseData, Filter};
 use casper_types::ProtocolVersion;
+use event_handling_service::{DbSavingEventHandlingService, EventHandlingService};
 use futures::future::join_all;
 use hex_fmt::HexFmt;
 use metrics::observe_error;
@@ -62,11 +63,7 @@ pub use types::{
 
 const DEFAULT_CHANNEL_SIZE: usize = 1000;
 
-pub async fn run(
-    config: SseEventServerConfig,
-    database: Database,
-    storage_path: String,
-) -> Result<ExitCode, Error> {
+pub async fn run(config: SseEventServerConfig, database: Database) -> Result<ExitCode, Error> {
     validate_config(&config)?;
     let (event_listeners, sse_data_receivers) = build_event_listeners(&config)?;
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
@@ -85,7 +82,7 @@ pub async fn run(
 
     let event_broadcasting_handle = start_event_broadcasting(
         &config,
-        storage_path,
+        config.index_storage_folder.clone(),
         outbound_sse_data_receiver,
         config
             .emulate_legacy_sse_apis
@@ -103,7 +100,7 @@ pub async fn run(
 
 fn start_event_broadcasting(
     config: &SseEventServerConfig,
-    storage_path: String,
+    index_storage_folder: Option<String>,
     mut outbound_sse_data_receiver: Receiver<(SseData, Option<Filter>)>,
     enable_legacy_filters: bool,
 ) -> JoinHandle<Result<(), Error>> {
@@ -118,7 +115,7 @@ fn start_event_broadcasting(
                 Some(buffer_length),
                 Some(max_concurrent_subscribers),
             ),
-            PathBuf::from(storage_path),
+            index_storage_folder.map(|folder| PathBuf::from(folder)),
             enable_legacy_filters,
         )
         .context("Error starting EventStreamServer")?;
@@ -186,22 +183,28 @@ fn spawn_sse_processor(
     api_version_manager: &std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
 ) -> JoinHandle<Result<(), Error>> {
     match database.clone() {
-        Database::SqliteDatabaseWrapper(db) => tokio::spawn(sse_processor(
-            sse_data_receiver,
-            outbound_sse_data_sender.clone(),
-            db.clone(),
-            false,
-            connection_config.enable_logging,
-            api_version_manager.clone(),
-        )),
-        Database::PostgreSqlDatabaseWrapper(db) => tokio::spawn(sse_processor(
-            sse_data_receiver,
-            outbound_sse_data_sender.clone(),
-            db.clone(),
-            true,
-            connection_config.enable_logging,
-            api_version_manager.clone(),
-        )),
+        Database::SqliteDatabaseWrapper(db) => {
+            let event_handling_service =
+                DbSavingEventHandlingService::new(outbound_sse_data_sender.clone(), db.clone());
+            tokio::spawn(sse_processor(
+                sse_data_receiver,
+                event_handling_service,
+                false,
+                connection_config.enable_logging,
+                api_version_manager.clone(),
+            ))
+        }
+        Database::PostgreSqlDatabaseWrapper(db) => {
+            let event_handling_service =
+                DbSavingEventHandlingService::new(outbound_sse_data_sender.clone(), db.clone());
+            tokio::spawn(sse_processor(
+                sse_data_receiver,
+                event_handling_service,
+                true,
+                connection_config.enable_logging,
+                api_version_manager.clone(),
+            ))
+        }
     }
 }
 
@@ -284,51 +287,14 @@ async fn flatten_handle<T>(handle: JoinHandle<Result<T, Error>>) -> Result<T, Er
     }
 }
 
-async fn handle_database_save_result<F>(
-    entity_name: &str,
-    entity_identifier: &str,
-    res: Result<u64, DatabaseWriteError>,
-    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
-    inbound_filter: Filter,
-    build_sse_data: F,
-) where
-    F: FnOnce() -> SseData,
-{
-    match res {
-        Ok(_) => {
-            if let Err(error) = outbound_sse_data_sender
-                .send((build_sse_data(), Some(inbound_filter)))
-                .await
-            {
-                debug!(
-                    "Error when sending to outbound_sse_data_sender. Error: {}",
-                    error
-                );
-            }
-        }
-        Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
-            debug!(
-                "Already received {} ({}), logged in event_log",
-                entity_name, entity_identifier,
-            );
-            trace!(?uc_err);
-        }
-        Err(other_err) => {
-            count_error(format!("db_save_error_{}", entity_name).as_str());
-            warn!(?other_err, "Unexpected error saving {}", entity_identifier);
-        }
-    }
-}
-
 /// Function to handle single event in the sse_processor.
 /// Returns false if the handling indicated that no other messages should be processed.
 /// Returns true otherwise.
 #[allow(clippy::too_many_lines)]
-async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
+async fn handle_single_event<EHS: EventHandlingService + Clone + Send + Sync>(
     sse_event: SseEvent,
-    database: Db,
+    event_handling_service: EHS,
     enable_event_logging: bool,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     api_version_manager: GuardedApiVersionManager,
 ) {
     match sse_event.data {
@@ -336,14 +302,17 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
         }
         SseData::ApiVersion(version) => {
-            handle_api_version(
-                api_version_manager,
-                version,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                enable_event_logging,
-            )
-            .await;
+            let mut manager_guard = api_version_manager.lock().await;
+            let changed_newest_version = manager_guard.store_version(version);
+            if changed_newest_version {
+                event_handling_service
+                    .handle_api_version(version, sse_event.inbound_filter)
+                    .await;
+            }
+            drop(manager_guard);
+            if enable_event_logging {
+                info!(%version, "API Version");
+            }
         }
         SseData::BlockAdded { block, block_hash } => {
             if enable_event_logging {
@@ -351,24 +320,17 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Block Added: {:18}", hex_block_hash);
                 debug!("Block Added: {}", hex_block_hash);
             }
-            let res = database
-                .save_block_added(
-                    BlockAdded::new(block_hash, block.clone()),
+            event_handling_service
+                .handle_block_added(
+                    block_hash,
+                    block,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            handle_database_save_result(
-                "BlockAdded",
-                HexFmt(block_hash.inner()).to_string().as_str(),
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::BlockAdded { block, block_hash },
-            )
-            .await;
         }
         SseData::TransactionAccepted(transaction) => {
             let transaction_accepted = TransactionAccepted::new(transaction.clone());
@@ -377,24 +339,16 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Accepted: {:18}", entity_identifier);
                 debug!("Transaction Accepted: {}", entity_identifier);
             }
-            let res = database
-                .save_transaction_accepted(
+            event_handling_service
+                .handle_transaction_accepted(
                     transaction_accepted,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            handle_database_save_result(
-                "TransactionAccepted",
-                &entity_identifier,
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::TransactionAccepted(transaction),
-            )
-            .await;
         }
         SseData::TransactionExpired { transaction_hash } => {
             let transaction_expired = TransactionExpired::new(transaction_hash);
@@ -403,24 +357,16 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Expired: {:18}", entity_identifier);
                 debug!("Transaction Expired: {}", entity_identifier);
             }
-            let res = database
-                .save_transaction_expired(
+            event_handling_service
+                .handle_transaction_expired(
                     transaction_expired,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            handle_database_save_result(
-                "TransactionExpired",
-                &entity_identifier,
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::TransactionExpired { transaction_hash },
-            )
-            .await;
         }
         SseData::TransactionProcessed {
             transaction_hash,
@@ -431,9 +377,6 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             execution_result,
             messages,
         } => {
-            if !messages.is_empty() {
-                observe_contract_messages("all", messages.len());
-            }
             let transaction_processed = TransactionProcessed::new(
                 transaction_hash.clone(),
                 initiator_addr.clone(),
@@ -448,35 +391,16 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 info!("Transaction Processed: {:18}", entity_identifier);
                 debug!("Transaction Processed: {}", entity_identifier);
             }
-            let res = database
-                .save_transaction_processed(
+            event_handling_service
+                .handle_transaction_processed(
                     transaction_processed,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            if res.is_ok() && !messages.is_empty() {
-                observe_contract_messages("unique", messages.len());
-            }
-            handle_database_save_result(
-                "TransactionProcessed",
-                &entity_identifier,
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::TransactionProcessed {
-                    transaction_hash,
-                    initiator_addr,
-                    timestamp,
-                    ttl,
-                    block_hash,
-                    execution_result,
-                    messages,
-                },
-            )
-            .await;
         }
         SseData::Fault {
             era_id,
@@ -485,29 +409,16 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
         } => {
             let fault = Fault::new(era_id, public_key.clone(), timestamp);
             warn!(%fault, "Fault reported");
-            let res = database
-                .save_fault(
-                    fault.clone(),
+            event_handling_service
+                .handle_fault(
+                    fault,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-
-            handle_database_save_result(
-                "Fault",
-                format!("{:#?}", fault).as_str(),
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::Fault {
-                    era_id,
-                    timestamp,
-                    public_key,
-                },
-            )
-            .await;
         }
         SseData::FinalitySignature(fs) => {
             if enable_event_logging {
@@ -518,24 +429,16 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
                 );
             }
             let finality_signature = FinalitySignature::new(fs.clone());
-            let res = database
-                .save_finality_signature(
-                    finality_signature.clone(),
+            event_handling_service
+                .handle_finality_signature(
+                    finality_signature,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            handle_database_save_result(
-                "FinalitySignature",
-                "",
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::FinalitySignature(fs),
-            )
-            .await;
         }
         SseData::Step {
             era_id,
@@ -545,98 +448,24 @@ async fn handle_single_event<Db: DatabaseReader + DatabaseWriter + Clone + Send 
             if enable_event_logging {
                 info!("Step at era: {}", era_id.value());
             }
-            let res = database
-                .save_step(
+            event_handling_service
+                .handle_step(
                     step,
                     sse_event.id,
                     sse_event.source.to_string(),
                     sse_event.api_version,
                     sse_event.network_name,
+                    sse_event.inbound_filter,
                 )
                 .await;
-            handle_database_save_result(
-                "Step",
-                format!("{}", era_id.value()).as_str(),
-                res,
-                &outbound_sse_data_sender,
-                sse_event.inbound_filter,
-                || SseData::Step {
-                    era_id,
-                    execution_effects,
-                },
-            )
-            .await;
         }
-        SseData::Shutdown => handle_shutdown(sse_event, database, outbound_sse_data_sender).await,
+        SseData::Shutdown => event_handling_service.handle_shutdown(sse_event).await,
     }
 }
 
-async fn handle_shutdown<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync>(
-    sse_event: SseEvent,
-    sqlite_database: Db,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
-) {
-    warn!("Node ({}) is unavailable", sse_event.source.to_string());
-    let res = sqlite_database
-        .save_shutdown(
-            sse_event.id,
-            sse_event.source.to_string(),
-            sse_event.api_version,
-            sse_event.network_name,
-        )
-        .await;
-    match res {
-        Ok(_) | Err(DatabaseWriteError::UniqueConstraint(_)) => {
-            // We push to outbound on UniqueConstraint error because in sse_server we match shutdowns to outbounds based on the filter they came from to prevent duplicates.
-            // But that also means that we need to pass through all the Shutdown events so the sse_server can determine to which outbound filters they need to be pushed (we
-            // don't store in DB the information from which filter did shutdown came).
-            if let Err(error) = outbound_sse_data_sender
-                .send((SseData::Shutdown, Some(sse_event.inbound_filter)))
-                .await
-            {
-                debug!(
-                    "Error when sending to outbound_sse_data_sender. Error: {}",
-                    error
-                );
-            }
-        }
-        Err(other_err) => {
-            count_error("db_save_error_shutdown");
-            warn!(?other_err, "Unexpected error saving Shutdown")
-        }
-    }
-}
-
-async fn handle_api_version(
-    api_version_manager: std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
-    version: ProtocolVersion,
-    outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
-    filter: Filter,
-    enable_event_logging: bool,
-) {
-    let mut manager_guard = api_version_manager.lock().await;
-    let changed_newest_version = manager_guard.store_version(version);
-    if changed_newest_version {
-        if let Err(error) = outbound_sse_data_sender
-            .send((SseData::ApiVersion(version), Some(filter)))
-            .await
-        {
-            debug!(
-                "Error when sending to outbound_sse_data_sender. Error: {}",
-                error
-            );
-        }
-    }
-    drop(manager_guard);
-    if enable_event_logging {
-        info!(%version, "API Version");
-    }
-}
-
-async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
+async fn sse_processor<EHS: EventHandlingService + Clone + Send + Sync + 'static>(
     inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
-    database: Db,
+    event_handling_service: EHS,
     database_supports_multithreaded_processing: bool,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
@@ -647,8 +476,7 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
     if database_supports_multithreaded_processing {
         start_multi_threaded_events_consumer(
             inbound_sse_data_receiver,
-            outbound_sse_data_sender,
-            database,
+            event_handling_service,
             enable_event_logging,
             api_version_manager,
             #[cfg(feature = "additional-metrics")]
@@ -658,8 +486,7 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
     } else {
         start_single_threaded_events_consumer(
             inbound_sse_data_receiver,
-            outbound_sse_data_sender,
-            database,
+            event_handling_service,
             enable_event_logging,
             api_version_manager,
             #[cfg(feature = "additional-metrics")]
@@ -670,10 +497,9 @@ async fn sse_processor<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync
     Ok(())
 }
 
-fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static>(
+fn handle_events_in_thread<EHS: EventHandlingService + Clone + Send + Sync + 'static>(
     mut queue_rx: Receiver<SseEvent>,
-    database: Db,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
+    event_handling_service: EHS,
     api_version_manager: GuardedApiVersionManager,
     enable_event_logging: bool,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
@@ -682,9 +508,8 @@ fn handle_events_in_thread<Db: DatabaseReader + DatabaseWriter + Clone + Send + 
         while let Some(sse_event) = queue_rx.recv().await {
             handle_single_event(
                 sse_event,
-                database.clone(),
+                event_handling_service.clone(),
                 enable_event_logging,
-                outbound_sse_data_sender.clone(),
                 api_version_manager.clone(),
             )
             .await;
@@ -701,11 +526,10 @@ fn build_queues(cache_size: usize) -> HashMap<Filter, (Sender<SseEvent>, Receive
 }
 
 async fn start_multi_threaded_events_consumer<
-    Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static,
+    EHS: EventHandlingService + Clone + Send + Sync + 'static,
 >(
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
-    database: Db,
+    event_handling_service: EHS,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
@@ -715,8 +539,7 @@ async fn start_multi_threaded_events_consumer<
     for (filter, (tx, rx)) in senders_and_receivers_map.drain() {
         handle_events_in_thread(
             rx,
-            database.clone(),
-            outbound_sse_data_sender.clone(),
+            event_handling_service.clone(),
             api_version_manager.clone(),
             enable_event_logging,
             #[cfg(feature = "additional-metrics")]
@@ -739,11 +562,10 @@ async fn start_multi_threaded_events_consumer<
 }
 
 async fn start_single_threaded_events_consumer<
-    Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync,
+    EHS: EventHandlingService + Clone + Send + Sync + 'static,
 >(
     mut inbound_sse_data_receiver: Receiver<SseEvent>,
-    outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
-    database: Db,
+    event_handling_service: EHS,
     enable_event_logging: bool,
     api_version_manager: GuardedApiVersionManager,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
@@ -751,17 +573,12 @@ async fn start_single_threaded_events_consumer<
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         handle_single_event(
             sse_event,
-            database.clone(),
+            event_handling_service.clone(),
             enable_event_logging,
-            outbound_sse_data_sender.clone(),
             api_version_manager.clone(),
         )
         .await;
         #[cfg(feature = "additional-metrics")]
         let _ = metrics_sender.send(()).await;
     }
-}
-
-fn count_error(reason: &str) {
-    observe_error("event_listener_server", reason);
 }
