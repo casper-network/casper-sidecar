@@ -7,7 +7,7 @@ use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU16, Ordering},
         Arc,
     },
     time::Duration,
@@ -479,7 +479,7 @@ pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
     #[error("request id mismatch: expected {expected}, got {got}")]
-    RequestResponseIdMismatch { expected: u64, got: u64 },
+    RequestResponseIdMismatch { expected: u16, got: u16 },
     #[error("failed to deserialize the original request provided with the response: {0}")]
     OriginalRequestDeserialization(String),
     #[error("failed to deserialize the envelope of a response: {0}")]
@@ -609,7 +609,7 @@ pub struct FramedNodeClient {
     shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
     request_limit: Semaphore,
-    current_request_id: AtomicU64,
+    current_request_id: AtomicU16,
 }
 
 impl FramedNodeClient {
@@ -634,13 +634,13 @@ impl FramedNodeClient {
                 reconnect,
                 shutdown,
                 config,
-                current_request_id: AtomicU64::new(0),
+                current_request_id: AtomicU16::new(0),
             },
             reconnect_loop,
         ))
     }
 
-    fn next_id(&self) -> u64 {
+    fn next_id(&self) -> u16 {
         self.current_request_id.fetch_add(1, Ordering::Relaxed)
     }
 
@@ -716,7 +716,7 @@ impl FramedNodeClient {
         }
     }
 
-    fn generate_payload(&self, req: BinaryRequest) -> (u64, BinaryMessage) {
+    fn generate_payload(&self, req: BinaryRequest) -> (u16, BinaryMessage) {
         let next_id = self.next_id();
         (
             next_id,
@@ -811,13 +811,10 @@ impl NodeClient for FramedNodeClient {
 
 fn validate_response(
     resp: BinaryResponseAndRequest,
-    expected_id: u64,
+    expected_id: u16,
     shutdown: &Notify<Shutdown>,
 ) -> Result<BinaryResponseAndRequest, Error> {
-    let original_request = resp.original_request();
-    let (original_header, _) = BinaryRequestHeader::from_bytes(original_request)
-        .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-    let original_id = original_header.id();
+    let original_id = resp.original_request_id();
     if original_id != expected_id {
         return Err(Error::RequestResponseIdMismatch {
             expected: expected_id,

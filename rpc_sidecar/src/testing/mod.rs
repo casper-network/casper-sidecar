@@ -77,7 +77,7 @@ pub fn get_port() -> u16 {
 
 pub async fn start_mock_binary_port_responding_with_stored_value(
     port: u16,
-    request_id: Option<u64>,
+    request_id: Option<u16>,
     shutdown: Arc<Notify>,
 ) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
@@ -85,7 +85,7 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
     let val = BinaryResponse::from_value(data, protocol_version);
     let request = get_dummy_request_payload(request_id);
-    let response = BinaryResponseAndRequest::new(val, &request);
+    let response = BinaryResponseAndRequest::new(val, &request, request_id.unwrap_or_default());
     start_mock_binary_port(port, response.to_bytes().unwrap(), shutdown).await
 }
 
@@ -109,7 +109,7 @@ pub(crate) fn get_dummy_request() -> BinaryRequest {
     })
 }
 
-pub(crate) fn get_dummy_request_payload(request_id: Option<u64>) -> bytesrepr::Bytes {
+pub(crate) fn get_dummy_request_payload(request_id: Option<u16>) -> bytesrepr::Bytes {
     let dummy_request = get_dummy_request();
     encode_request(&dummy_request, request_id.unwrap_or_default())
         .unwrap()
