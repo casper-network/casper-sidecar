@@ -1260,6 +1260,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1280,6 +1281,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1300,6 +1302,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1321,6 +1324,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1339,6 +1343,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1405,6 +1410,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1425,6 +1431,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1445,6 +1452,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1468,6 +1476,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1483,6 +1492,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1502,6 +1512,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1559,6 +1570,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
@@ -1571,6 +1583,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1624,6 +1637,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1644,6 +1658,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1669,6 +1684,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1690,6 +1706,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1707,6 +1724,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1834,6 +1852,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1848,6 +1867,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1936,6 +1956,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -1959,6 +1980,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2010,6 +2032,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     BinaryRequest::Get(GetRequest::State(req))
@@ -2024,6 +2047,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2220,6 +2244,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2242,6 +2267,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2271,6 +2297,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State(req))
@@ -2279,6 +2306,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2308,6 +2336,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State(req))
@@ -2328,6 +2357,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2350,6 +2380,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

@@ -15,8 +15,8 @@ use std::{
 use tokio_util::codec::Framed;
 
 use casper_binary_port::{
-    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
-    BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryResponse,
+    BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
     GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus, PayloadEntity, PurseIdentifier,
     RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
@@ -912,6 +912,7 @@ mod tests {
     };
 
     use super::*;
+    use casper_binary_port::BinaryRequestHeader;
     use casper_types::testing::TestRng;
     use casper_types::{CLValue, SemVer};
     use futures::FutureExt;
@@ -928,6 +929,7 @@ mod tests {
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
                 &request,
+                0,
             ),
             0,
             &notify,
@@ -951,6 +953,7 @@ mod tests {
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
                 &request,
+                0,
             ),
             0,
             &notify,
@@ -960,7 +963,8 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request
+                &request,
+                0
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -980,6 +984,7 @@ mod tests {
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
                 &request,
+                0,
             ),
             0,
             &notify,
@@ -989,7 +994,8 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request
+                &request,
+                0
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -1149,7 +1155,7 @@ mod tests {
 
         let req = get_dummy_request_payload(Some(actual_id));
         let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
 
         let result = validate_response(resp_and_req, expected_id, &notify);
         assert!(matches!(
@@ -1162,7 +1168,7 @@ mod tests {
 
         let req = get_dummy_request_payload(Some(actual_id));
         let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
 
         let result = validate_response(resp_and_req, expected_id, &notify);
         assert!(matches!(
@@ -1180,7 +1186,7 @@ mod tests {
 
         let req = get_dummy_request_payload(Some(actual_id));
         let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
 
         let result = validate_response(resp_and_req, expected_id, &notify);
         dbg!(&result);

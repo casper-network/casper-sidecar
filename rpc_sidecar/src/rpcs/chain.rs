@@ -704,6 +704,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.clone(), SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
@@ -716,6 +717,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::Record {
@@ -758,6 +760,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State(req))
@@ -778,6 +781,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

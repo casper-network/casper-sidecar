@@ -246,6 +246,7 @@ mod tests {
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
+                        0,
                     ))
                 }
                 BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
@@ -254,6 +255,7 @@ mod tests {
                         SUPPORTED_PROTOCOL_VERSION,
                     ),
                     &[],
+                    0,
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
             }
