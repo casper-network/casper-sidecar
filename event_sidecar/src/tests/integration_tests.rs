@@ -47,7 +47,7 @@ async fn should_not_allow_zero_max_attempts() {
         .expect("database should start");
     let shutdown_error = run(
         testing_config.inner(),
-        Database::SqliteDatabaseWrapper(sqlite_database),
+        Some(Database::SqliteDatabaseWrapper(sqlite_database)),
     )
     .await
     .expect_err("Sidecar should return an Err on shutdown");

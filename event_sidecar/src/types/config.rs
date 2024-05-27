@@ -64,9 +64,10 @@ impl Default for SseEventServerConfig {
 #[cfg(any(feature = "testing", test))]
 impl SseEventServerConfig {
     pub fn default_no_persistence() -> Self {
-        let mut default = Self::default();
-        default.disable_event_persistence = Some(true);
-        default
+        Self {
+            disable_event_persistence: Some(true),
+            ..Default::default()
+        }
     }
 }
 

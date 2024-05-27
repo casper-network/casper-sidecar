@@ -447,6 +447,6 @@ pub mod tests {
                 run_rest_server(rest_api_server_config, database_for_rest_api).await
             });
         }
-        run(sse_config, database).await
+        run(sse_config, Some(database)).await
     }
 }
