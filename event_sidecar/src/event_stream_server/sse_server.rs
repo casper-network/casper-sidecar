@@ -56,6 +56,9 @@ pub const SSE_API_SIDECAR_PATH: &str = "sidecar";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
 
+// This notice should go away once we remove the legacy filter endpoints.
+pub const LEGACY_ENDPOINT_NOTICE: &str = "This endpoint is NOT a 1 to 1 representation of events coming off of the node. Some events are not transformable to legacy format. Please consult the documentation for details. This endpoint is deprecated and will be removed in a future release. Please migrate to the /events endpoint instead.";
+
 /// The filter associated with `/events` path.
 const EVENTS_FILTER: [EventFilter; 8] = [
     EventFilter::ApiVersion,
@@ -105,8 +108,10 @@ pub(super) struct TransactionAccepted {
 pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
-    /// Payload of the event
-    pub(super) data: SseData,
+    /// Payload of the event. This generally shouldn't be an Option, but untill we have legacy filter endpoints we need to be prepared to have a event that is a comment and has no data. When legacy filter endpoints go away this should be of type SseData
+    pub(super) data: Option<SseData>,
+    /// Comment of the event
+    pub(super) comment: Option<&'static str>,
     /// Information which endpoint we got the event from
     pub(super) inbound_filter: Option<SseFilter>,
 }
@@ -116,14 +121,24 @@ impl ServerSentEvent {
     pub(super) fn initial_event(client_api_version: ProtocolVersion) -> Self {
         ServerSentEvent {
             id: None,
-            data: SseData::ApiVersion(client_api_version),
+            comment: None,
+            data: Some(SseData::ApiVersion(client_api_version)),
             inbound_filter: None,
         }
     }
     pub(super) fn sidecar_version_event(version: ProtocolVersion) -> Self {
         ServerSentEvent {
             id: None,
-            data: SseData::SidecarVersion(version),
+            comment: None,
+            data: Some(SseData::SidecarVersion(version)),
+            inbound_filter: None,
+        }
+    }
+    pub(super) fn legacy_comment_event() -> Self {
+        ServerSentEvent {
+            id: None,
+            comment: Some(LEGACY_ENDPOINT_NOTICE),
+            data: None,
             inbound_filter: None,
         }
     }
@@ -145,12 +160,13 @@ pub(super) enum BroadcastChannelMessage {
 
 fn event_to_warp_event(
     event: &ServerSentEvent,
+    data: &SseData,
     is_legacy_filter: bool,
     maybe_id: Option<String>,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     let warp_data = WarpServerSentEvent::default();
     let maybe_event = if is_legacy_filter {
-        let legacy_data = LegacySseData::from(&event.data);
+        let legacy_data = LegacySseData::from(data);
         legacy_data.map(|data| {
             warp_data.json_data(&data).unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
@@ -158,7 +174,7 @@ fn event_to_warp_event(
             })
         })
     } else {
-        Some(warp_data.json_data(&event.data).unwrap_or_else(|error| {
+        Some(warp_data.json_data(data).unwrap_or_else(|error| {
             warn!(%error, ?event, "failed to jsonify sse event");
             WarpServerSentEvent::default()
         }))
@@ -178,6 +194,7 @@ pub(super) struct NewSubscriberInfo {
     /// A channel to send the initial events to the client's handler.  This will always send the
     /// ApiVersion as the first event, and then any buffered events as indicated by `start_from`.
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
+    pub(super) enable_legacy_filters: bool,
 }
 
 /// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
@@ -187,33 +204,66 @@ async fn filter_map_server_sent_event(
     event_filter: &[EventFilter],
     is_legacy_filter: bool,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
-    if !event.data.should_include(event_filter) {
+    if should_skip_event(event, event_filter, is_legacy_filter) {
         return None;
     }
-    let id = match determine_id(event) {
-        Some(id) => id,
-        None => return None,
-    };
 
-    match &event.data {
-        &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
-            event_to_warp_event(event, is_legacy_filter, None)
-        }
-        &SseData::BlockAdded { .. }
-        | &SseData::TransactionProcessed { .. }
-        | &SseData::TransactionExpired { .. }
-        | &SseData::Fault { .. }
-        | &SseData::Step { .. }
-        | &SseData::TransactionAccepted(..)
-        | &SseData::FinalitySignature(_) => event_to_warp_event(event, is_legacy_filter, Some(id)),
-        &SseData::Shutdown => {
-            if should_send_shutdown(event, stream_filter) {
-                build_event_for_outbound(event, id)
-            } else {
-                None
+    if let Some(data) = event.data.as_ref() {
+        let id = match determine_id(event, data) {
+            Some(id) => id,
+            None => return None,
+        };
+        match data {
+            &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
+                event_to_warp_event(event, data, is_legacy_filter, None)
+            }
+            &SseData::BlockAdded { .. }
+            | &SseData::TransactionProcessed { .. }
+            | &SseData::TransactionExpired { .. }
+            | &SseData::Fault { .. }
+            | &SseData::Step { .. }
+            | &SseData::TransactionAccepted(..)
+            | &SseData::FinalitySignature(_) => {
+                event_to_warp_event(event, data, is_legacy_filter, Some(id))
+            }
+            &SseData::Shutdown => {
+                if should_send_shutdown(event, stream_filter) {
+                    build_event_for_outbound(event, data, id)
+                } else {
+                    None
+                }
             }
         }
+    } else if let Some(comment) = event.comment {
+        build_comment_event(comment)
+    } else {
+        None
     }
+}
+
+fn should_skip_event(
+    event: &ServerSentEvent,
+    event_filter: &[EventFilter],
+    is_legacy_filter: bool,
+) -> bool {
+    if !event
+        .data
+        .as_ref()
+        .map(|d| d.should_include(event_filter))
+        .unwrap_or(true)
+    {
+        return true;
+    }
+
+    if !event
+        .comment
+        .as_ref()
+        .map(|_| is_legacy_filter)
+        .unwrap_or(true)
+    {
+        return true;
+    }
+    false
 }
 
 fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bool {
@@ -224,10 +274,10 @@ fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bo
     }
 }
 
-fn determine_id(event: &ServerSentEvent) -> Option<String> {
+fn determine_id(event: &ServerSentEvent, data: &SseData) -> Option<String> {
     match event.id {
         Some(id) => {
-            if matches!(&event.data, &SseData::ApiVersion { .. }) {
+            if matches!(data, &SseData::ApiVersion { .. }) {
                 error!("ApiVersion should have no event ID");
                 return None;
             }
@@ -235,7 +285,7 @@ fn determine_id(event: &ServerSentEvent) -> Option<String> {
         }
         None => {
             if !matches!(
-                &event.data,
+                data,
                 &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. }
             ) {
                 error!("only ApiVersion and SidecarVersion may have no event ID");
@@ -246,11 +296,16 @@ fn determine_id(event: &ServerSentEvent) -> Option<String> {
     }
 }
 
+fn build_comment_event(comment: &str) -> Option<Result<WarpServerSentEvent, RecvError>> {
+    Some(Ok(WarpServerSentEvent::default().comment(comment)))
+}
+
 fn build_event_for_outbound(
     event: &ServerSentEvent,
+    data: &SseData,
     id: String,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
-    let json_value = serde_json::to_value(&event.data).unwrap();
+    let json_value = serde_json::to_value(data).unwrap();
     Some(Ok(WarpServerSentEvent::default()
         .json_data(&json_value)
         .unwrap_or_else(|error| {
@@ -385,6 +440,7 @@ fn serve_sse_response_handler(
     let new_subscriber_info = NewSubscriberInfo {
         start_from,
         initial_events_sender,
+        enable_legacy_filters,
     };
     if new_subscriber_info_sender
         .send(new_subscriber_info)
@@ -665,55 +721,65 @@ mod tests {
 
         let api_version = ServerSentEvent {
             id: None,
-            data: SseData::random_api_version(&mut rng),
+            comment: None,
+            data: Some(SseData::random_api_version(&mut rng)),
             inbound_filter: None,
         };
         let block_added = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_block_added(&mut rng),
+            comment: None,
+            data: Some(SseData::random_block_added(&mut rng)),
             inbound_filter: None,
         };
         let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
         let transaction_accepted = ServerSentEvent {
             id: Some(rng.gen()),
-            data: sse_data,
+            comment: None,
+            data: Some(sse_data),
             inbound_filter: None,
         };
         let mut transactions = HashMap::new();
         let _ = transactions.insert(transaction.hash(), transaction);
         let transaction_processed = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_transaction_processed(&mut rng),
+            comment: None,
+            data: Some(SseData::random_transaction_processed(&mut rng)),
             inbound_filter: None,
         };
         let transaction_expired = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_transaction_expired(&mut rng),
+            comment: None,
+            data: Some(SseData::random_transaction_expired(&mut rng)),
             inbound_filter: None,
         };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_fault(&mut rng),
+            comment: None,
+            data: Some(SseData::random_fault(&mut rng)),
             inbound_filter: None,
         };
         let finality_signature = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_finality_signature(&mut rng),
+            comment: None,
+            data: Some(SseData::random_finality_signature(&mut rng)),
             inbound_filter: None,
         };
         let step = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_step(&mut rng),
+            comment: None,
+            data: Some(SseData::random_step(&mut rng)),
             inbound_filter: None,
         };
         let shutdown = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::Shutdown,
+            comment: None,
+            data: Some(SseData::Shutdown),
             inbound_filter: Some(SseFilter::Events),
         };
         let sidecar_api_version = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_sidecar_version(&mut rng),
+            comment: None,
+            data: Some(SseData::random_sidecar_version(&mut rng)),
             inbound_filter: None,
         };
 
@@ -784,50 +850,59 @@ mod tests {
 
         let malformed_api_version = ServerSentEvent {
             id: Some(rng.gen()),
-            data: SseData::random_api_version(&mut rng),
+            comment: None,
+            data: Some(SseData::random_api_version(&mut rng)),
             inbound_filter: None,
         };
         let malformed_block_added = ServerSentEvent {
             id: None,
-            data: SseData::random_block_added(&mut rng),
+            comment: None,
+            data: Some(SseData::random_block_added(&mut rng)),
             inbound_filter: None,
         };
         let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
         let malformed_transaction_accepted = ServerSentEvent {
             id: None,
-            data: sse_data,
+            comment: None,
+            data: Some(sse_data),
             inbound_filter: None,
         };
         let mut transactions = HashMap::new();
         let _ = transactions.insert(transaction.hash(), transaction);
         let malformed_transaction_processed = ServerSentEvent {
             id: None,
-            data: SseData::random_transaction_processed(&mut rng),
+            comment: None,
+            data: Some(SseData::random_transaction_processed(&mut rng)),
             inbound_filter: None,
         };
         let malformed_transaction_expired = ServerSentEvent {
             id: None,
-            data: SseData::random_transaction_expired(&mut rng),
+            comment: None,
+            data: Some(SseData::random_transaction_expired(&mut rng)),
             inbound_filter: None,
         };
         let malformed_fault = ServerSentEvent {
             id: None,
-            data: SseData::random_fault(&mut rng),
+            comment: None,
+            data: Some(SseData::random_fault(&mut rng)),
             inbound_filter: None,
         };
         let malformed_finality_signature = ServerSentEvent {
             id: None,
-            data: SseData::random_finality_signature(&mut rng),
+            comment: None,
+            data: Some(SseData::random_finality_signature(&mut rng)),
             inbound_filter: None,
         };
         let malformed_step = ServerSentEvent {
             id: None,
-            data: SseData::random_step(&mut rng),
+            comment: None,
+            data: Some(SseData::random_step(&mut rng)),
             inbound_filter: None,
         };
         let malformed_shutdown = ServerSentEvent {
             id: None,
-            data: SseData::Shutdown,
+            comment: None,
+            data: Some(SseData::Shutdown),
             inbound_filter: None,
         };
 
@@ -931,7 +1006,7 @@ mod tests {
             {
                 let received_event = received_event.as_ref().unwrap();
 
-                let expected_data = deduplicated_event.data.clone();
+                let expected_data = deduplicated_event.data.clone().unwrap();
                 let mut received_event_str = received_event.to_string().trim().to_string();
 
                 let ends_with_id = Regex::new(r"\nid:\d*$").unwrap();
@@ -1031,7 +1106,8 @@ mod tests {
                 };
                 ServerSentEvent {
                     id: Some(id),
-                    data,
+                    comment: None,
+                    data: Some(data),
                     inbound_filter: None,
                 }
             })

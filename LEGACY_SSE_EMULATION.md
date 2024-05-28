@@ -8,7 +8,7 @@ SSE emulation is by default turned off, the instruction on how to enable it is i
 
 **BEFORE YOU ENABLE LEGACY SSE EMULATION** please consider the following:
 
-- The legacy SSE emulation is a temporary solution and can be removed in a future major release.
+- The legacy SSE emulation is a temporary solution and can be removed in a future major release. Consider it being _deprecated_.
 - The legacy SSE emulation is not a 1:1 mapping of the 2.x events to 1.x events. Some events will be omitted, some will be transformed, some will be passed as is. More details on the limitations of the emulation are explained below.
 - The legacy SSE emulation is an additional drain on resources. It will consume more resources than the "native" 2.x SSE API.
 
