@@ -24,11 +24,16 @@ const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 pub struct BinaryPortMock {
     port: u16,
     response: Vec<u8>,
+    number_of_responses: u8,
 }
 
 impl BinaryPortMock {
-    pub fn new(port: u16, response: Vec<u8>) -> Self {
-        Self { port, response }
+    pub fn new(port: u16, response: Vec<u8>, number_of_responses: u8) -> Self {
+        Self {
+            port,
+            response,
+            number_of_responses,
+        }
     }
 
     pub async fn start(&self, shutdown: Arc<Notify>) {
@@ -46,7 +51,7 @@ impl BinaryPortMock {
                     match val {
                         Ok((stream, _addr)) => {
                             let response_payload = self.response.clone();
-                            tokio::spawn(handle_client(stream, response_payload));
+                            tokio::spawn(handle_client(stream, response_payload, self.number_of_responses));
                         }
                         Err(io_err) => {
                             println!("acceptance failure: {:?}", io_err);
@@ -58,14 +63,16 @@ impl BinaryPortMock {
     }
 }
 
-async fn handle_client(stream: TcpStream, response: Vec<u8>) {
+async fn handle_client(stream: TcpStream, response: Vec<u8>, number_of_responses: u8) {
     let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
 
     let next_message = client.next().await;
     if next_message.is_some() {
         tokio::spawn({
             async move {
-                let _ = client.send(BinaryMessage::new(response)).await;
+                for _ in 0..number_of_responses {
+                    let _ = client.send(BinaryMessage::new(response.clone())).await;
+                }
             }
         });
     }
@@ -78,6 +85,7 @@ pub fn get_port() -> u16 {
 pub async fn start_mock_binary_port_responding_with_stored_value(
     port: u16,
     request_id: Option<u16>,
+    number_of_responses: Option<u8>,
     shutdown: Arc<Notify>,
 ) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
@@ -86,16 +94,23 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     let val = BinaryResponse::from_value(data, protocol_version);
     let request = get_dummy_request_payload(request_id);
     let response = BinaryResponseAndRequest::new(val, &request, request_id.unwrap_or_default());
-    start_mock_binary_port(port, response.to_bytes().unwrap(), shutdown).await
+    start_mock_binary_port(
+        port,
+        response.to_bytes().unwrap(),
+        number_of_responses.unwrap_or(1), // Single response by default
+        shutdown,
+    )
+    .await
 }
 
 pub async fn start_mock_binary_port(
     port: u16,
     data: Vec<u8>,
+    number_of_responses: u8,
     shutdown: Arc<Notify>,
 ) -> JoinHandle<()> {
     let handler = tokio::spawn(async move {
-        let binary_port = BinaryPortMock::new(port, data);
+        let binary_port = BinaryPortMock::new(port, data, number_of_responses);
         binary_port.start(shutdown).await;
     });
     sleep(Duration::from_secs(3)).await; // This should be handled differently, preferably the mock binary port should inform that it already bound to the port

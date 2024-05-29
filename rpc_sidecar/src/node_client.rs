@@ -37,6 +37,12 @@ use tokio::{
 };
 use tracing::{error, field, info, warn};
 
+const MAX_MISMATCHED_ID_RETRIES: u8 = 100;
+#[cfg(not(test))]
+const INITIAL_REQUEST_ID: u16 = 0;
+#[cfg(test)]
+const INITIAL_REQUEST_ID: u16 = 1;
+
 #[async_trait]
 pub trait NodeClient: Send + Sync {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error>;
@@ -480,6 +486,8 @@ pub enum Error {
     RequestFailed(String),
     #[error("request id mismatch: expected {expected}, got {got}")]
     RequestResponseIdMismatch { expected: u16, got: u16 },
+    #[error("failed to get a response with correct id {max} times, giving up")]
+    TooManyMismatchedResponses { max: u8 },
     #[error("failed to deserialize the original request provided with the response: {0}")]
     OriginalRequestDeserialization(String),
     #[error("failed to deserialize the envelope of a response: {0}")]
@@ -634,7 +642,7 @@ impl FramedNodeClient {
                 reconnect,
                 shutdown,
                 config,
-                current_request_id: AtomicU16::new(0),
+                current_request_id: AtomicU16::new(INITIAL_REQUEST_ID),
             },
             reconnect_loop,
         ))
@@ -682,7 +690,7 @@ impl FramedNodeClient {
             return Err(Error::RequestFailed(err.to_string()));
         };
 
-        loop {
+        for _ in 0..MAX_MISMATCHED_ID_RETRIES {
             let Ok(maybe_response) = tokio::time::timeout(
                 Duration::from_secs(self.config.message_timeout_secs),
                 client.next(),
@@ -714,6 +722,10 @@ impl FramedNodeClient {
                 return Err(Error::RequestFailed("disconnected".to_owned()));
             }
         }
+
+        Err(Error::TooManyMismatchedResponses {
+            max: MAX_MISMATCHED_ID_RETRIES,
+        })
     }
 
     fn generate_payload(&self, req: BinaryRequest) -> (u16, BinaryMessage) {
@@ -1018,9 +1030,13 @@ mod tests {
         let port = get_port();
         let mut rng = TestRng::new();
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let _mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, None, Arc::clone(&shutdown))
-                .await;
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(INITIAL_REQUEST_ID),
+            None,
+            Arc::clone(&shutdown),
+        )
+        .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
@@ -1040,6 +1056,7 @@ mod tests {
             sleep(Duration::from_secs(5)).await;
             let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
                 port,
+                Some(INITIAL_REQUEST_ID),
                 None,
                 Arc::clone(&shutdown),
             )
@@ -1079,7 +1096,8 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
             port,
-            Some(0),
+            Some(INITIAL_REQUEST_ID),
+            None,
             Arc::clone(&shutdown),
         )
         .await;
@@ -1106,7 +1124,8 @@ mod tests {
 
             let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
                 port,
-                Some(2),
+                Some(INITIAL_REQUEST_ID + 2),
+                None,
                 Arc::clone(&shutdown),
             )
             .await;
@@ -1130,10 +1149,10 @@ mod tests {
         let port = get_port();
         let config = NodeClientConfig::new_with_port(port);
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let _ = start_mock_binary_port(port, vec![], Arc::clone(&shutdown)).await;
+        let _ = start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
-        let generated_ids: Vec<_> = (0..10)
+        let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
                 let (_, binary_message) = c.generate_payload(get_dummy_request());
                 let header = BinaryRequestHeader::from_bytes(&binary_message.payload())
@@ -1143,7 +1162,10 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(generated_ids, (0..10).collect::<Vec<_>>());
+        assert_eq!(
+            generated_ids,
+            (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1191,5 +1213,53 @@ mod tests {
         let result = validate_response(resp_and_req, expected_id, &notify);
         dbg!(&result);
         assert!(result.is_ok())
+    }
+
+    #[tokio::test]
+    async fn should_keep_retrying_to_get_response_up_to_the_limit() {
+        const LIMIT: u8 = MAX_MISMATCHED_ID_RETRIES - 1;
+
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(0),
+            Some(LIMIT),
+            Arc::clone(&shutdown),
+        )
+        .await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let res = query_global_state_for_string_value(&mut rng, &c)
+            .await
+            .unwrap_err();
+        // Expect error different than 'TooManyMismatchResponses'
+        assert!(!matches!(res, Error::TooManyMismatchedResponses { .. }));
+    }
+
+    #[tokio::test]
+    async fn should_quit_retrying_to_get_response_over_the_retry_limit() {
+        const LIMIT: u8 = MAX_MISMATCHED_ID_RETRIES;
+
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(0),
+            Some(LIMIT),
+            Arc::clone(&shutdown),
+        )
+        .await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let res = query_global_state_for_string_value(&mut rng, &c)
+            .await
+            .unwrap_err();
+        // Expect 'TooManyMismatchResponses' error
+        assert!(matches!(res, Error::TooManyMismatchedResponses { max } if max == LIMIT));
     }
 }

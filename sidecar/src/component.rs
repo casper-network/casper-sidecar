@@ -358,9 +358,13 @@ mod tests {
     async fn given_rpc_api_server_component_when_config_should_return_some() {
         let port = get_port();
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let _mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, None, Arc::clone(&shutdown))
-                .await;
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            None,
+            None,
+            Arc::clone(&shutdown),
+        )
+        .await;
         let component = RpcApiComponent::new();
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
