@@ -15,9 +15,11 @@ pub struct TransferDeployHashesTranslator;
 impl DeployHashTranslator for StandardDeployHashesTranslator {
     fn translate(&self, block_body_v2: &casper_types::BlockBodyV2) -> Vec<DeployHash> {
         block_body_v2
-            .all_transactions()
+            .small()
+            .chain(block_body_v2.medium())
+            .chain(block_body_v2.large())
             .filter_map(|el| match el {
-                &TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
                 TransactionHash::V1(_) => None,
             })
             .collect()
