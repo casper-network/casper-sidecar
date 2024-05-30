@@ -169,7 +169,7 @@ pub fn sample_transactions(
     let standard_deploy_hash = *deploy.hash();
     let standard_deploy = Transaction::Deploy(deploy);
 
-    let version_1 = TransactionV1::random_standard(rng, None, None);
+    let version_1 = TransactionV1::random(rng);
     let standard_version_1_hash = *version_1.hash();
     let standard_version_1 = Transaction::V1(version_1);
 
@@ -185,7 +185,7 @@ pub fn sample_transactions(
     let install_upgrade_v1_hash = *version_1.hash();
     let install_upgrade_v1 = Transaction::V1(version_1);
 
-    let version_1 = TransactionV1::random_staking(rng, Some(timestamp), Some(ttl));
+    let version_1 = TransactionV1::random_wasm(rng, Some(timestamp), Some(ttl));
     let auction_v1_hash = *version_1.hash();
     let auction_v1 = Transaction::V1(version_1);
 
@@ -272,7 +272,7 @@ pub fn era_end_v2() -> EraEndV2 {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
-        U512::from_dec_str("129457537").unwrap(),
+        vec![U512::from_dec_str("129457537").unwrap()],
     );
     EraEndV2::new(
         vec![
@@ -306,7 +306,7 @@ pub fn era_end_v2_with_reward_exceeding_u64() -> EraEndV2 {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
-        U512::from_dec_str("18446744073709551616").unwrap(),
+        vec![U512::from_dec_str("18446744073709551616").unwrap()],
     );
     EraEndV2::new(
         vec![
