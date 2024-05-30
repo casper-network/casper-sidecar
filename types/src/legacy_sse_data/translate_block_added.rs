@@ -31,13 +31,13 @@ impl EraEndV2Translator for DefaultEraEndV2Translator {
     fn translate(&self, era_end: &EraEndV2) -> Option<EraEndV1> {
         let mut rewards = BTreeMap::new();
         for (k, v) in era_end.rewards().iter() {
-            let max_u64 = U512::from(u64::MAX);
-            if v.gt(&max_u64) {
+            let amount = v.iter().cloned().sum::<U512>();
+            if amount > U512::from(u64::MAX) {
                 //We're not able to cast the reward to u64, so we skip this era end.
                 return None;
             }
-            println!("Reward: {:?} {:?} {:?}", k.clone(), v, v.as_u64());
-            rewards.insert(k.clone(), v.as_u64());
+            println!("Reward: {:?} {:?}", k.clone(), amount);
+            rewards.insert(k.clone(), amount.as_u64());
         }
         let era_report = EraReport::new(
             era_end.equivocators().to_vec(),
