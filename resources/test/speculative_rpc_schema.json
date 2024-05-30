@@ -174,12 +174,12 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8",
+                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
+                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -230,12 +230,13 @@
                     ],
                     "target": "Native",
                     "entry_point": "Transfer",
+                    "transaction_kind": 0,
                     "scheduling": "Standard"
                   },
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012eaaf83b1ed367ed424c859974bc5115a62d6b10d635f4b39d380414c4abcb2d54c01b7b96e0d27e00ed913f05f06d7bee9c25c31bbd8e9215961e61f835250d"
+                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
                     }
                   ]
                 }
@@ -3822,7 +3823,8 @@
           "args",
           "entry_point",
           "scheduling",
-          "target"
+          "target",
+          "transaction_kind"
         ],
         "properties": {
           "args": {
@@ -3833,6 +3835,11 @@
           },
           "entry_point": {
             "$ref": "#/components/schemas/TransactionEntryPoint"
+          },
+          "transaction_kind": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           },
           "scheduling": {
             "$ref": "#/components/schemas/TransactionScheduling"
