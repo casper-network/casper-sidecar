@@ -22,7 +22,7 @@ The Sidecar maintains a TCP connection with the node and communicates using a cu
 
 ## Discovering the JSON RPC API
 
-Once setup and running as described [here](../README.md), the Sidecar can be queried for its JSON RPC API using the `rpc.discover` method, as shown below. The result will be a list of RPC methods and their parameters.
+Once setup and running as described [here](../README.md), the Sidecar can be queried for its JSON-RPC API using the `rpc.discover` method, as shown below. The result will be a list of RPC methods and their parameters.
 
 ```bash
 curl -X POST http://localhost:<RPC_SERVER_PORT>/rpc -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "method": "rpc.discover", "id": 1}'
