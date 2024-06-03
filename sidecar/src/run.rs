@@ -29,16 +29,16 @@ async fn do_run(
     config: SidecarConfig,
     components: Vec<Box<dyn Component>>,
 ) -> Result<ExitCode, ComponentError> {
-    if components.is_empty() {
-        info!("No sidecar components are defined/enabled. Exiting");
-        return Ok(ExitCode::SUCCESS);
-    }
     let mut component_futures = Vec::new();
     for component in components.iter() {
         let maybe_future = component.prepare_component_task(&config).await?;
         if let Some(future) = maybe_future {
             component_futures.push(future);
         }
+    }
+    if component_futures.is_empty() {
+        info!("No runnable sidecar components are defined/enabled. Exiting");
+        return Ok(ExitCode::SUCCESS);
     }
     futures::future::select_all(component_futures).await.0
 }
