@@ -35,20 +35,6 @@ impl SidecarConfig {
         if self.rpc_server.is_none() && self.sse_server.is_none() {
             bail!("At least one of RPC server or SSE server must be configured")
         }
-        let is_any_rpc_enabled = self.rpc_server.as_ref().is_some_and(|conf| {
-            conf.main_server.enable_server
-                || conf
-                    .speculative_exec_server
-                    .as_ref()
-                    .is_some_and(|conf| conf.enable_server)
-        });
-        let is_sse_enabled = self
-            .sse_server
-            .as_ref()
-            .is_some_and(|conf| conf.enable_server);
-        if !is_any_rpc_enabled && !is_sse_enabled {
-            bail!("At least one of RPC server or SSE server must be enabled")
-        }
         if self.storage.is_none() && self.sse_server.is_some() {
             bail!("Can't run SSE server without storage defined")
         }
