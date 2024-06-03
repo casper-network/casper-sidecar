@@ -1,28 +1,5 @@
 # The Legacy SSE Emulation
 
-<!--TODO Questions 
-
-What is the difference between the 2 blocks below? Is Version1 for 1.x node?
-
-    "BlockAdded": {
-      "block_hash": "d59359690ca5a251b513185da0767f744e77645adec82bb6ff785a89edc7591c",
-      "block": {
-        "Version1": …
-
-"BlockAdded": {
-      "block_hash": "2df9fb8909443fba928ed0536a79780cdb4557d0c05fdf762a1fd61141121422",
-      "block": {
-        "Version2": …
-
-How can a V1 block be emitted on a 2.x event stream? This part is confusing to me.
-So a 2.x event stream can emit V1 and V2 blocks?
-
-Why do we have protocol_version: 1.0.0 for the Version2 block?
-
-Can we say this:
-This document refers to legacy events as V1 events, and to events streamed by nodes with version 2.x as V2 events.
-
--->
 
 Casper node versions 2.0 or greater (2.x) produce different SSE events than 1.x versions. Also, 1.x Casper nodes used 3 SSE endpoints (`/events/sigs`, `/events/deploys`, `/events/main`), while 2.x nodes expose all the SSE events on one endpoint (`/events`).
 
@@ -30,7 +7,7 @@ Generally, the changes in 2.x regarding SSE are somewhat backward-incompatible. 
 
 SSE emulation is off by default. To enable it, follow the steps below and read the main [README.md](./README.md#sse-server-configuration) file describing how to configure the SSE server.
 
-> **Note**: This document refers to legacy events as V1 events, and to events streamed by nodes with version 2.x as V2 events.
+> **Note**: 2.x node versions label new block events with `Version2`. In the rare case that a 2.x node sees a legacy block, it will label events coming from this block with `Version1`. The notion of Version1 and Version2 is new to 2.x, and wasn't present in 1.x node versions. So, for the legacy SSE emulation, both Version1 and Version2 BlockAdded events will be transformed to the old BlockAdded event format from 1.x.
 
 **LIMITATIONS:** 
 
@@ -42,7 +19,7 @@ The legacy SSE emulation does not map 2.x events to 1.x events in a 1-to-1 fashi
 
 ## Configuration
 
-Currently, the only possible emulation is the V1 SSE API. To enable the emulation, set the `emulate_legacy_sse_apis` setting to `["V1"]`:
+To enable the legacy SSE emulation, set the `emulate_legacy_sse_apis` setting to `["V1"]`. Currently, this is the only possible value:
 
 ```
 [sse_server]
@@ -57,7 +34,7 @@ This setting will expose three legacy SSE endpoints with the following events st
 - `/events/deploys`- `ApiVersion`, `DeployAccepted` and `Shutdown`
 - `/events/sigs` - `ApiVersion`, `FinalitySignature` and `Shutdown`
 
-Those endpoints will emit events in the same format as the V1 SSE API of the Casper node.
+Those endpoints will emit events in the same format as the legacy SSE API of the Casper node.
 
 ## Event Mapping
 
@@ -69,14 +46,12 @@ The legacy SSE ApiVersion event is the same as the current version.
 
 ### The `BlockAdded` event
 
-<!--TODO Can we say this:
-The Sidecar can emit a legacy `BlockAdded` event by unwrapping the 2.x event structure and creating a 1.x emulated event structure.
--->
+The Sidecar can emit a legacy `BlockAdded` event by unwrapping the 2.x event structure and creating a 1.x emulated event structure. 
 
-A V1 `BlockAdded` event will be unwrapped and passed as a legacy `BlockAdded` event on the 2.x `events` endpoint. For instance, the V1 `BlockAdded` event will be translated to a 1.x emulated event as shown below.
+A Version1 `BlockAdded` event will be unwrapped and passed as a legacy `BlockAdded` event as shown below.
 
 <details>
-<summary>V1 BlockAdded in 2.x</summary>
+<summary>Version1 BlockAdded in 2.x</summary>
 
   ```json
   {
@@ -141,7 +116,7 @@ A V1 `BlockAdded` event will be unwrapped and passed as a legacy `BlockAdded` ev
 </details>
 
 <details>
-<summary>Emulated 1.x BlockAdded (from V1 BlockAdded)</summary>
+<summary>Emulated 1.x BlockAdded (from Version1)</summary>
 
   ```json
   {
@@ -205,25 +180,27 @@ A V1 `BlockAdded` event will be unwrapped and passed as a legacy `BlockAdded` ev
 
 When the 2.x event stream emits a legacy `BlockAdded` event, the following mapping rules apply:
 
-- `block_hash` will be copied from V2 to V1.
-- `block.block_hash` will be copied from V2 to V1.
+- `block_hash` will be copied from Version2 to Version1.
+- `block.block_hash` will be copied from Version2 to Version1.
 - `block.header.era_end`:
-  - If the `era_end` is a V1 variety - it will be copied.
-  - If the `era_end` is a V2 variety:
-    - V2 `next_era_validator_weights` will be copied from V2 `next_era_validator_weights`.
-    - V1 `era_report` will be assembled from the V2 `era_end.equivocators`, `era_end.rewards` and `era_end.inactive_validators` fields.
-    - If one of the `rewards` contains a reward that doesn't fit in a u64 (because V2 has U512 type in rewards values) - the whole `era_end` **WILL BE OMITTED** from the legacy V1 block (value None).
-    - V2 field `next_era_gas_price` has no equivalent in V1 and will be omitted.
-- `block.header.current_gas_price` this field only exists in V2 and will be omitted from the V1 block header.
-- `block.header.proposer` will be copied from V2 to V1 `block.body.proposer`.
-- other `block.header.*` fields will be copied from V2 to V1.
-- `block.body.deploy_hashes` will be based on V2 `block.body.standard` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to V1 `block.body.deploy_hashes` array.
-- `block.body.transfer_hashes` will be based on V2 `block.body.mint` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to V1 `block.body.transfer_hashes` array.
+  - If the `era_end` is a Version1 variety - it will be copied.
+  - If the `era_end` is a Version2 variety:
+    - Version2 `next_era_validator_weights` will be copied from Version2 `next_era_validator_weights`.
+    - Version1 `era_report` will be assembled from the Version2 `era_end.equivocators`, `era_end.rewards` and `era_end.inactive_validators` fields.
+    - If one of the `rewards` contains a reward that doesn't fit in a u64 (because Version2 has U512 type in rewards values) - the whole `era_end` **WILL BE OMITTED** from the legacy Version1 block (value None).
+    - Version2 field `next_era_gas_price` has no equivalent in Version1 and will be omitted.
+- `block.header.current_gas_price` this field only exists in Version2 and will be omitted from the Version1 block header.
+- `block.header.proposer` will be copied from Version2 to Version1 `block.body.proposer`.
+- other `block.header.*` fields will be copied from Version2 to Version1.
+- `block.body.deploy_hashes` will be based on Version2 `block.body.standard` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to Version1 `block.body.deploy_hashes` array.
+- `block.body.transfer_hashes` will be based on Version2 `block.body.mint` transactions. Bear in mind, that only values of transactions of type `Deploy` will be copied to Version1 `block.body.transfer_hashes` array.
 
 Here is an example mapping demonstrating the rules above:
 
+<!-- TODO Why do we have protocol_version: 1.0.0 for the Version2 block? This seems incorrect in this example. >
+
 <details>
-<summary>V2 BlockAdded in 2.x</summary>
+<summary>Version2 BlockAdded in 2.x</summary>
 
   ```json
   {
@@ -323,7 +300,7 @@ Here is an example mapping demonstrating the rules above:
 </details>
 
 <details>
-<summary>Emulated 1.x BlockAdded (from V2 BlockAdded)</summary>
+<summary>Emulated 1.x BlockAdded (from Version2 BlockAdded)</summary>
 
   ```json
   {
@@ -404,10 +381,10 @@ Here is an example mapping demonstrating the rules above:
 
 ### The `TransactionAccepted` event
 
-V1 `TransactionAccepted` events will be unwrapped and translated to legacy `DeployAccepted` events on the legacy SSE stream.
+Version1 `TransactionAccepted` events will be unwrapped and translated to legacy `DeployAccepted` events on the legacy SSE stream.
 
 <details>
-<summary>V1 TransactionAccepted in 2.x</summary>
+<summary>Version1 TransactionAccepted in 2.x</summary>
 
   ```json
   {
@@ -472,7 +449,7 @@ V1 `TransactionAccepted` events will be unwrapped and translated to legacy `Depl
 
 
 <details>
-<summary>Emulated 1.x DeployAccepted (from V1 TransactionAccepted)</summary>
+<summary>Emulated 1.x DeployAccepted (from Version1)</summary>
 
   ```json
   {
@@ -534,9 +511,9 @@ V1 `TransactionAccepted` events will be unwrapped and translated to legacy `Depl
 </details><br></br>
 
 
-<!-- TODO shouldn't this say Version2? -->
+<!-- TODO there is a discrepancy here ("If the event is a V2 variant - it will be omitted so a 2.x event like: ... Version1... will be omitted"). It seems to be a typo, so I am proposing this change: -->
 
-All V2 events will be omitted from legacy SSE event streams. For example, the following event will not be streamed.
+Version1 events will be omitted from legacy SSE event streams. For example, the following event will not be streamed.
 
 ```json
 "TransactionAccepted": {
@@ -573,9 +550,7 @@ A 2.x `TransactionExpired` event will be mapped to a `DeployExpired` event.
 
 </details><br></br>
 
-<!--TODO are you sure it is V1 here and not V2 like above? -->
-
-All V1 variants will be omitted from legacy SSE streams. For example, a 2.x V1 `TransactionExpired` event will not be streamed.
+All Version1 variants will be omitted from legacy SSE streams. For example, the following Version1 `TransactionExpired` event will not be streamed:
 
 ```json
 {
@@ -606,27 +581,27 @@ When translating the `ExecutionResultV2` (`ex_v2`) to a legacy `ExecutionResult`
 - If the `ex_v2.error_message` is not empty, the `ExecutionResult` will be of type `Failure`, and the `ex_v1.error_message` will be set to that value. Otherwise, `ex_v1` will be of type `Success`.
 - The `ex_v1.cost` will be set to the `ex_v2.cost`.
 - The `ex_v1.transfers` list will always be empty since the 2.x node no longer uses a' TransferAddr' notion.
-- The `ex_v1.effect` will be populated based on the `ex_v2.effects` field, applying the rules from [Translating Effects from V2](#translating-effects-from-v2).
+- The `ex_v1.effect` will be populated based on the `ex_v2.effects` field, applying the rules from [Translating Effects from Version2](#translating-effects-from-v2).
 
-#### Translating `Effects` from V2
+#### Translating `Effects` from Version2
 
-When translating the `Effects` from V2 to V1, the following rules apply:
+When translating the `Effects` from Version2 to Version1, the following rules apply:
 
 - The output `operations` field will always be an empty list since the 2.x node no longer uses this concept for execution results.
 - For `transforms`, the objects will be constructed based on the `ex_v2.effects` with the following exceptions:
-  - The V2 `AddKeys` transform will be translated to the V1 `NamedKeys` transform.
-  - The V2 `Write` transform will be translated by applying the rules from paragraph [Translating Write transforms from V2](#translating-write-transform-from-v2). If at least one `Write` transform is not translatable (yielding a `None` value), the transform will be an empty array.
+  - The Version2 `AddKeys` transform will be translated to the Version1 `NamedKeys` transform.
+  - The Version2 `Write` transform will be translated by applying the rules from paragraph [Translating Write transforms from Version2](#translating-write-transform-from-v2). If at least one `Write` transform is not translatable (yielding a `None` value), the transform will be an empty array.
 
-#### Translating `Write` transforms from V2
+#### Translating `Write` transforms from Version2
 
-When translating `Write` transforms from V2 to V1, the following rules apply:
+When translating `Write` transforms from Version2 to Version1, the following rules apply:
 
 - `CLValue`: will be copied to the `WriteCLValue` transform.
-- `Account`: will be copied to the `WriteAccount` transform, assigning the V2 `account_hash` as the value for `WriteAccount`.
-- `ContractWasm`: a `WriteContractWasm` transform will be created. Please note that the `WriteContractWasm` will not contain data, so the V2 details will be omitted.
-- `Contract`: a `WriteContract` transform will be created. Please note that the `WriteContract` will not contain data, so the V2 details will be omitted.
-<!--TODO is this a copy/paste error, or did you mean ContractPackage? -->
-- `ContractPackage`: a `WriteContractPackage` transform will be created. Please note that the `WriteContractPackage` will not contain data, so the V2 details will be omitted.
+- `Account`: will be copied to the `WriteAccount` transform, assigning the Version2 `account_hash` as the value for `WriteAccount`.
+- `ContractWasm`: a `WriteContractWasm` transform will be created. Please note that the `WriteContractWasm` will not contain data, so the Version2 details will be omitted.
+- `Contract`: a `WriteContract` transform will be created. Please note that the `WriteContract` will not contain data, so the Version2 details will be omitted.
+<!--TODO is this a copy/paste error? It is currently "Contract", but did you mean ContractPackage? -->
+- `ContractPackage`: a `WriteContractPackage` transform will be created. Please note that the `WriteContractPackage` will not contain data, so the Version2 details will be omitted.
 - `LegacyTransfer`: a `WriteTransfer` transform will be created. Data will be copied.
 - `DeployInfo`: a `WriteDeployInfo` transform will be created. Data will be copied.
 - `EraInfo`: an `EraInfo` transform will be created. Data will be copied.
