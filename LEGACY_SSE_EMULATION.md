@@ -12,7 +12,7 @@ SSE emulation is off by default. To enable it, follow the steps below and read t
 Before enabling the legacy SSE emulation, consider its limitations:
 
 - The legacy SSE emulation is a temporary solution and may be removed in a future major release of the node software.
-The legacy SSE emulation does not map 2.x events to 1.x events in a 1-to-1 fashion. Some events are omitted, some are transformed, and some are passed through. Below are more details on the emulation's limitations.
+- The legacy SSE emulation does not map 2.x events to 1.x events in a 1-to-1 fashion. Some events are omitted, some are transformed, and some are passed through. Below are more details on the emulation's limitations.
 - The legacy SSE emulation places an extra burden on resources. It will consume more resources than the native 2.x SSE API.
 - The legacy SSE emulation will consume more resources than the "native" 2.x SSE API.
 
