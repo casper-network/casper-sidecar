@@ -41,11 +41,11 @@ revision = "0"
 assets = [
     ["../target/release/casper-sidecar", "/usr/bin/casper-sidecar", "755"],
     ["../resources/ETC_README.md", "/etc/casper-sidecar/README.md", "644"],
-    ["../resources/example_configs/default_rpc_only_config.toml", "/etc/casper-sidecar/config.toml", "644"]
+    ["../resources/example_configs/default_debian_config.toml", "/etc/casper-sidecar/config.toml", "644"]
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
-Package for Casper Event Sidecar
+Package for Casper Sidecar RPC and SSE
 """
 
 [package.metadata.deb.systemd-units]
