@@ -169,7 +169,7 @@ pub fn sample_transactions(
     let standard_deploy_hash = *deploy.hash();
     let standard_deploy = Transaction::Deploy(deploy);
 
-    let version_1 = TransactionV1::random_standard(rng, None, None);
+    let version_1 = TransactionV1::random(rng);
     let standard_version_1_hash = *version_1.hash();
     let standard_version_1 = Transaction::V1(version_1);
 
@@ -185,7 +185,7 @@ pub fn sample_transactions(
     let install_upgrade_v1_hash = *version_1.hash();
     let install_upgrade_v1 = Transaction::V1(version_1);
 
-    let version_1 = TransactionV1::random_staking(rng, Some(timestamp), Some(ttl));
+    let version_1 = TransactionV1::random_wasm(rng, Some(timestamp), Some(ttl));
     let auction_v1_hash = *version_1.hash();
     let auction_v1 = Transaction::V1(version_1);
 
@@ -272,7 +272,7 @@ pub fn era_end_v2() -> EraEndV2 {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
-        U512::from_dec_str("129457537").unwrap(),
+        vec![U512::from_dec_str("129457537").unwrap()],
     );
     EraEndV2::new(
         vec![
@@ -306,7 +306,7 @@ pub fn era_end_v2_with_reward_exceeding_u64() -> EraEndV2 {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         parse_public_key("01235b932586ae5cc3135f7a0dc723185b87e5bd3ae0ac126a92c14468e976ff25"),
-        U512::from_dec_str("18446744073709551616").unwrap(),
+        vec![U512::from_dec_str("18446744073709551616").unwrap()],
     );
     EraEndV2::new(
         vec![
@@ -424,7 +424,8 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
                 "entry_point": "Transfer",
                 "scheduling": {
                     "FutureTimestamp": "2020-08-07T01:32:59.428Z"
-                }
+                },
+                "transaction_kind": 0
             },
             "approvals": [
                 {
@@ -754,10 +755,10 @@ const RAW_BLOCK_ADDED_V2: &str = r#"{
                             {"validator": "0102ffd4d2812d68c928712edd012fbcad54367bc6c5c254db22cf696772856566", "weight": "2"}
                         ],
                         "rewards": {
-                            "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc": "749546792",
-                            "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2": "788342677",
-                            "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec": "86241635",
-                            "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c": "941794198"
+                            "02028b18c949d849b377988ea5191b39340975db25f8b80f37cc829c9f79dbfb19fc": ["749546792"],
+                            "02028002c063228ff4e9d22d69154c499b86a4f7fdbf1d1e20f168b62da537af64c2": ["788342677"],
+                            "02038efa405f648c72f36b0e5f37db69ab213d44404591b24de21383d8cc161101ec": ["86241635"],
+                            "01f6bbd4a6fd10534290c58edb6090723d481cea444a8e8f70458e5136ea8c733c": ["941794198"]
                         },
                         "next_era_gas_price": 1
                     },
@@ -769,10 +770,10 @@ const RAW_BLOCK_ADDED_V2: &str = r#"{
                 },
                 "body": {
                     "transactions": {
-                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
-                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
+                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
+                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
                         "2": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
-                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}]
+                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}]
                     },
                     "rewarded_signatures": [[240],[0],[0]]
                 }

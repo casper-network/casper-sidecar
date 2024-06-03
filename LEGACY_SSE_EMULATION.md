@@ -7,8 +7,6 @@ Generally, the changes in 2.x regarding SSE are somewhat backward-incompatible. 
 
 SSE emulation is off by default. To enable it, follow the steps below and read the main [README.md](./README.md#sse-server-configuration) file describing how to configure the SSE server.
 
-> **Note**: 2.x node versions label new block events with `Version2`. In the rare case that a 2.x node sees a legacy block, it will label events coming from this block with `Version1`. The notion of Version1 and Version2 is new to 2.x, and wasn't present in 1.x node versions. So, for the legacy SSE emulation, both Version1 and Version2 BlockAdded events will be transformed to the old BlockAdded event format from 1.x.
-
 **LIMITATIONS:** 
 
 Before enabling the legacy SSE emulation, consider its limitations:
@@ -16,6 +14,9 @@ Before enabling the legacy SSE emulation, consider its limitations:
 - The legacy SSE emulation is a temporary solution and may be removed in a future major release of the node software.
 The legacy SSE emulation does not map 2.x events to 1.x events in a 1-to-1 fashion. Some events are omitted, some are transformed, and some are passed through. Below are more details on the emulation's limitations.
 - The legacy SSE emulation places an extra burden on resources. It will consume more resources than the native 2.x SSE API.
+- The legacy SSE emulation will consume more resources than the "native" 2.x SSE API.
+
+> **Note**: 2.x node versions label new block events with `Version2`. In the rare case that a 2.x node sees a legacy block, it will label events coming from this block with `Version1`. The notion of Version1 and Version2 is new to 2.x, and wasn't present in 1.x node versions. So, for the legacy SSE emulation, both Version1 and Version2 BlockAdded events will be transformed to the old BlockAdded event format from 1.x.
 
 ## Configuration
 

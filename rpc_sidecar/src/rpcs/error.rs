@@ -1,4 +1,4 @@
-use crate::node_client::Error as NodeClientError;
+use crate::node_client::{Error as NodeClientError, InvalidTransactionOrDeploy};
 use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
 use casper_types::{
     bytesrepr, AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash,
@@ -44,9 +44,9 @@ pub enum Error {
     #[error("the provided dictionary key could not be parsed: {0}")]
     DictionaryKeyCouldNotBeParsed(String),
     #[error("the transaction was invalid: {0}")]
-    InvalidTransaction(String),
+    InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("the deploy was invalid: {0}")]
-    InvalidDeploy(String),
+    InvalidDeploy(InvalidTransactionOrDeploy),
     #[error("the requested purse balance could not be parsed")]
     InvalidPurseBalance,
     #[error("the requested account info could not be parsed")]
