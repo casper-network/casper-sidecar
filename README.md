@@ -111,7 +111,7 @@ The SSE Listener processes events in this order:
 2. Store the event.
 3. Publish the event to the SSE API.
 
-Casper nodes offer an event stream API that returns server-sent events (SSEs) with JSON-encoded data. The Sidecar reads the event stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes. The Sidecar can:
+Casper nodes offer an event stream API that returns server-sent events (SSEs) with JSON-encoded data. The Sidecar reads the event stream of all connected nodes, acting as a passthrough and replicating the SSE interface of the connected nodes.
 
 The Sidecar can:
 * Republish the current events from the node to clients listening to Sidecar's SSE API.
@@ -122,7 +122,7 @@ Enabling and configuring the SSE Server of the Sidecar is optional.
 
 ### The REST API server
 
-The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. Node operators can discover the specific endpoints of the REST API using [OpenAPI] (#openapi-specification) and [Swagger] (#swagger-documentation). The [usage instructions](USAGE.md) provide more details.
+The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. You can discover the specific endpoints of the REST API using [OpenAPI](#openapi-specification) and [Swagger](#swagger-documentation). The [usage instructions](USAGE.md) provide more details.
 
 ```mermaid
    graph LR;
