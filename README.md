@@ -55,18 +55,21 @@ The Casper Sidecar provides the following functionalities:
 The Sidecar has the following components and external dependencies:
 
 ```mermaid
+---
+title: The Casper Sidecar Components
+---
    graph LR;
-   subgraph CASPER-SIDECAR
+   subgraph CASPER_SIDECAR
       SSE_SERVER["SSE server"]
-      RPC_API_SERVER["RPC API server (json)"]
+      RPC_API_SERVER["RPC API server (JSON)"]
       REST_API["Rest API server"]
       ADMIN_API["Admin API server"]
    end
-   CONFIG{{"Config file (toml)"}}
-   CONFIG --> CASPER-SIDECAR
+   CONFIG{{"Config file (TOML)"}}
+   CONFIG --> CASPER_SIDECAR
    STORAGE[(Storage)]
-   NODE_SSE(("Casper Node SSE port"))
-   NODE_BINARY(("Casper Node binary port"))
+   NODE_SSE(("Casper node SSE port"))
+   NODE_BINARY(("Casper node binary port"))
    RPC_API_SERVER --> NODE_BINARY
    SSE_SERVER --> NODE_SSE
    SSE_SERVER --> STORAGE
@@ -82,21 +85,21 @@ The SSE Server has these components:
    CLIENT{Client}
    CLIENT --> SSE_SERVER_API
    STORAGE[("Storage")]
-   CONFIG{{"Config file (toml)"}}
+   CONFIG{{"Config file (TOML)"}}
    MAIN --1.reads--> CONFIG
    NODE_SSE{Node SSE port}
    SSE_LISTENER --2--> STORAGE
    NODE_SSE --1--> SSE_LISTENER
-   subgraph "Casper Sidecar"
+   subgraph CASPER_SIDECAR
      MAIN[main.rs]
-     MAIN --2.spawns---> SSE-SERVER
-     subgraph SSE-SERVER
+     MAIN --2.spawns---> SSE_SERVER
+     subgraph SSE_SERVER
         SSE_SERVER_API["SSE API"]
         RING_BUFFER["Events buffer"]
         SSE_SERVER_API --> RING_BUFFER
         SSE_LISTENER --3--> RING_BUFFER
-        subgraph "For connection in connections"
-          SSE_LISTENER["SSE Listener"]   
+        subgraph "connection"
+          SSE_LISTENER["SSE listener"]   
         end
      end
    end
@@ -126,9 +129,9 @@ The Sidecar offers an optional REST API that allows clients to query the events 
    CLIENT --> REST_API
    STORAGE[("Storage")]
    REST_API --> STORAGE
-   CONFIG{{"Config file (toml)"}}
+   CONFIG{{"Config file (TOML)"}}
    MAIN --1.reads--> CONFIG
-   subgraph "Casper Sidecar"
+   subgraph CASPER_SIDECAR
       MAIN[main.rs]
       MAIN --2.spawns--> REST_API
       REST_API["REST API"]
@@ -145,7 +148,7 @@ The Sidecar offers an administrative API to allow an operator to check its curre
    CLIENT --> ADMIN_API
    CONFIG{{Config file}}
    MAIN --1.reads--> CONFIG
-   subgraph "Casper Sidecar"
+   subgraph CASPER_SIDECAR
       MAIN[main.rs]
       MAIN --2.spawns--> ADMIN_API
       ADMIN_API["ADMIN API"]
