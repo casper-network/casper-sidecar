@@ -39,7 +39,8 @@
 
 ## Summary of Purpose
 
-The Casper Sidecar application runs in tandem with the node process, and its primary purpose is to:
+The Casper Sidecar is an application running in tandem with the node process. It allows subscribers to monitor a node's event stream, query stored events, and query the node's JSON RPC API, thus receiving faster responses and reducing the load placed on the node. Its primary purpose is to:
+
 * Offload the node from broadcasting SSE events to multiple clients.
 * Provide client features that aren't part of the nodes' functionality, nor should they be.
 
