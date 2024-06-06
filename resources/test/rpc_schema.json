@@ -166,12 +166,12 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8",
+                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
+                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -222,12 +222,13 @@
                     ],
                     "target": "Native",
                     "entry_point": "Transfer",
+                    "transaction_kind": 0,
                     "scheduling": "Standard"
                   },
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012eaaf83b1ed367ed424c859974bc5115a62d6b10d635f4b39d380414c4abcb2d54c01b7b96e0d27e00ed913f05f06d7bee9c25c31bbd8e9215961e61f835250d"
+                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
                     }
                   ]
                 }
@@ -239,7 +240,7 @@
             "value": {
               "api_version": "2.0.0",
               "transaction_hash": {
-                "Version1": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8"
+                "Version1": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468"
               }
             }
           }
@@ -369,7 +370,7 @@
                 ]
               },
               "execution_info": {
-                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                "block_hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                 "block_height": 10,
                 "execution_result": {
                   "Version2": {
@@ -486,7 +487,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8"
+                "Version1": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468"
               }
             },
             {
@@ -500,12 +501,12 @@
               "api_version": "2.0.0",
               "transaction": {
                 "Version1": {
-                  "hash": "52a75f3651e450cc2c3ed534bf130bae2515950707d70bb60067aada30b97ca8",
+                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
+                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -556,18 +557,19 @@
                     ],
                     "target": "Native",
                     "entry_point": "Transfer",
+                    "transaction_kind": 0,
                     "scheduling": "Standard"
                   },
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012eaaf83b1ed367ed424c859974bc5115a62d6b10d635f4b39d380414c4abcb2d54c01b7b96e0d27e00ed913f05f06d7bee9c25c31bbd8e9215961e61f835250d"
+                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
                     }
                   ]
                 }
               },
               "execution_info": {
-                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                "block_hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                 "block_height": 10,
                 "execution_result": {
                   "Version2": {
@@ -1026,7 +1028,7 @@
             {
               "name": "state_identifier",
               "value": {
-                "BlockHash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
+                "BlockHash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42"
               }
             },
             {
@@ -1473,7 +1475,7 @@
               "chainspec_name": "casper-example",
               "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
               "last_added_block_info": {
-                "hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                "hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                 "timestamp": "2020-11-17T00:39:24.072Z",
                 "era_id": 1,
                 "height": 10,
@@ -1655,7 +1657,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
+                "Hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42"
               }
             }
           ],
@@ -1666,11 +1668,11 @@
               "block_with_signatures": {
                 "block": {
                   "Version2": {
-                    "hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                    "hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "7929063af6c8431a679fd0fda108fa7e64e42a9e264df4ec8bb42ca877373631",
+                      "body_hash": "48859fb4865d8637d6a35cb224e222cd0e1b1c2dd72928932c1e35ac0550818b",
                       "random_bit": true,
                       "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                       "era_end": {
@@ -1709,22 +1711,22 @@
                       "transactions": {
                         "0": [
                           {
-                            "Version1": "1717171717171717171717171717171717171717171717171717171717171717"
+                            "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
                           }
                         ],
                         "1": [
                           {
-                            "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
+                            "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
                           }
                         ],
                         "2": [
                           {
-                            "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
+                            "Version1": "1616161616161616161616161616161616161616161616161616161616161616"
                           }
                         ],
                         "3": [
                           {
-                            "Version1": "1616161616161616161616161616161616161616161616161616161616161616"
+                            "Version1": "1717171717171717171717171717171717171717171717171717171717171717"
                           }
                         ]
                       },
@@ -1735,7 +1737,7 @@
                 "proofs": [
                   {
                     "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                    "signature": "01641f904df4c58b81b5fdae972186a9d709f1c03f3da4f5c4c9b80fbf98254056fc6048c64784c238811e4580bd46a10fe97be676cde5dd6a6d2be7dafedf7005"
+                    "signature": "01e18ca03d2ef0238a6a2460a222e0b818406bda99d4c05502c80232013559b926d1c8bca6bf65386f54a847d7850cb76c0c5fd5e633c34c749b8b9958a638d806"
                   }
                 ]
               }
@@ -2112,7 +2114,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
+                "Hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42"
               }
             }
           ],
@@ -2121,7 +2123,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                "block_hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -2287,7 +2289,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884"
+                "Hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42"
               }
             }
           ],
@@ -2296,7 +2298,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "40fa940e609972313a6d598712fcb9cced789ed237bdac67aa1fe546e624c884",
+                "block_hash": "0744fcb72af43c5cc372039bc5a8bfee48808a9ce414acc0d6338a628c20eb42",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -3252,7 +3254,8 @@
           "args",
           "entry_point",
           "scheduling",
-          "target"
+          "target",
+          "transaction_kind"
         ],
         "properties": {
           "args": {
@@ -3263,6 +3266,11 @@
           },
           "entry_point": {
             "$ref": "#/components/schemas/TransactionEntryPoint"
+          },
+          "transaction_kind": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           },
           "scheduling": {
             "$ref": "#/components/schemas/TransactionScheduling"
@@ -3513,6 +3521,13 @@
       "TransactionEntryPoint": {
         "description": "Entry point of a Transaction.",
         "oneOf": [
+          {
+            "description": "The standard `call` entry point used in session code.",
+            "type": "string",
+            "enum": [
+              "Call"
+            ]
+          },
           {
             "description": "A non-native, arbitrary entry point.",
             "type": "object",
@@ -7487,7 +7502,10 @@
             "description": "The rewards distributed to the validators.",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/U512"
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/U512"
+              }
             }
           },
           "next_era_gas_price": {

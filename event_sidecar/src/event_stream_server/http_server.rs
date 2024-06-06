@@ -90,6 +90,13 @@ async fn send_api_version_from_global_state(
         .send(ServerSentEvent::initial_event(protocol_version))
 }
 
+async fn send_legacy_comment(
+    subscriber: &NewSubscriberInfo,
+) -> Result<(), SendError<ServerSentEvent>> {
+    subscriber
+        .initial_events_sender
+        .send(ServerSentEvent::legacy_comment_event())
+}
 async fn send_sidecar_version(
     subscriber: &NewSubscriberInfo,
 ) -> Result<(), SendError<ServerSentEvent>> {
@@ -113,7 +120,8 @@ async fn handle_incoming_data(
             trace!("Event stream server received {:?}", data);
             let event = ServerSentEvent {
                 id: maybe_event_index,
-                data: data.clone(),
+                comment: None,
+                data: Some(data.clone()),
                 inbound_filter,
             };
             match data {
@@ -146,6 +154,9 @@ async fn register_new_subscriber(
     buffer: &WheelBuf<Vec<(ProtocolVersion, ServerSentEvent)>, (ProtocolVersion, ServerSentEvent)>,
     latest_protocol_version: Option<ProtocolVersion>,
 ) {
+    if subscriber.enable_legacy_filters {
+        let _ = send_legacy_comment(&subscriber).await;
+    }
     let _ = send_sidecar_version(&subscriber).await;
     let mut observed_events = false;
     // If the client supplied a "start_from" index, provide the buffered events.

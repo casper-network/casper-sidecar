@@ -1,3 +1,5 @@
+use self::sse_server::LEGACY_ENDPOINT_NOTICE;
+
 use super::*;
 use casper_event_types::legacy_sse_data::LegacySseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
@@ -441,16 +443,13 @@ async fn subscribe(
     final_event_id: Id,
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
-    debug!("{} waiting before connecting via {}", client_id, url);
     timeout(Duration::from_secs(60), barrier.wait())
         .await
         .unwrap();
     let response = reqwest::get(url).await?;
-    debug!("{} waiting after connecting", client_id);
     timeout(Duration::from_secs(60), barrier.wait())
         .await
         .unwrap();
-    debug!("{} finished waiting", client_id);
     handle_response(response, final_event_id, client_id).await
 }
 
@@ -605,13 +604,22 @@ async fn fetch_text(
 ///   * id:<integer>
 ///   * empty line
 /// then finally, repeated keepalive lines until the server is shut down.
+#[allow(clippy::too_many_lines)]
 fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> {
     let mut received_events = Vec::new();
     let mut line_itr = response_text.lines();
+    let mut first_line = true;
     while let Some(data_line) = line_itr.next() {
         let data = match data_line.strip_prefix("data:") {
             Some(data_str) => data_str.to_string(),
             None => {
+                if first_line {
+                    // In legacy endpoints the first line is a comment containing deprecation notice. When we remove the legacy endpoints we can remove this check.
+                    if data_line.trim() == format!(":{}", LEGACY_ENDPOINT_NOTICE) {
+                        continue;
+                    }
+                    first_line = false;
+                }
                 if data_line.trim().is_empty() || data_line.trim() == ":" {
                     continue;
                 } else {
@@ -1044,6 +1052,51 @@ async fn should_handle_bad_url_query() {
     fixture.stop_server().await;
 }
 
+async fn subscribe_for_comment(
+    url: &str,
+    barrier: Arc<Barrier>,
+    final_event_id: Id,
+    client_id: &str,
+) -> String {
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
+    let response = reqwest::get(url).await.unwrap();
+    timeout(Duration::from_secs(60), barrier.wait())
+        .await
+        .unwrap();
+    let stream = response.bytes_stream();
+    let final_id_line = format!("id:{}", final_event_id); // This theoretically is not optimal since we don't need to read all the events from the test,
+                                                          // but it's not easy to determine what id is the first one in the stream for legacy tests.
+    let keepalive = ":";
+    fetch_text(
+        Box::pin(stream),
+        final_id_line,
+        keepalive,
+        client_id,
+        final_event_id,
+    )
+    .await
+    .unwrap()
+}
+
+async fn should_get_comment(path: &str) {
+    let mut rng = TestRng::new();
+    let mut fixture = TestFixture::new(&mut rng);
+    let mut server_behavior = ServerBehavior::new();
+    let barrier = server_behavior.add_client_sync_before_event(0);
+    let server_address = fixture.run_server(server_behavior).await;
+
+    // Consume these and stop the server.
+    let url = url(server_address, path, None);
+    let (expected_events, final_id) = fixture.all_filtered_events(path);
+    let (_expected_events, final_id) = adjust_final_id(true, expected_events, final_id);
+    let text = subscribe_for_comment(&url, barrier, final_id, "client 1").await;
+    fixture.stop_server().await;
+    let expected_start = format!(":{}", LEGACY_ENDPOINT_NOTICE);
+    assert!(text.as_str().starts_with(expected_start.as_str()));
+}
+
 #[allow(clippy::too_many_lines)]
 /// Check that a server which restarts continues from the previous numbering of event IDs.
 async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
@@ -1099,6 +1152,21 @@ async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
             received_events,
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_get_comment_on_first_message_in_deploys() {
+    should_get_comment(DEPLOYS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_get_comment_on_first_message_in_sigs() {
+    should_get_comment(SIGS_PATH).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_get_comment_on_first_message_in_main() {
+    should_get_comment(MAIN_PATH).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
