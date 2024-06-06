@@ -53,6 +53,8 @@ pub enum ErrorCode {
     NoSuchAddressableEntity = -32020,
     /// The requested account has been migrated to an addressable entity.
     AccountMigratedToEntity = -32021,
+    /// The requested reward was not found.
+    NoRewardFound = -32022,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -92,6 +94,7 @@ impl From<ErrorCode> for (i64, &'static str) {
                 error_code as i64,
                 "Account migrated to an addressable entity",
             ),
+            ErrorCode::NoRewardFound => (error_code as i64, "No reward found"),
         }
     }
 }

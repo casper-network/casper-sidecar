@@ -37,6 +37,8 @@ pub enum Error {
     AccountNotFound,
     #[error("the requested addressable entity was not found")]
     AddressableEntityNotFound,
+    #[error("the requested reward was not found")]
+    RewardNotFound,
     #[error("the requested account has been migrated to an addressable entity")]
     AccountMigratedToEntity,
     #[error("the provided dictionary value is {0} instead of a URef")]
@@ -87,6 +89,7 @@ impl Error {
             Error::MainPurseNotFound => Some(ErrorCode::NoSuchMainPurse),
             Error::AccountNotFound => Some(ErrorCode::NoSuchAccount),
             Error::AddressableEntityNotFound => Some(ErrorCode::NoSuchAddressableEntity),
+            Error::RewardNotFound => Some(ErrorCode::NoRewardFound),
             Error::AccountMigratedToEntity => Some(ErrorCode::AccountMigratedToEntity),
             Error::InvalidTypeUnderDictionaryKey(_)
             | Error::DictionaryKeyNotFound
