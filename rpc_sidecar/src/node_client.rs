@@ -1149,7 +1149,8 @@ mod tests {
         let port = get_port();
         let config = NodeClientConfig::new_with_port(port);
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let _mock_server_handle = start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
+        let _mock_server_handle =
+            start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
