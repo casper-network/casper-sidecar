@@ -516,6 +516,10 @@ pub enum Error {
     InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
+    #[error("no switch block found for the provided identifier")]
+    SwitchBlockNotFound,
+    #[error("cannot serve rewards stored in V1 format")]
+    UnsupportedRewardsV1Request,
     #[error("received a response with an unsupported protocol version: {0}")]
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
@@ -528,6 +532,8 @@ impl Error {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
+            Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported
