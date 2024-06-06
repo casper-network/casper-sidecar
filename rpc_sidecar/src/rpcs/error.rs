@@ -84,12 +84,18 @@ impl Error {
             Error::NodeRequest(_, NodeClientError::FunctionIsDisabled) => {
                 Some(ErrorCode::FunctionIsDisabled)
             }
+            Error::NodeRequest(_, NodeClientError::SwitchBlockNotFound) => {
+                Some(ErrorCode::SwitchBlockNotFound)
+            }
+            Error::NodeRequest(_, NodeClientError::UnsupportedRewardsV1Request) => {
+                Some(ErrorCode::UnsupportedRewardsV1Request)
+            }
             Error::InvalidPurseURef(_) => Some(ErrorCode::FailedToParseGetBalanceURef),
             Error::InvalidDictionaryKey(_) => Some(ErrorCode::FailedToParseQueryKey),
             Error::MainPurseNotFound => Some(ErrorCode::NoSuchMainPurse),
             Error::AccountNotFound => Some(ErrorCode::NoSuchAccount),
             Error::AddressableEntityNotFound => Some(ErrorCode::NoSuchAddressableEntity),
-            Error::RewardNotFound => Some(ErrorCode::NoRewardFound),
+            Error::RewardNotFound => Some(ErrorCode::NoRewardsFound),
             Error::AccountMigratedToEntity => Some(ErrorCode::AccountMigratedToEntity),
             Error::InvalidTypeUnderDictionaryKey(_)
             | Error::DictionaryKeyNotFound
