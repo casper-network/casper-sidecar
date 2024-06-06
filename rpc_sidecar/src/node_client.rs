@@ -515,11 +515,11 @@ pub enum Error {
     #[error("received a response with an unsupported protocol version: {0}")]
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
-    UnexpectedNodeError { message: String, code: u8 },
+    UnexpectedNodeError { message: String, code: u16 },
 }
 
 impl Error {
-    fn from_error_code(code: u8) -> Self {
+    fn from_error_code(code: u16) -> Self {
         match ErrorCode::try_from(code) {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
