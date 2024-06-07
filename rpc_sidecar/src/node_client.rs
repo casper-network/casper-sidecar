@@ -516,9 +516,9 @@ pub enum Error {
     InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
-    #[error("the switch block for the requested era was not found.")]
+    #[error("the switch block for the requested era was not found")]
     SwitchBlockNotFound,
-    #[error("the parent of the switch block for the requested era was not found.")]
+    #[error("the parent of the switch block for the requested era was not found")]
     SwitchBlockParentNotFound,
     #[error("cannot serve rewards stored in V1 format")]
     UnsupportedRewardsV1Request,
