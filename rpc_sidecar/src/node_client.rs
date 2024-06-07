@@ -516,8 +516,10 @@ pub enum Error {
     InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
-    #[error("no switch block found for the provided identifier")]
+    #[error("the switch block for the requested era was not found.")]
     SwitchBlockNotFound,
+    #[error("the parent of the switch block for the requested era was not found.")]
+    SwitchBlockParentNotFound,
     #[error("cannot serve rewards stored in V1 format")]
     UnsupportedRewardsV1Request,
     #[error("received a response with an unsupported protocol version: {0}")]
@@ -533,6 +535,7 @@ impl Error {
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
             Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
+            Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
             Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName

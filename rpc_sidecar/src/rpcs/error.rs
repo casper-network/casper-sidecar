@@ -87,6 +87,9 @@ impl Error {
             Error::NodeRequest(_, NodeClientError::SwitchBlockNotFound) => {
                 Some(ErrorCode::SwitchBlockNotFound)
             }
+            Error::NodeRequest(_, NodeClientError::SwitchBlockParentNotFound) => {
+                Some(ErrorCode::SwitchBlockParentNotFound)
+            }
             Error::NodeRequest(_, NodeClientError::UnsupportedRewardsV1Request) => {
                 Some(ErrorCode::UnsupportedRewardsV1Request)
             }
