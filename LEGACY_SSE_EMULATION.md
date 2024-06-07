@@ -198,8 +198,6 @@ When the 2.x event stream emits a legacy `BlockAdded` event, the following mappi
 
 Here is an example mapping demonstrating the rules above:
 
-<!-- TODO Why do we have protocol_version: 1.0.0 for the Version2 block? This seems incorrect in this example. >
-
 <details>
 <summary>Version2 BlockAdded in 2.x</summary>
 
@@ -248,7 +246,7 @@ Here is an example mapping demonstrating the rules above:
             "timestamp": "2024-04-25T20:31:39.895Z",
             "era_id": 419571,
             "height": 4195710,
-            "protocol_version": "1.0.0",
+            "protocol_version": "2.0.0",
             "current_gas_price": 1
           },
           "body": {
@@ -511,10 +509,7 @@ Version1 `TransactionAccepted` events will be unwrapped and translated to legacy
 
 </details><br></br>
 
-
-<!-- TODO there is a discrepancy here ("If the event is a V2 variant - it will be omitted so a 2.x event like: ... Version1... will be omitted"). It seems to be a typo, so I am proposing this change: -->
-
-Version1 events will be omitted from legacy SSE event streams. For example, the following event will not be streamed.
+All Version1 variants will be omitted from legacy SSE streams. For example, the following Version1 `TransactionAccepted` event will not be streamed:
 
 ```json
 "TransactionAccepted": {
@@ -601,7 +596,6 @@ When translating `Write` transforms from Version2 to Version1, the following rul
 - `Account`: will be copied to the `WriteAccount` transform, assigning the Version2 `account_hash` as the value for `WriteAccount`.
 - `ContractWasm`: a `WriteContractWasm` transform will be created. Please note that the `WriteContractWasm` will not contain data, so the Version2 details will be omitted.
 - `Contract`: a `WriteContract` transform will be created. Please note that the `WriteContract` will not contain data, so the Version2 details will be omitted.
-<!--TODO is this a copy/paste error? It is currently "Contract", but did you mean ContractPackage? -->
 - `ContractPackage`: a `WriteContractPackage` transform will be created. Please note that the `WriteContractPackage` will not contain data, so the Version2 details will be omitted.
 - `LegacyTransfer`: a `WriteTransfer` transform will be created. Data will be copied.
 - `DeployInfo`: a `WriteDeployInfo` transform will be created. Data will be copied.
