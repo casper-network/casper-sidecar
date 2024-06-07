@@ -26,7 +26,7 @@ It is possible to monitor the Sidecar event stream using *cURL*, depending on ho
 
 The Sidecar can connect to Casper nodes with versions greater or equal to `2.0.0`.
 
-```json
+```sh
 curl -s http://<HOST:PORT>/events
 ```
 
@@ -35,15 +35,15 @@ curl -s http://<HOST:PORT>/events
 
 Given this [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml), here are the commands for each endpoint:
 
-    ```json
-    curl -sN http://127.0.0.1:19999/events
-    ```
+```sh
+curl -sN http://127.0.0.1:19999/events
+```
 
 Also, the Sidecar exposes an endpoint for Sidecar-generated events:
 
-    ```json
-    curl -sN http://127.0.0.1:19999/events/sidecar
-    ```
+```sh
+curl -sN http://127.0.0.1:19999/events/sidecar
+```
 
 ### Node events versioning
 
@@ -53,7 +53,7 @@ If the node goes offline, the `ApiVersion` may differ when it restarts (i.e., in
 
 Here is an example of what the API version would look like while listening on the Sidecar’s event stream. The colons represent "keep-alive" messages.
 
-```
+```sh
 curl -sN http://127.0.0.1:19999/events
 
 data:{"ApiVersion":"2.0.0"}
@@ -74,7 +74,7 @@ id:21821471
 
 When a client connects to the `events/sidecar` endpoint, it will receive a message containing the version of the Sidecar software. Release version `1.1.0` would look like this:
 
-```
+```sh
 curl -sN http://127.0.0.1:19999/events/sidecar
 
 data:{"SidecarVersion":"1.1.0"}
@@ -82,7 +82,6 @@ data:{"SidecarVersion":"1.1.0"}
 :
 
 :
-
 ```
 
 Note that the SidecarVersion differs from the APIVersion emitted by the node event streams. You will also see the keep-alive messages as colons, ensuring the connection is active.
@@ -95,7 +94,7 @@ The Sidecar does not expose Shutdown events via its REST API.
 
 Here is an example of how the stream might look like if the node went offline for an upgrade and came back online after a Shutdown event with a new `ApiVersion`:
 
-```
+```sh
 curl -sN http://127.0.0.1:19999/events
 
 data:{"ApiVersion":"2.0.0"}
@@ -122,7 +121,6 @@ id:3
 :
 
 :
-
 ```
 
 Note that the Sidecar can emit another type of shutdown event on the `events/sidecar` endpoint, as described below.
@@ -133,7 +131,7 @@ If the Sidecar attempts to connect to a node that does not come back online with
 
 The message structure of the Sidecar shutdown event is the same as the [node shutdown event](#the-node-shutdown-event). The Sidecar event stream would look like this:
 
-```
+```sh
 curl -sN http://127.0.0.1:19999/events/sidecar
 
 data:{"SidecarVersion":"1.1.0"}
@@ -160,7 +158,7 @@ The path URL is `<HOST:PORT>/block`.
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/block
 ```
 
@@ -182,7 +180,7 @@ The path URL is `<HOST:PORT>/block/<block-hash>`. Enter a valid block hash.
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/block/bd2e0c36150a74f50d9884e38a0955f8b1cba94821b9828c5f54d8929d6151bc
 ```
 
@@ -203,7 +201,7 @@ The path URL is `<HOST:PORT>/block/<block-height>`. Enter a valid number represe
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/block/336460
 ```
 
@@ -226,7 +224,7 @@ The output differs depending on the transaction's status, which changes over tim
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888//transaction/version1/3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a
 ```
 
@@ -236,7 +234,8 @@ The sample output below is for a transaction that was accepted but has yet to be
 <summary><b>Transaction accepted but not processed yet</b></summary>
 
 ```json
-{"transaction_hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","transaction_accepted": {"header": {"api_version": "2.0.0","network_name": "casper-net-1"},"payload": {"transaction": {"Version1": {"hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","header": {"chain_name": "casper-net-1","timestamp": "2024-03-20T13:31:59.772Z","ttl": "30m","body_hash": "40c7476a175fb97656ec6da1ace2f1900a9d353f1637943a30edd5385494b345","pricing_mode": {"Fixed": {"gas_price_tolerance": 1000}},"initiator_addr": {"PublicKey": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973"}},"body": {"args": [],"target": {"Session": {"kind": "Standard","module_bytes":"<REDACTED>","runtime": "VmCasperV1"}},"entry_point": {"Custom": "test"},"scheduling": "Standard"},"approvals": [{"signer": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973","signature": "0154fd295f5d4d62544f63d70470de28b2bf2cddecac2a237b6a2a78d25ee14b21ea2861d711a51f57b3f9f74e247a8d26861eceead6569f233949864a9d5fa100"}]}}}},"transaction_processed": ,"transaction_expired": false}```
+{"transaction_hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","transaction_accepted": {"header": {"api_version": "2.0.0","network_name": "casper-net-1"},"payload": {"transaction": {"Version1": {"hash": "3141e85f8075c3a75c2a1abcc79810c07d103ff97c03200ab0d0baf91995fe4a","header": {"chain_name": "casper-net-1","timestamp": "2024-03-20T13:31:59.772Z","ttl": "30m","body_hash": "40c7476a175fb97656ec6da1ace2f1900a9d353f1637943a30edd5385494b345","pricing_mode": {"Fixed": {"gas_price_tolerance": 1000}},"initiator_addr": {"PublicKey": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973"}},"body": {"args": [],"target": {"Session": {"kind": "Standard","module_bytes":"<REDACTED>","runtime": "VmCasperV1"}},"entry_point": {"Custom": "test"},"scheduling": "Standard"},"approvals": [{"signer": "01d848e225db95e34328ca1c64d73ecda50f5070fd6b21037453e532d085a81973","signature": "0154fd295f5d4d62544f63d70470de28b2bf2cddecac2a237b6a2a78d25ee14b21ea2861d711a51f57b3f9f74e247a8d26861eceead6569f233949864a9d5fa100"}]}}}},"transaction_processed": ,"transaction_expired": false}
+```
 </details>
 <br></br>
 
@@ -260,7 +259,7 @@ The path URL is `<HOST:PORT>/transaction/accepted/<transaction-type>/<transactio
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/transaction/accepted/version1/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
@@ -282,7 +281,7 @@ The path URL is `<HOST:PORT>/transaction/expired/<transaction-type>/<transaction
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/transaction/expired/version1/3dcf9cb73977a1163129cb0801163323bea2a780815bc9dc46696a43c00e658c
 ```
 
@@ -301,7 +300,7 @@ The path URL is `<HOST:PORT>/transaction/expired/version1/<transaction-hash>`. E
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/transaction/processed/version1/8204af872d7d19ef8da947bce67c7a55449bc4e2aa12d2756e9ec7472b4854f7
 ```
 
@@ -322,7 +321,7 @@ The path URL is `<HOST:PORT>/faults/<public-key>`. Enter a valid hexadecimal rep
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/faults/01a601840126a0363a6048bfcbb0492ab5a313a1a19dc4c695650d8f3b51302703
 ```
 
@@ -333,7 +332,7 @@ The path URL is: `<HOST:PORT>/faults/<era-ID>`. Enter an era identifier.
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/faults/2304
 ```
 
@@ -345,7 +344,7 @@ The path URL is: `<HOST:PORT>/signatures/<block-hash>`. Enter a valid block hash
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/signatures/85aa2a939bc3a4afc6d953c965bab333bb5e53185b96bb07b52c295164046da2
 ```
 
@@ -357,7 +356,7 @@ The path URL is: `<HOST:PORT>/step/<era-ID>`. Enter a valid era identifier.
 
 Example:
 
-```json
+```sh
 curl -s http://127.0.0.1:18888/step/7268
 ```
 
@@ -367,7 +366,7 @@ If no filter URL was specified after the root address (HOST:PORT), an error mess
 
 Example:
 
-```json
+```sh
 curl http://127.0.0.1:18888
 {"code":400,"message":"Invalid request path provided"}
 ```
@@ -378,7 +377,7 @@ If an invalid filter was specified, an error message will be returned.
 
 Example:
 
-```json
+```sh
 curl http://127.0.0.1:18888/other
 {"code":400,"message":"Invalid request path provided"}
 ```

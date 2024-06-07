@@ -19,7 +19,7 @@ For more information, including how to setup the SSE, RPC, REST, and Admin serve
 
 This directory stores the SSE cache and a database if the Sidecar was configured to use one.
 
-```
+```toml
 [storage]
 storage_path = "/var/lib/casper-sidecar"
 ```

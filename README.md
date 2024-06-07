@@ -52,6 +52,7 @@ The Casper Sidecar provides the following functionalities:
 * A server-sent events (SSE) server with an `/events` endpoint that streams all the events received from all connected nodes. The Sidecar also stores these events.
 * A REST API server that allows clients to query stored events.
 * A JSON RPC bridge between end users and a Casper node's binary port.
+* Legacy emulation for clients using older versions of the SSE API.
 
 The Sidecar has the following components and external dependencies:
 
@@ -177,7 +178,6 @@ The Sidecar also offers an RPC JSON API server that can be enabled and configure
 
 ## Configuring the Sidecar
 
-
 The Sidecar service must be configured using a `.toml` file specified at runtime.
 
 This repository contains several sample configuration files that can be used as examples and adjusted according to your scenario:
@@ -192,7 +192,7 @@ Once you create the configuration file and are ready to run the Sidecar service,
 
 Here is an example configuration for the RPC API server:
 
-```
+```toml
 [rpc_server.main_server]
 enable_server = true
 address = '0.0.0.0:7777'
@@ -251,7 +251,7 @@ max_attempts = 30
 
 The Sidecar SSE server is used to connect to Casper nodes, listen to events from them, store them locally and re-broadcast them to clients. Here is a sample configuration for the SSE server:
 
-```
+```toml
 [sse_server]
 enable_server = true
 emulate_legacy_sse_apis = ["V1"]
@@ -272,7 +272,7 @@ The Sidecar's SSE component can connect to Casper nodes' SSE endpoints with vers
 
 The `node_connections` option configures the node (or multiple nodes) to which the Sidecar will connect and the parameters under which it will operate with that node. Connecting to multiple nodes requires multiple `[[sse_server.connections]]` sections.
 
-```
+```toml
 [sse_server]
 enable_server = true
 
@@ -328,7 +328,7 @@ sleep_between_keep_alive_checks_in_seconds = 30
 
 Applications using version 1 of a Casper node's event stream server can still function using an emulated V1 SSE API for a limited time. Enabling the V1 SSE API emulation requires the `emulate_legacy_sse_apis` setting to be `["V1"]`:
 
-```
+```toml
 [sse_server]
 enable_server = true
 emulate_legacy_sse_apis = ["V1"]
@@ -345,7 +345,7 @@ See the [Legacy SSE Emulation](./LEGACY_SSE_EMULATION.md) page for more details.
 
 To configure the Sidecar's event stream server, specify the following settings:
 
-```
+```toml
 [sse_server.event_stream_server]
 port = 19999
 max_concurrent_subscribers = 100
@@ -360,7 +360,7 @@ event_stream_buffer_length = 5000
 
 The following section determines outbound connection criteria for the Sidecar's REST server.
 
-```
+```toml
 [rest_api_server]
 enable_server = true
 port = 18888
@@ -379,7 +379,7 @@ request_timeout_in_seconds = 10
 
 This directory stores the SSE cache and an SQLite database if the Sidecar was configured to use SQLite.
 
-```
+```toml
 [storage]
 storage_path = "./target/storage"
 ```
@@ -392,7 +392,7 @@ The Sidecar can connect to different types of databases. The current options are
 
 This section includes configurations for the SQLite database.
 
-```
+```toml
 [storage.sqlite_config]
 file_name = "sqlite_database.db3"
 max_connections_in_pool = 100
@@ -445,7 +445,7 @@ However, DB connectivity can also be configured using the Sidecar configuration 
 
 It is possible to completely omit the PostgreSQL configuration from the Sidecar's configuration file. In this case, the Sidecar will attempt to connect to the PostgreSQL using the database environment variables or use some default values for non-critical variables.
 
-```
+```toml
 [storage.postgresql_config]
 database_name = "event_sidecar"
 host = "localhost"
@@ -458,7 +458,7 @@ max_connections_in_pool = 30
 
 This optional section configures the Sidecar's administrative server. If this section is not specified, the Sidecar will not start an admin server.
 
-```
+```toml
 [admin_api_server]
 enable_server = true
 port = 18887
@@ -489,7 +489,7 @@ To compile, test, and run the Sidecar, install the following software first:
 
 After creating the configuration file, run the Sidecar using `cargo` and point to the configuration file using the `--path-to-config` option, as shown below. The command needs to run with `root` privileges.
 
-```shell
+```sh
 sudo cargo run -- --path-to-config ./resources/example_configs/EXAMPLE_NODE_CONFIG.toml
 ```
 
@@ -497,7 +497,7 @@ The Sidecar application leverages tracing, which can be controlled by setting th
 
 The following command will run the Sidecar application with the `INFO` log level.
 
-```
+```sh
 RUST_LOG=info cargo run -p casper-sidecar -- --path-to-config ./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml
 ```
 
@@ -515,13 +515,13 @@ Further details about log levels can be found [here](https://docs.rs/env_logger/
 
 You can run the unit and integration tests included in this repository with the following command:
 
-```
+```sh
 cargo test
 ```
 
 You can also run the performance tests using this command:
 
-```
+```sh
 cargo test -- --include-ignored
 ```
 
@@ -569,7 +569,7 @@ curl http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics
 
 **Sample output**:
 
-```
+```sh
 # HELP node_statuses Current status of node to which the Sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - connections_exhausted -> used up all connection attempts ; -2 - incompatible -> node is in an incompatible version
 # TYPE node_statuses gauge
 node_statuses{node="35.180.42.211:9999"} 2
@@ -591,7 +591,7 @@ In the above `node_statuses`, you can see which nodes are connecting, which are 
 
 To diagnose errors, look for `error` logs and check the `error_counts` on the metrics page, `http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics`, where most of the errors related to data flow will be stored:
 
-```
+```sh
 # HELP error_counts Error counts
 # TYPE error_counts counter
 error_counts{category="connection_manager",description="fetching_from_stream_failed"} 6
@@ -601,7 +601,7 @@ error_counts{category="connection_manager",description="fetching_from_stream_fai
 
 To monitor the Sidecar's memory consumption, observe the metrics page, `http://SIDECAR_URL:SIDECAR_ADMIN_PORT/metrics`. Search for `process_resident_memory_bytes`:
 
-```
+```sh
 # HELP process_resident_memory_bytes Resident memory size in bytes.
 # TYPE process_resident_memory_bytes gauge
 process_resident_memory_bytes 292110336
