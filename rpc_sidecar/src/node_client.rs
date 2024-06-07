@@ -14,15 +14,16 @@ use tokio_util::codec::Framed;
 use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
-    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus, PayloadEntity, PurseIdentifier,
-    RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus,
+    PayloadEntity, PurseIdentifier, RecordId, RewardResponse, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Transaction, TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, PublicKey, SignedBlock,
+    StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -237,6 +238,24 @@ pub trait NodeClient: Send + Sync {
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn read_reward(
+        &self,
+        era_identifier: Option<EraIdentifier>,
+        validator: PublicKey,
+        delegator: Option<PublicKey>,
+    ) -> Result<Option<RewardResponse>, Error> {
+        let validator = validator.into();
+        let delegator = delegator.map(Into::into);
+        let resp = self
+            .read_info(InformationRequest::Reward {
+                era_identifier,
+                validator,
+                delegator,
+            })
+            .await?;
+        parse_response::<RewardResponse>(&resp.into())
     }
 }
 
@@ -497,6 +516,12 @@ pub enum Error {
     InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
+    #[error("the switch block for the requested era was not found")]
+    SwitchBlockNotFound,
+    #[error("the parent of the switch block for the requested era was not found")]
+    SwitchBlockParentNotFound,
+    #[error("cannot serve rewards stored in V1 format")]
+    UnsupportedRewardsV1Request,
     #[error("received a response with an unsupported protocol version: {0}")]
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
@@ -509,6 +534,9 @@ impl Error {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
+            Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
+            Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported
