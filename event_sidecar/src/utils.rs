@@ -263,14 +263,14 @@ pub mod tests {
         config: TestingConfig,
     ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
         tokio::spawn(async move { unpack_test_config_and_run(config, true).await })
-        // starting event sidecar
+        // starting the sidecar
     }
 
     pub async fn start_sidecar(
         config: TestingConfig,
     ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
         tokio::spawn(async move { unpack_test_config_and_run(config, false).await })
-        // starting event sidecar
+        // starting the sidecar
     }
 
     pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {

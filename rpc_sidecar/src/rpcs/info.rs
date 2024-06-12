@@ -3,16 +3,17 @@
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use async_trait::async_trait;
-use casper_binary_port::MinimalBlockInfo;
+use casper_binary_port::{EraIdentifier as PortEraIdentifier, MinimalBlockInfo};
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
-    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
-    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, NextUpgrade, Peers,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockIdentifier,
+    BlockSynchronizerStatus, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorChange, U512,
 };
 
 use super::{
@@ -91,6 +92,16 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
     //  Prevent these values from changing between test sessions
     #[cfg(test)]
     build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
+});
+static GET_REWARD_PARAMS: Lazy<GetRewardParams> = Lazy::new(|| GetRewardParams {
+    era_identifier: Some(EraIdentifier::Era(EraId::new(1))),
+    validator: PublicKey::example().clone(),
+    delegator: Some(PublicKey::example().clone()),
+});
+static GET_REWARD_RESULT: Lazy<GetRewardResult> = Lazy::new(|| GetRewardResult {
+    api_version: DOCS_EXAMPLE_API_VERSION,
+    reward_amount: U512::from(42),
+    era_id: EraId::new(1),
 });
 
 /// Params for "info_get_deploy" RPC request.
@@ -495,6 +506,84 @@ impl RpcWithoutParams for GetStatus {
     }
 }
 
+/// Params for "info_get_reward" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRewardParams {
+    /// The era identifier. If `None`, the last finalized era is used.
+    pub era_identifier: Option<EraIdentifier>,
+    /// The public key of the validator.
+    pub validator: PublicKey,
+    /// The public key of the delegator. If `Some`, the rewards for the delegator are returned.
+    /// If `None`, the rewards for the validator are returned.
+    pub delegator: Option<PublicKey>,
+}
+
+impl DocExample for GetRewardParams {
+    fn doc_example() -> &'static Self {
+        &GET_REWARD_PARAMS
+    }
+}
+
+/// Identifier for an era.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub enum EraIdentifier {
+    Era(EraId),
+    Block(BlockIdentifier),
+}
+
+/// Result for "info_get_reward" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRewardResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ApiVersion,
+    /// The total reward amount in the requested era.
+    pub reward_amount: U512,
+    /// The era for which the reward was calculated.
+    pub era_id: EraId,
+}
+
+impl DocExample for GetRewardResult {
+    fn doc_example() -> &'static Self {
+        &GET_REWARD_RESULT
+    }
+}
+
+/// "info_get_reward" RPC.
+pub struct GetReward {}
+
+#[async_trait]
+impl RpcWithParams for GetReward {
+    const METHOD: &'static str = "info_get_reward";
+    type RequestParams = GetRewardParams;
+    type ResponseResult = GetRewardResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let identifier = match params.era_identifier {
+            Some(EraIdentifier::Era(era_id)) => Some(PortEraIdentifier::Era(era_id)),
+            Some(EraIdentifier::Block(block_id)) => Some(PortEraIdentifier::Block(block_id)),
+            None => None,
+        };
+
+        let result = node_client
+            .read_reward(identifier, params.validator, params.delegator)
+            .await
+            .map_err(|err| Error::NodeRequest("rewards", err))?
+            .ok_or(Error::RewardNotFound)?;
+
+        Ok(Self::ResponseResult {
+            api_version: CURRENT_API_VERSION,
+            reward_amount: result.amount(),
+            era_id: result.era_id(),
+        })
+    }
+}
+
 #[cfg(not(test))]
 fn version_string() -> String {
     use std::env;
@@ -526,7 +615,7 @@ mod tests {
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
         BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest, InformationRequest,
-        InformationRequestTag, TransactionWithExecutionInfo,
+        InformationRequestTag, RewardResponse, TransactionWithExecutionInfo,
     };
     use casper_types::{
         bytesrepr::{FromBytes, ToBytes},
@@ -715,6 +804,38 @@ mod tests {
         assert_eq!(err.code(), ErrorCode::VariantMismatch as i64);
     }
 
+    #[tokio::test]
+    async fn should_return_rewards() {
+        let rng = &mut TestRng::new();
+        let reward_amount = U512::from(rng.gen_range(0..1000));
+        let era_id = EraId::new(rng.gen_range(0..1000));
+        let validator = PublicKey::random(rng);
+        let delegator = rng.gen::<bool>().then(|| PublicKey::random(rng));
+
+        let resp = GetReward::do_handle_request(
+            Arc::new(RewardMock {
+                reward_amount,
+                era_id,
+            }),
+            GetRewardParams {
+                era_identifier: Some(EraIdentifier::Era(era_id)),
+                validator: validator.clone(),
+                delegator,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetRewardResult {
+                api_version: CURRENT_API_VERSION,
+                reward_amount,
+                era_id,
+            }
+        );
+    }
+
     struct ValidTransactionMock {
         transaction_bytes: Vec<u8>,
         should_request_approvals: bool,
@@ -756,6 +877,34 @@ mod tests {
                             .expect("should deserialize transaction");
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(transaction, SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                        0,
+                    ))
+                }
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct RewardMock {
+        reward_amount: U512,
+        era_id: EraId,
+    }
+
+    #[async_trait]
+    impl NodeClient for RewardMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    if InformationRequestTag::try_from(info_type_tag)
+                        == Ok(InformationRequestTag::Reward) =>
+                {
+                    let resp = RewardResponse::new(self.reward_amount, self.era_id);
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(resp, SUPPORTED_PROTOCOL_VERSION),
                         &[],
                         0,
                     ))
