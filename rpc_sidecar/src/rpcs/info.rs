@@ -878,6 +878,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(transaction, SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -905,6 +906,7 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(resp, SUPPORTED_PROTOCOL_VERSION),
                         &[],
+                        0,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
