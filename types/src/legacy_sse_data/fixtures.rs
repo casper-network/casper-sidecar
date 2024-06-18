@@ -425,7 +425,7 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
                 "scheduling": {
                     "FutureTimestamp": "2020-08-07T01:32:59.428Z"
                 },
-                "transaction_kind": 0
+                "transaction_category": 0
             },
             "approvals": [
                 {
