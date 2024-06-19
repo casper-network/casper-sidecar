@@ -146,6 +146,24 @@ data:"Shutdown"
 id:8
 ```
 
+## Replaying the Event Stream
+
+This command will replay the event stream from an old event onward. The server will replay all the cached events if the ID is 0 or if you specify an event ID already purged from the node's cache.
+
+Replace the `HOST`, `PORT`, and `ID` fields with the values needed.
+
+```sh
+curl -sN http://HOST:PORT/events?start_from=ID
+```
+
+**Example:**
+
+```sh
+curl -sN http://65.21.235.219:9999/events?start_from=29267508
+```
+
+Note that certain shells like `zsh` may require an escape character before the question mark.
+
 ## The REST Server
 
 The Sidecar provides a RESTful endpoint for useful queries about the state of the network.
