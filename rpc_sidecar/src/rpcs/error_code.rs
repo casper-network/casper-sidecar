@@ -53,6 +53,14 @@ pub enum ErrorCode {
     NoSuchAddressableEntity = -32020,
     /// The requested account has been migrated to an addressable entity.
     AccountMigratedToEntity = -32021,
+    /// The requested reward was not found.
+    NoRewardsFound = -32022,
+    /// The switch block for the requested era was not found.
+    SwitchBlockNotFound = -32023,
+    /// The parent of the switch block for the requested era was not found.
+    SwitchBlockParentNotFound = -32024,
+    /// Cannot serve rewards stored in V1 format
+    UnsupportedRewardsV1Request = -32025,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -91,6 +99,15 @@ impl From<ErrorCode> for (i64, &'static str) {
             ErrorCode::AccountMigratedToEntity => (
                 error_code as i64,
                 "Account migrated to an addressable entity",
+            ),
+            ErrorCode::NoRewardsFound => (error_code as i64, "No rewards found"),
+            ErrorCode::SwitchBlockNotFound => (error_code as i64, "Switch block not found"),
+            ErrorCode::SwitchBlockParentNotFound => {
+                (error_code as i64, "Switch block parent not found")
+            }
+            ErrorCode::UnsupportedRewardsV1Request => (
+                error_code as i64,
+                "Cannot serve rewards stored in V1 format",
             ),
         }
     }

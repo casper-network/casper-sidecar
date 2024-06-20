@@ -1,4 +1,4 @@
-use crate::{NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
+use crate::{encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use futures::{Future, SinkExt, StreamExt};
@@ -6,23 +6,27 @@ use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tokio_util::codec::Framed;
 
 use casper_binary_port::{
-    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
-    BinaryResponse, BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
-    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus, PayloadEntity, PurseIdentifier,
-    RecordId, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryResponse,
+    BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
+    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus,
+    PayloadEntity, PurseIdentifier, RecordId, RewardResponse, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    Transaction, TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, PublicKey, SignedBlock,
+    StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -33,6 +37,12 @@ use tokio::{
     sync::{futures::Notified, RwLock, RwLockWriteGuard, Semaphore},
 };
 use tracing::{error, field, info, warn};
+
+const MAX_MISMATCHED_ID_RETRIES: u8 = 100;
+#[cfg(not(test))]
+const INITIAL_REQUEST_ID: u16 = 0;
+#[cfg(test)]
+const INITIAL_REQUEST_ID: u16 = 1;
 
 #[async_trait]
 pub trait NodeClient: Send + Sync {
@@ -237,6 +247,24 @@ pub trait NodeClient: Send + Sync {
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn read_reward(
+        &self,
+        era_identifier: Option<EraIdentifier>,
+        validator: PublicKey,
+        delegator: Option<PublicKey>,
+    ) -> Result<Option<RewardResponse>, Error> {
+        let validator = validator.into();
+        let delegator = delegator.map(Into::into);
+        let resp = self
+            .read_info(InformationRequest::Reward {
+                era_identifier,
+                validator,
+                delegator,
+            })
+            .await?;
+        parse_response::<RewardResponse>(&resp.into())
     }
 }
 
@@ -475,6 +503,12 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
 pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
+    #[error("request id mismatch: expected {expected}, got {got}")]
+    RequestResponseIdMismatch { expected: u16, got: u16 },
+    #[error("failed to get a response with correct id {max} times, giving up")]
+    TooManyMismatchedResponses { max: u8 },
+    #[error("failed to deserialize the original request provided with the response: {0}")]
+    OriginalRequestDeserialization(String),
     #[error("failed to deserialize the envelope of a response: {0}")]
     EnvelopeDeserialization(String),
     #[error("failed to deserialize a response: {0}")]
@@ -497,18 +531,27 @@ pub enum Error {
     InvalidTransaction(InvalidTransactionOrDeploy),
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
+    #[error("the switch block for the requested era was not found")]
+    SwitchBlockNotFound,
+    #[error("the parent of the switch block for the requested era was not found")]
+    SwitchBlockParentNotFound,
+    #[error("cannot serve rewards stored in V1 format")]
+    UnsupportedRewardsV1Request,
     #[error("received a response with an unsupported protocol version: {0}")]
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
-    UnexpectedNodeError { message: String, code: u8 },
+    UnexpectedNodeError { message: String, code: u16 },
 }
 
 impl Error {
-    fn from_error_code(code: u8) -> Self {
+    fn from_error_code(code: u16) -> Self {
         match ErrorCode::try_from(code) {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
             Ok(ErrorCode::FailedQuery) => Self::QueryFailedToExecute,
+            Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
+            Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
+            Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported
@@ -602,6 +645,7 @@ pub struct FramedNodeClient {
     shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
     request_limit: Semaphore,
+    current_request_id: AtomicU16,
 }
 
 impl FramedNodeClient {
@@ -626,9 +670,14 @@ impl FramedNodeClient {
                 reconnect,
                 shutdown,
                 config,
+                current_request_id: AtomicU16::new(INITIAL_REQUEST_ID),
             },
             reconnect_loop,
         ))
+    }
+
+    fn next_id(&self) -> u16 {
+        self.current_request_id.fetch_add(1, Ordering::Relaxed)
     }
 
     async fn reconnect_loop(
@@ -657,8 +706,7 @@ impl FramedNodeClient {
         req: BinaryRequest,
         client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
     ) -> Result<BinaryResponseAndRequest, Error> {
-        let payload =
-            BinaryMessage::new(encode_request(&req).expect("should always serialize a request"));
+        let (request_id, payload) = self.generate_payload(req);
 
         if let Err(err) = tokio::time::timeout(
             Duration::from_secs(self.config.message_timeout_secs),
@@ -670,26 +718,52 @@ impl FramedNodeClient {
             return Err(Error::RequestFailed(err.to_string()));
         };
 
-        let Ok(maybe_response) = tokio::time::timeout(
-            Duration::from_secs(self.config.message_timeout_secs),
-            client.next(),
-        )
-        .await
-        else {
-            return Err(Error::RequestFailed("timeout".to_owned()));
-        };
-
-        if let Some(response) = maybe_response {
-            let resp = bytesrepr::deserialize_from_slice(
-                response
-                    .map_err(|err| Error::RequestFailed(err.to_string()))?
-                    .payload(),
+        for _ in 0..MAX_MISMATCHED_ID_RETRIES {
+            let Ok(maybe_response) = tokio::time::timeout(
+                Duration::from_secs(self.config.message_timeout_secs),
+                client.next(),
             )
-            .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
-            handle_response(resp, &self.shutdown)
-        } else {
-            Err(Error::RequestFailed("disconnected".to_owned()))
+            .await
+            else {
+                return Err(Error::RequestFailed("timeout".to_owned()));
+            };
+
+            if let Some(response) = maybe_response {
+                let resp = bytesrepr::deserialize_from_slice(
+                    response
+                        .map_err(|err| Error::RequestFailed(err.to_string()))?
+                        .payload(),
+                )
+                .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))?;
+                match validate_response(resp, request_id, &self.shutdown) {
+                    Ok(response) => return Ok(response),
+                    Err(err) if matches!(err, Error::RequestResponseIdMismatch { expected, got } if expected > got) =>
+                    {
+                        // If our expected ID is greater than the one we received, it means we can
+                        // try to recover from the situation by reading more responses from the stream.
+                        warn!(%err, "received a response with an outdated id, trying another response");
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                }
+            } else {
+                return Err(Error::RequestFailed("disconnected".to_owned()));
+            }
         }
+
+        Err(Error::TooManyMismatchedResponses {
+            max: MAX_MISMATCHED_ID_RETRIES,
+        })
+    }
+
+    fn generate_payload(&self, req: BinaryRequest) -> (u16, BinaryMessage) {
+        let next_id = self.next_id();
+        (
+            next_id,
+            BinaryMessage::new(
+                encode_request(&req, next_id).expect("should always serialize a request"),
+            ),
+        )
     }
 
     async fn connect_with_retries(
@@ -775,12 +849,20 @@ impl NodeClient for FramedNodeClient {
     }
 }
 
-fn handle_response(
+fn validate_response(
     resp: BinaryResponseAndRequest,
+    expected_id: u16,
     shutdown: &Notify<Shutdown>,
 ) -> Result<BinaryResponseAndRequest, Error> {
-    let version = resp.response().protocol_version();
+    let original_id = resp.original_request_id();
+    if original_id != expected_id {
+        return Err(Error::RequestResponseIdMismatch {
+            expected: expected_id,
+            got: original_id,
+        });
+    }
 
+    let version = resp.response().protocol_version();
     if version.is_compatible_with(&SUPPORTED_PROTOCOL_VERSION) {
         Ok(resp)
     } else {
@@ -788,14 +870,6 @@ fn handle_response(
         shutdown.notify_one();
         Err(Error::UnsupportedProtocolVersion(version))
     }
-}
-
-fn encode_request(req: &BinaryRequest) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag());
-    let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
-    header.write_bytes(&mut bytes)?;
-    req.write_bytes(&mut bytes)?;
-    Ok(bytes)
 }
 
 fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
@@ -872,9 +946,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::{get_port, start_mock_binary_port_responding_with_stored_value};
+    use crate::testing::{
+        get_dummy_request, get_dummy_request_payload, get_port, start_mock_binary_port,
+        start_mock_binary_port_responding_with_stored_value,
+    };
 
     use super::*;
+    use casper_binary_port::BinaryRequestHeader;
     use casper_types::testing::TestRng;
     use casper_types::{CLValue, SemVer};
     use futures::FutureExt;
@@ -885,11 +963,15 @@ mod tests {
         let notify = Notify::<Shutdown>::new();
         let bad_version = ProtocolVersion::from_parts(10, 0, 0);
 
-        let result = handle_response(
+        let request = get_dummy_request_payload(None);
+
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
-                &[],
+                &request,
+                0,
             ),
+            0,
             &notify,
         );
 
@@ -905,11 +987,15 @@ mod tests {
             ..SUPPORTED_PROTOCOL_VERSION.value()
         });
 
-        let result = handle_response(
+        let request = get_dummy_request_payload(None);
+
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
+                0,
             ),
+            0,
             &notify,
         );
 
@@ -917,7 +1003,8 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
+                0
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -931,11 +1018,15 @@ mod tests {
             ..SUPPORTED_PROTOCOL_VERSION.value()
         });
 
-        let result = handle_response(
+        let request = get_dummy_request_payload(None);
+
+        let result = validate_response(
             BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
+                0,
             ),
+            0,
             &notify,
         );
 
@@ -943,7 +1034,8 @@ mod tests {
             result,
             Ok(BinaryResponseAndRequest::new(
                 BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &[],
+                &request,
+                0
             ))
         );
         assert_eq!(notify.notified().now_or_never(), None)
@@ -966,8 +1058,13 @@ mod tests {
         let port = get_port();
         let mut rng = TestRng::new();
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let _mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(INITIAL_REQUEST_ID),
+            None,
+            Arc::clone(&shutdown),
+        )
+        .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
         let (c, _) = FramedNodeClient::new(config).await.unwrap();
 
@@ -985,9 +1082,13 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         tokio::spawn(async move {
             sleep(Duration::from_secs(5)).await;
-            let _mock_server_handle =
-                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
-                    .await;
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                Some(INITIAL_REQUEST_ID),
+                None,
+                Arc::clone(&shutdown),
+            )
+            .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
         let (client, _) = FramedNodeClient::new(config).await.unwrap();
@@ -1021,12 +1122,18 @@ mod tests {
         let port = get_port();
         let mut rng = TestRng::new();
         let shutdown = Arc::new(tokio::sync::Notify::new());
-        let mock_server_handle =
-            start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown)).await;
+        let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(INITIAL_REQUEST_ID),
+            None,
+            Arc::clone(&shutdown),
+        )
+        .await;
         let config = NodeClientConfig::new_with_port(port);
         let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
+            // Request id = 0
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
@@ -1034,6 +1141,7 @@ mod tests {
             shutdown.notify_one();
             let _ = mock_server_handle.await;
 
+            // Request id = 1
             let err = query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .unwrap_err();
@@ -1042,12 +1150,17 @@ mod tests {
                 Error::RequestFailed(e) if e == "disconnected"
             ));
 
-            let _mock_server_handle =
-                start_mock_binary_port_responding_with_stored_value(port, Arc::clone(&shutdown))
-                    .await;
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                Some(INITIAL_REQUEST_ID + 2),
+                None,
+                Arc::clone(&shutdown),
+            )
+            .await;
 
             tokio::time::sleep(Duration::from_secs(2)).await;
 
+            // Request id = 2
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
@@ -1057,5 +1170,125 @@ mod tests {
             _ = scenario => (),
             _ = reconnect_loop => panic!("reconnect loop should not exit"),
         }
+    }
+
+    #[tokio::test]
+    async fn should_generate_payload_with_incrementing_id() {
+        let port = get_port();
+        let config = NodeClientConfig::new_with_port(port);
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle =
+            start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
+            .map(|_| {
+                let (_, binary_message) = c.generate_payload(get_dummy_request());
+                let header = BinaryRequestHeader::from_bytes(binary_message.payload())
+                    .unwrap()
+                    .0;
+                header.id()
+            })
+            .collect();
+
+        assert_eq!(
+            generated_ids,
+            (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn should_reject_mismatched_request_id() {
+        let notify = Notify::<Shutdown>::new();
+
+        let expected_id = 1;
+        let actual_id = 2;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        assert!(matches!(
+            result,
+            Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 1 && got == 2
+        ));
+
+        let expected_id = 2;
+        let actual_id = 1;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        assert!(matches!(
+            result,
+            Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 2 && got == 1
+        ));
+    }
+
+    #[test]
+    fn should_accept_matching_request_id() {
+        let notify = Notify::<Shutdown>::new();
+
+        let expected_id = 1;
+        let actual_id = 1;
+
+        let req = get_dummy_request_payload(Some(actual_id));
+        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
+        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+
+        let result = validate_response(resp_and_req, expected_id, &notify);
+        dbg!(&result);
+        assert!(result.is_ok())
+    }
+
+    #[tokio::test]
+    async fn should_keep_retrying_to_get_response_up_to_the_limit() {
+        const LIMIT: u8 = MAX_MISMATCHED_ID_RETRIES - 1;
+
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(0),
+            Some(LIMIT),
+            Arc::clone(&shutdown),
+        )
+        .await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let res = query_global_state_for_string_value(&mut rng, &c)
+            .await
+            .unwrap_err();
+        // Expect error different than 'TooManyMismatchResponses'
+        assert!(!matches!(res, Error::TooManyMismatchedResponses { .. }));
+    }
+
+    #[tokio::test]
+    async fn should_quit_retrying_to_get_response_over_the_retry_limit() {
+        const LIMIT: u8 = MAX_MISMATCHED_ID_RETRIES;
+
+        let port = get_port();
+        let mut rng = TestRng::new();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            port,
+            Some(0),
+            Some(LIMIT),
+            Arc::clone(&shutdown),
+        )
+        .await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+
+        let res = query_global_state_for_string_value(&mut rng, &c)
+            .await
+            .unwrap_err();
+        // Expect 'TooManyMismatchResponses' error
+        assert!(matches!(res, Error::TooManyMismatchedResponses { max } if max == LIMIT));
     }
 }

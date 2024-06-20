@@ -222,7 +222,7 @@
                     ],
                     "target": "Native",
                     "entry_point": "Transfer",
-                    "transaction_kind": 0,
+                    "transaction_category": 0,
                     "scheduling": "Standard"
                   },
                   "approvals": [
@@ -557,7 +557,7 @@
                     ],
                     "target": "Native",
                     "entry_point": "Transfer",
-                    "transaction_kind": 0,
+                    "transaction_category": 0,
                     "scheduling": "Standard"
                   },
                   "approvals": [
@@ -1508,6 +1508,106 @@
                 }
               },
               "latest_switch_block_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "info_get_reward",
+      "summary": "returns the reward for a given era and a validator or a delegator",
+      "params": [
+        {
+          "name": "validator",
+          "schema": {
+            "description": "The public key of the validator.",
+            "$ref": "#/components/schemas/PublicKey"
+          },
+          "required": true
+        },
+        {
+          "name": "era_identifier",
+          "schema": {
+            "description": "The era identifier. If `None`, the last finalized era is used.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EraIdentifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "delegator",
+          "schema": {
+            "description": "The public key of the delegator. If `Some`, the rewards for the delegator are returned. If `None`, the rewards for the validator are returned.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "info_get_reward_result",
+        "schema": {
+          "description": "Result for \"info_get_reward\" RPC response.",
+          "type": "object",
+          "required": [
+            "api_version",
+            "era_id",
+            "reward_amount"
+          ],
+          "properties": {
+            "api_version": {
+              "description": "The RPC API version.",
+              "type": "string"
+            },
+            "reward_amount": {
+              "description": "The total reward amount in the requested era.",
+              "$ref": "#/components/schemas/U512"
+            },
+            "era_id": {
+              "description": "The era for which the reward was calculated.",
+              "$ref": "#/components/schemas/EraId"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "examples": [
+        {
+          "name": "info_get_reward_example",
+          "params": [
+            {
+              "name": "era_identifier",
+              "value": {
+                "Era": 1
+              }
+            },
+            {
+              "name": "validator",
+              "value": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+            },
+            {
+              "name": "delegator",
+              "value": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+            }
+          ],
+          "result": {
+            "name": "info_get_reward_example_result",
+            "value": {
+              "api_version": "2.0.0",
+              "reward_amount": "42",
+              "era_id": 1
             }
           }
         }
@@ -3159,7 +3259,7 @@
             "additionalProperties": false
           },
           {
-            "description": "The cost of the transaction is determined by the cost table, per the transaction kind.",
+            "description": "The cost of the transaction is determined by the cost table, per the transaction category.",
             "type": "object",
             "required": [
               "Fixed"
@@ -3255,7 +3355,7 @@
           "entry_point",
           "scheduling",
           "target",
-          "transaction_kind"
+          "transaction_category"
         ],
         "properties": {
           "args": {
@@ -3267,7 +3367,7 @@
           "entry_point": {
             "$ref": "#/components/schemas/TransactionEntryPoint"
           },
-          "transaction_kind": {
+          "transaction_category": {
             "type": "integer",
             "format": "uint8",
             "minimum": 0.0
@@ -3334,19 +3434,10 @@
               "Session": {
                 "type": "object",
                 "required": [
-                  "kind",
                   "module_bytes",
                   "runtime"
                 ],
                 "properties": {
-                  "kind": {
-                    "description": "The kind of session.",
-                    "allOf": [
-                      {
-                        "$ref": "#/components/schemas/TransactionSessionKind"
-                      }
-                    ]
-                  },
                   "module_bytes": {
                     "description": "The compiled Wasm.",
                     "allOf": [
@@ -3481,39 +3572,6 @@
             "type": "string",
             "enum": [
               "VmCasperV2"
-            ]
-          }
-        ]
-      },
-      "TransactionSessionKind": {
-        "description": "Session kind of a Transaction.",
-        "oneOf": [
-          {
-            "description": "A standard (non-special-case) session.\n\nThis kind of session is not allowed to install or upgrade a stored contract, but can call stored contracts.",
-            "type": "string",
-            "enum": [
-              "Standard"
-            ]
-          },
-          {
-            "description": "A session which installs a stored contract.",
-            "type": "string",
-            "enum": [
-              "Installer"
-            ]
-          },
-          {
-            "description": "A session which upgrades a previously-installed stored contract.  Such a session must have \"package_id: PackageIdentifier\" runtime arg present.",
-            "type": "string",
-            "enum": [
-              "Upgrader"
-            ]
-          },
-          {
-            "description": "A session which doesn't call any stored contracts.\n\nThis kind of session is not allowed to install or upgrade a stored contract.",
-            "type": "string",
-            "enum": [
-              "Isolated"
             ]
           }
         ]
@@ -4872,6 +4930,8 @@
           "bonding_purse",
           "delegation_rate",
           "inactive",
+          "maximum_delegation_amount",
+          "minimum_delegation_amount",
           "staked_amount",
           "validator_public_key"
         ],
@@ -4920,6 +4980,18 @@
           "inactive": {
             "description": "`true` if validator has been \"evicted\"",
             "type": "boolean"
+          },
+          "minimum_delegation_amount": {
+            "description": "Minimum allowed delegation amount in motes",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "maximum_delegation_amount": {
+            "description": "Maximum allowed delegation amount in motes",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
           }
         },
         "additionalProperties": false
@@ -7783,6 +7855,35 @@
           }
         },
         "additionalProperties": false
+      },
+      "EraIdentifier": {
+        "description": "Identifier for an era.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "Era"
+            ],
+            "properties": {
+              "Era": {
+                "$ref": "#/components/schemas/EraId"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Block"
+            ],
+            "properties": {
+              "Block": {
+                "$ref": "#/components/schemas/BlockIdentifier"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
       },
       "JsonValidatorChanges": {
         "description": "The changes in a validator's status.",

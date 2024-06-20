@@ -172,6 +172,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     _ => unimplemented!(),
@@ -213,6 +214,7 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
                             &[],
+                            0,
                         ))
                     }
                     _ => unimplemented!(),
@@ -257,6 +259,7 @@ mod tests {
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
+                            0,
                         ))
                     }
                     _ => unimplemented!(),

@@ -312,8 +312,7 @@ network_name: String,
         event_id: u32,
         event_source_address: String,
         api_version: String,
-network_name: String,
-
+        network_name: String,
     ) -> Result<u64, DatabaseWriteError> {
         #[cfg(feature = "additional-metrics")]
         let start = Instant::now();

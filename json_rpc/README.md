@@ -1,4 +1,4 @@
-# `casper-json-rpc`
+# The `casper-json-rpc` Library
 
 [![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
@@ -7,16 +7,15 @@
 [![Documentation](https://docs.rs/casper-node/badge.svg)](https://docs.rs/casper-json-rpc)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/casper-network/casper-node/blob/master/LICENSE)
 
-A library suitable for use as the framework for a JSON-RPC server.
+The `casper-json-rpc` library described here can be used as the framework for a JSON-RPC server.
 
 # Usage
 
-Normally usage will involve two steps:
-  * construct a set of request handlers using a
-    [`RequestHandlersBuilder`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.RequestHandlersBuilder.html)
-  * call [`casper_json_rpc::route`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/fn.route.html) to construct a
-    boxed warp filter ready to be passed to [`warp::service`](https://docs.rs/warp/latest/warp/fn.service.html) for
-    example
+Typical usage of this library involves two steps:
+
+* Construct a set of request handlers using a
+[`RequestHandlersBuilder`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.RequestHandlersBuilder.html).
+* Call [`casper_json_rpc::route`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/fn.route.html) to construct a boxed warp filter ready to be passed to [`warp::service`](https://docs.rs/warp/latest/warp/fn.service.html).
 
 # Example
 
@@ -61,15 +60,15 @@ async fn main() {
 }
 ```
 
-If this receives a request such as
+The following is a sample request:
 
-```
+```sh
 curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"id","method":"get"}' http://127.0.0.1:3030/rpc
 ```
 
-then the server will respond with
+Here is a sample response:
 
-```json
+```sh
 {"jsonrpc":"2.0","id":"id","result":"got it"}
 ```
 
@@ -77,13 +76,12 @@ then the server will respond with
 
 To return a JSON-RPC response indicating an error, use
 [`Error::new`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.Error.html#method.new).  Most error
-conditions which require returning a reserved error are already handled in the provided warp filters.  The only
+conditions that require returning a reserved error are already handled in the provided warp filters.  The only
 exception is
-[`ReservedErrorCode::InvalidParams`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/enum.ReservedErrorCode.html#variant.InvalidParams)
-which should be returned by any RPC handler which deems the provided `params: Option<Params>` to be invalid for any
+[`ReservedErrorCode::InvalidParams`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/enum.ReservedErrorCode.html#variant.InvalidParams), which should be returned by any RPC handler that deems the provided `params: Option<Params>` to be invalid for any
 reason.
 
-Generally a set of custom error codes should be provided.  These should all implement
+Generally, a set of custom error codes should be provided.  These should all implement
 [`ErrorCodeT`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/trait.ErrorCodeT.html).
 
 ## Example custom error code

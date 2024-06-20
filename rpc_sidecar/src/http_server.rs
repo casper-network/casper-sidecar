@@ -6,7 +6,7 @@ use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 
 use crate::{
     rpcs::{
-        info::{GetPeers, GetStatus, GetTransaction},
+        info::{GetPeers, GetReward, GetStatus, GetTransaction},
         state::{GetAddressableEntity, QueryBalanceDetails},
     },
     NodeClient,
@@ -54,6 +54,7 @@ pub async fn run(
     GetTransaction::register_as_handler(node.clone(), &mut handlers);
     GetPeers::register_as_handler(node.clone(), &mut handlers);
     GetStatus::register_as_handler(node.clone(), &mut handlers);
+    GetReward::register_as_handler(node.clone(), &mut handlers);
     GetEraInfoBySwitchBlock::register_as_handler(node.clone(), &mut handlers);
     GetEraSummary::register_as_handler(node.clone(), &mut handlers);
     GetAuctionInfo::register_as_handler(node.clone(), &mut handlers);
