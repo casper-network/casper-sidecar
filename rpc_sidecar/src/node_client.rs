@@ -410,6 +410,69 @@ pub enum InvalidTransactionOrDeploy {
     /// The catchall error from a casper node
     #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
     TransactionOrDeployUnspecified,
+    /// Blockchain is empty
+    #[error("blockchain is empty")]
+    EmptyBlockchain,
+    /// Expected deploy, but got transaction
+    #[error("expected deploy, got transaction")]
+    ExpectedDeploy,
+    /// Expected transaction, but got deploy
+    #[error("expected transaction V1, got deploy")]
+    ExpectedTransaction,
+    /// Transaction has expired
+    #[error("transaction has expired")]
+    TransactionExpired,
+    /// Transactions parameters are missing or incorrect
+    #[error("missing or incorrect transaction parameters")]
+    MissingOrIncorrectParameters,
+    /// No such addressable entity
+    #[error("no such addressable entity")]
+    NoSuchAddressableEntity,
+    // No such contract at hash
+    #[error("no such contract at hash")]
+    NoSuchContractAtHash,
+    /// No such entry point
+    #[error("no such entry point")]
+    NoSuchEntryPoint,
+    /// No such package at hash
+    #[error("no such package at hash")]
+    NoSuchPackageAtHash,
+    /// Invalid entity at version
+    #[error("invalid entity at version")]
+    InvalidEntityAtVersion,
+    /// Disabled entity at version
+    #[error("disabled entity at version")]
+    DisabledEntityAtVersion,
+    /// Missing entity at version
+    #[error("missing entity at version")]
+    MissingEntityAtVersion,
+    /// Invalid associated keys
+    #[error("invalid associated keys")]
+    InvalidAssociatedKeys,
+    /// Insufficient signature weight
+    #[error("insufficient signature weight")]
+    InsufficientSignatureWeight,
+    /// Insufficient balance
+    #[error("insufficient balance")]
+    InsufficientBalance,
+    /// Unknown balance
+    #[error("unknown balance")]
+    UnknownBalance,
+    /// Invalid payment variant for deploy
+    #[error("invalid payment variant for deploy")]
+    DeployInvalidPaymentVariant,
+    /// Missing transfer target for deploy
+    #[error("missing transfer target for deploy")]
+    DeployMissingTransferTarget,
+    /// Missing module bytes for deploy
+    #[error("missing module bytes for deploy")]
+    DeployMissingModuleBytes,
+    /// Entry point cannot be 'call'
+    #[error("entry point cannot be 'call'")]
+    InvalidTransactionEntryPointCannotBeCall,
+    /// Invalid transaction kind
+    #[error("invalid transaction kind")]
+    InvalidTransactionInvalidTransactionKind,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -490,6 +553,33 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
                 Self::TransactionUnableToCalculateGasCost
             }
             ErrorCode::InvalidTransactionPricingMode => Self::TransactionPricingMode,
+            ErrorCode::EmptyBlockchain => Self::EmptyBlockchain,
+            ErrorCode::ExpectedDeploy => Self::ExpectedDeploy,
+            ErrorCode::ExpectedTransaction => Self::ExpectedTransaction,
+            ErrorCode::TransactionExpired => Self::TransactionExpired,
+            ErrorCode::MissingOrIncorrectParameters => Self::MissingOrIncorrectParameters,
+            ErrorCode::NoSuchAddressableEntity => Self::NoSuchAddressableEntity,
+            ErrorCode::NoSuchContractAtHash => Self::NoSuchContractAtHash,
+            ErrorCode::NoSuchEntryPoint => Self::NoSuchEntryPoint,
+            ErrorCode::NoSuchPackageAtHash => Self::NoSuchPackageAtHash,
+            ErrorCode::InvalidEntityAtVersion => Self::InvalidEntityAtVersion,
+            ErrorCode::DisabledEntityAtVersion => Self::DisabledEntityAtVersion,
+            ErrorCode::MissingEntityAtVersion => Self::MissingEntityAtVersion,
+            ErrorCode::InvalidAssociatedKeys => Self::InvalidAssociatedKeys,
+            ErrorCode::InsufficientSignatureWeight => Self::InsufficientSignatureWeight,
+            ErrorCode::InsufficientBalance => Self::InsufficientBalance,
+            ErrorCode::UnknownBalance => Self::UnknownBalance,
+            ErrorCode::DeployInvalidPaymentVariant => Self::DeployInvalidPaymentVariant,
+            ErrorCode::DeployMissingPaymentAmount => Self::DeployMissingPaymentAmount,
+            ErrorCode::DeployFailedToParsePaymentAmount => Self::DeployFailedToParsePaymentAmount,
+            ErrorCode::DeployMissingTransferTarget => Self::DeployMissingTransferTarget,
+            ErrorCode::DeployMissingModuleBytes => Self::DeployMissingModuleBytes,
+            ErrorCode::InvalidTransactionEntryPointCannotBeCall => {
+                Self::InvalidTransactionEntryPointCannotBeCall
+            }
+            ErrorCode::InvalidTransactionInvalidTransactionKind => {
+                Self::InvalidTransactionInvalidTransactionKind
+            }
             ErrorCode::InvalidTransactionUnspecified => Self::TransactionUnspecified,
             ErrorCode::InvalidTransactionOrDeployUnspecified => {
                 Self::TransactionOrDeployUnspecified
@@ -541,6 +631,8 @@ pub enum Error {
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
     UnexpectedNodeError { message: String, code: u16 },
+    #[error("binary protocol version mismatch")]
+    BinaryProtocolVersionMismatch,
 }
 
 impl Error {
@@ -552,6 +644,7 @@ impl Error {
             Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
             Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
             Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
+            Ok(ErrorCode::BinaryProtocolVersionMismatch) => Self::BinaryProtocolVersionMismatch,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported
@@ -596,6 +689,29 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnableToCalculateGasLimit
                 | ErrorCode::InvalidTransactionUnableToCalculateGasCost
                 | ErrorCode::InvalidTransactionPricingMode
+                | ErrorCode::EmptyBlockchain
+                | ErrorCode::ExpectedDeploy
+                | ErrorCode::ExpectedTransaction
+                | ErrorCode::TransactionExpired
+                | ErrorCode::MissingOrIncorrectParameters
+                | ErrorCode::NoSuchAddressableEntity
+                | ErrorCode::NoSuchContractAtHash
+                | ErrorCode::NoSuchEntryPoint
+                | ErrorCode::NoSuchPackageAtHash
+                | ErrorCode::InvalidEntityAtVersion
+                | ErrorCode::DisabledEntityAtVersion
+                | ErrorCode::MissingEntityAtVersion
+                | ErrorCode::InvalidAssociatedKeys
+                | ErrorCode::InsufficientSignatureWeight
+                | ErrorCode::InsufficientBalance
+                | ErrorCode::UnknownBalance
+                | ErrorCode::DeployInvalidPaymentVariant
+                | ErrorCode::DeployMissingPaymentAmount
+                | ErrorCode::DeployFailedToParsePaymentAmount
+                | ErrorCode::DeployMissingTransferTarget
+                | ErrorCode::DeployMissingModuleBytes
+                | ErrorCode::InvalidTransactionEntryPointCannotBeCall
+                | ErrorCode::InvalidTransactionInvalidTransactionKind
                 | ErrorCode::InvalidTransactionUnspecified
                 | ErrorCode::InvalidTransactionOrDeployUnspecified),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
