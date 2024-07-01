@@ -1,12 +1,12 @@
 # Casper Sidecar README for Node Operators
 
 This page contains specific instructions for node operators. Before proceeding, familiarize yourself with the main [README](../README.md) file, which covers the following:
- - [Summary of purpose](../README.md#summary-of-purpose)
- - [System components and architecture](../README.md#system-components-and-architecture)
- - [Configuration options](../README.md#configuring-the-sidecar)
- - [Running and testing the Sidecar](../README.md#running-and-testing-the-sidecar)
- - [Troubleshooting tips](../README.md#troubleshooting-tips)
 
+- [Summary of purpose](../README.md#summary-of-purpose)
+- [System components and architecture](../README.md#system-components-and-architecture)
+- [Configuration options](../README.md#configuring-the-sidecar)
+- [Running and testing the Sidecar](../README.md#running-and-testing-the-sidecar)
+- [Troubleshooting tips](../README.md#troubleshooting-tips)
 
 ## Configuring the Sidecar
 
@@ -16,10 +16,9 @@ If you install the Sidecar on an external server, you must update the `ip-addres
 
 For more information, including how to setup the SSE, RPC, REST, and Admin servers, read the [configuration options](../README.md#configuring-the-sidecar) in the main README.
 
-
 ## Installing the Sidecar on a Node
 
-The following command will install the Debian package for the Casper Sidecar service on various flavors of Linux. 
+The following command will install the Debian package for the Casper Sidecar service on various flavors of Linux.
 
 <!-- TODO Once the package is published, update the command below with the new link to the *.deb package. The link below assumes a package available locally. -->
 
@@ -53,6 +52,40 @@ The `casper-sidecar` service starts after installation, using the systemd servic
 
 `sudo systemctl start casper-sidecar.service`
 
+## Sidecar Storage
+
+This directory stores the SSE cache and an SQLite database if the Sidecar was configured to use SQLite.
+
+```toml
+[storage]
+storage_folder = "./target/storage"
+```
+
+Check the service status:
+
+```bash
+systemctl status casper-sidecar
+```
+
+Check the logs and make sure the service is running as expected.
+
+```bash
+journalctl --no-pager -u casper-sidecar
+```
+
+If you see any errors, you may need to [update the configuration](#configuring-the-service) and restart the service with the commands below.
+
+## Running the Sidecar on a Node
+
+The `casper-sidecar` service starts after installation, using the systemd service file.
+
+### Stop
+
+`sudo systemctl stop casper-sidecar.service`
+
+### Start
+
+`sudo systemctl start casper-sidecar.service`
 
 ## Sidecar Storage
 

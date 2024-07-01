@@ -28,8 +28,9 @@ use crate::{
     },
     utils::tests::{
         any_string_contains, build_test_config, build_test_config_with_retries,
-        build_test_config_without_connections, start_nodes_and_wait, start_sidecar,
-        start_sidecar_with_rest_api, stop_nodes_and_wait, wait_for_n_messages,
+        build_test_config_without_connections, build_test_config_without_db_storage,
+        start_nodes_and_wait, start_sidecar, start_sidecar_with_rest_api, stop_nodes_and_wait,
+        wait_for_n_messages,
     },
 };
 
@@ -37,7 +38,7 @@ use crate::{
 async fn should_not_allow_zero_max_attempts() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
 
-    let mut testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir, true);
 
     let sse_port_for_node = testing_config.add_connection(None, None, None);
 
@@ -45,10 +46,11 @@ async fn should_not_allow_zero_max_attempts() {
     let sqlite_database = SqliteDatabase::new_from_config(&testing_config.storage_config)
         .await
         .expect("database should start");
+    let storage_folder = testing_config.get_storage_folder();
     let shutdown_error = run(
         testing_config.inner(),
-        Database::SqliteDatabaseWrapper(sqlite_database),
-        testing_config.storage_config.get_storage_path().clone(),
+        storage_folder,
+        Some(Database::SqliteDatabaseWrapper(sqlite_database)),
     )
     .await
     .expect_err("Sidecar should return an Err on shutdown");
@@ -102,6 +104,34 @@ async fn should_allow_client_connection_to_sse() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    start_sidecar(testing_config).await;
+    let (join_handle, receiver) =
+        fetch_data_from_endpoint("/events?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(1, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 2);
+    assert!(
+        events_received[0].contains("\"ApiVersion\""),
+        "First event should be ApiVersion"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn should_allow_client_connection_to_sse_without_db_storage() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config_without_db_storage();
     let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,
         node_port_for_rest_connection,
@@ -260,7 +290,7 @@ async fn should_fail_to_reconnect() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
         event_stream_server_port,
-    ) = build_test_config_with_retries(2, 2);
+    ) = build_test_config_with_retries(2, 2, true);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
         version: "2.0.0".to_string(),
@@ -309,7 +339,7 @@ async fn should_reconnect() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
         event_stream_server_port,
-    ) = build_test_config_with_retries(10, 1);
+    ) = build_test_config_with_retries(10, 1, true);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
         version: "2.0.0".to_string(),
@@ -795,7 +825,7 @@ pub fn build_testing_config_based_on_ports(
     ports_of_nodes: Vec<(u16, u16)>,
 ) -> (TestingConfig, u16, TempDir) {
     let (mut testing_config, temp_storage_dir, event_stream_server_port) =
-        build_test_config_without_connections();
+        build_test_config_without_connections(true);
     for (sse_port, rest_port) in ports_of_nodes {
         testing_config.add_connection(None, Some(sse_port), Some(rest_port));
         testing_config.set_retries_for_node(sse_port, 5, 2);

@@ -15,8 +15,11 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
+use std::{
+    fmt::{Display, Formatter},
+    path::Path,
+};
 use tokio::sync::OnceCell;
 use utoipa::ToSchema;
 
@@ -89,29 +92,21 @@ impl LazyDatabaseWrapper {
 
 impl Database {
     pub async fn build(config: &StorageConfig) -> Result<Database, DatabaseInitializationError> {
-        match config {
-            StorageConfig::SqliteDbConfig {
-                storage_path,
-                sqlite_config,
-            } => {
-                let path_to_database_dir = Path::new(storage_path);
-                let sqlite_database =
-                    SqliteDatabase::new(path_to_database_dir, sqlite_config.clone())
-                        .await
-                        .context("Error instantiating sqlite database")
-                        .map_err(DatabaseInitializationError::from)?;
-                Ok(Database::SqliteDatabaseWrapper(sqlite_database))
-            }
-            StorageConfig::PostgreSqlDbConfig {
-                postgresql_config, ..
-            } => {
-                let postgres_database = PostgreSqlDatabase::new(postgresql_config.clone())
+        if let Some(sqlite_config) = &config.sqlite_config {
+            let sqlite_database =
+                SqliteDatabase::new(Path::new(&config.storage_folder), sqlite_config.clone())
                     .await
-                    .context("Error instantiating postgres database")
+                    .context("Error instantiating sqlite database")
                     .map_err(DatabaseInitializationError::from)?;
-                Ok(Database::PostgreSqlDatabaseWrapper(postgres_database))
-            }
+            return Ok(Database::SqliteDatabaseWrapper(sqlite_database));
+        } else if let Some(postgresql) = &config.postgresql_config {
+            let postgres_database = PostgreSqlDatabase::new(postgresql.clone())
+                .await
+                .context("Error instantiating postgres database")
+                .map_err(DatabaseInitializationError::from)?;
+            return Ok(Database::PostgreSqlDatabaseWrapper(postgres_database));
         }
+        Err("Tried to build database without any enabled database configuration".into())
     }
 
     #[cfg(any(feature = "testing", test))]
@@ -262,6 +257,14 @@ impl DatabaseInitializationError {
     pub fn from(error: Error) -> Self {
         Self {
             reason: error.to_string(),
+        }
+    }
+}
+
+impl From<&str> for DatabaseInitializationError {
+    fn from(reason: &str) -> Self {
+        Self {
+            reason: reason.to_string(),
         }
     }
 }
