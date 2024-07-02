@@ -89,7 +89,7 @@ impl Component for SseServerComponent {
         &self,
         config: &SidecarConfig,
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
-        if let (maybe_database, Some(sse_server_config), storage_config) =
+        if let (maybe_database, Some(sse_server_config), Some(storage_config)) =
             (&self.maybe_database, &config.sse_server, &config.storage)
         {
             if sse_server_config.enable_server {
@@ -411,7 +411,7 @@ mod tests {
         };
         rpc_server.speculative_exec_server = Some(speculative_config);
         SidecarConfig {
-            storage: Default::default(),
+            storage: Some(Default::default()),
             admin_api_server: Some(Default::default()),
             rest_api_server: Some(Default::default()),
             sse_server: Some(Default::default()),
