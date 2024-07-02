@@ -264,7 +264,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let test_rng = TestRng::new();
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir, true);
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config
         .event_server_config
@@ -387,7 +387,7 @@ async fn live_performance_check(
     acceptable_latency: Duration,
 ) {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir);
+    let mut testing_config = prepare_config(&temp_storage_dir, true);
     let port_for_connection = testing_config.add_connection(Some(ip_address.clone()), Some(port));
 
     tokio::spawn(run(testing_config.inner()));

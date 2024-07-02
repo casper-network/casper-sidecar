@@ -1,6 +1,5 @@
 #[cfg(test)]
 use casper_types::ChainNameDigest;
-use casper_types::FinalitySignature as FinSig;
 use casper_types::{
     contract_messages::Messages, execution::ExecutionResult, AsymmetricType, Block, BlockHash,
     EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
@@ -12,6 +11,7 @@ use casper_types::{
     testing::TestRng,
     TestBlockBuilder, TestBlockV1Builder,
 };
+use casper_types::{FinalitySignature as FinSig, Signature};
 use derive_new::new;
 use hex::ToHex;
 #[cfg(test)]
@@ -101,6 +101,10 @@ impl TransactionAccepted {
             Transaction::Deploy(_) => TransactionTypeId::Deploy,
             Transaction::V1(_) => TransactionTypeId::Version1,
         }
+    }
+
+    pub fn transaction(&self) -> Arc<Transaction> {
+        self.transaction.clone()
     }
 
     #[cfg(test)]
@@ -196,6 +200,10 @@ impl TransactionProcessed {
             TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
         }
     }
+
+    pub fn messages(&self) -> &Messages {
+        &self.messages
+    }
 }
 
 /// The given transaction has expired.
@@ -214,6 +222,9 @@ impl TransactionExpired {
             TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
             TransactionHash::V1(_) => TransactionTypeId::Version1,
         }
+    }
+    pub fn transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
     }
 
     #[cfg(test)]
@@ -298,6 +309,14 @@ impl FinalitySignature {
         *self.0.clone()
     }
 
+    pub fn signature(&self) -> &Signature {
+        self.0.signature()
+    }
+
+    pub fn block_hash(&self) -> &BlockHash {
+        self.0.block_hash()
+    }
+
     pub fn hex_encoded_block_hash(&self) -> String {
         hex::encode(self.0.block_hash().inner())
     }
@@ -330,7 +349,7 @@ impl Step {
     }
 }
 
-fn transaction_hash_to_identifier(transaction_hash: &TransactionHash) -> String {
+pub fn transaction_hash_to_identifier(transaction_hash: &TransactionHash) -> String {
     match transaction_hash {
         TransactionHash::Deploy(deploy) => hex::encode(deploy.inner()),
         TransactionHash::V1(transaction) => hex::encode(transaction.inner()),

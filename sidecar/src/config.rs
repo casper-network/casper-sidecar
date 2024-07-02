@@ -11,7 +11,7 @@ use thiserror::Error;
 pub struct SidecarConfigTarget {
     max_thread_count: Option<usize>,
     max_blocking_thread_count: Option<usize>,
-    storage: Option<StorageConfigSerdeTarget>,
+    storage: StorageConfigSerdeTarget,
     rest_api_server: Option<RestApiServerConfig>,
     admin_api_server: Option<AdminApiServerConfig>,
     sse_server: Option<SseEventServerConfig>,
@@ -25,23 +25,60 @@ pub struct SidecarConfig {
     pub max_blocking_thread_count: Option<usize>,
     pub sse_server: Option<SseEventServerConfig>,
     pub rpc_server: Option<RpcServerConfig>,
-    pub storage: Option<StorageConfig>,
+    pub storage: StorageConfig,
     pub rest_api_server: Option<RestApiServerConfig>,
     pub admin_api_server: Option<AdminApiServerConfig>,
 }
 
 impl SidecarConfig {
     pub fn validate(&self) -> Result<(), anyhow::Error> {
-        if self.rpc_server.is_none() && self.sse_server.is_none() {
+        if !self.is_rpc_server_enabled() && !self.is_sse_server_enabled() {
             bail!("At least one of RPC server or SSE server must be configured")
         }
-        if self.storage.is_none() && self.sse_server.is_some() {
-            bail!("Can't run SSE server without storage defined")
+        let is_storage_enabled = self.is_storage_enabled();
+        let is_rest_api_server_enabled = self.is_rest_api_server_enabled();
+        let is_sse_storing_events = self.is_sse_storing_events();
+        if !is_storage_enabled && is_sse_storing_events {
+            bail!("Can't run SSE with events persistence enabled without storage defined")
         }
-        if self.storage.is_none() && self.rest_api_server.is_some() {
+        //Check if both storages are defined and enabled
+        if !is_storage_enabled && is_rest_api_server_enabled {
             bail!("Can't run Rest api server without storage defined")
         }
+        if !is_sse_storing_events && is_rest_api_server_enabled {
+            bail!("Can't run Rest api server with SSE events persistence disabled")
+        }
+        let is_postgres_enabled = self.storage.is_postgres_enabled();
+        let is_sqlite_enabled = self.storage.is_sqlite_enabled();
+        if is_storage_enabled && is_postgres_enabled && is_sqlite_enabled {
+            bail!("Can't run with both postgres and sqlite enabled")
+        }
         Ok(())
+    }
+
+    fn is_storage_enabled(&self) -> bool {
+        self.storage.is_enabled()
+    }
+
+    fn is_rpc_server_enabled(&self) -> bool {
+        self.rpc_server.is_some() && self.rpc_server.as_ref().unwrap().main_server.enable_server
+    }
+
+    fn is_sse_server_enabled(&self) -> bool {
+        self.sse_server.is_some() && self.sse_server.as_ref().unwrap().enable_server
+    }
+
+    fn is_sse_storing_events(&self) -> bool {
+        self.is_sse_server_enabled()
+            && !self
+                .sse_server
+                .as_ref()
+                .unwrap()
+                .is_event_persistence_disabled()
+    }
+
+    fn is_rest_api_server_enabled(&self) -> bool {
+        self.rest_api_server.is_some() && self.rest_api_server.as_ref().unwrap().enable_server
     }
 }
 
@@ -50,9 +87,9 @@ impl TryFrom<SidecarConfigTarget> for SidecarConfig {
 
     fn try_from(value: SidecarConfigTarget) -> Result<Self, Self::Error> {
         let sse_server_config = value.sse_server;
-        let storage_config_res: Option<Result<StorageConfig, DatabaseConfigError>> =
-            value.storage.map(|target| target.try_into());
-        let storage_config = invert(storage_config_res)?;
+        let storage_config_res: Result<StorageConfig, DatabaseConfigError> =
+            value.storage.try_into();
+        let storage_config = storage_config_res?;
         let rpc_server_config_res: Option<Result<RpcServerConfig, FieldParseError>> =
             value.rpc_server.map(|target| target.try_into());
         let rpc_server_config = invert(rpc_server_config_res)?;
@@ -99,37 +136,88 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sidecar_config_should_fail_validation_when_sse_server_and_no_storage() {
+    fn sidecar_config_should_fail_validation_when_sse_server_and_no_defined_dbs() {
         let config = SidecarConfig {
             sse_server: Some(SseEventServerConfig::default()),
+            storage: StorageConfig::no_dbs(),
             ..Default::default()
         };
+
         let res = config.validate();
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("Can't run SSE server without storage defined"));
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message
+            .contains("Can't run SSE with events persistence enabled without storage defined"));
+    }
+
+    #[test]
+    fn sidecar_config_should_fail_validation_when_sse_server_and_no_enabled_dbs() {
+        let config = SidecarConfig {
+            sse_server: Some(SseEventServerConfig::default()),
+            storage: StorageConfig::no_enabled_dbs(),
+            ..Default::default()
+        };
+
+        let res = config.validate();
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message
+            .contains("Can't run SSE with events persistence enabled without storage defined"));
     }
 
     #[test]
     fn sidecar_config_should_fail_validation_when_rest_api_server_and_no_storage() {
         let config = SidecarConfig {
             rpc_server: Some(RpcServerConfig::default()),
+            sse_server: None,
             rest_api_server: Some(RestApiServerConfig::default()),
+            storage: StorageConfig::default(),
             ..Default::default()
         };
 
         let res = config.validate();
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("Can't run Rest api server without storage defined"));
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message
+            .contains("Can't run Rest api server with SSE events persistence disabled"));
+    }
+
+    #[test]
+    fn sidecar_config_should_fail_validation_when_two_db_connections_are_defined() {
+        let config = SidecarConfig {
+            rpc_server: Some(RpcServerConfig::default()),
+            sse_server: None,
+            storage: StorageConfig::two_dbs(),
+            ..Default::default()
+        };
+
+        let res = config.validate();
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message.contains("Can't run with both postgres and sqlite enabled"));
+    }
+
+    #[test]
+    fn sidecar_config_should_fail_validation_when_rest_api_and_sse_has_no_persistence() {
+        let sse_server = SseEventServerConfig::default_no_persistence();
+        let config = SidecarConfig {
+            rpc_server: Some(RpcServerConfig::default()),
+            sse_server: Some(sse_server),
+            rest_api_server: Some(RestApiServerConfig::default()),
+            storage: StorageConfig::default(),
+            ..Default::default()
+        };
+
+        let res = config.validate();
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message
+            .contains("Can't run Rest api server with SSE events persistence disabled"));
     }
 
     #[test]

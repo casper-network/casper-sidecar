@@ -39,12 +39,16 @@ pub fn get_port() -> u16 {
 /// - `storage_path` is set to the path of the [TempDir] provided.
 /// - `node_connection_port` is set dynamically to a free port.
 /// - The outbound server (REST & SSE) ports are set dynamically to free ports.
+/// - If `enable_db_storage` is set to false, the database storage is disabled.
 #[cfg(test)]
-pub(crate) fn prepare_config(temp_storage: &TempDir) -> TestingConfig {
+pub(crate) fn prepare_config(temp_storage: &TempDir, enable_db_storage: bool) -> TestingConfig {
     let path_to_temp_storage = temp_storage.path().to_string_lossy().to_string();
 
     let mut testing_config = TestingConfig::default();
-    testing_config.set_storage_path(path_to_temp_storage);
+    if !enable_db_storage {
+        testing_config.storage_config.clear_db_storage();
+    }
+    testing_config.set_storage_folder(path_to_temp_storage);
     testing_config.allocate_available_ports();
 
     testing_config
@@ -65,8 +69,12 @@ impl TestingConfig {
 
     /// Specify where test storage (database, sse cache) should be located.
     /// By default it is set to `/target/test_storage` however it is recommended to overwrite this with a `TempDir` path for testing purposes.
-    pub(crate) fn set_storage_path(&mut self, path: String) {
-        self.storage_config.set_storage_path(path);
+    pub(crate) fn set_storage_folder(&mut self, path: String) {
+        self.storage_config.set_storage_folder(path.clone());
+    }
+
+    pub(crate) fn get_storage_folder(&self) -> String {
+        self.storage_config.storage_folder.clone()
     }
 
     pub(crate) fn set_storage(&mut self, storage: StorageConfig) {
@@ -149,5 +157,9 @@ impl TestingConfig {
     /// Returns the port that the sidecar SSE server is bound to.
     pub(crate) fn event_stream_server_port(&self) -> u16 {
         self.event_server_config.event_stream_server.port
+    }
+
+    pub(crate) fn has_db_configured(&self) -> bool {
+        self.storage_config.is_enabled()
     }
 }

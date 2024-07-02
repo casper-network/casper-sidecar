@@ -89,19 +89,29 @@ impl Component for SseServerComponent {
         &self,
         config: &SidecarConfig,
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
-        if let (Some(storage_config), Some(database), Some(sse_server_config)) =
-            (&config.storage, &self.maybe_database, &config.sse_server)
+        if let (maybe_database, Some(sse_server_config), storage_config) =
+            (&self.maybe_database, &config.sse_server, &config.storage)
         {
             if sse_server_config.enable_server {
-                let database =
-                    database.acquire().await.as_ref().map_err(|db_err| {
-                        ComponentError::runtime_error(self.name(), db_err.into())
-                    })?;
+                let maybe_database = if let Some(lazy_database_wrapper) = maybe_database {
+                    let database =
+                        lazy_database_wrapper
+                            .acquire()
+                            .await
+                            .clone()
+                            .map_err(|db_err| {
+                                ComponentError::runtime_error(self.name(), (&db_err).into())
+                            })?;
+                    Some(database)
+                } else {
+                    None
+                };
+
                 // If sse server is configured, both storage config and database must be "Some" here. This should be ensured by prior validation.
                 let future = run_sse_sidecar(
                     sse_server_config.clone(),
-                    database.clone(),
-                    storage_config.get_storage_path(),
+                    storage_config.storage_folder.clone(),
+                    maybe_database,
                 )
                 .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
@@ -244,12 +254,12 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn given_sse_server_component_when_no_db_should_return_none() {
+    async fn given_sse_server_component_when_no_db_but_config_defined_should_return_some() {
         let component = SseServerComponent::new(None);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
-        assert!(res.unwrap().is_none());
+        assert!(res.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -401,7 +411,7 @@ mod tests {
         };
         rpc_server.speculative_exec_server = Some(speculative_config);
         SidecarConfig {
-            storage: Some(Default::default()),
+            storage: Default::default(),
             admin_api_server: Some(Default::default()),
             rest_api_server: Some(Default::default()),
             sse_server: Some(Default::default()),

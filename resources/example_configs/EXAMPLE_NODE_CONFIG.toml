@@ -28,6 +28,7 @@ max_attempts = 30
 
 [sse_server]
 enable_server = true
+disable_event_persistence = false
 
 [[sse_server.connections]]
 ip_address = "168.254.51.1"
@@ -68,20 +69,23 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 
 [storage]
-storage_path = "/var/lib/casper-sidecar"
+storage_folder = "/var/lib/casper-sidecar"
 
 [storage.sqlite_config]
+enabled = true
 file_name = "sqlite_database.db3"
 max_connections_in_pool = 100
 # https://www.sqlite.org/compile.html#default_wal_autocheckpoint
 wal_autocheckpointing_interval = 1000
 
 [rest_api_server]
+enable_server = true
 port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
 
 [admin_api_server]
+enable_server = true
 port = 18887
 max_concurrent_requests = 1
 max_requests_per_second = 1

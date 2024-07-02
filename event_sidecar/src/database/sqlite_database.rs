@@ -99,14 +99,11 @@ impl SqliteDatabase {
 #[cfg(any(feature = "testing", test))]
 impl SqliteDatabase {
     pub async fn new_from_config(storage_config: &StorageConfig) -> Result<SqliteDatabase, Error> {
-        match storage_config {
-            StorageConfig::SqliteDbConfig {
-                storage_path,
-                sqlite_config,
-            } => SqliteDatabase::new(Path::new(storage_path), sqlite_config.clone()).await,
-            StorageConfig::PostgreSqlDbConfig { .. } => Err(Error::msg(
-                "can't build Sqlite database from postgres config",
-            )),
+        if let Some(sqlite_config) = &storage_config.sqlite_config {
+            let storage_folder = Path::new(&storage_config.storage_folder);
+            SqliteDatabase::new(storage_folder, sqlite_config.clone()).await
+        } else {
+            Err(Error::msg("No sqlite config found"))
         }
     }
 

@@ -274,21 +274,29 @@ pub mod tests {
     }
 
     pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
-        build_test_config_with_retries(10, 1)
+        build_test_config_with_retries(10, 1, true)
     }
-    pub fn build_test_config_without_connections() -> (TestingConfig, TempDir, u16) {
+
+    pub fn build_test_config_without_db_storage() -> (TestingConfig, TempDir, u16, u16, u16) {
+        build_test_config_with_retries(10, 1, false)
+    }
+
+    pub fn build_test_config_without_connections(
+        enable_db_storage: bool,
+    ) -> (TestingConfig, TempDir, u16) {
         let temp_storage_dir =
             tempdir().expect("Should have created a temporary storage directory");
-        let testing_config = prepare_config(&temp_storage_dir);
+        let testing_config = prepare_config(&temp_storage_dir, enable_db_storage);
         let event_stream_server_port = testing_config.event_stream_server_port();
         (testing_config, temp_storage_dir, event_stream_server_port)
     }
     pub fn build_test_config_with_retries(
         max_attempts: usize,
         delay_between_retries: usize,
+        enable_db_storage: bool,
     ) -> (TestingConfig, TempDir, u16, u16, u16) {
         let (mut testing_config, temp_storage_dir, event_stream_server_port) =
-            build_test_config_without_connections();
+            build_test_config_without_connections(enable_db_storage);
         testing_config.add_connection(None, None, None);
         let node_port_for_sse_connection = testing_config
             .event_server_config
@@ -398,7 +406,7 @@ pub mod tests {
         let context = build_postgres_database().await.unwrap();
         let temp_storage_dir =
             tempdir().expect("Should have created a temporary storage directory");
-        let mut testing_config = prepare_config(&temp_storage_dir);
+        let mut testing_config = prepare_config(&temp_storage_dir, true);
         let event_stream_server_port = testing_config.event_stream_server_port();
         testing_config.set_storage(StorageConfig::postgres_with_port(context.port));
         testing_config.add_connection(None, None, None);
@@ -434,19 +442,31 @@ pub mod tests {
         testing_config: TestingConfig,
         spin_up_rest_api: bool,
     ) -> Result<ExitCode, Error> {
+        let has_db_configured = testing_config.has_db_configured();
         let sse_config = testing_config.inner();
         let storage_config = testing_config.storage_config;
-        let sqlite_database = SqliteDatabase::new_from_config(&storage_config)
-            .await
-            .unwrap();
-        let database = Database::SqliteDatabaseWrapper(sqlite_database);
+        let storage_folder = storage_config.storage_folder.clone();
+        let maybe_database = if has_db_configured {
+            let sqlite_database = SqliteDatabase::new_from_config(&storage_config)
+                .await
+                .unwrap();
+            Some(Database::SqliteDatabaseWrapper(sqlite_database))
+        } else {
+            None
+        };
+
         if spin_up_rest_api {
+            if !has_db_configured {
+                return Err(Error::msg(
+                    "Can't unpack TestingConfig with REST API if no database is configured",
+                ));
+            }
             let rest_api_server_config = testing_config.rest_api_server_config;
-            let database_for_rest_api = database.clone();
+            let database_for_rest_api = maybe_database.clone().unwrap();
             tokio::spawn(async move {
                 run_rest_server(rest_api_server_config, database_for_rest_api).await
             });
         }
-        run(sse_config, database, storage_config.get_storage_path()).await
+        run(sse_config, storage_folder, maybe_database).await
     }
 }

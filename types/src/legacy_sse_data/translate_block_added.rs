@@ -36,7 +36,6 @@ impl EraEndV2Translator for DefaultEraEndV2Translator {
                 //We're not able to cast the reward to u64, so we skip this era end.
                 return None;
             }
-            println!("Reward: {:?} {:?}", k.clone(), amount);
             rewards.insert(k.clone(), amount.as_u64());
         }
         let era_report = EraReport::new(
