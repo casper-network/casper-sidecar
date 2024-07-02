@@ -11,7 +11,7 @@ use thiserror::Error;
 pub struct SidecarConfigTarget {
     max_thread_count: Option<usize>,
     max_blocking_thread_count: Option<usize>,
-    storage: StorageConfigSerdeTarget,
+    storage: Option<StorageConfigSerdeTarget>,
     rest_api_server: Option<RestApiServerConfig>,
     admin_api_server: Option<AdminApiServerConfig>,
     sse_server: Option<SseEventServerConfig>,
@@ -25,7 +25,7 @@ pub struct SidecarConfig {
     pub max_blocking_thread_count: Option<usize>,
     pub sse_server: Option<SseEventServerConfig>,
     pub rpc_server: Option<RpcServerConfig>,
-    pub storage: StorageConfig,
+    pub storage: Option<StorageConfig>,
     pub rest_api_server: Option<RestApiServerConfig>,
     pub admin_api_server: Option<AdminApiServerConfig>,
 }
@@ -38,6 +38,9 @@ impl SidecarConfig {
         let is_storage_enabled = self.is_storage_enabled();
         let is_rest_api_server_enabled = self.is_rest_api_server_enabled();
         let is_sse_storing_events = self.is_sse_storing_events();
+        if self.is_sse_server_enabled() && self.storage.is_none() {
+            bail!("Can't run SSE if no `[storage.storage_folder]` is defined")
+        }
         if !is_storage_enabled && is_sse_storing_events {
             bail!("Can't run SSE with events persistence enabled without storage defined")
         }
@@ -48,8 +51,8 @@ impl SidecarConfig {
         if !is_sse_storing_events && is_rest_api_server_enabled {
             bail!("Can't run Rest api server with SSE events persistence disabled")
         }
-        let is_postgres_enabled = self.storage.is_postgres_enabled();
-        let is_sqlite_enabled = self.storage.is_sqlite_enabled();
+        let is_postgres_enabled = self.is_postgres_enabled();
+        let is_sqlite_enabled = self.is_sqlite_enabled();
         if is_storage_enabled && is_postgres_enabled && is_sqlite_enabled {
             bail!("Can't run with both postgres and sqlite enabled")
         }
@@ -57,7 +60,10 @@ impl SidecarConfig {
     }
 
     fn is_storage_enabled(&self) -> bool {
-        self.storage.is_enabled()
+        self.storage
+            .as_ref()
+            .map(|x| x.is_enabled())
+            .unwrap_or(false)
     }
 
     fn is_rpc_server_enabled(&self) -> bool {
@@ -77,6 +83,20 @@ impl SidecarConfig {
                 .is_event_persistence_disabled()
     }
 
+    fn is_postgres_enabled(&self) -> bool {
+        self.storage
+            .as_ref()
+            .map(|x| x.is_postgres_enabled())
+            .unwrap_or(false)
+    }
+
+    fn is_sqlite_enabled(&self) -> bool {
+        self.storage
+            .as_ref()
+            .map(|x| x.is_sqlite_enabled())
+            .unwrap_or(false)
+    }
+
     fn is_rest_api_server_enabled(&self) -> bool {
         self.rest_api_server.is_some() && self.rest_api_server.as_ref().unwrap().enable_server
     }
@@ -87,8 +107,10 @@ impl TryFrom<SidecarConfigTarget> for SidecarConfig {
 
     fn try_from(value: SidecarConfigTarget) -> Result<Self, Self::Error> {
         let sse_server_config = value.sse_server;
-        let storage_config_res: Result<StorageConfig, DatabaseConfigError> =
-            value.storage.try_into();
+        let storage_config_res: Result<Option<StorageConfig>, DatabaseConfigError> = value
+            .storage
+            .map(|target| target.try_into().map(Some))
+            .unwrap_or(Ok(None));
         let storage_config = storage_config_res?;
         let rpc_server_config_res: Option<Result<RpcServerConfig, FieldParseError>> =
             value.rpc_server.map(|target| target.try_into());
@@ -136,10 +158,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sidecar_config_should_fail_validation_when_sse_server_and_no_storage() {
+        let config = SidecarConfig {
+            sse_server: Some(SseEventServerConfig::default_no_persistence()),
+            storage: None,
+            ..Default::default()
+        };
+
+        let res = config.validate();
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+        assert!(error_message.contains("Can't run SSE if no `[storage.storage_folder]` is defined"));
+    }
+
+    #[test]
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_defined_dbs() {
         let config = SidecarConfig {
             sse_server: Some(SseEventServerConfig::default()),
-            storage: StorageConfig::no_dbs(),
+            storage: Some(StorageConfig::no_dbs()),
             ..Default::default()
         };
 
@@ -155,7 +192,7 @@ mod tests {
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_enabled_dbs() {
         let config = SidecarConfig {
             sse_server: Some(SseEventServerConfig::default()),
-            storage: StorageConfig::no_enabled_dbs(),
+            storage: Some(StorageConfig::no_enabled_dbs()),
             ..Default::default()
         };
 
@@ -173,7 +210,7 @@ mod tests {
             rpc_server: Some(RpcServerConfig::default()),
             sse_server: None,
             rest_api_server: Some(RestApiServerConfig::default()),
-            storage: StorageConfig::default(),
+            storage: Some(StorageConfig::default()),
             ..Default::default()
         };
 
@@ -190,7 +227,7 @@ mod tests {
         let config = SidecarConfig {
             rpc_server: Some(RpcServerConfig::default()),
             sse_server: None,
-            storage: StorageConfig::two_dbs(),
+            storage: Some(StorageConfig::two_dbs()),
             ..Default::default()
         };
 
@@ -208,7 +245,7 @@ mod tests {
             rpc_server: Some(RpcServerConfig::default()),
             sse_server: Some(sse_server),
             rest_api_server: Some(RestApiServerConfig::default()),
-            storage: StorageConfig::default(),
+            storage: Some(StorageConfig::default()),
             ..Default::default()
         };
 

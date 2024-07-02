@@ -6,7 +6,9 @@ use std::process::ExitCode;
 use tracing::info;
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
-    let maybe_database = Some(&config.storage)
+    let maybe_database = config
+        .storage
+        .as_ref()
         .filter(|storage_config| storage_config.is_enabled())
         .map(|storage_config| LazyDatabaseWrapper::new(storage_config.clone()));
     let mut components: Vec<Box<dyn Component>> = Vec::new();
