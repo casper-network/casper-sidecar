@@ -69,8 +69,9 @@ static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspe
 });
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
-    peers: GET_PEERS_RESULT.peers.clone(),
     api_version: DOCS_EXAMPLE_API_VERSION,
+    protocol_version: ProtocolVersion::from_parts(2, 0, 0),
+    peers: GET_PEERS_RESULT.peers.clone(),
     chainspec_name: String::from("casper-example"),
     starting_state_root_hash: Digest::default(),
     last_added_block_info: Some(MinimalBlockInfo::from(Block::example().clone())),
@@ -434,6 +435,8 @@ pub struct GetStatusResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
+    /// The current Casper protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The node ID and network address of each connected peer.
     pub peers: Peers,
     /// The compiled node version.
@@ -488,6 +491,7 @@ impl RpcWithoutParams for GetStatus {
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
+            protocol_version: status.protocol_version,
             peers: status.peers,
             chainspec_name: status.chainspec_name,
             starting_state_root_hash: status.starting_state_root_hash,
