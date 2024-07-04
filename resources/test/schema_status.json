@@ -11,6 +11,7 @@
     "chainspec_name",
     "last_progress",
     "peers",
+    "protocol_version",
     "reactor_state",
     "starting_state_root_hash",
     "uptime"
@@ -19,6 +20,14 @@
     "api_version": {
       "description": "The RPC API version.",
       "type": "string"
+    },
+    "protocol_version": {
+      "description": "The current Casper protocol version.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      ]
     },
     "peers": {
       "description": "The node ID and network address of each connected peer.",
@@ -138,6 +147,10 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "ProtocolVersion": {
+      "description": "Casper Platform protocol version",
+      "type": "string"
+    },
     "Peers": {
       "description": "Map of peer IDs to network addresses.",
       "type": "array",
@@ -282,10 +295,6 @@
           ]
         }
       ]
-    },
-    "ProtocolVersion": {
-      "description": "Casper Platform protocol version",
-      "type": "string"
     },
     "AvailableBlockRange": {
       "description": "An unbroken, inclusive range of blocks.",
