@@ -1569,6 +1569,7 @@
           "type": "object",
           "required": [
             "api_version",
+            "delegation_rate",
             "era_id",
             "reward_amount"
           ],
@@ -1584,6 +1585,12 @@
             "era_id": {
               "description": "The era for which the reward was calculated.",
               "$ref": "#/components/schemas/EraId"
+            },
+            "delegation_rate": {
+              "description": "The delegation rate of the validator.",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
             }
           },
           "additionalProperties": false
@@ -1613,7 +1620,8 @@
             "value": {
               "api_version": "2.0.0",
               "reward_amount": "42",
-              "era_id": 1
+              "era_id": 1,
+              "delegation_rate": 20
             }
           }
         }
