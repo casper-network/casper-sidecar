@@ -1353,6 +1353,7 @@
             "chainspec_name",
             "last_progress",
             "peers",
+            "protocol_version",
             "reactor_state",
             "starting_state_root_hash",
             "uptime"
@@ -1361,6 +1362,10 @@
             "api_version": {
               "description": "The RPC API version.",
               "type": "string"
+            },
+            "protocol_version": {
+              "description": "The current Casper protocol version.",
+              "$ref": "#/components/schemas/ProtocolVersion"
             },
             "peers": {
               "description": "The node ID and network address of each connected peer.",
@@ -1465,6 +1470,7 @@
             "name": "info_get_status_example_result",
             "value": {
               "api_version": "2.0.0",
+              "protocol_version": "2.0.0",
               "peers": [
                 {
                   "node_id": "tls:0101..0101",
