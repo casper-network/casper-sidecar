@@ -35,7 +35,7 @@ metrics = { workspace = true }
 pin-project = "1.1.5"
 rand = "0.8.3"
 regex = "1.6.0"
-reqwest = "0.11.11"
+reqwest = "0.12.5"
 schemars = "0.8.16"
 sea-query = "0.30"
 serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
@@ -62,7 +62,7 @@ once_cell = { workspace = true }
 pg-embed = { git = "https://github.com/zajko/pg-embed", branch = "bump_dependencies" }
 portpicker = "0.1.1"
 pretty_assertions = "1"
-reqwest = { version = "0.11.3", features = ["stream"] }
+reqwest = { version = "0.12.5", features = ["stream"] }
 tabled = { version = "0.10.0", features = ["derive", "color"] }
 tempfile = "3"
 tokio-util = "0.7.8"

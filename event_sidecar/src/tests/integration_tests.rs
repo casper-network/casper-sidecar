@@ -5,7 +5,7 @@ use core::time;
 use eventsource_stream::{Event, EventStream, Eventsource};
 use futures::Stream;
 use futures_util::StreamExt;
-use http::StatusCode;
+use reqwest::StatusCode;
 use std::{fmt::Debug, time::Duration};
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::mpsc, time::sleep};
