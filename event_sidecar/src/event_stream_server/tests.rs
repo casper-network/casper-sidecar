@@ -4,9 +4,8 @@ use super::*;
 use casper_event_types::legacy_sse_data::LegacySseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 use futures::{join, Stream, StreamExt};
-use http::StatusCode;
 use pretty_assertions::assert_eq;
-use reqwest::Response;
+use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use sse_server::{
     Id, TransactionAccepted, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
