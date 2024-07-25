@@ -959,13 +959,11 @@ async fn lagging_clients_should_be_disconnected() {
         let kind = result
             .unwrap_err()
             .source()
-            .expect("reqwest::Error should have source")
-            .downcast_ref::<hyper::Error>()
-            .expect("reqwest::Error's source should be a hyper::Error")
+            .expect("should have source")
             .source()
-            .expect("hyper::Error should have source")
+            .expect("should have source")
             .downcast_ref::<io::Error>()
-            .expect("hyper::Error's source should be a std::io::Error")
+            .expect("should be a std::io::Error")
             .kind();
         assert!(matches!(kind, io::ErrorKind::UnexpectedEof));
     };
