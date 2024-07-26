@@ -46,7 +46,7 @@ jobs:
         # Hope to get to here:
         # run: cargo audit --deny warnings
         # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2024-0344 --ignore RUSTSEC-2023-0071
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
       - name: test
         run: cargo test

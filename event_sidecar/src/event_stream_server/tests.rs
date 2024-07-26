@@ -4,9 +4,8 @@ use super::*;
 use casper_event_types::legacy_sse_data::LegacySseData;
 use casper_types::{testing::TestRng, ProtocolVersion};
 use futures::{join, Stream, StreamExt};
-use http::StatusCode;
 use pretty_assertions::assert_eq;
-use reqwest::Response;
+use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use sse_server::{
     Id, TransactionAccepted, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
@@ -960,13 +959,11 @@ async fn lagging_clients_should_be_disconnected() {
         let kind = result
             .unwrap_err()
             .source()
-            .expect("reqwest::Error should have source")
-            .downcast_ref::<hyper::Error>()
-            .expect("reqwest::Error's source should be a hyper::Error")
+            .expect("should have source")
             .source()
-            .expect("hyper::Error should have source")
+            .expect("should have source")
             .downcast_ref::<io::Error>()
-            .expect("hyper::Error's source should be a std::io::Error")
+            .expect("should be a std::io::Error")
             .kind();
         assert!(matches!(kind, io::ErrorKind::UnexpectedEof));
     };
