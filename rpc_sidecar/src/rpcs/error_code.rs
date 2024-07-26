@@ -36,7 +36,7 @@ pub enum ErrorCode {
     /// The requested state root hash was not found.
     NoSuchStateRoot = -32012,
     /// The main purse for a given account hash does not exist.
-    NoSuchMainPurse = -32013,
+    NoMainPurse = -32013,
     /// The requested Transaction was not found.
     NoSuchTransaction = -32014,
     /// Variant mismatch.
@@ -61,6 +61,8 @@ pub enum ErrorCode {
     SwitchBlockParentNotFound = -32024,
     /// Cannot serve rewards stored in V1 format
     UnsupportedRewardsV1Request = -32025,
+    /// Purse was not found for given identifier.
+    PurseNotFound = -32026,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -85,7 +87,7 @@ impl From<ErrorCode> for (i64, &'static str) {
             }
             ErrorCode::FailedToGetTrie => (error_code as i64, "Failed to get trie"),
             ErrorCode::NoSuchStateRoot => (error_code as i64, "No such state root"),
-            ErrorCode::NoSuchMainPurse => (error_code as i64, "Failed to get main purse"),
+            ErrorCode::NoMainPurse => (error_code as i64, "Failed to get main purse"),
             ErrorCode::NoSuchTransaction => (error_code as i64, "No such transaction"),
             ErrorCode::VariantMismatch => (error_code as i64, "Variant mismatch internal error"),
             ErrorCode::InvalidTransaction => (error_code as i64, "Invalid transaction"),
@@ -109,6 +111,7 @@ impl From<ErrorCode> for (i64, &'static str) {
                 error_code as i64,
                 "Cannot serve rewards stored in V1 format",
             ),
+            ErrorCode::PurseNotFound => (error_code as i64, "Purse not found"),
         }
     }
 }

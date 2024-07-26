@@ -1147,8 +1147,8 @@ mod tests {
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
         BalanceResponse, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
-        DictionaryQueryResult, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
-        InformationRequestTag, KeyPrefix,
+        DictionaryQueryResult, ErrorCode as BinaryErrorCode, GetRequest, GlobalStateQueryResult,
+        GlobalStateRequest, InformationRequestTag, KeyPrefix,
     };
     use casper_types::{
         addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
@@ -1231,6 +1231,23 @@ mod tests {
                     .expect("should encode proof"),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn should_handle_balance_not_found() {
+        let rng = &mut TestRng::new();
+
+        let err = GetBalance::do_handle_request(
+            Arc::new(BalancePurseNotFoundMock),
+            GetBalanceParams {
+                state_root_hash: rng.gen(),
+                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+            },
+        )
+        .await
+        .expect_err("should fail request");
+
+        assert_eq!(err.code(), ErrorCode::PurseNotFound as i64);
     }
 
     #[tokio::test]
@@ -2379,6 +2396,32 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
+                        &[],
+                        0,
+                    ))
+                }
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct BalancePurseNotFoundMock;
+
+    #[async_trait]
+    impl NodeClient for BalancePurseNotFoundMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::State(req))
+                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_error(
+                            BinaryErrorCode::PurseNotFound,
+                            SUPPORTED_PROTOCOL_VERSION,
+                        ),
                         &[],
                         0,
                     ))

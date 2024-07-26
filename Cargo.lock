@@ -471,7 +471,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#2d6c295ae88efdfef10a1297d8845bdfe19fd774"
+source = "git+https://github.com/jacek-casper/casper-node.git?branch=purse-not-found-error-code#711657e444bb0fe963ac4ce5cf517d14cc286706"
 dependencies = [
  "bincode",
  "bytes",
@@ -673,7 +673,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "5.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#2d6c295ae88efdfef10a1297d8845bdfe19fd774"
+source = "git+https://github.com/jacek-casper/casper-node.git?branch=purse-not-found-error-code#711657e444bb0fe963ac4ce5cf517d14cc286706"
 dependencies = [
  "base16",
  "base64 0.13.1",
