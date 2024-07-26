@@ -471,7 +471,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/jacek-casper/casper-node.git?branch=switch-block-hash-in-reward-resp#17fa48c07c46906875b5dfb4dc87dd401c4451a6"
+source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#488a5f96534b26580cfee18c96fd7af1cf57af33"
 dependencies = [
  "bincode",
  "bytes",
@@ -673,7 +673,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "5.0.0"
-source = "git+https://github.com/jacek-casper/casper-node.git?branch=switch-block-hash-in-reward-resp#17fa48c07c46906875b5dfb4dc87dd401c4451a6"
+source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#488a5f96534b26580cfee18c96fd7af1cf57af33"
 dependencies = [
  "base16",
  "base64 0.13.1",
