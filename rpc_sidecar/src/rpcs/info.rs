@@ -104,6 +104,7 @@ static GET_REWARD_RESULT: Lazy<GetRewardResult> = Lazy::new(|| GetRewardResult {
     reward_amount: U512::from(42),
     era_id: EraId::new(1),
     delegation_rate: 20,
+    switch_block_hash: BlockHash::default(),
 });
 
 /// Params for "info_get_deploy" RPC request.
@@ -550,6 +551,8 @@ pub struct GetRewardResult {
     pub era_id: EraId,
     /// The delegation rate of the validator.
     pub delegation_rate: u8,
+    /// The switch block hash at which the reward was distributed.
+    pub switch_block_hash: BlockHash,
 }
 
 impl DocExample for GetRewardResult {
@@ -588,6 +591,7 @@ impl RpcWithParams for GetReward {
             reward_amount: result.amount(),
             era_id: result.era_id(),
             delegation_rate: result.delegation_rate(),
+            switch_block_hash: result.switch_block_hash(),
         })
     }
 }
@@ -820,12 +824,14 @@ mod tests {
         let validator = PublicKey::random(rng);
         let delegator = rng.gen::<bool>().then(|| PublicKey::random(rng));
         let delegation_rate = rng.gen_range(0..100);
+        let switch_block_hash = BlockHash::random(rng);
 
         let resp = GetReward::do_handle_request(
             Arc::new(RewardMock {
                 reward_amount,
                 era_id,
                 delegation_rate,
+                switch_block_hash,
             }),
             GetRewardParams {
                 era_identifier: Some(EraIdentifier::Era(era_id)),
@@ -842,7 +848,8 @@ mod tests {
                 api_version: CURRENT_API_VERSION,
                 reward_amount,
                 era_id,
-                delegation_rate
+                delegation_rate,
+                switch_block_hash
             }
         );
     }
@@ -901,6 +908,7 @@ mod tests {
         reward_amount: U512,
         era_id: EraId,
         delegation_rate: u8,
+        switch_block_hash: BlockHash,
     }
 
     #[async_trait]
@@ -914,8 +922,12 @@ mod tests {
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Reward) =>
                 {
-                    let resp =
-                        RewardResponse::new(self.reward_amount, self.era_id, self.delegation_rate);
+                    let resp = RewardResponse::new(
+                        self.reward_amount,
+                        self.era_id,
+                        self.delegation_rate,
+                        self.switch_block_hash,
+                    );
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(resp, SUPPORTED_PROTOCOL_VERSION),
                         &[],
