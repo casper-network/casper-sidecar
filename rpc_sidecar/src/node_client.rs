@@ -627,6 +627,8 @@ pub enum Error {
     SwitchBlockParentNotFound,
     #[error("cannot serve rewards stored in V1 format")]
     UnsupportedRewardsV1Request,
+    #[error("purse was not found for given identifier")]
+    PurseNotFound,
     #[error("received a response with an unsupported protocol version: {0}")]
     UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
@@ -645,6 +647,7 @@ impl Error {
             Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
             Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
             Ok(ErrorCode::BinaryProtocolVersionMismatch) => Self::BinaryProtocolVersionMismatch,
+            Ok(ErrorCode::PurseNotFound) => Self::PurseNotFound,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
                 | ErrorCode::InvalidDeployDependenciesNoLongerSupported

@@ -93,9 +93,10 @@ impl Error {
             Error::NodeRequest(_, NodeClientError::UnsupportedRewardsV1Request) => {
                 Some(ErrorCode::UnsupportedRewardsV1Request)
             }
+            Error::NodeRequest(_, NodeClientError::PurseNotFound) => Some(ErrorCode::PurseNotFound),
             Error::InvalidPurseURef(_) => Some(ErrorCode::FailedToParseGetBalanceURef),
             Error::InvalidDictionaryKey(_) => Some(ErrorCode::FailedToParseQueryKey),
-            Error::MainPurseNotFound => Some(ErrorCode::NoSuchMainPurse),
+            Error::MainPurseNotFound => Some(ErrorCode::NoMainPurse),
             Error::AccountNotFound => Some(ErrorCode::NoSuchAccount),
             Error::AddressableEntityNotFound => Some(ErrorCode::NoSuchAddressableEntity),
             Error::RewardNotFound => Some(ErrorCode::NoRewardsFound),
