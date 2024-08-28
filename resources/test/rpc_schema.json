@@ -38,10 +38,7 @@
         "schema": {
           "description": "Result for \"account_put_deploy\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "deploy_hash"
-          ],
+          "required": ["api_version", "deploy_hash"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -141,10 +138,7 @@
         "schema": {
           "description": "Result for \"account_put_transaction\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "transaction_hash"
-          ],
+          "required": ["api_version", "transaction_hash"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -274,10 +268,7 @@
         "schema": {
           "description": "Result for \"info_get_deploy\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "deploy"
-          ],
+          "required": ["api_version", "deploy"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -452,10 +443,7 @@
         "schema": {
           "description": "Result for \"info_get_transaction\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "transaction"
-          ],
+          "required": ["api_version", "transaction"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -657,11 +645,7 @@
         "schema": {
           "description": "Result for \"state_get_account_info\" RPC response.",
           "type": "object",
-          "required": [
-            "account",
-            "api_version",
-            "merkle_proof"
-          ],
+          "required": ["account", "api_version", "merkle_proof"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -750,6 +734,14 @@
             ]
           },
           "required": false
+        },
+        {
+          "name": "include_bytecode",
+          "schema": {
+            "description": "Whether to include the entity's bytecode in the response.",
+            "type": ["boolean", "null"]
+          },
+          "required": false
         }
       ],
       "result": {
@@ -757,11 +749,7 @@
         "schema": {
           "description": "Result for \"state_get_entity\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "entity",
-            "merkle_proof"
-          ],
+          "required": ["api_version", "entity", "merkle_proof"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -769,7 +757,7 @@
             },
             "entity": {
               "description": "The addressable entity or a legacy account.",
-              "$ref": "#/components/schemas/EntityOrAccount"
+              "$ref": "#/components/schemas/EntityWithBackwardCompat"
             },
             "merkle_proof": {
               "description": "The Merkle proof.",
@@ -794,6 +782,10 @@
               "value": {
                 "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
               }
+            },
+            {
+              "name": "include_bytecode",
+              "value": null
             }
           ],
           "result": {
@@ -845,7 +837,94 @@
                         "entry_point_payment": "Caller"
                       }
                     }
-                  ]
+                  ],
+                  "bytecode": null
+                }
+              },
+              "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "state_get_package",
+      "summary": "returns a Package from the network",
+      "params": [
+        {
+          "name": "package_identifier",
+          "schema": {
+            "description": "The identifier of the package.",
+            "$ref": "#/components/schemas/PackageIdentifier"
+          },
+          "required": true
+        },
+        {
+          "name": "block_identifier",
+          "schema": {
+            "description": "The block identifier.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockIdentifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "state_get_package_result",
+        "schema": {
+          "description": "Result for \"state_get_entity\" RPC response.",
+          "type": "object",
+          "required": ["api_version", "merkle_proof", "package"],
+          "properties": {
+            "api_version": {
+              "description": "The RPC API version.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The addressable entity or a legacy account.",
+              "$ref": "#/components/schemas/PackageWithBackwardCompat"
+            },
+            "merkle_proof": {
+              "description": "The Merkle proof.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "examples": [
+        {
+          "name": "state_get_package_example",
+          "params": [
+            {
+              "name": "package_identifier",
+              "value": {
+                "ContractPackageHash": "contract-package-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            },
+            {
+              "name": "block_identifier",
+              "value": {
+                "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_package_example_result",
+            "value": {
+              "api_version": "2.0.0",
+              "package": {
+                "Package": {
+                  "versions": [],
+                  "disabled_versions": [],
+                  "groups": [],
+                  "lock_status": "Unlocked"
                 }
               },
               "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
@@ -988,11 +1067,7 @@
         "schema": {
           "description": "Result for \"query_global_state\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "merkle_proof",
-            "stored_value"
-          ],
+          "required": ["api_version", "merkle_proof", "stored_value"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1145,10 +1220,7 @@
         "schema": {
           "description": "Result for \"query_balance\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "balance"
-          ],
+          "required": ["api_version", "balance"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1300,10 +1372,7 @@
         "schema": {
           "description": "Result for \"info_get_peers\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "peers"
-          ],
+          "required": ["api_version", "peers"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1642,10 +1711,7 @@
         "schema": {
           "description": "Result for the \"info_get_validator_changes\" RPC.",
           "type": "object",
-          "required": [
-            "api_version",
-            "changes"
-          ],
+          "required": ["api_version", "changes"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1695,10 +1761,7 @@
         "schema": {
           "description": "Result for the \"info_get_chainspec\" RPC.",
           "type": "object",
-          "required": [
-            "api_version",
-            "chainspec_bytes"
-          ],
+          "required": ["api_version", "chainspec_bytes"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1747,9 +1810,7 @@
         "schema": {
           "description": "Result for \"chain_get_block\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version"
-          ],
+          "required": ["api_version"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1884,9 +1945,7 @@
         "schema": {
           "description": "Result for \"chain_get_block_transfers\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version"
-          ],
+          "required": ["api_version"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -1905,10 +1964,7 @@
             },
             "transfers": {
               "description": "The block's transfers, if found.",
-              "type": [
-                "array",
-                "null"
-              ],
+              "type": ["array", "null"],
               "items": {
                 "$ref": "#/components/schemas/Transfer"
               }
@@ -1974,9 +2030,7 @@
         "schema": {
           "description": "Result for \"chain_get_state_root_hash\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version"
-          ],
+          "required": ["api_version"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2056,11 +2110,7 @@
         "schema": {
           "description": "Result for \"state_get_item\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "merkle_proof",
-            "stored_value"
-          ],
+          "required": ["api_version", "merkle_proof", "stored_value"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2092,9 +2142,7 @@
             },
             {
               "name": "path",
-              "value": [
-                "inner"
-              ]
+              "value": ["inner"]
             }
           ],
           "result": {
@@ -2140,11 +2188,7 @@
         "schema": {
           "description": "Result for \"state_get_balance\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "balance_value",
-            "merkle_proof"
-          ],
+          "required": ["api_version", "balance_value", "merkle_proof"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2204,9 +2248,7 @@
         "schema": {
           "description": "Result for \"chain_get_era_info\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version"
-          ],
+          "required": ["api_version"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2290,10 +2332,7 @@
         "schema": {
           "description": "Result for \"state_get_auction_info\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "auction_state"
-          ],
+          "required": ["api_version", "auction_state"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2385,10 +2424,7 @@
         "schema": {
           "description": "Result for \"chain_get_era_summary\" RPC response.",
           "type": "object",
-          "required": [
-            "api_version",
-            "era_summary"
-          ],
+          "required": ["api_version", "era_summary"],
           "properties": {
             "api_version": {
               "description": "The RPC API version.",
@@ -2453,13 +2489,7 @@
       "Deploy": {
         "description": "A signed smart contract.",
         "type": "object",
-        "required": [
-          "approvals",
-          "hash",
-          "header",
-          "payment",
-          "session"
-        ],
+        "required": ["approvals", "hash", "header", "payment", "session"],
         "properties": {
           "hash": {
             "$ref": "#/components/schemas/DeployHash"
@@ -2572,16 +2602,11 @@
           {
             "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
             "type": "object",
-            "required": [
-              "ModuleBytes"
-            ],
+            "required": ["ModuleBytes"],
             "properties": {
               "ModuleBytes": {
                 "type": "object",
-                "required": [
-                  "args",
-                  "module_bytes"
-                ],
+                "required": ["args", "module_bytes"],
                 "properties": {
                   "module_bytes": {
                     "description": "Hex-encoded raw Wasm bytes.",
@@ -2608,17 +2633,11 @@
           {
             "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
             "type": "object",
-            "required": [
-              "StoredContractByHash"
-            ],
+            "required": ["StoredContractByHash"],
             "properties": {
               "StoredContractByHash": {
                 "type": "object",
-                "required": [
-                  "args",
-                  "entry_point",
-                  "hash"
-                ],
+                "required": ["args", "entry_point", "hash"],
                 "properties": {
                   "hash": {
                     "description": "Hex-encoded contract hash.",
@@ -2649,17 +2668,11 @@
           {
             "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
             "type": "object",
-            "required": [
-              "StoredContractByName"
-            ],
+            "required": ["StoredContractByName"],
             "properties": {
               "StoredContractByName": {
                 "type": "object",
-                "required": [
-                  "args",
-                  "entry_point",
-                  "name"
-                ],
+                "required": ["args", "entry_point", "name"],
                 "properties": {
                   "name": {
                     "description": "Named key.",
@@ -2686,17 +2699,11 @@
           {
             "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
             "type": "object",
-            "required": [
-              "StoredVersionedContractByHash"
-            ],
+            "required": ["StoredVersionedContractByHash"],
             "properties": {
               "StoredVersionedContractByHash": {
                 "type": "object",
-                "required": [
-                  "args",
-                  "entry_point",
-                  "hash"
-                ],
+                "required": ["args", "entry_point", "hash"],
                 "properties": {
                   "hash": {
                     "description": "Hex-encoded contract package hash.",
@@ -2708,10 +2715,7 @@
                   },
                   "version": {
                     "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
+                    "type": ["integer", "null"],
                     "format": "uint32",
                     "minimum": 0.0
                   },
@@ -2736,17 +2740,11 @@
           {
             "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
             "type": "object",
-            "required": [
-              "StoredVersionedContractByName"
-            ],
+            "required": ["StoredVersionedContractByName"],
             "properties": {
               "StoredVersionedContractByName": {
                 "type": "object",
-                "required": [
-                  "args",
-                  "entry_point",
-                  "name"
-                ],
+                "required": ["args", "entry_point", "name"],
                 "properties": {
                   "name": {
                     "description": "Named key.",
@@ -2754,10 +2752,7 @@
                   },
                   "version": {
                     "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
+                    "type": ["integer", "null"],
                     "format": "uint32",
                     "minimum": 0.0
                   },
@@ -2782,15 +2777,11 @@
           {
             "description": "A native transfer which does not contain or reference a Wasm code.",
             "type": "object",
-            "required": [
-              "Transfer"
-            ],
+            "required": ["Transfer"],
             "properties": {
               "Transfer": {
                 "type": "object",
-                "required": [
-                  "args"
-                ],
+                "required": ["args"],
                 "properties": {
                   "args": {
                     "description": "Runtime arguments.",
@@ -2836,10 +2827,7 @@
       "CLValue": {
         "description": "A Casper value, i.e. a value which can be stored and manipulated by smart contracts.\n\nIt holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of the underlying data as a separate member.\n\nThe `parsed` field, representing the original value, is a convenience only available when a CLValue is encoded to JSON, and can always be set to null if preferred.",
         "type": "object",
-        "required": [
-          "bytes",
-          "cl_type"
-        ],
+        "required": ["bytes", "cl_type"],
         "properties": {
           "cl_type": {
             "$ref": "#/components/schemas/CLType"
@@ -2857,107 +2845,77 @@
           {
             "description": "`bool` primitive.",
             "type": "string",
-            "enum": [
-              "Bool"
-            ]
+            "enum": ["Bool"]
           },
           {
             "description": "`i32` primitive.",
             "type": "string",
-            "enum": [
-              "I32"
-            ]
+            "enum": ["I32"]
           },
           {
             "description": "`i64` primitive.",
             "type": "string",
-            "enum": [
-              "I64"
-            ]
+            "enum": ["I64"]
           },
           {
             "description": "`u8` primitive.",
             "type": "string",
-            "enum": [
-              "U8"
-            ]
+            "enum": ["U8"]
           },
           {
             "description": "`u32` primitive.",
             "type": "string",
-            "enum": [
-              "U32"
-            ]
+            "enum": ["U32"]
           },
           {
             "description": "`u64` primitive.",
             "type": "string",
-            "enum": [
-              "U64"
-            ]
+            "enum": ["U64"]
           },
           {
             "description": "[`U128`] large unsigned integer type.",
             "type": "string",
-            "enum": [
-              "U128"
-            ]
+            "enum": ["U128"]
           },
           {
             "description": "[`U256`] large unsigned integer type.",
             "type": "string",
-            "enum": [
-              "U256"
-            ]
+            "enum": ["U256"]
           },
           {
             "description": "[`U512`] large unsigned integer type.",
             "type": "string",
-            "enum": [
-              "U512"
-            ]
+            "enum": ["U512"]
           },
           {
             "description": "`()` primitive.",
             "type": "string",
-            "enum": [
-              "Unit"
-            ]
+            "enum": ["Unit"]
           },
           {
             "description": "`String` primitive.",
             "type": "string",
-            "enum": [
-              "String"
-            ]
+            "enum": ["String"]
           },
           {
             "description": "[`Key`] system type.",
             "type": "string",
-            "enum": [
-              "Key"
-            ]
+            "enum": ["Key"]
           },
           {
             "description": "[`URef`] system type.",
             "type": "string",
-            "enum": [
-              "URef"
-            ]
+            "enum": ["URef"]
           },
           {
             "description": "[`PublicKey`](crate::PublicKey) system type.",
             "type": "string",
-            "enum": [
-              "PublicKey"
-            ]
+            "enum": ["PublicKey"]
           },
           {
             "description": "`Option` of a `CLType`.",
             "type": "object",
-            "required": [
-              "Option"
-            ],
+            "required": ["Option"],
             "properties": {
               "Option": {
                 "$ref": "#/components/schemas/CLType"
@@ -2968,9 +2926,7 @@
           {
             "description": "Variable-length list of a single `CLType` (comparable to a `Vec`).",
             "type": "object",
-            "required": [
-              "List"
-            ],
+            "required": ["List"],
             "properties": {
               "List": {
                 "$ref": "#/components/schemas/CLType"
@@ -2981,9 +2937,7 @@
           {
             "description": "Fixed-length list of a single `CLType` (comparable to a Rust array).",
             "type": "object",
-            "required": [
-              "ByteArray"
-            ],
+            "required": ["ByteArray"],
             "properties": {
               "ByteArray": {
                 "type": "integer",
@@ -2996,16 +2950,11 @@
           {
             "description": "`Result` with `Ok` and `Err` variants of `CLType`s.",
             "type": "object",
-            "required": [
-              "Result"
-            ],
+            "required": ["Result"],
             "properties": {
               "Result": {
                 "type": "object",
-                "required": [
-                  "err",
-                  "ok"
-                ],
+                "required": ["err", "ok"],
                 "properties": {
                   "ok": {
                     "$ref": "#/components/schemas/CLType"
@@ -3022,16 +2971,11 @@
           {
             "description": "Map with keys of a single `CLType` and values of a single `CLType`.",
             "type": "object",
-            "required": [
-              "Map"
-            ],
+            "required": ["Map"],
             "properties": {
               "Map": {
                 "type": "object",
-                "required": [
-                  "key",
-                  "value"
-                ],
+                "required": ["key", "value"],
                 "properties": {
                   "key": {
                     "$ref": "#/components/schemas/CLType"
@@ -3048,9 +2992,7 @@
           {
             "description": "1-ary tuple of a `CLType`.",
             "type": "object",
-            "required": [
-              "Tuple1"
-            ],
+            "required": ["Tuple1"],
             "properties": {
               "Tuple1": {
                 "type": "array",
@@ -3066,9 +3008,7 @@
           {
             "description": "2-ary tuple of `CLType`s.",
             "type": "object",
-            "required": [
-              "Tuple2"
-            ],
+            "required": ["Tuple2"],
             "properties": {
               "Tuple2": {
                 "type": "array",
@@ -3084,9 +3024,7 @@
           {
             "description": "3-ary tuple of `CLType`s.",
             "type": "object",
-            "required": [
-              "Tuple3"
-            ],
+            "required": ["Tuple3"],
             "properties": {
               "Tuple3": {
                 "type": "array",
@@ -3102,9 +3040,7 @@
           {
             "description": "Unspecified type.",
             "type": "string",
-            "enum": [
-              "Any"
-            ]
+            "enum": ["Any"]
           }
         ]
       },
@@ -3119,10 +3055,7 @@
       "Approval": {
         "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
         "type": "object",
-        "required": [
-          "signature",
-          "signer"
-        ],
+        "required": ["signature", "signer"],
         "properties": {
           "signer": {
             "$ref": "#/components/schemas/PublicKey"
@@ -3143,9 +3076,7 @@
           {
             "description": "A deploy.",
             "type": "object",
-            "required": [
-              "Deploy"
-            ],
+            "required": ["Deploy"],
             "properties": {
               "Deploy": {
                 "$ref": "#/components/schemas/Deploy"
@@ -3156,9 +3087,7 @@
           {
             "description": "A version 1 transaction.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/TransactionV1"
@@ -3171,12 +3100,7 @@
       "TransactionV1": {
         "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
         "type": "object",
-        "required": [
-          "approvals",
-          "body",
-          "hash",
-          "header"
-        ],
+        "required": ["approvals", "body", "hash", "header"],
         "properties": {
           "hash": {
             "$ref": "#/components/schemas/TransactionV1Hash"
@@ -3244,9 +3168,7 @@
           {
             "description": "The original payment model, where the creator of the transaction specifies how much they will pay, at what gas price.",
             "type": "object",
-            "required": [
-              "Classic"
-            ],
+            "required": ["Classic"],
             "properties": {
               "Classic": {
                 "type": "object",
@@ -3281,15 +3203,11 @@
           {
             "description": "The cost of the transaction is determined by the cost table, per the transaction category.",
             "type": "object",
-            "required": [
-              "Fixed"
-            ],
+            "required": ["Fixed"],
             "properties": {
               "Fixed": {
                 "type": "object",
-                "required": [
-                  "gas_price_tolerance"
-                ],
+                "required": ["gas_price_tolerance"],
                 "properties": {
                   "gas_price_tolerance": {
                     "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
@@ -3306,15 +3224,11 @@
           {
             "description": "The payment for this transaction was previously reserved, as proven by the receipt hash (this is for future use, not currently implemented).",
             "type": "object",
-            "required": [
-              "Reserved"
-            ],
+            "required": ["Reserved"],
             "properties": {
               "Reserved": {
                 "type": "object",
-                "required": [
-                  "receipt"
-                ],
+                "required": ["receipt"],
                 "properties": {
                   "receipt": {
                     "description": "Pre-paid receipt.",
@@ -3338,9 +3252,7 @@
           {
             "description": "The public key of the initiator.",
             "type": "object",
-            "required": [
-              "PublicKey"
-            ],
+            "required": ["PublicKey"],
             "properties": {
               "PublicKey": {
                 "$ref": "#/components/schemas/PublicKey"
@@ -3351,9 +3263,7 @@
           {
             "description": "The account hash derived from the public key of the initiator.",
             "type": "object",
-            "required": [
-              "AccountHash"
-            ],
+            "required": ["AccountHash"],
             "properties": {
               "AccountHash": {
                 "$ref": "#/components/schemas/AccountHash"
@@ -3404,23 +3314,16 @@
           {
             "description": "The execution target is a native operation (e.g. a transfer).",
             "type": "string",
-            "enum": [
-              "Native"
-            ]
+            "enum": ["Native"]
           },
           {
             "description": "The execution target is a stored entity or package.",
             "type": "object",
-            "required": [
-              "Stored"
-            ],
+            "required": ["Stored"],
             "properties": {
               "Stored": {
                 "type": "object",
-                "required": [
-                  "id",
-                  "runtime"
-                ],
+                "required": ["id", "runtime"],
                 "properties": {
                   "id": {
                     "description": "The identifier of the stored execution target.",
@@ -3447,16 +3350,11 @@
           {
             "description": "The execution target is the included module bytes, i.e. compiled Wasm.",
             "type": "object",
-            "required": [
-              "Session"
-            ],
+            "required": ["Session"],
             "properties": {
               "Session": {
                 "type": "object",
-                "required": [
-                  "module_bytes",
-                  "runtime"
-                ],
+                "required": ["module_bytes", "runtime"],
                 "properties": {
                   "module_bytes": {
                     "description": "The compiled Wasm.",
@@ -3488,9 +3386,7 @@
           {
             "description": "Hex-encoded entity address identifying the invocable entity.",
             "type": "object",
-            "required": [
-              "ByHash"
-            ],
+            "required": ["ByHash"],
             "properties": {
               "ByHash": {
                 "type": "string"
@@ -3501,9 +3397,7 @@
           {
             "description": "The alias identifying the invocable entity.",
             "type": "object",
-            "required": [
-              "ByName"
-            ],
+            "required": ["ByName"],
             "properties": {
               "ByName": {
                 "type": "string"
@@ -3514,15 +3408,11 @@
           {
             "description": "The address and optional version identifying the package.",
             "type": "object",
-            "required": [
-              "ByPackageHash"
-            ],
+            "required": ["ByPackageHash"],
             "properties": {
               "ByPackageHash": {
                 "type": "object",
-                "required": [
-                  "addr"
-                ],
+                "required": ["addr"],
                 "properties": {
                   "addr": {
                     "description": "Hex-encoded address of the package.",
@@ -3530,10 +3420,7 @@
                   },
                   "version": {
                     "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
+                    "type": ["integer", "null"],
                     "format": "uint32",
                     "minimum": 0.0
                   }
@@ -3546,15 +3433,11 @@
           {
             "description": "The alias and optional version identifying the package.",
             "type": "object",
-            "required": [
-              "ByPackageName"
-            ],
+            "required": ["ByPackageName"],
             "properties": {
               "ByPackageName": {
                 "type": "object",
-                "required": [
-                  "name"
-                ],
+                "required": ["name"],
                 "properties": {
                   "name": {
                     "description": "The package name.",
@@ -3562,10 +3445,7 @@
                   },
                   "version": {
                     "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
+                    "type": ["integer", "null"],
                     "format": "uint32",
                     "minimum": 0.0
                   }
@@ -3583,16 +3463,12 @@
           {
             "description": "The Casper Version 1 Virtual Machine.",
             "type": "string",
-            "enum": [
-              "VmCasperV1"
-            ]
+            "enum": ["VmCasperV1"]
           },
           {
             "description": "The Casper Version 2 Virtual Machine.",
             "type": "string",
-            "enum": [
-              "VmCasperV2"
-            ]
+            "enum": ["VmCasperV2"]
           }
         ]
       },
@@ -3602,16 +3478,12 @@
           {
             "description": "The standard `call` entry point used in session code.",
             "type": "string",
-            "enum": [
-              "Call"
-            ]
+            "enum": ["Call"]
           },
           {
             "description": "A non-native, arbitrary entry point.",
             "type": "object",
-            "required": [
-              "Custom"
-            ],
+            "required": ["Custom"],
             "properties": {
               "Custom": {
                 "type": "string"
@@ -3622,72 +3494,52 @@
           {
             "description": "The `transfer` native entry point, used to transfer `Motes` from a source purse to a target purse.",
             "type": "string",
-            "enum": [
-              "Transfer"
-            ]
+            "enum": ["Transfer"]
           },
           {
             "description": "The `add_bid` native entry point, used to create or top off a bid purse.",
             "type": "string",
-            "enum": [
-              "AddBid"
-            ]
+            "enum": ["AddBid"]
           },
           {
             "description": "The `withdraw_bid` native entry point, used to decrease a stake.",
             "type": "string",
-            "enum": [
-              "WithdrawBid"
-            ]
+            "enum": ["WithdrawBid"]
           },
           {
             "description": "The `delegate` native entry point, used to add a new delegator or increase an existing delegator's stake.",
             "type": "string",
-            "enum": [
-              "Delegate"
-            ]
+            "enum": ["Delegate"]
           },
           {
             "description": "The `undelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
             "type": "string",
-            "enum": [
-              "Undelegate"
-            ]
+            "enum": ["Undelegate"]
           },
           {
             "description": "The `redelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
             "type": "string",
-            "enum": [
-              "Redelegate"
-            ]
+            "enum": ["Redelegate"]
           },
           {
             "description": "The `activate_bid` native entry point, used to used to reactivate an inactive bid.",
             "type": "string",
-            "enum": [
-              "ActivateBid"
-            ]
+            "enum": ["ActivateBid"]
           },
           {
             "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
             "type": "string",
-            "enum": [
-              "ChangeBidPublicKey"
-            ]
+            "enum": ["ChangeBidPublicKey"]
           },
           {
             "description": "The `add_reservations` native entry point, used to add delegator to validator's reserve list",
             "type": "string",
-            "enum": [
-              "AddReservations"
-            ]
+            "enum": ["AddReservations"]
           },
           {
             "description": "The `cancel_reservations` native entry point, used to remove delegator from validator's reserve list",
             "type": "string",
-            "enum": [
-              "CancelReservations"
-            ]
+            "enum": ["CancelReservations"]
           }
         ]
       },
@@ -3697,16 +3549,12 @@
           {
             "description": "No special scheduling applied.",
             "type": "string",
-            "enum": [
-              "Standard"
-            ]
+            "enum": ["Standard"]
           },
           {
             "description": "Execution should be scheduled for the specified era.",
             "type": "object",
-            "required": [
-              "FutureEra"
-            ],
+            "required": ["FutureEra"],
             "properties": {
               "FutureEra": {
                 "$ref": "#/components/schemas/EraId"
@@ -3717,9 +3565,7 @@
           {
             "description": "Execution should be scheduled for the specified timestamp or later.",
             "type": "object",
-            "required": [
-              "FutureTimestamp"
-            ],
+            "required": ["FutureTimestamp"],
             "properties": {
               "FutureTimestamp": {
                 "$ref": "#/components/schemas/Timestamp"
@@ -3741,9 +3587,7 @@
           {
             "description": "A deploy hash.",
             "type": "object",
-            "required": [
-              "Deploy"
-            ],
+            "required": ["Deploy"],
             "properties": {
               "Deploy": {
                 "$ref": "#/components/schemas/DeployHash"
@@ -3754,9 +3598,7 @@
           {
             "description": "A version 1 transaction hash.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/TransactionV1Hash"
@@ -3769,10 +3611,7 @@
       "ExecutionInfo": {
         "description": "The block hash and height in which a given deploy was executed, along with the execution result if known.",
         "type": "object",
-        "required": [
-          "block_hash",
-          "block_height"
-        ],
+        "required": ["block_hash", "block_height"],
         "properties": {
           "block_hash": {
             "description": "The hash of the block in which the deploy was executed.",
@@ -3816,9 +3655,7 @@
           {
             "description": "Version 1 of execution result type.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/ExecutionResultV1"
@@ -3829,9 +3666,7 @@
           {
             "description": "Version 2 of execution result type.",
             "type": "object",
-            "required": [
-              "Version2"
-            ],
+            "required": ["Version2"],
             "properties": {
               "Version2": {
                 "$ref": "#/components/schemas/ExecutionResultV2"
@@ -3847,18 +3682,11 @@
           {
             "description": "The result of a failed execution.",
             "type": "object",
-            "required": [
-              "Failure"
-            ],
+            "required": ["Failure"],
             "properties": {
               "Failure": {
                 "type": "object",
-                "required": [
-                  "cost",
-                  "effect",
-                  "error_message",
-                  "transfers"
-                ],
+                "required": ["cost", "effect", "error_message", "transfers"],
                 "properties": {
                   "effect": {
                     "description": "The effect of executing the deploy.",
@@ -3896,17 +3724,11 @@
           {
             "description": "The result of a successful execution.",
             "type": "object",
-            "required": [
-              "Success"
-            ],
+            "required": ["Success"],
             "properties": {
               "Success": {
                 "type": "object",
-                "required": [
-                  "cost",
-                  "effect",
-                  "transfers"
-                ],
+                "required": ["cost", "effect", "transfers"],
                 "properties": {
                   "effect": {
                     "description": "The effect of executing the deploy.",
@@ -3942,10 +3764,7 @@
       "ExecutionEffect": {
         "description": "The sequence of execution transforms from a single deploy.",
         "type": "object",
-        "required": [
-          "operations",
-          "transforms"
-        ],
+        "required": ["operations", "transforms"],
         "properties": {
           "operations": {
             "description": "The resulting operations.",
@@ -3967,10 +3786,7 @@
       "Operation": {
         "description": "An operation performed while executing a deploy.",
         "type": "object",
-        "required": [
-          "key",
-          "kind"
-        ],
+        "required": ["key", "kind"],
         "properties": {
           "key": {
             "description": "The formatted string of the `Key`.",
@@ -3993,47 +3809,34 @@
           {
             "description": "A read operation.",
             "type": "string",
-            "enum": [
-              "Read"
-            ]
+            "enum": ["Read"]
           },
           {
             "description": "A write operation.",
             "type": "string",
-            "enum": [
-              "Write"
-            ]
+            "enum": ["Write"]
           },
           {
             "description": "An addition.",
             "type": "string",
-            "enum": [
-              "Add"
-            ]
+            "enum": ["Add"]
           },
           {
             "description": "An operation which has no effect.",
             "type": "string",
-            "enum": [
-              "NoOp"
-            ]
+            "enum": ["NoOp"]
           },
           {
             "description": "A prune operation.",
             "type": "string",
-            "enum": [
-              "Prune"
-            ]
+            "enum": ["Prune"]
           }
         ]
       },
       "TransformV1": {
         "description": "A transformation performed while executing a deploy.",
         "type": "object",
-        "required": [
-          "key",
-          "transform"
-        ],
+        "required": ["key", "transform"],
         "properties": {
           "key": {
             "description": "The formatted string of the `Key`.",
@@ -4056,16 +3859,12 @@
           {
             "description": "A transform having no effect.",
             "type": "string",
-            "enum": [
-              "Identity"
-            ]
+            "enum": ["Identity"]
           },
           {
             "description": "Writes the given CLValue to global state.",
             "type": "object",
-            "required": [
-              "WriteCLValue"
-            ],
+            "required": ["WriteCLValue"],
             "properties": {
               "WriteCLValue": {
                 "$ref": "#/components/schemas/CLValue"
@@ -4076,9 +3875,7 @@
           {
             "description": "Writes the given Account to global state.",
             "type": "object",
-            "required": [
-              "WriteAccount"
-            ],
+            "required": ["WriteAccount"],
             "properties": {
               "WriteAccount": {
                 "$ref": "#/components/schemas/AccountHash"
@@ -4089,30 +3886,22 @@
           {
             "description": "Writes a smart contract as Wasm to global state.",
             "type": "string",
-            "enum": [
-              "WriteContractWasm"
-            ]
+            "enum": ["WriteContractWasm"]
           },
           {
             "description": "Writes a smart contract to global state.",
             "type": "string",
-            "enum": [
-              "WriteContract"
-            ]
+            "enum": ["WriteContract"]
           },
           {
             "description": "Writes a smart contract package to global state.",
             "type": "string",
-            "enum": [
-              "WriteContractPackage"
-            ]
+            "enum": ["WriteContractPackage"]
           },
           {
             "description": "Writes the given DeployInfo to global state.",
             "type": "object",
-            "required": [
-              "WriteDeployInfo"
-            ],
+            "required": ["WriteDeployInfo"],
             "properties": {
               "WriteDeployInfo": {
                 "$ref": "#/components/schemas/DeployInfo"
@@ -4123,9 +3912,7 @@
           {
             "description": "Writes the given EraInfo to global state.",
             "type": "object",
-            "required": [
-              "WriteEraInfo"
-            ],
+            "required": ["WriteEraInfo"],
             "properties": {
               "WriteEraInfo": {
                 "$ref": "#/components/schemas/EraInfo"
@@ -4136,9 +3923,7 @@
           {
             "description": "Writes the given version 1 Transfer to global state.",
             "type": "object",
-            "required": [
-              "WriteTransfer"
-            ],
+            "required": ["WriteTransfer"],
             "properties": {
               "WriteTransfer": {
                 "$ref": "#/components/schemas/TransferV1"
@@ -4149,9 +3934,7 @@
           {
             "description": "Writes the given Bid to global state.",
             "type": "object",
-            "required": [
-              "WriteBid"
-            ],
+            "required": ["WriteBid"],
             "properties": {
               "WriteBid": {
                 "$ref": "#/components/schemas/Bid"
@@ -4162,9 +3945,7 @@
           {
             "description": "Writes the given Withdraw to global state.",
             "type": "object",
-            "required": [
-              "WriteWithdraw"
-            ],
+            "required": ["WriteWithdraw"],
             "properties": {
               "WriteWithdraw": {
                 "type": "array",
@@ -4178,9 +3959,7 @@
           {
             "description": "Adds the given `i32`.",
             "type": "object",
-            "required": [
-              "AddInt32"
-            ],
+            "required": ["AddInt32"],
             "properties": {
               "AddInt32": {
                 "type": "integer",
@@ -4192,9 +3971,7 @@
           {
             "description": "Adds the given `u64`.",
             "type": "object",
-            "required": [
-              "AddUInt64"
-            ],
+            "required": ["AddUInt64"],
             "properties": {
               "AddUInt64": {
                 "type": "integer",
@@ -4207,9 +3984,7 @@
           {
             "description": "Adds the given `U128`.",
             "type": "object",
-            "required": [
-              "AddUInt128"
-            ],
+            "required": ["AddUInt128"],
             "properties": {
               "AddUInt128": {
                 "$ref": "#/components/schemas/U128"
@@ -4220,9 +3995,7 @@
           {
             "description": "Adds the given `U256`.",
             "type": "object",
-            "required": [
-              "AddUInt256"
-            ],
+            "required": ["AddUInt256"],
             "properties": {
               "AddUInt256": {
                 "$ref": "#/components/schemas/U256"
@@ -4233,9 +4006,7 @@
           {
             "description": "Adds the given `U512`.",
             "type": "object",
-            "required": [
-              "AddUInt512"
-            ],
+            "required": ["AddUInt512"],
             "properties": {
               "AddUInt512": {
                 "$ref": "#/components/schemas/U512"
@@ -4246,9 +4017,7 @@
           {
             "description": "Adds the given collection of named keys.",
             "type": "object",
-            "required": [
-              "AddKeys"
-            ],
+            "required": ["AddKeys"],
             "properties": {
               "AddKeys": {
                 "type": "array",
@@ -4262,9 +4031,7 @@
           {
             "description": "A failed transformation, containing an error message.",
             "type": "object",
-            "required": [
-              "Failure"
-            ],
+            "required": ["Failure"],
             "properties": {
               "Failure": {
                 "type": "string"
@@ -4275,9 +4042,7 @@
           {
             "description": "Writes the given Unbonding to global state.",
             "type": "object",
-            "required": [
-              "WriteUnbonding"
-            ],
+            "required": ["WriteUnbonding"],
             "properties": {
               "WriteUnbonding": {
                 "type": "array",
@@ -4291,16 +4056,12 @@
           {
             "description": "Writes the addressable entity to global state.",
             "type": "string",
-            "enum": [
-              "WriteAddressableEntity"
-            ]
+            "enum": ["WriteAddressableEntity"]
           },
           {
             "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
             "type": "object",
-            "required": [
-              "Prune"
-            ],
+            "required": ["Prune"],
             "properties": {
               "Prune": {
                 "$ref": "#/components/schemas/Key"
@@ -4311,9 +4072,7 @@
           {
             "description": "Writes the given BidKind to global state.",
             "type": "object",
-            "required": [
-              "WriteBidKind"
-            ],
+            "required": ["WriteBidKind"],
             "properties": {
               "WriteBidKind": {
                 "$ref": "#/components/schemas/BidKind"
@@ -4326,13 +4085,7 @@
       "DeployInfo": {
         "description": "Information relating to the given Deploy.",
         "type": "object",
-        "required": [
-          "deploy_hash",
-          "from",
-          "gas",
-          "source",
-          "transfers"
-        ],
+        "required": ["deploy_hash", "from", "gas", "source", "transfers"],
         "properties": {
           "deploy_hash": {
             "description": "Hex-encoded Deploy hash.",
@@ -4391,9 +4144,7 @@
       "EraInfo": {
         "description": "Auction metadata.  Intended to be recorded at each era.",
         "type": "object",
-        "required": [
-          "seigniorage_allocations"
-        ],
+        "required": ["seigniorage_allocations"],
         "properties": {
           "seigniorage_allocations": {
             "type": "array",
@@ -4410,16 +4161,11 @@
           {
             "description": "Info about a seigniorage allocation for a validator",
             "type": "object",
-            "required": [
-              "Validator"
-            ],
+            "required": ["Validator"],
             "properties": {
               "Validator": {
                 "type": "object",
-                "required": [
-                  "amount",
-                  "validator_public_key"
-                ],
+                "required": ["amount", "validator_public_key"],
                 "properties": {
                   "validator_public_key": {
                     "description": "Validator's public key",
@@ -4446,9 +4192,7 @@
           {
             "description": "Info about a seigniorage allocation for a delegator",
             "type": "object",
-            "required": [
-              "Delegator"
-            ],
+            "required": ["Delegator"],
             "properties": {
               "Delegator": {
                 "type": "object",
@@ -4563,10 +4307,7 @@
           },
           "id": {
             "description": "User-defined id",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "uint64",
             "minimum": 0.0
           }
@@ -4643,9 +4384,7 @@
       },
       "VestingSchedule": {
         "type": "object",
-        "required": [
-          "initial_release_timestamp_millis"
-        ],
+        "required": ["initial_release_timestamp_millis"],
         "properties": {
           "initial_release_timestamp_millis": {
             "type": "integer",
@@ -4653,10 +4392,7 @@
             "minimum": 0.0
           },
           "locked_amounts": {
-            "type": [
-              "array",
-              "null"
-            ],
+            "type": ["array", "null"],
             "items": {
               "$ref": "#/components/schemas/U512"
             },
@@ -4675,10 +4411,7 @@
       "PublicKeyAndDelegator": {
         "description": "A delegator associated with the given validator.",
         "type": "object",
-        "required": [
-          "delegator",
-          "delegator_public_key"
-        ],
+        "required": ["delegator", "delegator_public_key"],
         "properties": {
           "delegator_public_key": {
             "description": "The public key of the delegator.",
@@ -4798,10 +4531,7 @@
       "NamedKey": {
         "description": "A key with a name.",
         "type": "object",
-        "required": [
-          "key",
-          "name"
-        ],
+        "required": ["key", "name"],
         "properties": {
           "name": {
             "description": "The name of the entry.",
@@ -4893,9 +4623,7 @@
           {
             "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
             "type": "object",
-            "required": [
-              "Unified"
-            ],
+            "required": ["Unified"],
             "properties": {
               "Unified": {
                 "$ref": "#/components/schemas/Bid"
@@ -4906,9 +4634,7 @@
           {
             "description": "A bid record containing only validator data.",
             "type": "object",
-            "required": [
-              "Validator"
-            ],
+            "required": ["Validator"],
             "properties": {
               "Validator": {
                 "$ref": "#/components/schemas/ValidatorBid"
@@ -4919,9 +4645,7 @@
           {
             "description": "A bid record containing only delegator data.",
             "type": "object",
-            "required": [
-              "Delegator"
-            ],
+            "required": ["Delegator"],
             "properties": {
               "Delegator": {
                 "$ref": "#/components/schemas/Delegator"
@@ -4932,9 +4656,7 @@
           {
             "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
             "type": "object",
-            "required": [
-              "Bridge"
-            ],
+            "required": ["Bridge"],
             "properties": {
               "Bridge": {
                 "$ref": "#/components/schemas/Bridge"
@@ -4945,9 +4667,7 @@
           {
             "description": "Credited amount.",
             "type": "object",
-            "required": [
-              "Credit"
-            ],
+            "required": ["Credit"],
             "properties": {
               "Credit": {
                 "$ref": "#/components/schemas/ValidatorCredit"
@@ -4958,9 +4678,7 @@
           {
             "description": "Reservation",
             "type": "object",
-            "required": [
-              "Reservation"
-            ],
+            "required": ["Reservation"],
             "properties": {
               "Reservation": {
                 "$ref": "#/components/schemas/Reservation"
@@ -5089,11 +4807,7 @@
       "ValidatorCredit": {
         "description": "Validator credit record.",
         "type": "object",
-        "required": [
-          "amount",
-          "era_id",
-          "validator_public_key"
-        ],
+        "required": ["amount", "era_id", "validator_public_key"],
         "properties": {
           "validator_public_key": {
             "description": "Validator public key",
@@ -5180,10 +4894,7 @@
           },
           "error_message": {
             "description": "If there is no error message, this execution was processed successfully. If there is an error message, this execution failed to fully process for the stated reason.",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "limit": {
             "description": "What was the maximum allowed gas limit for this transaction?.",
@@ -5251,9 +4962,7 @@
       "PaymentInfo": {
         "description": "Breakdown of payments made to cover the cost.",
         "type": "object",
-        "required": [
-          "source"
-        ],
+        "required": ["source"],
         "properties": {
           "source": {
             "description": "Source purse used for payment of the transaction.",
@@ -5271,9 +4980,7 @@
           {
             "description": "A version 1 transfer.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/TransferV1"
@@ -5284,9 +4991,7 @@
           {
             "description": "A version 2 transfer.",
             "type": "object",
-            "required": [
-              "Version2"
-            ],
+            "required": ["Version2"],
             "properties": {
               "Version2": {
                 "$ref": "#/components/schemas/TransferV2"
@@ -5369,10 +5074,7 @@
           },
           "id": {
             "description": "User-defined ID.",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "uint64",
             "minimum": 0.0
           }
@@ -5389,10 +5091,7 @@
       "TransformV2": {
         "description": "A transformation performed while executing a deploy.",
         "type": "object",
-        "required": [
-          "key",
-          "kind"
-        ],
+        "required": ["key", "kind"],
         "properties": {
           "key": {
             "$ref": "#/components/schemas/Key"
@@ -5409,16 +5108,12 @@
           {
             "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
             "type": "string",
-            "enum": [
-              "Identity"
-            ]
+            "enum": ["Identity"]
           },
           {
             "description": "Writes a new value in the global state.",
             "type": "object",
-            "required": [
-              "Write"
-            ],
+            "required": ["Write"],
             "properties": {
               "Write": {
                 "$ref": "#/components/schemas/StoredValue"
@@ -5429,9 +5124,7 @@
           {
             "description": "A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in the global state.",
             "type": "object",
-            "required": [
-              "AddInt32"
-            ],
+            "required": ["AddInt32"],
             "properties": {
               "AddInt32": {
                 "type": "integer",
@@ -5443,9 +5136,7 @@
           {
             "description": "A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in the global state.",
             "type": "object",
-            "required": [
-              "AddUInt64"
-            ],
+            "required": ["AddUInt64"],
             "properties": {
               "AddUInt64": {
                 "type": "integer",
@@ -5458,9 +5149,7 @@
           {
             "description": "A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in the global state.",
             "type": "object",
-            "required": [
-              "AddUInt128"
-            ],
+            "required": ["AddUInt128"],
             "properties": {
               "AddUInt128": {
                 "$ref": "#/components/schemas/U128"
@@ -5471,9 +5160,7 @@
           {
             "description": "A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in the global state.",
             "type": "object",
-            "required": [
-              "AddUInt256"
-            ],
+            "required": ["AddUInt256"],
             "properties": {
               "AddUInt256": {
                 "$ref": "#/components/schemas/U256"
@@ -5484,9 +5171,7 @@
           {
             "description": "A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in the global state.",
             "type": "object",
-            "required": [
-              "AddUInt512"
-            ],
+            "required": ["AddUInt512"],
             "properties": {
               "AddUInt512": {
                 "$ref": "#/components/schemas/U512"
@@ -5497,9 +5182,7 @@
           {
             "description": "Adds new named keys to an existing entry in the global state.\n\nThis transform assumes that the existing stored value is either an Account or a Contract.",
             "type": "object",
-            "required": [
-              "AddKeys"
-            ],
+            "required": ["AddKeys"],
             "properties": {
               "AddKeys": {
                 "$ref": "#/components/schemas/NamedKeys"
@@ -5510,9 +5193,7 @@
           {
             "description": "Removes the pathing to the global state entry of the specified key. The pruned element remains reachable from previously generated global state root hashes, but will not be included in the next generated global state root hash and subsequent state accumulated from it.",
             "type": "object",
-            "required": [
-              "Prune"
-            ],
+            "required": ["Prune"],
             "properties": {
               "Prune": {
                 "$ref": "#/components/schemas/Key"
@@ -5523,9 +5204,7 @@
           {
             "description": "Represents the case where applying a transform would cause an error.",
             "type": "object",
-            "required": [
-              "Failure"
-            ],
+            "required": ["Failure"],
             "properties": {
               "Failure": {
                 "$ref": "#/components/schemas/TransformError"
@@ -5541,9 +5220,7 @@
           {
             "description": "A CLValue.",
             "type": "object",
-            "required": [
-              "CLValue"
-            ],
+            "required": ["CLValue"],
             "properties": {
               "CLValue": {
                 "$ref": "#/components/schemas/CLValue"
@@ -5554,9 +5231,7 @@
           {
             "description": "An account.",
             "type": "object",
-            "required": [
-              "Account"
-            ],
+            "required": ["Account"],
             "properties": {
               "Account": {
                 "$ref": "#/components/schemas/Account"
@@ -5567,9 +5242,7 @@
           {
             "description": "Contract wasm.",
             "type": "object",
-            "required": [
-              "ContractWasm"
-            ],
+            "required": ["ContractWasm"],
             "properties": {
               "ContractWasm": {
                 "$ref": "#/components/schemas/ContractWasm"
@@ -5580,9 +5253,7 @@
           {
             "description": "A contract.",
             "type": "object",
-            "required": [
-              "Contract"
-            ],
+            "required": ["Contract"],
             "properties": {
               "Contract": {
                 "$ref": "#/components/schemas/Contract"
@@ -5593,9 +5264,7 @@
           {
             "description": "A contract package.",
             "type": "object",
-            "required": [
-              "ContractPackage"
-            ],
+            "required": ["ContractPackage"],
             "properties": {
               "ContractPackage": {
                 "$ref": "#/components/schemas/ContractPackage"
@@ -5606,9 +5275,7 @@
           {
             "description": "A version 1 (legacy) transfer.",
             "type": "object",
-            "required": [
-              "LegacyTransfer"
-            ],
+            "required": ["LegacyTransfer"],
             "properties": {
               "LegacyTransfer": {
                 "$ref": "#/components/schemas/TransferV1"
@@ -5619,9 +5286,7 @@
           {
             "description": "Info about a deploy.",
             "type": "object",
-            "required": [
-              "DeployInfo"
-            ],
+            "required": ["DeployInfo"],
             "properties": {
               "DeployInfo": {
                 "$ref": "#/components/schemas/DeployInfo"
@@ -5632,9 +5297,7 @@
           {
             "description": "Info about an era.",
             "type": "object",
-            "required": [
-              "EraInfo"
-            ],
+            "required": ["EraInfo"],
             "properties": {
               "EraInfo": {
                 "$ref": "#/components/schemas/EraInfo"
@@ -5645,9 +5308,7 @@
           {
             "description": "Variant that stores [`Bid`].",
             "type": "object",
-            "required": [
-              "Bid"
-            ],
+            "required": ["Bid"],
             "properties": {
               "Bid": {
                 "$ref": "#/components/schemas/Bid"
@@ -5658,9 +5319,7 @@
           {
             "description": "Variant that stores withdraw information.",
             "type": "object",
-            "required": [
-              "Withdraw"
-            ],
+            "required": ["Withdraw"],
             "properties": {
               "Withdraw": {
                 "type": "array",
@@ -5674,9 +5333,7 @@
           {
             "description": "Unbonding information.",
             "type": "object",
-            "required": [
-              "Unbonding"
-            ],
+            "required": ["Unbonding"],
             "properties": {
               "Unbonding": {
                 "type": "array",
@@ -5690,9 +5347,7 @@
           {
             "description": "An `AddressableEntity`.",
             "type": "object",
-            "required": [
-              "AddressableEntity"
-            ],
+            "required": ["AddressableEntity"],
             "properties": {
               "AddressableEntity": {
                 "$ref": "#/components/schemas/AddressableEntity"
@@ -5703,9 +5358,7 @@
           {
             "description": "Variant that stores [`BidKind`].",
             "type": "object",
-            "required": [
-              "BidKind"
-            ],
+            "required": ["BidKind"],
             "properties": {
               "BidKind": {
                 "$ref": "#/components/schemas/BidKind"
@@ -5716,9 +5369,7 @@
           {
             "description": "A `Package`.",
             "type": "object",
-            "required": [
-              "Package"
-            ],
+            "required": ["Package"],
             "properties": {
               "Package": {
                 "$ref": "#/components/schemas/Package"
@@ -5729,9 +5380,7 @@
           {
             "description": "A record of byte code.",
             "type": "object",
-            "required": [
-              "ByteCode"
-            ],
+            "required": ["ByteCode"],
             "properties": {
               "ByteCode": {
                 "$ref": "#/components/schemas/ByteCode"
@@ -5742,9 +5391,7 @@
           {
             "description": "Variant that stores a message topic.",
             "type": "object",
-            "required": [
-              "MessageTopic"
-            ],
+            "required": ["MessageTopic"],
             "properties": {
               "MessageTopic": {
                 "$ref": "#/components/schemas/MessageTopicSummary"
@@ -5755,9 +5402,7 @@
           {
             "description": "Variant that stores a message digest.",
             "type": "object",
-            "required": [
-              "Message"
-            ],
+            "required": ["Message"],
             "properties": {
               "Message": {
                 "$ref": "#/components/schemas/MessageChecksum"
@@ -5768,9 +5413,7 @@
           {
             "description": "A NamedKey record.",
             "type": "object",
-            "required": [
-              "NamedKey"
-            ],
+            "required": ["NamedKey"],
             "properties": {
               "NamedKey": {
                 "$ref": "#/components/schemas/NamedKeyValue"
@@ -5781,9 +5424,7 @@
           {
             "description": "A reservation record.",
             "type": "object",
-            "required": [
-              "Reservation"
-            ],
+            "required": ["Reservation"],
             "properties": {
               "Reservation": {
                 "$ref": "#/components/schemas/ReservationKind"
@@ -5794,9 +5435,7 @@
           {
             "description": "An entrypoint record.",
             "type": "object",
-            "required": [
-              "EntryPoint"
-            ],
+            "required": ["EntryPoint"],
             "properties": {
               "EntryPoint": {
                 "$ref": "#/components/schemas/EntryPointValue"
@@ -5859,10 +5498,7 @@
       "AssociatedKey": {
         "description": "A weighted public key.",
         "type": "object",
-        "required": [
-          "account_hash",
-          "weight"
-        ],
+        "required": ["account_hash", "weight"],
         "properties": {
           "account_hash": {
             "description": "The account hash of the public key.",
@@ -5891,10 +5527,7 @@
       "AccountActionThresholds": {
         "description": "Thresholds that have to be met when executing an action of a certain type.",
         "type": "object",
-        "required": [
-          "deployment",
-          "key_management"
-        ],
+        "required": ["deployment", "key_management"],
         "properties": {
           "deployment": {
             "description": "Threshold for deploy execution.",
@@ -5917,9 +5550,7 @@
       "ContractWasm": {
         "description": "A container for contract's WASM bytes.",
         "type": "object",
-        "required": [
-          "bytes"
-        ],
+        "required": ["bytes"],
         "properties": {
           "bytes": {
             "$ref": "#/components/schemas/Bytes"
@@ -5970,10 +5601,7 @@
       },
       "NamedEntryPoint": {
         "type": "object",
-        "required": [
-          "entry_point",
-          "name"
-        ],
+        "required": ["entry_point", "name"],
         "properties": {
           "name": {
             "type": "string"
@@ -5990,13 +5618,7 @@
       "EntryPoint": {
         "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
         "type": "object",
-        "required": [
-          "access",
-          "args",
-          "entry_point_type",
-          "name",
-          "ret"
-        ],
+        "required": ["access", "args", "entry_point_type", "name", "ret"],
         "properties": {
           "name": {
             "type": "string"
@@ -6021,10 +5643,7 @@
       "Parameter": {
         "description": "Parameter to a method",
         "type": "object",
-        "required": [
-          "cl_type",
-          "name"
-        ],
+        "required": ["cl_type", "name"],
         "properties": {
           "name": {
             "type": "string"
@@ -6040,16 +5659,12 @@
           {
             "description": "Anyone can call this method (no access controls).",
             "type": "string",
-            "enum": [
-              "Public"
-            ]
+            "enum": ["Public"]
           },
           {
             "description": "Only users from the listed groups may call this method. Note: if the list is empty then this method is not callable from outside the contract.",
             "type": "object",
-            "required": [
-              "Groups"
-            ],
+            "required": ["Groups"],
             "properties": {
               "Groups": {
                 "type": "array",
@@ -6063,9 +5678,7 @@
           {
             "description": "Can't be accessed directly but are kept in the derived wasm bytes.",
             "type": "string",
-            "enum": [
-              "Template"
-            ]
+            "enum": ["Template"]
           }
         ]
       },
@@ -6079,23 +5692,17 @@
           {
             "description": "Runs using the calling entity's context. In v1.x this was used for both \"session\" code run using the originating Account's context, and also for \"StoredSession\" code that ran in the caller's context. While this made systemic sense due to the way the runtime context nesting works, this dual usage was very confusing to most human beings.\n\nIn v2.x the renamed Caller variant is exclusively used for wasm run using the initiating account entity's context. Previously installed 1.x stored session code should continue to work as the binary value matches but we no longer allow such logic to be upgraded, nor do we allow new stored session to be installed.",
             "type": "string",
-            "enum": [
-              "Caller"
-            ]
+            "enum": ["Caller"]
           },
           {
             "description": "Runs using the called entity's context.",
             "type": "string",
-            "enum": [
-              "Called"
-            ]
+            "enum": ["Called"]
           },
           {
             "description": "Extract a subset of bytecode and installs it as a new smart contract. Runs using the called entity's context.",
             "type": "string",
-            "enum": [
-              "Factory"
-            ]
+            "enum": ["Factory"]
           }
         ]
       },
@@ -6208,10 +5815,7 @@
       },
       "NamedUserGroup": {
         "type": "object",
-        "required": [
-          "group_name",
-          "group_users"
-        ],
+        "required": ["group_name", "group_users"],
         "properties": {
           "group_name": {
             "allOf": [
@@ -6235,16 +5839,12 @@
           {
             "description": "The package is locked and cannot be versioned.",
             "type": "string",
-            "enum": [
-              "Locked"
-            ]
+            "enum": ["Locked"]
           },
           {
             "description": "The package is unlocked and can be versioned.",
             "type": "string",
-            "enum": [
-              "Unlocked"
-            ]
+            "enum": ["Unlocked"]
           }
         ]
       },
@@ -6294,9 +5894,7 @@
           {
             "description": "Package associated with a native contract implementation.",
             "type": "object",
-            "required": [
-              "System"
-            ],
+            "required": ["System"],
             "properties": {
               "System": {
                 "$ref": "#/components/schemas/SystemEntityType"
@@ -6307,9 +5905,7 @@
           {
             "description": "Package associated with an Account hash.",
             "type": "object",
-            "required": [
-              "Account"
-            ],
+            "required": ["Account"],
             "properties": {
               "Account": {
                 "$ref": "#/components/schemas/AccountHash"
@@ -6320,9 +5916,7 @@
           {
             "description": "Packages associated with Wasm stored on chain.",
             "type": "object",
-            "required": [
-              "SmartContract"
-            ],
+            "required": ["SmartContract"],
             "properties": {
               "SmartContract": {
                 "$ref": "#/components/schemas/TransactionRuntime"
@@ -6338,30 +5932,22 @@
           {
             "description": "Mint contract.",
             "type": "string",
-            "enum": [
-              "Mint"
-            ]
+            "enum": ["Mint"]
           },
           {
             "description": "Handle Payment contract.",
             "type": "string",
-            "enum": [
-              "HandlePayment"
-            ]
+            "enum": ["HandlePayment"]
           },
           {
             "description": "Standard Payment contract.",
             "type": "string",
-            "enum": [
-              "StandardPayment"
-            ]
+            "enum": ["StandardPayment"]
           },
           {
             "description": "Auction contract.",
             "type": "string",
-            "enum": [
-              "Auction"
-            ]
+            "enum": ["Auction"]
           }
         ]
       },
@@ -6380,11 +5966,7 @@
       "EntityActionThresholds": {
         "description": "Thresholds that have to be met when executing an action of a certain type.",
         "type": "object",
-        "required": [
-          "deployment",
-          "key_management",
-          "upgrade_management"
-        ],
+        "required": ["deployment", "key_management", "upgrade_management"],
         "properties": {
           "deployment": {
             "description": "Threshold for deploy execution.",
@@ -6426,10 +6008,7 @@
       },
       "MessageTopic": {
         "type": "object",
-        "required": [
-          "topic_name",
-          "topic_name_hash"
-        ],
+        "required": ["topic_name", "topic_name_hash"],
         "properties": {
           "topic_name": {
             "type": "string"
@@ -6450,12 +6029,7 @@
       "Package": {
         "description": "Entity definition, metadata, and security container.",
         "type": "object",
-        "required": [
-          "disabled_versions",
-          "groups",
-          "lock_status",
-          "versions"
-        ],
+        "required": ["disabled_versions", "groups", "lock_status", "versions"],
         "properties": {
           "versions": {
             "description": "All versions (enabled & disabled).",
@@ -6499,10 +6073,7 @@
       },
       "EntityVersionAndHash": {
         "type": "object",
-        "required": [
-          "addressable_entity_hash",
-          "entity_version_key"
-        ],
+        "required": ["addressable_entity_hash", "entity_version_key"],
         "properties": {
           "entity_version_key": {
             "allOf": [
@@ -6523,10 +6094,7 @@
       "EntityVersionKey": {
         "description": "Major element of `ProtocolVersion` combined with `EntityVersion`.",
         "type": "object",
-        "required": [
-          "entity_version",
-          "protocol_version_major"
-        ],
+        "required": ["entity_version", "protocol_version_major"],
         "properties": {
           "protocol_version_major": {
             "description": "Major element of `ProtocolVersion` a `ContractVersion` is compatible with.",
@@ -6548,26 +6116,19 @@
           {
             "description": "The package is locked and cannot be versioned.",
             "type": "string",
-            "enum": [
-              "Locked"
-            ]
+            "enum": ["Locked"]
           },
           {
             "description": "The package is unlocked and can be versioned.",
             "type": "string",
-            "enum": [
-              "Unlocked"
-            ]
+            "enum": ["Unlocked"]
           }
         ]
       },
       "ByteCode": {
         "description": "A container for contract's Wasm bytes.",
         "type": "object",
-        "required": [
-          "bytes",
-          "kind"
-        ],
+        "required": ["bytes", "kind"],
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/ByteCodeKind"
@@ -6583,26 +6144,19 @@
           {
             "description": "Empty byte code.",
             "type": "string",
-            "enum": [
-              "Empty"
-            ]
+            "enum": ["Empty"]
           },
           {
             "description": "Byte code to be executed with the version 1 Casper execution engine.",
             "type": "string",
-            "enum": [
-              "V1CasperWasm"
-            ]
+            "enum": ["V1CasperWasm"]
           }
         ]
       },
       "MessageTopicSummary": {
         "description": "Summary of a message topic that will be stored in global state.",
         "type": "object",
-        "required": [
-          "blocktime",
-          "message_count"
-        ],
+        "required": ["blocktime", "message_count"],
         "properties": {
           "message_count": {
             "description": "Number of messages in this topic.",
@@ -6633,10 +6187,7 @@
       "NamedKeyValue": {
         "description": "A NamedKey value.",
         "type": "object",
-        "required": [
-          "name",
-          "named_key"
-        ],
+        "required": ["name", "named_key"],
         "properties": {
           "named_key": {
             "description": "The actual `Key` encoded as a CLValue.",
@@ -6659,11 +6210,7 @@
       "ReservationKind": {
         "description": "Container for bytes recording location, type and data for a gas reservation",
         "type": "object",
-        "required": [
-          "receipt",
-          "reservation_data",
-          "reservation_kind"
-        ],
+        "required": ["receipt", "reservation_data", "reservation_kind"],
         "properties": {
           "receipt": {
             "$ref": "#/components/schemas/Digest"
@@ -6684,9 +6231,7 @@
           {
             "description": "Entrypoints to be executed against the V1 Casper VM.",
             "type": "object",
-            "required": [
-              "V1CasperVm"
-            ],
+            "required": ["V1CasperVm"],
             "properties": {
               "V1CasperVm": {
                 "$ref": "#/components/schemas/EntryPoint2"
@@ -6697,9 +6242,7 @@
           {
             "description": "Entrypoints to be executed against the V2 Casper VM.",
             "type": "object",
-            "required": [
-              "V2CasperVm"
-            ],
+            "required": ["V2CasperVm"],
             "properties": {
               "V2CasperVm": {
                 "$ref": "#/components/schemas/EntryPointV2"
@@ -6750,33 +6293,24 @@
           {
             "description": "The caller must cover cost",
             "type": "string",
-            "enum": [
-              "Caller"
-            ]
+            "enum": ["Caller"]
           },
           {
             "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
             "type": "string",
-            "enum": [
-              "SelfOnly"
-            ]
+            "enum": ["SelfOnly"]
           },
           {
             "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
             "type": "string",
-            "enum": [
-              "SelfOnward"
-            ]
+            "enum": ["SelfOnward"]
           }
         ]
       },
       "EntryPointV2": {
         "description": "The entry point for the V2 Casper VM.",
         "type": "object",
-        "required": [
-          "flags",
-          "function_index"
-        ],
+        "required": ["flags", "function_index"],
         "properties": {
           "function_index": {
             "description": "The selector.",
@@ -6798,9 +6332,7 @@
           {
             "description": "Error while (de)serializing data.",
             "type": "object",
-            "required": [
-              "Serialization"
-            ],
+            "required": ["Serialization"],
             "properties": {
               "Serialization": {
                 "$ref": "#/components/schemas/BytesreprError"
@@ -6811,9 +6343,7 @@
           {
             "description": "Type mismatch error.",
             "type": "object",
-            "required": [
-              "TypeMismatch"
-            ],
+            "required": ["TypeMismatch"],
             "properties": {
               "TypeMismatch": {
                 "$ref": "#/components/schemas/TypeMismatch"
@@ -6824,9 +6354,7 @@
           {
             "description": "Type no longer supported.",
             "type": "string",
-            "enum": [
-              "Deprecated"
-            ]
+            "enum": ["Deprecated"]
           }
         ]
       },
@@ -6836,54 +6364,39 @@
           {
             "description": "Early end of stream while deserializing.",
             "type": "string",
-            "enum": [
-              "EarlyEndOfStream"
-            ]
+            "enum": ["EarlyEndOfStream"]
           },
           {
             "description": "Formatting error while deserializing.",
             "type": "string",
-            "enum": [
-              "Formatting"
-            ]
+            "enum": ["Formatting"]
           },
           {
             "description": "Not all input bytes were consumed in [`deserialize`].",
             "type": "string",
-            "enum": [
-              "LeftOverBytes"
-            ]
+            "enum": ["LeftOverBytes"]
           },
           {
             "description": "Out of memory error.",
             "type": "string",
-            "enum": [
-              "OutOfMemory"
-            ]
+            "enum": ["OutOfMemory"]
           },
           {
             "description": "No serialized representation is available for a value.",
             "type": "string",
-            "enum": [
-              "NotRepresentable"
-            ]
+            "enum": ["NotRepresentable"]
           },
           {
             "description": "Exceeded a recursion depth limit.",
             "type": "string",
-            "enum": [
-              "ExceededRecursionDepth"
-            ]
+            "enum": ["ExceededRecursionDepth"]
           }
         ]
       },
       "TypeMismatch": {
         "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
         "type": "object",
-        "required": [
-          "expected",
-          "found"
-        ],
+        "required": ["expected", "found"],
         "properties": {
           "expected": {
             "description": "The name of the expected type.",
@@ -6922,9 +6435,7 @@
           {
             "description": "Identify and retrieve the block with its hash.",
             "type": "object",
-            "required": [
-              "Hash"
-            ],
+            "required": ["Hash"],
             "properties": {
               "Hash": {
                 "$ref": "#/components/schemas/BlockHash"
@@ -6935,9 +6446,7 @@
           {
             "description": "Identify and retrieve the block with its height.",
             "type": "object",
-            "required": [
-              "Height"
-            ],
+            "required": ["Height"],
             "properties": {
               "Height": {
                 "type": "integer",
@@ -6953,11 +6462,20 @@
         "description": "Identifier of an addressable entity.",
         "oneOf": [
           {
+            "description": "The hash of a contract.",
+            "type": "object",
+            "required": ["ContractHash"],
+            "properties": {
+              "ContractHash": {
+                "$ref": "#/components/schemas/ContractHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
             "description": "The public key of an account.",
             "type": "object",
-            "required": [
-              "PublicKey"
-            ],
+            "required": ["PublicKey"],
             "properties": {
               "PublicKey": {
                 "$ref": "#/components/schemas/PublicKey"
@@ -6968,9 +6486,7 @@
           {
             "description": "The account hash of an account.",
             "type": "object",
-            "required": [
-              "AccountHash"
-            ],
+            "required": ["AccountHash"],
             "properties": {
               "AccountHash": {
                 "$ref": "#/components/schemas/AccountHash"
@@ -6981,9 +6497,7 @@
           {
             "description": "The address of an addressable entity.",
             "type": "object",
-            "required": [
-              "EntityAddr"
-            ],
+            "required": ["EntityAddr"],
             "properties": {
               "EntityAddr": {
                 "$ref": "#/components/schemas/EntityAddr"
@@ -7010,23 +6524,17 @@
           }
         ]
       },
-      "EntityOrAccount": {
-        "description": "An addressable entity or a legacy account.",
+      "EntityWithBackwardCompat": {
+        "description": "An addressable entity or a legacy account or contract.",
         "oneOf": [
           {
             "description": "An addressable entity.",
             "type": "object",
-            "required": [
-              "AddressableEntity"
-            ],
+            "required": ["AddressableEntity"],
             "properties": {
               "AddressableEntity": {
                 "type": "object",
-                "required": [
-                  "entity",
-                  "entry_points",
-                  "named_keys"
-                ],
+                "required": ["entity", "entry_points", "named_keys"],
                 "properties": {
                   "entity": {
                     "description": "The addressable entity.",
@@ -7050,6 +6558,17 @@
                     "items": {
                       "$ref": "#/components/schemas/EntryPointValue"
                     }
+                  },
+                  "bytecode": {
+                    "description": "The bytecode of the addressable entity. Returned when `include_bytecode` is `true`.",
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ByteCodeWithProof"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -7057,14 +6576,125 @@
             "additionalProperties": false
           },
           {
-            "description": "A legacy account.",
+            "description": "An account.",
             "type": "object",
-            "required": [
-              "LegacyAccount"
-            ],
+            "required": ["Account"],
             "properties": {
-              "LegacyAccount": {
+              "Account": {
                 "$ref": "#/components/schemas/Account"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A contract.",
+            "type": "object",
+            "required": ["Contract"],
+            "properties": {
+              "Contract": {
+                "type": "object",
+                "required": ["contract"],
+                "properties": {
+                  "contract": {
+                    "description": "The contract.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Contract"
+                      }
+                    ]
+                  },
+                  "wasm": {
+                    "description": "The Wasm code of the contract. Returned when `include_bytecode` is `true`.",
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ContractWasmWithProof"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ByteCodeWithProof": {
+        "description": "Byte code of an entity with a proof.",
+        "type": "object",
+        "required": ["code", "merkle_proof"],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ByteCode"
+          },
+          "merkle_proof": {
+            "type": "string"
+          }
+        }
+      },
+      "ContractWasmWithProof": {
+        "description": "Wasm code of a contract with a proof.",
+        "type": "object",
+        "required": ["merkle_proof", "wasm"],
+        "properties": {
+          "wasm": {
+            "$ref": "#/components/schemas/ContractWasm"
+          },
+          "merkle_proof": {
+            "type": "string"
+          }
+        }
+      },
+      "PackageIdentifier": {
+        "description": "Identifier of a package.",
+        "oneOf": [
+          {
+            "description": "The address of a package.",
+            "type": "object",
+            "required": ["PackageAddr"],
+            "properties": {
+              "PackageAddr": {
+                "$ref": "#/components/schemas/PackageHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The hash of a contract package.",
+            "type": "object",
+            "required": ["ContractPackageHash"],
+            "properties": {
+              "ContractPackageHash": {
+                "$ref": "#/components/schemas/ContractPackageHash"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "PackageWithBackwardCompat": {
+        "description": "A package or a legacy contract package.",
+        "oneOf": [
+          {
+            "description": "A package.",
+            "type": "object",
+            "required": ["Package"],
+            "properties": {
+              "Package": {
+                "$ref": "#/components/schemas/Package"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A contract package.",
+            "type": "object",
+            "required": ["ContractPackage"],
+            "properties": {
+              "ContractPackage": {
+                "$ref": "#/components/schemas/ContractPackage"
               }
             },
             "additionalProperties": false
@@ -7077,17 +6707,11 @@
           {
             "description": "Lookup a dictionary item via an Account's named keys.",
             "type": "object",
-            "required": [
-              "AccountNamedKey"
-            ],
+            "required": ["AccountNamedKey"],
             "properties": {
               "AccountNamedKey": {
                 "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "dictionary_name",
-                  "key"
-                ],
+                "required": ["dictionary_item_key", "dictionary_name", "key"],
                 "properties": {
                   "key": {
                     "description": "The account key as a formatted string whose named keys contains dictionary_name.",
@@ -7109,17 +6733,11 @@
           {
             "description": "Lookup a dictionary item via a Contract's named keys.",
             "type": "object",
-            "required": [
-              "ContractNamedKey"
-            ],
+            "required": ["ContractNamedKey"],
             "properties": {
               "ContractNamedKey": {
                 "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "dictionary_name",
-                  "key"
-                ],
+                "required": ["dictionary_item_key", "dictionary_name", "key"],
                 "properties": {
                   "key": {
                     "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
@@ -7141,17 +6759,11 @@
           {
             "description": "Lookup a dictionary item via an entities named keys.",
             "type": "object",
-            "required": [
-              "EntityNamedKey"
-            ],
+            "required": ["EntityNamedKey"],
             "properties": {
               "EntityNamedKey": {
                 "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "dictionary_name",
-                  "key"
-                ],
+                "required": ["dictionary_item_key", "dictionary_name", "key"],
                 "properties": {
                   "key": {
                     "description": "The entity address formatted as a string.",
@@ -7173,16 +6785,11 @@
           {
             "description": "Lookup a dictionary item via its seed URef.",
             "type": "object",
-            "required": [
-              "URef"
-            ],
+            "required": ["URef"],
             "properties": {
               "URef": {
                 "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "seed_uref"
-                ],
+                "required": ["dictionary_item_key", "seed_uref"],
                 "properties": {
                   "seed_uref": {
                     "description": "The dictionary's seed URef.",
@@ -7200,9 +6807,7 @@
           {
             "description": "Lookup a dictionary item via its unique key.",
             "type": "object",
-            "required": [
-              "Dictionary"
-            ],
+            "required": ["Dictionary"],
             "properties": {
               "Dictionary": {
                 "type": "string"
@@ -7218,9 +6823,7 @@
           {
             "description": "Query using a block hash.",
             "type": "object",
-            "required": [
-              "BlockHash"
-            ],
+            "required": ["BlockHash"],
             "properties": {
               "BlockHash": {
                 "$ref": "#/components/schemas/BlockHash"
@@ -7231,9 +6834,7 @@
           {
             "description": "Query using a block height.",
             "type": "object",
-            "required": [
-              "BlockHeight"
-            ],
+            "required": ["BlockHeight"],
             "properties": {
               "BlockHeight": {
                 "type": "integer",
@@ -7246,9 +6847,7 @@
           {
             "description": "Query using the state root hash.",
             "type": "object",
-            "required": [
-              "StateRootHash"
-            ],
+            "required": ["StateRootHash"],
             "properties": {
               "StateRootHash": {
                 "$ref": "#/components/schemas/Digest"
@@ -7264,9 +6863,7 @@
           {
             "description": "The legacy, initial version of the header portion of a block.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/BlockHeaderV1"
@@ -7277,9 +6874,7 @@
           {
             "description": "The version 2 of the header portion of a block.",
             "type": "object",
-            "required": [
-              "Version2"
-            ],
+            "required": ["Version2"],
             "properties": {
               "Version2": {
                 "$ref": "#/components/schemas/BlockHeaderV2"
@@ -7386,10 +6981,7 @@
       "EraEndV1": {
         "description": "Information related to the end of an era, and validator weights for the following era.",
         "type": "object",
-        "required": [
-          "era_report",
-          "next_era_validator_weights"
-        ],
+        "required": ["era_report", "next_era_validator_weights"],
         "properties": {
           "era_report": {
             "description": "Equivocation, reward and validator inactivity information.",
@@ -7412,11 +7004,7 @@
       "EraReport_for_PublicKey": {
         "description": "Equivocation, reward and validator inactivity information.",
         "type": "object",
-        "required": [
-          "equivocators",
-          "inactive_validators",
-          "rewards"
-        ],
+        "required": ["equivocators", "inactive_validators", "rewards"],
         "properties": {
           "equivocators": {
             "description": "The set of equivocators.",
@@ -7451,10 +7039,7 @@
       "EraReward": {
         "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
         "type": "object",
-        "required": [
-          "amount",
-          "validator"
-        ],
+        "required": ["amount", "validator"],
         "properties": {
           "validator": {
             "description": "The validator's public key.",
@@ -7481,10 +7066,7 @@
       "ValidatorWeight": {
         "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
         "type": "object",
-        "required": [
-          "validator",
-          "weight"
-        ],
+        "required": ["validator", "weight"],
         "properties": {
           "validator": {
             "description": "The validator's public key.",
@@ -7681,9 +7263,7 @@
           {
             "description": "The main purse of the account identified by this public key.",
             "type": "object",
-            "required": [
-              "main_purse_under_public_key"
-            ],
+            "required": ["main_purse_under_public_key"],
             "properties": {
               "main_purse_under_public_key": {
                 "$ref": "#/components/schemas/PublicKey"
@@ -7694,9 +7274,7 @@
           {
             "description": "The main purse of the account identified by this account hash.",
             "type": "object",
-            "required": [
-              "main_purse_under_account_hash"
-            ],
+            "required": ["main_purse_under_account_hash"],
             "properties": {
               "main_purse_under_account_hash": {
                 "$ref": "#/components/schemas/AccountHash"
@@ -7707,9 +7285,7 @@
           {
             "description": "The main purse of the account identified by this entity address.",
             "type": "object",
-            "required": [
-              "main_purse_under_entity_addr"
-            ],
+            "required": ["main_purse_under_entity_addr"],
             "properties": {
               "main_purse_under_entity_addr": {
                 "$ref": "#/components/schemas/EntityAddr"
@@ -7720,9 +7296,7 @@
           {
             "description": "The purse identified by this URef.",
             "type": "object",
-            "required": [
-              "purse_uref"
-            ],
+            "required": ["purse_uref"],
             "properties": {
               "purse_uref": {
                 "$ref": "#/components/schemas/URef"
@@ -7734,11 +7308,7 @@
       },
       "BalanceHoldWithProof": {
         "type": "object",
-        "required": [
-          "amount",
-          "proof",
-          "time"
-        ],
+        "required": ["amount", "proof", "time"],
         "properties": {
           "time": {
             "description": "The block time at which the hold was created.",
@@ -7772,10 +7342,7 @@
       "PeerEntry": {
         "description": "Node peer entry.",
         "type": "object",
-        "required": [
-          "address",
-          "node_id"
-        ],
+        "required": ["address", "node_id"],
         "properties": {
           "node_id": {
             "description": "Node id.",
@@ -7826,10 +7393,7 @@
       "NextUpgrade": {
         "description": "Information about the next protocol upgrade.",
         "type": "object",
-        "required": [
-          "activation_point",
-          "protocol_version"
-        ],
+        "required": ["activation_point", "protocol_version"],
         "properties": {
           "activation_point": {
             "$ref": "#/components/schemas/ActivationPoint"
@@ -7863,10 +7427,7 @@
       "AvailableBlockRange": {
         "description": "An unbroken, inclusive range of blocks.",
         "type": "object",
-        "required": [
-          "high",
-          "low"
-        ],
+        "required": ["high", "low"],
         "properties": {
           "low": {
             "description": "The inclusive lower bound of the range.",
@@ -7915,10 +7476,7 @@
       "BlockSyncStatus": {
         "description": "The status of syncing an individual block.",
         "type": "object",
-        "required": [
-          "acquisition_state",
-          "block_hash"
-        ],
+        "required": ["acquisition_state", "block_hash"],
         "properties": {
           "block_hash": {
             "description": "The block hash.",
@@ -7930,10 +7488,7 @@
           },
           "block_height": {
             "description": "The height of the block, if known.",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "uint64",
             "minimum": 0.0
           },
@@ -7949,9 +7504,7 @@
         "oneOf": [
           {
             "type": "object",
-            "required": [
-              "Era"
-            ],
+            "required": ["Era"],
             "properties": {
               "Era": {
                 "$ref": "#/components/schemas/EraId"
@@ -7961,9 +7514,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "Block"
-            ],
+            "required": ["Block"],
             "properties": {
               "Block": {
                 "$ref": "#/components/schemas/BlockIdentifier"
@@ -7976,10 +7527,7 @@
       "JsonValidatorChanges": {
         "description": "The changes in a validator's status.",
         "type": "object",
-        "required": [
-          "public_key",
-          "status_changes"
-        ],
+        "required": ["public_key", "status_changes"],
         "properties": {
           "public_key": {
             "description": "The public key of the validator.",
@@ -8002,10 +7550,7 @@
       "JsonValidatorStatusChange": {
         "description": "A single change to a validator's status in the given era.",
         "type": "object",
-        "required": [
-          "era_id",
-          "validator_change"
-        ],
+        "required": ["era_id", "validator_change"],
         "properties": {
           "era_id": {
             "description": "The era in which the change occurred.",
@@ -8032,46 +7577,34 @@
           {
             "description": "The validator got newly added to the validator set.",
             "type": "string",
-            "enum": [
-              "Added"
-            ]
+            "enum": ["Added"]
           },
           {
             "description": "The validator was removed from the validator set.",
             "type": "string",
-            "enum": [
-              "Removed"
-            ]
+            "enum": ["Removed"]
           },
           {
             "description": "The validator was banned from this era.",
             "type": "string",
-            "enum": [
-              "Banned"
-            ]
+            "enum": ["Banned"]
           },
           {
             "description": "The validator was excluded from proposing new blocks in this era.",
             "type": "string",
-            "enum": [
-              "CannotPropose"
-            ]
+            "enum": ["CannotPropose"]
           },
           {
             "description": "We saw the validator misbehave in this era.",
             "type": "string",
-            "enum": [
-              "SeenAsFaulty"
-            ]
+            "enum": ["SeenAsFaulty"]
           }
         ]
       },
       "ChainspecRawBytes": {
         "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
         "type": "object",
-        "required": [
-          "chainspec_bytes"
-        ],
+        "required": ["chainspec_bytes"],
         "properties": {
           "chainspec_bytes": {
             "description": "Raw bytes of the current chainspec.toml file.",
@@ -8108,10 +7641,7 @@
       "JsonBlockWithSignatures": {
         "description": "A JSON-friendly representation of a block and the signatures for that block.",
         "type": "object",
-        "required": [
-          "block",
-          "proofs"
-        ],
+        "required": ["block", "proofs"],
         "properties": {
           "block": {
             "description": "The block.",
@@ -8138,9 +7668,7 @@
           {
             "description": "The legacy, initial version of the block.",
             "type": "object",
-            "required": [
-              "Version1"
-            ],
+            "required": ["Version1"],
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/BlockV1"
@@ -8151,9 +7679,7 @@
           {
             "description": "The version 2 of the block.",
             "type": "object",
-            "required": [
-              "Version2"
-            ],
+            "required": ["Version2"],
             "properties": {
               "Version2": {
                 "$ref": "#/components/schemas/BlockV2"
@@ -8166,11 +7692,7 @@
       "BlockV1": {
         "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
         "type": "object",
-        "required": [
-          "body",
-          "hash",
-          "header"
-        ],
+        "required": ["body", "hash", "header"],
         "properties": {
           "hash": {
             "description": "The block hash identifying this block.",
@@ -8201,11 +7723,7 @@
       "BlockBodyV1": {
         "description": "The body portion of a block. Version 1.",
         "type": "object",
-        "required": [
-          "deploy_hashes",
-          "proposer",
-          "transfer_hashes"
-        ],
+        "required": ["deploy_hashes", "proposer", "transfer_hashes"],
         "properties": {
           "proposer": {
             "description": "The public key of the validator which proposed the block.",
@@ -8234,11 +7752,7 @@
       "BlockV2": {
         "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
         "type": "object",
-        "required": [
-          "body",
-          "hash",
-          "header"
-        ],
+        "required": ["body", "hash", "header"],
         "properties": {
           "hash": {
             "description": "The block hash identifying this block.",
@@ -8269,10 +7783,7 @@
       "BlockBodyV2": {
         "description": "The body portion of a block. Version 2.",
         "type": "object",
-        "required": [
-          "rewarded_signatures",
-          "transactions"
-        ],
+        "required": ["rewarded_signatures", "transactions"],
         "properties": {
           "transactions": {
             "description": "Map of transactions mapping categories to a list of transaction hashes.",
@@ -8319,10 +7830,7 @@
       "BlockProof": {
         "description": "A validator's public key paired with a corresponding signature of a given block hash.",
         "type": "object",
-        "required": [
-          "public_key",
-          "signature"
-        ],
+        "required": ["public_key", "signature"],
         "properties": {
           "public_key": {
             "description": "The validator's public key.",
@@ -8437,10 +7945,7 @@
       "JsonEraValidators": {
         "description": "The validators for the given era.",
         "type": "object",
-        "required": [
-          "era_id",
-          "validator_weights"
-        ],
+        "required": ["era_id", "validator_weights"],
         "properties": {
           "era_id": {
             "$ref": "#/components/schemas/EraId"
@@ -8457,10 +7962,7 @@
       "JsonValidatorWeights": {
         "description": "A validator's weight.",
         "type": "object",
-        "required": [
-          "public_key",
-          "weight"
-        ],
+        "required": ["public_key", "weight"],
         "properties": {
           "public_key": {
             "$ref": "#/components/schemas/PublicKey"
@@ -8480,10 +7982,7 @@
       "PublicKeyAndBid": {
         "description": "A bid associated with the given public key.",
         "type": "object",
-        "required": [
-          "bid",
-          "public_key"
-        ],
+        "required": ["bid", "public_key"],
         "properties": {
           "public_key": {
             "description": "The public key of the bidder.",

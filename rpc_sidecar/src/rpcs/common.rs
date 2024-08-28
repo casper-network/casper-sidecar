@@ -1,16 +1,16 @@
 use std::collections::BTreeMap;
 
-use casper_binary_port::{GlobalStateQueryResult, KeyPrefix};
+use casper_binary_port::KeyPrefix;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, bytesrepr::ToBytes,
+    addressable_entity::NamedKeys, bytesrepr::ToBytes, contracts::ContractPackage,
     global_state::TrieMerkleProof, Account, AddressableEntity, AvailableBlockRange, BlockHeader,
-    BlockIdentifier, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, SignedBlock,
-    StoredValue,
+    BlockIdentifier, ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue,
+    GlobalStateIdentifier, Key, Package, SignedBlock, StoredValue,
 };
 
 use crate::NodeClient;
@@ -43,9 +43,9 @@ pub enum ErrorData {
     },
 }
 
-/// An addressable entity or a legacy account.
+/// An addressable entity or a legacy account or contract.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum EntityOrAccount {
+pub enum EntityWithBackwardCompat {
     /// An addressable entity.
     AddressableEntity {
         /// The addressable entity.
@@ -54,9 +54,55 @@ pub enum EntityOrAccount {
         named_keys: NamedKeys,
         /// The entry points of the addressable entity.
         entry_points: Vec<EntryPointValue>,
+        /// The bytecode of the addressable entity. Returned when `include_bytecode` is `true`.
+        bytecode: Option<ByteCodeWithProof>,
     },
-    /// A legacy account.
-    LegacyAccount(Account),
+    /// An account.
+    Account(Account),
+    /// A contract.
+    Contract {
+        /// The contract.
+        contract: Contract,
+        /// The Wasm code of the contract. Returned when `include_bytecode` is `true`.
+        wasm: Option<ContractWasmWithProof>,
+    },
+}
+
+/// A package or a legacy contract package.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum PackageWithBackwardCompat {
+    /// A package.
+    Package(Package),
+    /// A contract package.
+    ContractPackage(ContractPackage),
+}
+
+/// Byte code of an entity with a proof.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ByteCodeWithProof {
+    code: ByteCode,
+    merkle_proof: String,
+}
+
+impl ByteCodeWithProof {
+    /// Creates a new `ByteCodeWithProof`.
+    pub fn new(code: ByteCode, merkle_proof: String) -> Self {
+        Self { code, merkle_proof }
+    }
+}
+
+/// Wasm code of a contract with a proof.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ContractWasmWithProof {
+    wasm: ContractWasm,
+    merkle_proof: String,
+}
+
+impl ContractWasmWithProof {
+    /// Creates a new `ContractWasmWithProof`.
+    pub fn new(wasm: ContractWasm, merkle_proof: String) -> Self {
+        Self { wasm, merkle_proof }
+    }
 }
 
 pub async fn get_signed_block(
@@ -116,87 +162,6 @@ pub async fn get_latest_switch_block_header(
             Err(Error::NoBlockFound(None, available_range))
         }
     }
-}
-
-pub async fn resolve_account_hash(
-    node_client: &dyn NodeClient,
-    account_hash: AccountHash,
-    state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<Option<SuccessfulQueryResult<EntityOrAccount>>, Error> {
-    let account_key = Key::Account(account_hash);
-    let Some((stored_value, account_merkle_proof)) = node_client
-        .query_global_state(state_identifier, account_key, vec![])
-        .await
-        .map_err(|err| Error::NodeRequest("account stored value", err))?
-        .map(GlobalStateQueryResult::into_inner)
-    else {
-        return Ok(None);
-    };
-
-    let (value, merkle_proof) = match stored_value {
-        StoredValue::Account(account) => (
-            EntityOrAccount::LegacyAccount(account),
-            account_merkle_proof,
-        ),
-        StoredValue::CLValue(entity_key_as_clvalue) => {
-            let key: Key = entity_key_as_clvalue
-                .into_t()
-                .map_err(|_| Error::InvalidAddressableEntity)?;
-            let Some((value, merkle_proof)) = node_client
-                .query_global_state(state_identifier, key, vec![])
-                .await
-                .map_err(|err| Error::NodeRequest("account owning a purse", err))?
-                .map(GlobalStateQueryResult::into_inner)
-            else {
-                return Ok(None);
-            };
-            let (Key::AddressableEntity(entity_addr), StoredValue::AddressableEntity(entity)) =
-                (key, value)
-            else {
-                return Err(Error::InvalidAddressableEntity);
-            };
-            let named_keys =
-                get_entity_named_keys(node_client, entity_addr, state_identifier).await?;
-            let entry_points =
-                get_entity_entry_points(node_client, entity_addr, state_identifier).await?;
-            (
-                EntityOrAccount::AddressableEntity {
-                    entity,
-                    named_keys,
-                    entry_points,
-                },
-                merkle_proof,
-            )
-        }
-        _ => return Err(Error::InvalidAccountInfo),
-    };
-    Ok(Some(SuccessfulQueryResult {
-        value,
-        merkle_proof,
-    }))
-}
-
-pub async fn resolve_entity_addr(
-    node_client: &dyn NodeClient,
-    entity_addr: EntityAddr,
-    state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<Option<SuccessfulQueryResult<AddressableEntity>>, Error> {
-    let entity_key = Key::AddressableEntity(entity_addr);
-    let Some((value, merkle_proof)) = node_client
-        .query_global_state(state_identifier, entity_key, vec![])
-        .await
-        .map_err(|err| Error::NodeRequest("entity stored value", err))?
-        .map(GlobalStateQueryResult::into_inner)
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(SuccessfulQueryResult {
-        value: value
-            .into_addressable_entity()
-            .ok_or(Error::InvalidAddressableEntity)?,
-        merkle_proof,
-    }))
 }
 
 pub async fn get_entity_named_keys(
@@ -270,16 +235,4 @@ pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<St
     Ok(base16::encode_lower(
         &proof.to_bytes().map_err(Error::BytesreprFailure)?,
     ))
-}
-
-#[derive(Debug)]
-pub struct SuccessfulQueryResult<A> {
-    pub value: A,
-    pub merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
-}
-
-impl<A> SuccessfulQueryResult<A> {
-    pub fn into_inner(self) -> (A, Vec<TrieMerkleProof<Key, StoredValue>>) {
-        (self.value, self.merkle_proof)
-    }
 }

@@ -15,17 +15,19 @@ use std::{
 use tokio_util::codec::Framed;
 
 use casper_binary_port::{
-    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryResponse,
-    BinaryResponseAndRequest, ConsensusValidatorChanges, DictionaryItemIdentifier,
-    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, KeyPrefix, NodeStatus,
-    PayloadEntity, PurseIdentifier, RecordId, RewardResponse, SpeculativeExecutionResult,
-    TransactionWithExecutionInfo,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
+    BinaryMessageCodec, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
+    ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest, KeyPrefix,
+    NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier, RecordId, ResponseType,
+    RewardResponse, SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    contracts::ContractPackage,
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Peers, ProtocolVersion, PublicKey, SignedBlock,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, SignedBlock,
     StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
@@ -265,6 +267,53 @@ pub trait NodeClient: Send + Sync {
             })
             .await?;
         parse_response::<RewardResponse>(&resp.into())
+    }
+
+    async fn read_package(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        identifier: PackageIdentifier,
+    ) -> Result<Option<PackageResponse>, Error> {
+        let get = InformationRequest::Package {
+            state_identifier,
+            identifier,
+        };
+        let resp = self.read_info(get).await?;
+        match resp.response().returned_data_type_tag() {
+            Some(type_tag) if type_tag == ResponseType::ContractPackageWithProof as u8 => Ok(
+                parse_response::<ValueWithProof<ContractPackage>>(&resp.into())?
+                    .map(PackageResponse::ContractPackage),
+            ),
+            _ => Ok(parse_response::<ValueWithProof<Package>>(&resp.into())?
+                .map(PackageResponse::Package)),
+        }
+    }
+
+    async fn read_entity(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        identifier: EntityIdentifier,
+        include_bytecode: bool,
+    ) -> Result<Option<EntityResponse>, Error> {
+        let get = InformationRequest::Entity {
+            state_identifier,
+            identifier,
+            include_bytecode,
+        };
+        let resp = self.read_info(get).await?;
+        match resp.response().returned_data_type_tag() {
+            Some(type_tag) if type_tag == ResponseType::ContractInformation as u8 => {
+                Ok(parse_response::<ContractInformation>(&resp.into())?
+                    .map(EntityResponse::Contract))
+            }
+            Some(type_tag) if type_tag == ResponseType::AccountInformation as u8 => Ok(
+                parse_response::<AccountInformation>(&resp.into())?.map(EntityResponse::Account),
+            ),
+            _ => Ok(
+                parse_response::<AddressableEntityInformation>(&resp.into())?
+                    .map(EntityResponse::Entity),
+            ),
+        }
     }
 }
 
@@ -968,6 +1017,19 @@ impl NodeClient for FramedNodeClient {
     }
 }
 
+#[derive(Debug)]
+pub enum EntityResponse {
+    Entity(AddressableEntityInformation),
+    Account(AccountInformation),
+    Contract(ContractInformation),
+}
+
+#[derive(Debug)]
+pub enum PackageResponse {
+    Package(ValueWithProof<Package>),
+    ContractPackage(ValueWithProof<ContractPackage>),
+}
+
 fn validate_response(
     resp: BinaryResponseAndRequest,
     expected_id: u16,
@@ -1002,7 +1064,7 @@ where
         return Err(Error::from_error_code(resp.error_code()));
     }
     match resp.returned_data_type_tag() {
-        Some(found) if found == u8::from(A::PAYLOAD_TYPE) => {
+        Some(found) if found == u8::from(A::RESPONSE_TYPE) => {
             bytesrepr::deserialize_from_slice(resp.payload())
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
@@ -1023,7 +1085,7 @@ where
         return Err(Error::from_error_code(resp.error_code()));
     }
     match resp.returned_data_type_tag() {
-        Some(found) if found == u8::from(A::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
+        Some(found) if found == u8::from(A::RESPONSE_TYPE) => bincode::deserialize(resp.payload())
             .map(Some)
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),
