@@ -166,12 +166,13 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
+                  "serialization_version": 1,
+                  "hash": "df4f6e95afd24c3bdac68862cfd888fea65912f0f3e3de9c42b24cee79b7a581",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
+                    "body_hash": "7bf1a4f736a9cbb2b692b74522d981213c3a5463d0095ded40d1454cf1b779e1",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -228,7 +229,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
+                      "signature": "015b407723d54bdfd376d43776d9b92ea465d7ec2e0d41e28b5f646fc17400193bc4e075cab4e8943de09935e3aa96d0bbe456382c2274689b6847a35a94d07309"
                     }
                   ]
                 }
@@ -240,7 +241,7 @@
             "value": {
               "api_version": "2.0.0",
               "transaction_hash": {
-                "Version1": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468"
+                "Version1": "df4f6e95afd24c3bdac68862cfd888fea65912f0f3e3de9c42b24cee79b7a581"
               }
             }
           }
@@ -404,7 +405,7 @@
                         }
                       }
                     ],
-                    "size_estimate": 186,
+                    "size_estimate": 206,
                     "effects": [
                       {
                         "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
@@ -487,7 +488,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468"
+                "Version1": "df4f6e95afd24c3bdac68862cfd888fea65912f0f3e3de9c42b24cee79b7a581"
               }
             },
             {
@@ -501,12 +502,13 @@
               "api_version": "2.0.0",
               "transaction": {
                 "Version1": {
-                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
+                  "serialization_version": 1,
+                  "hash": "df4f6e95afd24c3bdac68862cfd888fea65912f0f3e3de9c42b24cee79b7a581",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
+                    "body_hash": "7bf1a4f736a9cbb2b692b74522d981213c3a5463d0095ded40d1454cf1b779e1",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -563,7 +565,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
+                      "signature": "015b407723d54bdfd376d43776d9b92ea465d7ec2e0d41e28b5f646fc17400193bc4e075cab4e8943de09935e3aa96d0bbe456382c2274689b6847a35a94d07309"
                     }
                   ]
                 }
@@ -603,7 +605,7 @@
                         }
                       }
                     ],
-                    "size_estimate": 186,
+                    "size_estimate": 206,
                     "effects": [
                       {
                         "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
@@ -750,6 +752,17 @@
             ]
           },
           "required": false
+        },
+        {
+          "name": "include_bytecode",
+          "schema": {
+            "description": "Whether to include the entity's bytecode in the response.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "required": false
         }
       ],
       "result": {
@@ -769,7 +782,7 @@
             },
             "entity": {
               "description": "The addressable entity or a legacy account.",
-              "$ref": "#/components/schemas/EntityOrAccount"
+              "$ref": "#/components/schemas/EntityWithBackwardCompat"
             },
             "merkle_proof": {
               "description": "The Merkle proof.",
@@ -794,6 +807,10 @@
               "value": {
                 "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
               }
+            },
+            {
+              "name": "include_bytecode",
+              "value": null
             }
           ],
           "result": {
@@ -845,7 +862,98 @@
                         "entry_point_payment": "Caller"
                       }
                     }
-                  ]
+                  ],
+                  "bytecode": null
+                }
+              },
+              "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "state_get_package",
+      "summary": "returns a Package from the network",
+      "params": [
+        {
+          "name": "package_identifier",
+          "schema": {
+            "description": "The identifier of the package.",
+            "$ref": "#/components/schemas/PackageIdentifier"
+          },
+          "required": true
+        },
+        {
+          "name": "block_identifier",
+          "schema": {
+            "description": "The block identifier.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockIdentifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "state_get_package_result",
+        "schema": {
+          "description": "Result for \"state_get_entity\" RPC response.",
+          "type": "object",
+          "required": [
+            "api_version",
+            "merkle_proof",
+            "package"
+          ],
+          "properties": {
+            "api_version": {
+              "description": "The RPC API version.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The addressable entity or a legacy account.",
+              "$ref": "#/components/schemas/PackageWithBackwardCompat"
+            },
+            "merkle_proof": {
+              "description": "The Merkle proof.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "examples": [
+        {
+          "name": "state_get_package_example",
+          "params": [
+            {
+              "name": "package_identifier",
+              "value": {
+                "ContractPackageHash": "contract-package-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            },
+            {
+              "name": "block_identifier",
+              "value": {
+                "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_package_example_result",
+            "value": {
+              "api_version": "2.0.0",
+              "package": {
+                "Package": {
+                  "versions": [],
+                  "disabled_versions": [],
+                  "groups": [],
+                  "lock_status": "Unlocked"
                 }
               },
               "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
@@ -3175,9 +3283,15 @@
           "approvals",
           "body",
           "hash",
-          "header"
+          "header",
+          "serialization_version"
         ],
         "properties": {
+          "serialization_version": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
           "hash": {
             "$ref": "#/components/schemas/TransactionV1Hash"
           },
@@ -6953,6 +7067,19 @@
         "description": "Identifier of an addressable entity.",
         "oneOf": [
           {
+            "description": "The hash of a contract.",
+            "type": "object",
+            "required": [
+              "ContractHash"
+            ],
+            "properties": {
+              "ContractHash": {
+                "$ref": "#/components/schemas/ContractHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
             "description": "The public key of an account.",
             "type": "object",
             "required": [
@@ -7010,8 +7137,8 @@
           }
         ]
       },
-      "EntityOrAccount": {
-        "description": "An addressable entity or a legacy account.",
+      "EntityWithBackwardCompat": {
+        "description": "An addressable entity or a legacy account or contract.",
         "oneOf": [
           {
             "description": "An addressable entity.",
@@ -7050,6 +7177,17 @@
                     "items": {
                       "$ref": "#/components/schemas/EntryPointValue"
                     }
+                  },
+                  "bytecode": {
+                    "description": "The bytecode of the addressable entity. Returned when `include_bytecode` is `true`.",
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ByteCodeWithProof"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -7057,14 +7195,145 @@
             "additionalProperties": false
           },
           {
-            "description": "A legacy account.",
+            "description": "An account.",
             "type": "object",
             "required": [
-              "LegacyAccount"
+              "Account"
             ],
             "properties": {
-              "LegacyAccount": {
+              "Account": {
                 "$ref": "#/components/schemas/Account"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A contract.",
+            "type": "object",
+            "required": [
+              "Contract"
+            ],
+            "properties": {
+              "Contract": {
+                "type": "object",
+                "required": [
+                  "contract"
+                ],
+                "properties": {
+                  "contract": {
+                    "description": "The contract.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Contract"
+                      }
+                    ]
+                  },
+                  "wasm": {
+                    "description": "The Wasm code of the contract. Returned when `include_bytecode` is `true`.",
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ContractWasmWithProof"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ByteCodeWithProof": {
+        "description": "Byte code of an entity with a proof.",
+        "type": "object",
+        "required": [
+          "code",
+          "merkle_proof"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ByteCode"
+          },
+          "merkle_proof": {
+            "type": "string"
+          }
+        }
+      },
+      "ContractWasmWithProof": {
+        "description": "Wasm code of a contract with a proof.",
+        "type": "object",
+        "required": [
+          "merkle_proof",
+          "wasm"
+        ],
+        "properties": {
+          "wasm": {
+            "$ref": "#/components/schemas/ContractWasm"
+          },
+          "merkle_proof": {
+            "type": "string"
+          }
+        }
+      },
+      "PackageIdentifier": {
+        "description": "Identifier of a package.",
+        "oneOf": [
+          {
+            "description": "The address of a package.",
+            "type": "object",
+            "required": [
+              "PackageAddr"
+            ],
+            "properties": {
+              "PackageAddr": {
+                "$ref": "#/components/schemas/PackageHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The hash of a contract package.",
+            "type": "object",
+            "required": [
+              "ContractPackageHash"
+            ],
+            "properties": {
+              "ContractPackageHash": {
+                "$ref": "#/components/schemas/ContractPackageHash"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "PackageWithBackwardCompat": {
+        "description": "A package or a legacy contract package.",
+        "oneOf": [
+          {
+            "description": "A package.",
+            "type": "object",
+            "required": [
+              "Package"
+            ],
+            "properties": {
+              "Package": {
+                "$ref": "#/components/schemas/Package"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A contract package.",
+            "type": "object",
+            "required": [
+              "ContractPackage"
+            ],
+            "properties": {
+              "ContractPackage": {
+                "$ref": "#/components/schemas/ContractPackage"
               }
             },
             "additionalProperties": false

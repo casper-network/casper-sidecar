@@ -174,12 +174,13 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "f5582cb81a5abda63ebaa4edb3b05210ecbd63ffb8dd17bfbeb3b867f4014468",
+                  "serialization_version": 1,
+                  "hash": "df4f6e95afd24c3bdac68862cfd888fea65912f0f3e3de9c42b24cee79b7a581",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "aa24833ffbf31d62c8c8c4265349e7c09cd71952fcbce6f7b12daf5e340bf2cc",
+                    "body_hash": "7bf1a4f736a9cbb2b692b74522d981213c3a5463d0095ded40d1454cf1b779e1",
                     "pricing_mode": {
                       "Fixed": {
                         "gas_price_tolerance": 5
@@ -236,7 +237,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0137d3f468d8f8a6e63f4110d79be29b8c8428e9cd858a92049660e7851ae16a299640d1fc1c930ab6cb424f1a6eec0b194df74bede14f4af1b5133106f1280d0b"
+                      "signature": "015b407723d54bdfd376d43776d9b92ea465d7ec2e0d41e28b5f646fc17400193bc4e075cab4e8943de09935e3aa96d0bbe456382c2274689b6847a35a94d07309"
                     }
                   ]
                 }
@@ -3735,9 +3736,15 @@
           "approvals",
           "body",
           "hash",
-          "header"
+          "header",
+          "serialization_version"
         ],
         "properties": {
+          "serialization_version": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
           "hash": {
             "$ref": "#/components/schemas/TransactionV1Hash"
           },

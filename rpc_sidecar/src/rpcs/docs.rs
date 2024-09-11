@@ -24,7 +24,7 @@ use super::{
     },
     state::{
         GetAccountInfo, GetAddressableEntity, GetAuctionInfo, GetBalance, GetDictionaryItem,
-        GetItem, QueryBalance, QueryBalanceDetails, QueryGlobalState,
+        GetItem, GetPackage, QueryBalance, QueryBalanceDetails, QueryGlobalState,
     },
     ApiVersion, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     CURRENT_API_VERSION,
@@ -77,6 +77,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
     schema
         .push_with_params::<GetAddressableEntity>("returns an AddressableEntity from the network");
+    schema.push_with_params::<GetPackage>("returns a Package from the network");
     schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
     schema.push_with_params::<QueryGlobalState>(
         "a query to global state using either a Block hash or state root hash",

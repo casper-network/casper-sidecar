@@ -7,20 +7,28 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::node_client::{EntityResponse, PackageResponse};
+
 use super::{
-    common::{self, EntityOrAccount, MERKLE_PROOF},
+    common::{
+        self, ByteCodeWithProof, ContractWasmWithProof, EntityWithBackwardCompat,
+        PackageWithBackwardCompat, MERKLE_PROOF,
+    },
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
     ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
     CURRENT_API_VERSION,
 };
-use casper_binary_port::DictionaryItemIdentifier;
-use casper_binary_port::PurseIdentifier as PortPurseIdentifier;
+use casper_binary_port::{
+    DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier,
+    PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
+};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
     bytesrepr::Bytes,
+    contracts::{ContractHash, ContractPackageHash},
     system::{
         auction::{
             BidKind, EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
@@ -30,7 +38,8 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
-    GlobalStateIdentifier, Key, KeyTag, PublicKey, SecretKey, StoredValue, URef, U512,
+    GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey, SecretKey, StoredValue,
+    URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -82,12 +91,13 @@ static GET_ADDRESSABLE_ENTITY_PARAMS: Lazy<GetAddressableEntityParams> =
     Lazy::new(|| GetAddressableEntityParams {
         entity_identifier: EntityIdentifier::EntityAddr(EntityAddr::new_account([0; 32])),
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
+        include_bytecode: None,
     });
 static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
     Lazy::new(|| GetAddressableEntityResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         merkle_proof: MERKLE_PROOF.clone(),
-        entity: EntityOrAccount::AddressableEntity {
+        entity: EntityWithBackwardCompat::AddressableEntity {
             entity: AddressableEntity::example().clone(),
             named_keys: [("key".to_string(), Key::Hash([0u8; 32]))]
                 .iter()
@@ -97,8 +107,26 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
             entry_points: vec![EntryPointValue::new_v1_entry_point_value(
                 EntryPoint::default_with_name("entry_point"),
             )],
+            bytecode: None,
         },
     });
+static GET_PACKAGE_PARAMS: Lazy<GetPackageParams> = Lazy::new(|| GetPackageParams {
+    package_identifier: PackageIdentifier::ContractPackageHash(ContractPackageHash::new([0; 32])),
+    block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
+});
+static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResult {
+    api_version: DOCS_EXAMPLE_API_VERSION,
+    package: PackageWithBackwardCompat::Package(
+        Package::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+        .clone(),
+    ),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
         state_root_hash: *BlockHeaderV2::example().state_root_hash(),
@@ -525,6 +553,8 @@ impl RpcWithParams for GetAccountInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub enum EntityIdentifier {
+    /// The hash of a contract.
+    ContractHash(ContractHash),
     /// The public key of an account.
     PublicKey(PublicKey),
     /// The account hash of an account.
@@ -543,6 +573,21 @@ impl EntityIdentifier {
             _ => unreachable!(),
         }
     }
+
+    pub fn into_port_entity_identifier(self) -> PortEntityIdentifier {
+        match self {
+            EntityIdentifier::ContractHash(contract_hash) => {
+                PortEntityIdentifier::ContractHash(contract_hash)
+            }
+            EntityIdentifier::PublicKey(public_key) => PortEntityIdentifier::PublicKey(public_key),
+            EntityIdentifier::AccountHash(account_hash) => {
+                PortEntityIdentifier::AccountHash(account_hash)
+            }
+            EntityIdentifier::EntityAddr(entity_addr) => {
+                PortEntityIdentifier::EntityAddr(entity_addr)
+            }
+        }
+    }
 }
 
 /// Params for "state_get_entity" RPC request
@@ -553,6 +598,8 @@ pub struct GetAddressableEntityParams {
     pub entity_identifier: EntityIdentifier,
     /// The block identifier.
     pub block_identifier: Option<BlockIdentifier>,
+    /// Whether to include the entity's bytecode in the response.
+    pub include_bytecode: Option<bool>,
 }
 
 impl DocExample for GetAddressableEntityParams {
@@ -569,7 +616,7 @@ pub struct GetAddressableEntityResult {
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
     /// The addressable entity or a legacy account.
-    pub entity: EntityOrAccount,
+    pub entity: EntityWithBackwardCompat,
     /// The Merkle proof.
     pub merkle_proof: String,
 }
@@ -594,41 +641,171 @@ impl RpcWithParams for GetAddressableEntity {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let state_identifier = params.block_identifier.map(GlobalStateIdentifier::from);
-        let (entity, merkle_proof) = match params.entity_identifier {
-            EntityIdentifier::EntityAddr(addr) => {
-                let result = common::resolve_entity_addr(&*node_client, addr, state_identifier)
-                    .await?
-                    .ok_or(Error::AddressableEntityNotFound)?;
+        let identifier = params.entity_identifier.into_port_entity_identifier();
+        let include_bytecode = params.include_bytecode.unwrap_or(false);
+
+        let (entity, merkle_proof) = match node_client
+            .read_entity(state_identifier, identifier, include_bytecode)
+            .await
+            .map_err(|err| Error::NodeRequest("entity", err))?
+            .ok_or(Error::AddressableEntityNotFound)?
+        {
+            EntityResponse::Entity(entity_with_bytecode) => {
+                let (addr, entity_with_proof, bytecode) = entity_with_bytecode.into_inner();
+                let (entity, proof) = entity_with_proof.into_inner();
                 let named_keys =
                     common::get_entity_named_keys(&*node_client, addr, state_identifier).await?;
                 let entry_points =
                     common::get_entity_entry_points(&*node_client, addr, state_identifier).await?;
+                let bytecode = bytecode
+                    .map(|code_with_proof| {
+                        let (code, proof) = code_with_proof.into_inner();
+                        Ok::<_, Error>(ByteCodeWithProof::new(code, common::encode_proof(&proof)?))
+                    })
+                    .transpose()?;
                 (
-                    EntityOrAccount::AddressableEntity {
-                        entity: result.value,
+                    EntityWithBackwardCompat::AddressableEntity {
+                        entity,
                         named_keys,
                         entry_points,
+                        bytecode,
                     },
-                    result.merkle_proof,
+                    proof,
                 )
             }
-            EntityIdentifier::PublicKey(public_key) => {
-                let account_hash = public_key.to_account_hash();
-                common::resolve_account_hash(&*node_client, account_hash, state_identifier)
-                    .await?
-                    .ok_or(Error::AddressableEntityNotFound)?
-                    .into_inner()
+            EntityResponse::Account(account) => {
+                let (account, merkle_proof) = account.into_inner();
+                (EntityWithBackwardCompat::Account(account), merkle_proof)
             }
-            EntityIdentifier::AccountHash(account_hash) => {
-                common::resolve_account_hash(&*node_client, account_hash, state_identifier)
-                    .await?
-                    .ok_or(Error::AddressableEntityNotFound)?
-                    .into_inner()
+            EntityResponse::Contract(contract_with_wasm) => {
+                let (_, contract_with_proof, wasm) = contract_with_wasm.into_inner();
+                let (contract, proof) = contract_with_proof.into_inner();
+                let wasm = wasm
+                    .map(|wasm_with_proof| {
+                        let (wasm, proof) = wasm_with_proof.into_inner();
+                        Ok::<_, Error>(ContractWasmWithProof::new(
+                            wasm,
+                            common::encode_proof(&proof)?,
+                        ))
+                    })
+                    .transpose()?;
+                (EntityWithBackwardCompat::Contract { contract, wasm }, proof)
             }
         };
+
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
             entity,
+            merkle_proof: common::encode_proof(&merkle_proof)?,
+        })
+    }
+}
+
+/// Identifier of a package.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub enum PackageIdentifier {
+    /// The address of a package.
+    PackageAddr(PackageHash),
+    /// The hash of a contract package.
+    ContractPackageHash(ContractPackageHash),
+}
+
+impl PackageIdentifier {
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..2) {
+            0 => Self::PackageAddr(PackageHash::new(rng.gen())),
+            1 => Self::ContractPackageHash(ContractPackageHash::new(rng.gen())),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn into_port_package_identifier(self) -> PortPackageIdentifier {
+        match self {
+            Self::PackageAddr(package_addr) => {
+                PortPackageIdentifier::PackageAddr(package_addr.value())
+            }
+            Self::ContractPackageHash(contract_package_hash) => {
+                PortPackageIdentifier::ContractPackageHash(contract_package_hash)
+            }
+        }
+    }
+}
+
+/// Params for "state_get_entity" RPC request
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetPackageParams {
+    /// The identifier of the package.
+    pub package_identifier: PackageIdentifier,
+    /// The block identifier.
+    pub block_identifier: Option<BlockIdentifier>,
+}
+
+impl DocExample for GetPackageParams {
+    fn doc_example() -> &'static Self {
+        &GET_PACKAGE_PARAMS
+    }
+}
+
+/// Result for "state_get_entity" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetPackageResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ApiVersion,
+    /// The addressable entity or a legacy account.
+    pub package: PackageWithBackwardCompat,
+    /// The Merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for GetPackageResult {
+    fn doc_example() -> &'static Self {
+        &GET_PACKAGE_RESULT
+    }
+}
+
+/// "state_get_package" RPC.
+pub struct GetPackage {}
+
+#[async_trait]
+impl RpcWithParams for GetPackage {
+    const METHOD: &'static str = "state_get_package";
+    type RequestParams = GetPackageParams;
+    type ResponseResult = GetPackageResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let state_identifier = params.block_identifier.map(GlobalStateIdentifier::from);
+        let identifier = params.package_identifier.into_port_package_identifier();
+
+        let (package, merkle_proof) = match node_client
+            .read_package(state_identifier, identifier)
+            .await
+            .map_err(|err| Error::NodeRequest("package", err))?
+            .ok_or(Error::AddressableEntityNotFound)?
+        {
+            PackageResponse::Package(package_with_proof) => {
+                let (package, proof) = package_with_proof.into_inner();
+                (PackageWithBackwardCompat::Package(package), proof)
+            }
+            PackageResponse::ContractPackage(contract_package_with_proof) => {
+                let (contract_package, proof) = contract_package_with_proof.into_inner();
+                (
+                    PackageWithBackwardCompat::ContractPackage(contract_package),
+                    proof,
+                )
+            }
+        };
+
+        Ok(Self::ResponseResult {
+            api_version: CURRENT_API_VERSION,
+            package,
             merkle_proof: common::encode_proof(&merkle_proof)?,
         })
     }
@@ -1146,17 +1323,20 @@ mod tests {
 
     use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
-        BalanceResponse, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
-        DictionaryQueryResult, ErrorCode as BinaryErrorCode, GetRequest, GlobalStateQueryResult,
-        GlobalStateRequest, InformationRequestTag, KeyPrefix,
+        AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryRequest,
+        BinaryResponse, BinaryResponseAndRequest, ContractInformation, DictionaryQueryResult,
+        ErrorCode as BinaryErrorCode, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
+        InformationRequestTag, KeyPrefix, ValueWithProof,
     };
     use casper_types::{
         addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
+        contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
         system::auction::{Bid, BidKind, ValidatorBid},
         testing::TestRng,
-        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCodeHash, EntityKind,
-        PackageHash, ProtocolVersion, TestBlockBuilder, TransactionRuntime,
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
+        ByteCodeKind, Contract, ContractWasm, ContractWasmHash, EntityKind, PackageHash,
+        ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1620,10 +1800,11 @@ mod tests {
         use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys};
 
         struct ClientMock {
+            addr: EntityAddr,
             entity: AddressableEntity,
             named_keys: NamedKeys,
             entry_points: Vec<EntryPointValue>,
-            entity_hash: AddressableEntityHash,
+            bytecode: Option<ByteCode>,
         }
 
         #[async_trait]
@@ -1633,44 +1814,18 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::State(req))
-                        if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
-                                base_key: Key::Account(_),
-                                ..
-                            }
-                        ) =>
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(
-                                GlobalStateQueryResult::new(
-                                    StoredValue::CLValue(
-                                        CLValue::from_t(Key::contract_entity_key(self.entity_hash))
-                                            .unwrap(),
-                                    ),
-                                    vec![],
-                                ),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
-                        ))
-                    }
-                    BinaryRequest::Get(GetRequest::State(req))
-                        if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
-                                base_key: Key::AddressableEntity(_),
-                                ..
-                            }
-                        ) =>
-                    {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                GlobalStateQueryResult::new(
-                                    StoredValue::AddressableEntity(self.entity.clone()),
-                                    vec![],
+                                AddressableEntityInformation::new(
+                                    self.addr,
+                                    ValueWithProof::new(self.entity.clone(), vec![]),
+                                    self.bytecode.as_ref().map(|bytecode| {
+                                        ValueWithProof::new(bytecode.clone(), vec![])
+                                    }),
                                 ),
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
@@ -1760,7 +1915,7 @@ mod tests {
             MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
         );
-        let entity_hash: AddressableEntityHash = rng.gen();
+        let addr: EntityAddr = rng.gen();
 
         let named_key_count = rng.gen_range(0..10);
         let named_keys: NamedKeys =
@@ -1777,18 +1932,24 @@ mod tests {
         .take(entry_point_count)
         .collect::<Vec<_>>();
 
+        let bytecode = rng
+            .gen::<bool>()
+            .then(|| ByteCode::new(ByteCodeKind::V1CasperWasm, rng.random_vec(10..50)));
+
         let entity_identifier = EntityIdentifier::random(rng);
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock {
+                addr,
                 entity: entity.clone(),
                 named_keys: named_keys.clone(),
                 entry_points: entry_points.clone(),
-                entity_hash,
+                bytecode: bytecode.clone(),
             }),
             GetAddressableEntityParams {
                 block_identifier: None,
                 entity_identifier,
+                include_bytecode: Some(bytecode.is_some()),
             },
         )
         .await
@@ -1798,10 +1959,12 @@ mod tests {
             resp,
             GetAddressableEntityResult {
                 api_version: CURRENT_API_VERSION,
-                entity: EntityOrAccount::AddressableEntity {
+                entity: EntityWithBackwardCompat::AddressableEntity {
                     entity,
                     named_keys,
-                    entry_points
+                    entry_points,
+                    bytecode: bytecode
+                        .map(|bytecode| ByteCodeWithProof::new(bytecode, String::from("00000000"))),
                 },
                 merkle_proof: String::from("00000000"),
             }
@@ -1813,7 +1976,6 @@ mod tests {
         use casper_types::account::{ActionThresholds, AssociatedKeys};
 
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
         let account = Account::new(
             rng.gen(),
             NamedKeys::default(),
@@ -1825,12 +1987,12 @@ mod tests {
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ValidLegacyAccountMock {
-                block: block.clone(),
                 account: account.clone(),
             }),
             GetAddressableEntityParams {
                 block_identifier: None,
                 entity_identifier,
+                include_bytecode: None,
             },
         )
         .await
@@ -1840,16 +2002,18 @@ mod tests {
             resp,
             GetAddressableEntityResult {
                 api_version: CURRENT_API_VERSION,
-                entity: EntityOrAccount::LegacyAccount(account),
+                entity: EntityWithBackwardCompat::Account(account),
                 merkle_proof: String::from("00000000"),
             }
         );
     }
 
     #[tokio::test]
-    async fn should_reject_read_entity_when_non_existent() {
+    async fn should_read_entity_legacy_contract() {
         struct ClientMock {
-            block: Block,
+            hash: ContractHash,
+            contract: Contract,
+            wasm: Option<ContractWasm>,
         }
 
         #[async_trait]
@@ -1861,25 +2025,87 @@ mod tests {
                 match req {
                     BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
-                            == Ok(InformationRequestTag::BlockHeader) =>
+                            == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(
-                                self.block.clone_header(),
+                                ContractInformation::new(
+                                    self.hash,
+                                    ValueWithProof::new(self.contract.clone(), vec![]),
+                                    self.wasm.as_ref().map(|bytecode| {
+                                        ValueWithProof::new(bytecode.clone(), vec![])
+                                    }),
+                                ),
                                 SUPPORTED_PROTOCOL_VERSION,
                             ),
                             &[],
                             0,
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
-                        if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
-                                base_key: Key::AddressableEntity(_),
-                                ..
-                            }
-                        ) =>
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let contract = Contract::new(
+            ContractPackageHash::new(rng.gen()),
+            ContractWasmHash::new(rng.gen()),
+            Default::default(),
+            Default::default(),
+            ProtocolVersion::V2_0_0,
+        );
+        let hash = ContractHash::new(rng.gen());
+
+        let wasm = rng
+            .gen::<bool>()
+            .then(|| ContractWasm::new(rng.random_vec(10..50)));
+
+        let entity_identifier = EntityIdentifier::random(rng);
+
+        let resp = GetAddressableEntity::do_handle_request(
+            Arc::new(ClientMock {
+                hash,
+                contract: contract.clone(),
+                wasm: wasm.clone(),
+            }),
+            GetAddressableEntityParams {
+                block_identifier: None,
+                entity_identifier,
+                include_bytecode: Some(wasm.is_some()),
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAddressableEntityResult {
+                api_version: CURRENT_API_VERSION,
+                entity: EntityWithBackwardCompat::Contract {
+                    contract,
+                    wasm: wasm
+                        .map(|wasm| ContractWasmWithProof::new(wasm, String::from("00000000"))),
+                },
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_read_entity_when_non_existent() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
@@ -1893,16 +2119,14 @@ mod tests {
         }
 
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
         let entity_identifier = EntityIdentifier::EntityAddr(rng.gen());
 
         let err = GetAddressableEntity::do_handle_request(
-            Arc::new(ClientMock {
-                block: block.clone(),
-            }),
+            Arc::new(ClientMock),
             GetAddressableEntityParams {
                 block_identifier: None,
                 entity_identifier,
+                include_bytecode: None,
             },
         )
         .await
@@ -1912,11 +2136,137 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn should_read_package() {
+        struct ClientMock {
+            package: Package,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::Package) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                ValueWithProof::new(self.package.clone(), vec![]),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                            0,
+                        ))
+                    }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let package = Package::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+
+        let package_identifier = PackageIdentifier::random(rng);
+
+        let resp = GetPackage::do_handle_request(
+            Arc::new(ClientMock {
+                package: package.clone(),
+            }),
+            GetPackageParams {
+                block_identifier: None,
+                package_identifier,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetPackageResult {
+                api_version: CURRENT_API_VERSION,
+                package: PackageWithBackwardCompat::Package(package),
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_contract_package() {
+        struct ClientMock {
+            package: ContractPackage,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                        if InformationRequestTag::try_from(info_type_tag)
+                            == Ok(InformationRequestTag::Package) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(
+                                ValueWithProof::new(self.package.clone(), vec![]),
+                                SUPPORTED_PROTOCOL_VERSION,
+                            ),
+                            &[],
+                            0,
+                        ))
+                    }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let package = ContractPackage::new(
+            rng.gen(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+
+        let package_identifier = PackageIdentifier::random(rng);
+
+        let resp = GetPackage::do_handle_request(
+            Arc::new(ClientMock {
+                package: package.clone(),
+            }),
+            GetPackageParams {
+                block_identifier: None,
+                package_identifier,
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetPackageResult {
+                api_version: CURRENT_API_VERSION,
+                package: PackageWithBackwardCompat::ContractPackage(package),
+                merkle_proof: String::from("00000000"),
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn should_read_account_info() {
         use casper_types::account::{ActionThresholds, AssociatedKeys};
 
         let rng = &mut TestRng::new();
-        let block = Block::V2(TestBlockBuilder::new().build(rng));
         let account = Account::new(
             rng.gen(),
             NamedKeys::default(),
@@ -1928,7 +2278,6 @@ mod tests {
 
         let resp = GetAccountInfo::do_handle_request(
             Arc::new(ValidLegacyAccountMock {
-                block: block.clone(),
                 account: account.clone(),
             }),
             GetAccountInfoParams {
@@ -2332,7 +2681,6 @@ mod tests {
     }
 
     struct ValidLegacyAccountMock {
-        block: Block,
         account: Account,
     }
 
@@ -2345,11 +2693,11 @@ mod tests {
             match req {
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
-                        == Ok(InformationRequestTag::BlockHeader) =>
+                        == Ok(InformationRequestTag::Entity) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
-                            self.block.clone_header(),
+                            AccountInformation::new(self.account.clone(), vec![]),
                             SUPPORTED_PROTOCOL_VERSION,
                         ),
                         &[],
