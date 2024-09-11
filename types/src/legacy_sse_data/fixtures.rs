@@ -366,6 +366,7 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
 {
     "TransactionAccepted": {
         "Version1": {
+            "serialization_version": 1,
             "hash": "2084a40f58874fb2997e029e61ec55e3d5a6cd5f6de77a1d42dcaf21aeddc760",
             "header": {
                 "chain_name":"⸻⋉◬⸗ⶨ⼄≙⡫⨁ⶃℍ⊨⇏ⴲⲋ⪝⣬ⴂ⨨⪯⿉⺙⚚⻰⒯ⶖ⟽⬪❴⴯╽♥⅏⏵❲⃽ⶁ⾠⸗◩⋑Ⅹ♼⺓⊻⼠Ⓩ∇Ⅺ⸔◘⠝◓⚾◯⦁★⢹␄⍆⨿⵮⭭⮛⸹⃻⹶⎶⟆⛎⤑₇⩐╨⋸⠸₈⥡ⷔ⹪⤛⭺⵫Ⲗ⃁⪏⫵⚎⁘⦳☉␛Ⲹ⥝⇡Ⰰ⫂⁎⍆⼸",
