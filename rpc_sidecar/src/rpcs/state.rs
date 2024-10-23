@@ -1325,8 +1325,8 @@ mod tests {
     use casper_binary_port::{
         AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryRequest,
         BinaryResponse, BinaryResponseAndRequest, ContractInformation, DictionaryQueryResult,
-        ErrorCode as BinaryErrorCode, GetRequest, GlobalStateQueryResult, GlobalStateRequest,
-        InformationRequestTag, KeyPrefix, ValueWithProof,
+        ErrorCode as BinaryErrorCode, GetRequest, GlobalStateEntityQualifier,
+        GlobalStateQueryResult, InformationRequestTag, KeyPrefix, ValueWithProof,
     };
     use casper_types::{
         addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
@@ -1462,8 +1462,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::AllItems {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::AllItems {
                                 key_tag: KeyTag::Bid,
                                 ..
                             }
@@ -1483,8 +1483,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::AllItems {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::AllItems {
                                 key_tag: KeyTag::BidAddr,
                                 ..
                             }
@@ -1504,8 +1504,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
                                 base_key: Key::SystemEntityRegistry,
                                 ..
                             }
@@ -1526,8 +1526,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
                                 base_key: Key::AddressableEntity(_),
                                 ..
                             }
@@ -1612,8 +1612,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::AllItems {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::AllItems {
                                 key_tag: KeyTag::Bid,
                                 ..
                             }
@@ -1633,8 +1633,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::AllItems {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::AllItems {
                                 key_tag: KeyTag::BidAddr,
                                 ..
                             }
@@ -1654,13 +1654,14 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
-                                base_key: Key::SystemEntityRegistry,
-                                // system entity registry is not present in pre-1.5 state
-                                state_identifier: None,
-                                ..
-                            }
+                            req.clone().destructure(),
+                            (
+                                None,
+                                GlobalStateEntityQualifier::Item {
+                                    base_key: Key::SystemEntityRegistry,
+                                    ..
+                                }
+                            )
                         ) =>
                     {
                         let system_contracts =
@@ -1678,8 +1679,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
                                 // we should return nothing for entity hash in pre-1.5 state
                                 base_key: Key::AddressableEntity(_),
                                 ..
@@ -1694,9 +1695,9 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
-                                // we should query by contract hash in pre-1.5 state
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
+                                // we should return nothing for entity hash in pre-1.5 state
                                 base_key: Key::Hash(_),
                                 ..
                             }
@@ -1835,8 +1836,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::ItemsByPrefix {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::ItemsByPrefix {
                                 key_prefix: KeyPrefix::NamedKeysByEntity(_),
                                 ..
                             }
@@ -1861,8 +1862,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::ItemsByPrefix {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::ItemsByPrefix {
                                 key_prefix: KeyPrefix::EntryPointsV1ByEntity(_),
                                 ..
                             }
@@ -1883,8 +1884,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::ItemsByPrefix {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::ItemsByPrefix {
                                 key_prefix: KeyPrefix::EntryPointsV2ByEntity(_),
                                 ..
                             }
@@ -2327,8 +2328,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
                                 base_key: Key::Account(_),
                                 ..
                             }
@@ -2403,8 +2404,8 @@ mod tests {
                     }
                     BinaryRequest::Get(GetRequest::State(req))
                         if matches!(
-                            &*req,
-                            GlobalStateRequest::Item {
+                            req.clone().destructure().1,
+                            GlobalStateEntityQualifier::Item {
                                 base_key: Key::Account(_),
                                 ..
                             }
@@ -2602,7 +2603,10 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::DictionaryItem { .. }) =>
+                    if matches!(
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::DictionaryItem { .. }
+                    ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(
@@ -2628,7 +2632,10 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::Item { .. }) =>
+                    if matches!(
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Item { .. }
+                    ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
@@ -2667,7 +2674,10 @@ mod tests {
                     ))
                 }
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::Item { .. }) =>
+                    if matches!(
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Item { .. }
+                    ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
@@ -2706,8 +2716,8 @@ mod tests {
                 }
                 BinaryRequest::Get(GetRequest::State(req))
                     if matches!(
-                        &*req,
-                        GlobalStateRequest::Item {
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Item {
                             base_key: Key::Account(_),
                             ..
                         }
@@ -2740,7 +2750,10 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
+                    if matches!(
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Balance { .. }
+                    ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
@@ -2763,7 +2776,10 @@ mod tests {
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
                 BinaryRequest::Get(GetRequest::State(req))
-                    if matches!(&*req, GlobalStateRequest::Balance { .. }) =>
+                    if matches!(
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Balance { .. }
+                    ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::new_error(

@@ -405,7 +405,7 @@ mod tests {
     use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
         BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequestTag, RecordId,
+        GlobalStateEntityQualifier, GlobalStateQueryResult, InformationRequestTag, RecordId,
     };
     use casper_types::{
         system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2,
@@ -765,8 +765,8 @@ mod tests {
                 }
                 BinaryRequest::Get(GetRequest::State(req))
                     if matches!(
-                        &*req,
-                        GlobalStateRequest::Item {
+                        req.clone().destructure().1,
+                        GlobalStateEntityQualifier::Item {
                             base_key: Key::EraSummary,
                             ..
                         }

@@ -366,75 +366,31 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
 {
     "TransactionAccepted": {
         "Version1": {
-            "serialization_version": 1,
-            "hash": "2084a40f58874fb2997e029e61ec55e3d5a6cd5f6de77a1d42dcaf21aeddc760",
-            "header": {
-                "chain_name":"⸻⋉◬⸗ⶨ⼄≙⡫⨁ⶃℍ⊨⇏ⴲⲋ⪝⣬ⴂ⨨⪯⿉⺙⚚⻰⒯ⶖ⟽⬪❴⴯╽♥⅏⏵❲⃽ⶁ⾠⸗◩⋑Ⅹ♼⺓⊻⼠Ⓩ∇Ⅺ⸔◘⠝◓⚾◯⦁★⢹␄⍆⨿⵮⭭⮛⸹⃻⹶⎶⟆⛎⤑₇⩐╨⋸⠸₈⥡ⷔ⹪⤛⭺⵫Ⲗ⃁⪏⫵⚎⁘⦳☉␛Ⲹ⥝⇡Ⰰ⫂⁎⍆⼸",
-                "timestamp": "2020-08-07T01:30:25.521Z",
-                "ttl": "5h 6m 46s 219ms",
-                "body_hash": "11ddedb85acbe04217e4f322663e7a3b90630321cdff7d7a8f0ce97fd76ead9a",
-                "pricing_mode": {
-                    "Fixed": {
-                        "gas_price_tolerance": 5
-                    }
-                },
-                "initiator_addr": {
-                    "PublicKey": "01b0c1bc1910f3e2e5fa8329d642b34e72e34183e0a2b239021906df8d7d968fcd"
-                }
-            },
-            "body": {
-                "args": [
-                    [
-                        "source",
-                        {
-                            "cl_type": {
-                                "Option": "URef"
-                            },
-                            "bytes": "01d4ce239a968d7ac214964f714f6aa267612d1da1ec9c65dfc40a99d0e1a673ce02",
-                            "parsed": "uref-d4ce239a968d7ac214964f714f6aa267612d1da1ec9c65dfc40a99d0e1a673ce-002"
-                        }
-                    ],
-                    [
-                        "target",
-                        {
-                            "cl_type": "PublicKey",
-                            "bytes": "015a977c34eeff036613837814822a1a44986f2a7057c17436d01d200132614c58",
-                            "parsed": "015a977c34eeff036613837814822a1a44986f2a7057c17436d01d200132614c58"
-                        }
-                    ],
-                    [
-                        "amount",
-                        {
-                            "cl_type": "U512",
-                            "bytes": "08b30d8646748b0f87",
-                            "parsed": "9732150651286588851"
-                        }
-                    ],
-                    [
-                        "id",
-                        {
-                            "cl_type": {
-                                "Option": "U64"
-                            },
-                            "bytes": "01dfd56bb1e2ac2494",
-                            "parsed": 10674847106414138847
-                        }
-                    ]
-                ],
-                "target": "Native",
-                "entry_point": "Transfer",
-                "scheduling": {
-                    "FutureTimestamp": "2020-08-07T01:32:59.428Z"
-                },
-                "transaction_category": 0
-            },
-            "approvals": [
-                {
-                    "signer": "01b0c1bc1910f3e2e5fa8329d642b34e72e34183e0a2b239021906df8d7d968fcd",
-                    "signature": "01fb52d40bd36c813ca69b982f6b7f4bac79314187e51e69128fa4d87fbb2cfe8e803b2eedaa6f39566ca3a4dc59ac418824aa2e7fc05611910162cf9f6a164902"
-                }
-            ]
-        }
+  "hash": "2084a40f58874fb2997e029e61ec55e3d5a6cd5f6de77a1d42dcaf21aeddc760",
+  "payload": {
+    "initiator_addr": {
+      "PublicKey": "020394489ced801f72d5ae25d66dfa4e5f7d045fa3f16085d780be901054d8386295"
+    },
+    "timestamp": "2020-08-07T01:27:53.316Z",
+    "ttl": "16h 57m 31s 19ms",
+    "chain_name": "⸻⋉◬⸗ⶨ⼄≙⡫⨁ⶃℍ⊨⇏ⴲⲋ⪝⣬ⴂ⨨⪯⿉⺙⚚⻰⒯ⶖ⟽⬪❴⴯╽♥⅏⏵❲⃽ⶁ⾠⸗◩⋑Ⅹ♼⺓⊻⼠Ⓩ∇Ⅺ⸔◘⠝◓⚾◯⦁★⢹␄⍆⨿⵮⭭⮛⸹⃻⹶⎶⟆⛎⤑₇⩐╨⋸⠸₈⥡ⷔ⹪⤛⭺⵫Ⲗ⃁⪏⫵⚎⁘⦳☉␛Ⲹ⥝⇡Ⰰ⫂⁎⍆⼸",
+    "pricing_mode": {
+      "Fixed": { "additional_computation_factor": 0, "gas_price_tolerance": 5 }
+    },
+    "fields": {
+      "0": "010000001c000000f1a894a7f2bfa889f18687bff399bbb8f3b0bd80f09697aff0989ca63b00000037000000093785a57f89410a5f4d46ac25426cd9807bccd0a32dad671f08119214999e6929fc8c6662d81af9d69b7750baee8f04a93432cf1e706a0e03",
+      "1": "010000000000000000000100000000",
+      "2": "010000000000000000000100000004",
+      "3": "010000000000000000000100000000"
+    }
+  },
+  "approvals": [
+    {
+      "signer": "020394489ced801f72d5ae25d66dfa4e5f7d045fa3f16085d780be901054d8386295",
+      "signature": "02a679a7db9f6123672309812706b2e2316c66fc16ac6ff6745539f1708264dfc33eb72883f142c90c1ab183191a83a474394203aaf6b21dcaf7b559137ccc604b"
+    }
+  ]
+}
     }
 }
 "#;
@@ -771,10 +727,10 @@ const RAW_BLOCK_ADDED_V2: &str = r#"{
                 },
                 "body": {
                     "transactions": {
-                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
-                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}],
-                        "2": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}],
-                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e88"}]
+                        "0": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e81"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"}],
+                        "1": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e91"}],
+                        "2": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e92"}],
+                        "3": [{"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86"}, {"Deploy": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"}, {"Version1": "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e93"}]
                     },
                     "rewarded_signatures": [[240],[0],[0]]
                 }
@@ -843,8 +799,12 @@ const RAW_LEGACY_BLOCK_ADDED_FROM_V2: &str = r#"{
             "body": {
                 "proposer": "01d3eec0445635f136ae560b43e9d8f656a6ba925f01293eaf2610b39ebe0fc28d",
                 "deploy_hashes": [
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e89",
-                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e90"
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e82",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e83",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e84",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e85",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e86",
+                    "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e87"
                 ],
                 "transfer_hashes": [
                     "58aca0009fc41bd045d303db9e9f07416ff1fd8c76ecd98545eedf86f9459e80",
