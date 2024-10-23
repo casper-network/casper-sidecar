@@ -19,9 +19,10 @@ use casper_binary_port::{
     BinaryMessageCodec, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
     ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
     DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest, KeyPrefix,
-    NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier, RecordId, ResponseType,
-    RewardResponse, SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
+    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
+    InformationRequest, KeyPrefix, NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier,
+    RecordId, ResponseType, RewardResponse, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -73,11 +74,10 @@ pub trait NodeClient: Send + Sync {
         base_key: Key,
         path: Vec<String>,
     ) -> Result<Option<GlobalStateQueryResult>, Error> {
-        let req = GlobalStateRequest::Item {
+        let req = GlobalStateRequest::new(
             state_identifier,
-            base_key,
-            path,
-        };
+            GlobalStateEntityQualifier::Item { base_key, path },
+        );
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(req))))
             .await?;
@@ -89,10 +89,10 @@ pub trait NodeClient: Send + Sync {
         state_identifier: Option<GlobalStateIdentifier>,
         key_tag: KeyTag,
     ) -> Result<Vec<StoredValue>, Error> {
-        let get = GlobalStateRequest::AllItems {
+        let get = GlobalStateRequest::new(
             state_identifier,
-            key_tag,
-        };
+            GlobalStateEntityQualifier::AllItems { key_tag },
+        );
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
@@ -104,10 +104,10 @@ pub trait NodeClient: Send + Sync {
         state_identifier: Option<GlobalStateIdentifier>,
         key_prefix: KeyPrefix,
     ) -> Result<Vec<StoredValue>, Error> {
-        let get = GlobalStateRequest::ItemsByPrefix {
+        let get = GlobalStateRequest::new(
             state_identifier,
-            key_prefix,
-        };
+            GlobalStateEntityQualifier::ItemsByPrefix { key_prefix },
+        );
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
@@ -119,10 +119,10 @@ pub trait NodeClient: Send + Sync {
         state_identifier: Option<GlobalStateIdentifier>,
         purse_identifier: PurseIdentifier,
     ) -> Result<BalanceResponse, Error> {
-        let get = GlobalStateRequest::Balance {
+        let get = GlobalStateRequest::new(
             state_identifier,
-            purse_identifier,
-        };
+            GlobalStateEntityQualifier::Balance { purse_identifier },
+        );
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
@@ -130,9 +130,8 @@ pub trait NodeClient: Send + Sync {
     }
 
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
-        let req = GlobalStateRequest::Trie { trie_key };
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(req))))
+            .send_request(BinaryRequest::Get(GetRequest::Trie { trie_key }))
             .await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(<Vec<u8>>::from))
@@ -143,10 +142,10 @@ pub trait NodeClient: Send + Sync {
         state_identifier: Option<GlobalStateIdentifier>,
         identifier: DictionaryItemIdentifier,
     ) -> Result<Option<DictionaryQueryResult>, Error> {
-        let get = GlobalStateRequest::DictionaryItem {
+        let get = GlobalStateRequest::new(
             state_identifier,
-            identifier,
-        };
+            GlobalStateEntityQualifier::DictionaryItem { identifier },
+        );
         let resp = self
             .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
             .await?;
@@ -684,6 +683,8 @@ pub enum Error {
     UnexpectedNodeError { message: String, code: u16 },
     #[error("binary protocol version mismatch")]
     BinaryProtocolVersionMismatch,
+    #[error("request was throttled by the node")]
+    RequestThrottled,
 }
 
 impl Error {
@@ -767,6 +768,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnspecified
                 | ErrorCode::InvalidTransactionOrDeployUnspecified),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
+            Ok(ErrorCode::RequestThrottled) => Self::RequestThrottled,
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
