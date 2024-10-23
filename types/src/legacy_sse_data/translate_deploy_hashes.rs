@@ -1,4 +1,4 @@
-use casper_types::{BlockBodyV2, DeployHash, TransactionHash};
+use casper_types::{BlockBodyV2, DeployHash, TransactionHash, MINT_LANE_ID};
 use mockall::automock;
 
 #[automock]
@@ -13,14 +13,19 @@ pub struct StandardDeployHashesTranslator;
 pub struct TransferDeployHashesTranslator;
 
 impl DeployHashTranslator for StandardDeployHashesTranslator {
-    fn translate(&self, block_body_v2: &casper_types::BlockBodyV2) -> Vec<DeployHash> {
+    fn translate(&self, block_body_v2: &BlockBodyV2) -> Vec<DeployHash> {
         block_body_v2
-            .small()
-            .chain(block_body_v2.medium())
-            .chain(block_body_v2.large())
-            .filter_map(|el| match el {
-                TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
-                TransactionHash::V1(_) => None,
+            .transactions()
+            .iter()
+            .filter(|(lane_id, _)| **lane_id != MINT_LANE_ID)
+            .flat_map(|(_, hashes)| {
+                hashes
+                    .iter()
+                    .filter_map(|hash| match hash {
+                        TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
+                        TransactionHash::V1(_) => None,
+                    })
+                    .collect::<Vec<DeployHash>>()
             })
             .collect()
     }
