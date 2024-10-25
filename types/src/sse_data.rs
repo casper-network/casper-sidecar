@@ -50,7 +50,7 @@ pub(crate) fn to_error(msg: String) -> SseDataDeserializeError {
 /// * `json_raw`: string slice which should contain raw json data.
 pub fn deserialize(json_raw: &str) -> Result<SseData, SseDataDeserializeError> {
     serde_json::from_str::<SseData>(json_raw).map_err(|err| {
-        let error_message = format!("Serde Error: {}", err);
+        let error_message = format!("Error when deserializing SSE event from node: {}", err);
         to_error(error_message)
     })
 }

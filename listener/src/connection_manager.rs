@@ -460,7 +460,7 @@ pub mod tests {
         if let Ok(Err(ConnectionManagerError::NonRecoverableError { error })) = res {
             assert_eq!(
                 error.to_string(),
-                "Serde Error: Couldn't deserialize Serde Error: expected value at line 1 column 1"
+                "Serde Error: Couldn't deserialize Error when deserializing SSE event from node: expected value at line 1 column 1"
             )
         } else {
             unreachable!();
