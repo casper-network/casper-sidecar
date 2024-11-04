@@ -873,7 +873,7 @@ impl FramedNodeClient {
 
     async fn send_request_internal(
         &self,
-        req: BinaryRequest,
+        req: &BinaryRequest,
         client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
     ) -> Result<BinaryResponseAndRequest, Error> {
         let (request_id, payload) = self.generate_payload(req);
@@ -926,12 +926,12 @@ impl FramedNodeClient {
         })
     }
 
-    fn generate_payload(&self, req: BinaryRequest) -> (u16, BinaryMessage) {
+    fn generate_payload(&self, req: &BinaryRequest) -> (u16, BinaryMessage) {
         let next_id = self.next_id();
         (
             next_id,
             BinaryMessage::new(
-                encode_request(&req, next_id).expect("should always serialize a request"),
+                encode_request(req, next_id).expect("should always serialize a request"),
             ),
         )
     }
@@ -971,6 +971,21 @@ impl FramedNodeClient {
         }
     }
 
+    async fn connect_without_retries(
+        config: &NodeClientConfig,
+    ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
+        match TcpStream::connect(config.address).await {
+            Ok(stream) => Ok(Framed::new(
+                stream,
+                BinaryMessageCodec::new(config.max_message_size_bytes),
+            )),
+            Err(err) => {
+                warn!(%err, "failed to connect to node {}", config.address);
+                anyhow::bail!("Couldn't connect to node {}", config.address);
+            }
+        }
+    }
+
     async fn reconnect(
         config: &NodeClientConfig,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
@@ -978,6 +993,18 @@ impl FramedNodeClient {
         inc_disconnect();
         error!("node connection closed, will attempt to reconnect");
         let stream = Self::connect_with_retries(config).await?;
+        info!("connection with the node has been re-established");
+        observe_reconnect_time(disconnected_start.elapsed());
+        Ok(stream)
+    }
+
+    async fn reconnect_without_retries(
+        config: &NodeClientConfig,
+    ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
+        let disconnected_start = Instant::now();
+        inc_disconnect();
+        error!("node connection closed, will attempt to reconnect");
+        let stream = Self::connect_without_retries(config).await?;
         info!("connection with the node has been re-established");
         observe_reconnect_time(disconnected_start.elapsed());
         Ok(stream)
@@ -1005,15 +1032,27 @@ impl NodeClient for FramedNodeClient {
             Err(err) => return Err(Error::RequestFailed(err.to_string())),
         };
 
-        let result = self.send_request_internal(req, &mut client).await;
+        let result = self.send_request_internal(&req, &mut client).await;
         if let Err(err) = &result {
             warn!(
                 addr = %self.config.address,
                 err = display_error(&err),
                 "binary port client handler error"
             );
+            // attempt to reconnect once in case the node was restarted and connection broke
             client.close().await.ok();
-            self.reconnect.notify_one()
+            match Self::reconnect_without_retries(&self.config).await {
+                Ok(new_client) => {
+                    *client = new_client;
+                    return self.send_request_internal(&req, &mut client).await;
+                }
+                Err(err) => {
+                    // schedule standard reconnect process with multiple retries
+                    // and return a response
+                    self.reconnect.notify_one();
+                    return Err(Error::RequestFailed(err.to_string()));
+                }
+            }
         }
         result
     }
