@@ -1047,10 +1047,15 @@ impl NodeClient for FramedNodeClient {
                     return self.send_request_internal(&req, &mut client).await;
                 }
                 Err(err) => {
+                    warn!(
+                        %err,
+                        addr = %self.config.address,
+                        "binary port client failed to reconnect"
+                    );
                     // schedule standard reconnect process with multiple retries
                     // and return a response
                     self.reconnect.notify_one();
-                    return Err(Error::RequestFailed(err.to_string()));
+                    return Err(Error::RequestFailed("disconnected".to_owned()));
                 }
             }
         }
@@ -1343,27 +1348,29 @@ mod tests {
     async fn given_client_should_reconnect_to_restarted_node_and_do_request() {
         let port = get_port();
         let mut rng = TestRng::new();
-        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let shutdown_server = Arc::new(tokio::sync::Notify::new());
         let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
             port,
             Some(INITIAL_REQUEST_ID),
             None,
-            Arc::clone(&shutdown),
+            Arc::clone(&shutdown_server),
         )
         .await;
+
         let config = NodeClientConfig::new_with_port(port);
         let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
-            // Request id = 0
+            // Request id = 1
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
 
-            shutdown.notify_one();
+            // shutdown node
+            shutdown_server.notify_one();
             let _ = mock_server_handle.await;
 
-            // Request id = 1
+            // Request id = 2
             let err = query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .unwrap_err();
@@ -1372,17 +1379,35 @@ mod tests {
                 Error::RequestFailed(e) if e == "disconnected"
             ));
 
-            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+            // restart node
+            let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
                 port,
                 Some(INITIAL_REQUEST_ID + 2),
                 None,
-                Arc::clone(&shutdown),
+                Arc::clone(&shutdown_server),
             )
             .await;
 
+            // wait for reconnect loop to do it's business
             tokio::time::sleep(Duration::from_secs(2)).await;
 
-            // Request id = 2
+            // Request id = 3
+            assert!(query_global_state_for_string_value(&mut rng, &c)
+                .await
+                .is_ok());
+
+            // restart node between requests
+            shutdown_server.notify_one();
+            let _ = mock_server_handle.await;
+            let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
+                port,
+                Some(INITIAL_REQUEST_ID + 4),
+                None,
+                Arc::clone(&shutdown_server),
+            )
+            .await;
+
+            // Request id = 4 & 5 (retry)
             assert!(query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .is_ok());
@@ -1405,7 +1430,7 @@ mod tests {
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
-                let (_, binary_message) = c.generate_payload(get_dummy_request());
+                let (_, binary_message) = c.generate_payload(&get_dummy_request());
                 let header = BinaryRequestHeader::from_bytes(binary_message.payload())
                     .unwrap()
                     .0;
