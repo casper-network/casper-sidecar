@@ -244,7 +244,10 @@ impl Component for RpcApiComponent {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{
+        net::{IpAddr, Ipv4Addr, SocketAddr},
+        sync::Arc,
+    };
 
     use super::*;
     use crate::config::SidecarConfig;
@@ -379,7 +382,8 @@ mod tests {
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
             NodeClientConfig::new_with_port_and_retries(port, 1);
-        config.rpc_server.as_mut().unwrap().main_server.address = format!("0.0.0.0:{}", port);
+        config.rpc_server.as_mut().unwrap().main_server.address =
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         config
             .rpc_server
             .as_mut()
@@ -387,7 +391,7 @@ mod tests {
             .speculative_exec_server
             .as_mut()
             .unwrap()
-            .address = format!("0.0.0.0:{}", port);
+            .address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
         assert!(res.unwrap().is_some());

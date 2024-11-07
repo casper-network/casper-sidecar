@@ -604,6 +604,8 @@ fn stream_to_client(
         stream_filter,
         event_filter,
         is_legacy_filter,
+        #[cfg(feature = "additional-metrics")]
+        metrics_sender,
     )
 }
 
@@ -617,6 +619,7 @@ fn build_combined_events_stream(
     stream_filter: &'static Endpoint,
     event_filter: &'static [EventFilter],
     is_legacy_filter: bool,
+    #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     UnboundedReceiverStream::new(initial_events)
         .map(move |event| {
@@ -642,7 +645,7 @@ fn build_combined_events_stream(
                         )
                         .await;
                         #[cfg(feature = "additional-metrics")]
-                        if let Some(_) = fitlered_data {
+                        if fitlered_data.is_some() {
                             let _ = sender.clone().send(()).await;
                         }
                         #[allow(clippy::let_and_return)]
@@ -973,7 +976,7 @@ mod tests {
 
             let stream_filter = path_to_filter(path_filter, true).unwrap();
             #[cfg(feature = "additional-metrics")]
-            let (tx, rx) = channel(1000);
+            let (tx, _rx) = channel(1000);
             let (filter, is_legacy_filter) = get_filter(path_filter, true).unwrap();
             // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(

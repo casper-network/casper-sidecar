@@ -1,5 +1,5 @@
 #[cfg(feature = "additional-metrics")]
-use crate::metrics::EVENTS_PROCESSED_PER_SECOND;
+use metrics::db::EVENTS_PROCESSED_PER_SECOND;
 #[cfg(feature = "additional-metrics")]
 use std::sync::Arc;
 #[cfg(feature = "additional-metrics")]
@@ -136,7 +136,7 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
     let metrics_data_for_thread = metrics_data.clone();
     tokio::spawn(async move {
         let metrics_data = metrics_data_for_thread;
-        while let Some(_) = metrics_queue_rx.recv().await {
+        while metrics_queue_rx.recv().await.is_some() {
             let mut guard = metrics_data.lock().await;
             guard.observed_events += 1;
             drop(guard);
