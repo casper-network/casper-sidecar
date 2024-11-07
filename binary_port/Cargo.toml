@@ -1,0 +1,28 @@
+[package]
+name = "casper-binary-port"
+version = "1.0.0"
+edition = "2021"
+description = "Types for the casper node binary port"
+license-file = "../LICENSE"
+documentation = "../README.md"
+homepage = "https://github.com/casper-network/casper-sidecar/"
+repository = "https://github.com/casper-network/casper-sidecar/"
+
+[dependencies]
+bincode = "1.3.3"
+bytes = "1.0.1"
+casper-types = { workspace = true, features = ["std"] }
+once_cell = { workspace = true }
+rand = { version = "0.8.5", optional = true }
+schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
+serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
+strum = "0.26.2"
+strum_macros = "0.26.4"
+tokio-util = { version = "0.6.4", features = ["codec"] }
+thiserror = { workspace = true }
+
+[features]
+testing = ["rand/default"]
+
+[dev-dependencies]
+rand = "0.8.5"
