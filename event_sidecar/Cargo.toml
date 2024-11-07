@@ -11,7 +11,7 @@ homepage = "https://github.com/casper-network/casper-sidecar/"
 repository = "https://github.com/casper-network/casper-sidecar/"
 
 [features]
-additional-metrics = ["casper-event-types/additional-metrics"]
+additional-metrics = ["casper-event-types/additional-metrics", "metrics/additional-metrics"]
 testing = []
 
 [dependencies]

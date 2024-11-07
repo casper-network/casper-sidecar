@@ -1,5 +1,7 @@
 use super::REGISTRY;
 use once_cell::sync::Lazy;
+#[cfg(feature = "additional-metrics")]
+use prometheus::GaugeVec;
 use prometheus::{HistogramOpts, HistogramVec, Opts};
 
 const RAW_DATA_SIZE_BUCKETS: &[f64; 8] = &[
