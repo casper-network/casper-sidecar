@@ -1,4 +1,4 @@
-use crate::{encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
+use crate::{config::MaxAttempts, encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use futures::{Future, SinkExt, StreamExt};
@@ -822,7 +822,9 @@ impl FramedNodeClient {
     pub async fn new(
         config: NodeClientConfig,
     ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
-        let stream = Arc::new(RwLock::new(Self::connect_with_retries(&config).await?));
+        let stream = Arc::new(RwLock::new(
+            Self::connect_with_retries(&config, None).await?,
+        ));
         let shutdown = Notify::<Shutdown>::new();
         let reconnect = Notify::<Reconnect>::new();
 
@@ -938,8 +940,14 @@ impl FramedNodeClient {
 
     async fn connect_with_retries(
         config: &NodeClientConfig,
+        maybe_max_attempts_override: Option<&MaxAttempts>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let mut wait = config.exponential_backoff.initial_delay_ms;
+        let max_attempts = if let Some(attempts) = maybe_max_attempts_override {
+            attempts
+        } else {
+            &config.exponential_backoff.max_attempts
+        };
         let mut current_attempt = 1;
         loop {
             match TcpStream::connect(config.address).await {
@@ -950,19 +958,15 @@ impl FramedNodeClient {
                     ))
                 }
                 Err(err) => {
-                    warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     current_attempt += 1;
-                    if !config
-                        .exponential_backoff
-                        .max_attempts
-                        .can_attempt(current_attempt)
-                    {
+                    if !max_attempts.can_attempt(current_attempt) {
                         anyhow::bail!(
                             "Couldn't connect to node {} after {} attempts",
                             config.address,
                             current_attempt - 1
                         );
                     }
+                    warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.exponential_backoff.coefficient)
                         .min(config.exponential_backoff.max_delay_ms);
@@ -971,43 +975,29 @@ impl FramedNodeClient {
         }
     }
 
-    async fn connect_without_retries(
+    async fn reconnect_internal(
         config: &NodeClientConfig,
+        maybe_max_attempts_override: Option<&MaxAttempts>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        match TcpStream::connect(config.address).await {
-            Ok(stream) => Ok(Framed::new(
-                stream,
-                BinaryMessageCodec::new(config.max_message_size_bytes),
-            )),
-            Err(err) => {
-                warn!(%err, "failed to connect to node {}", config.address);
-                anyhow::bail!("Couldn't connect to node {}", config.address);
-            }
-        }
+        let disconnected_start = Instant::now();
+        inc_disconnect();
+        error!("node connection closed, will attempt to reconnect");
+        let stream = Self::connect_with_retries(config, maybe_max_attempts_override).await?;
+        info!("connection with the node has been re-established");
+        observe_reconnect_time(disconnected_start.elapsed());
+        Ok(stream)
     }
 
     async fn reconnect(
         config: &NodeClientConfig,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        let disconnected_start = Instant::now();
-        inc_disconnect();
-        error!("node connection closed, will attempt to reconnect");
-        let stream = Self::connect_with_retries(config).await?;
-        info!("connection with the node has been re-established");
-        observe_reconnect_time(disconnected_start.elapsed());
-        Ok(stream)
+        Self::reconnect_internal(config, None).await
     }
 
     async fn reconnect_without_retries(
         config: &NodeClientConfig,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        let disconnected_start = Instant::now();
-        inc_disconnect();
-        error!("node connection closed, will attempt to reconnect");
-        let stream = Self::connect_without_retries(config).await?;
-        info!("connection with the node has been re-established");
-        observe_reconnect_time(disconnected_start.elapsed());
-        Ok(stream)
+        Self::reconnect_internal(config, Some(&MaxAttempts::Finite(1))).await
     }
 }
 
