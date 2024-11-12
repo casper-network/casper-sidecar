@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::ToBytes, contracts::ContractPackage,
-    global_state::TrieMerkleProof, Account, AddressableEntity, AvailableBlockRange, BlockHeader,
-    BlockIdentifier, ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue,
-    GlobalStateIdentifier, Key, Package, SignedBlock, StoredValue,
+    bytesrepr::ToBytes, contracts::ContractPackage, global_state::TrieMerkleProof, Account,
+    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, ByteCode, Contract,
+    ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, NamedKeys, Package,
+    SignedBlock, StoredValue,
 };
 
 use crate::NodeClient;
