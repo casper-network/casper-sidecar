@@ -950,7 +950,7 @@ impl FramedNodeClient {
                     ))
                 }
                 Err(err) => {
-                    warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
+                    warn!(%err, "failed to connect to node {}, waiting {wait}ms before retrying", config.address);
                     current_attempt += 1;
                     if !config
                         .exponential_backoff
