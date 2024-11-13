@@ -129,6 +129,9 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 pub struct NodeClientConfig {
     /// Address of the node.
     pub address: SocketAddr,
+    /// Network name of the node.
+    /// Will be validated on connect if specified.
+    pub network_name: Option<String>,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
     /// Message transfer timeout in seconds.
@@ -149,6 +152,7 @@ impl NodeClientConfig {
     pub fn new() -> Self {
         NodeClientConfig {
             address: DEFAULT_NODE_CONNECT_ADDRESS.into(),
+            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -169,6 +173,7 @@ impl NodeClientConfig {
         let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
         NodeClientConfig {
             address: local_socket,
+            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -190,6 +195,7 @@ impl NodeClientConfig {
         let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
         NodeClientConfig {
             address: local_socket,
+            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -246,6 +252,7 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
                 })?;
         Ok(NodeClientConfig {
             address: value.address,
+            network_name: None,
             request_limit: value.request_limit,
             max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,

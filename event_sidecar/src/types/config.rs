@@ -81,6 +81,7 @@ pub struct Connection {
     pub connection_timeout_in_seconds: Option<usize>,
     pub sleep_between_keep_alive_checks_in_seconds: Option<usize>,
     pub no_message_timeout_in_seconds: Option<usize>,
+    pub network_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -362,6 +363,7 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                network_name: None,
             }
         }
 
@@ -377,6 +379,7 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                network_name: None,
             }
         }
 
@@ -392,6 +395,7 @@ mod tests {
                 connection_timeout_in_seconds: Some(3),
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                network_name: None,
             }
         }
     }
@@ -409,6 +413,7 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                network_name: None,
             }
         }
     }
