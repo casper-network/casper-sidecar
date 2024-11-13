@@ -5,7 +5,7 @@ edition = "2021"
 description = "Types for casper-event-listener library"
 license-file = "../LICENSE"
 documentation = "README.md"
-homepage = "https://github.com/casper-network/casper-sidecar/" 
+homepage = "https://github.com/casper-network/casper-sidecar/"
 repository = "https://github.com/casper-network/casper-sidecar/"
 
 [dependencies]

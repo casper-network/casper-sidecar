@@ -1,10 +1,12 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use datasize::DataSize;
 use serde::Deserialize;
 
 /// Default binding address for the speculative execution RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: &str = "0.0.0.0:1";
+const DEFAULT_ADDRESS: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 1);
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 1;
 /// Default max body bytes (2.5MB).
@@ -20,7 +22,7 @@ pub struct Config {
     /// Setting to enable the HTTP server.
     pub enable_server: bool,
     /// Address to bind JSON-RPC speculative execution server to.
-    pub address: String,
+    pub address: SocketAddr,
     /// Maximum rate limit in queries per second.
     pub qps_limit: u64,
     /// Maximum number of bytes to accept in a single request body.
@@ -34,7 +36,7 @@ impl Config {
     pub fn new() -> Self {
         Config {
             enable_server: false,
-            address: DEFAULT_ADDRESS.to_string(),
+            address: DEFAULT_ADDRESS,
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
             cors_origin: DEFAULT_CORS_ORIGIN.to_string(),

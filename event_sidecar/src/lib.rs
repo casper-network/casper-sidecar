@@ -19,7 +19,7 @@ mod utils;
 use std::collections::HashMap;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::{net::IpAddr, path::PathBuf, str::FromStr, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 use crate::types::config::LegacySseApiTag;
 use crate::{
@@ -256,7 +256,7 @@ fn builder(
     inbound_sse_data_sender: Sender<SseEvent>,
 ) -> Result<EventListenerBuilder, Error> {
     let node_interface = NodeConnectionInterface {
-        ip_address: IpAddr::from_str(&connection.ip_address)?,
+        ip_address: connection.ip_address,
         sse_port: connection.sse_port,
         rest_port: connection.rest_port,
     };

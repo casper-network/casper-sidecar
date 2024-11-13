@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::net::IpAddr;
 use std::string::ToString;
 use std::vec;
 use std::{
@@ -71,7 +72,7 @@ impl SseEventServerConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
-    pub ip_address: String,
+    pub ip_address: IpAddr,
     pub sse_port: u16,
     pub rest_port: u16,
     pub max_attempts: usize,
@@ -347,12 +348,14 @@ impl Default for AdminApiServerConfig {
 
 #[cfg(any(feature = "testing", test))]
 mod tests {
+    use std::net::Ipv4Addr;
+
     use super::*;
 
     impl Connection {
         pub fn example_connection_1() -> Connection {
             Connection {
-                ip_address: "127.0.0.1".to_string(),
+                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 sse_port: 18101,
                 rest_port: 14101,
                 max_attempts: 10,
@@ -367,7 +370,7 @@ mod tests {
 
         pub fn example_connection_2() -> Connection {
             Connection {
-                ip_address: "127.0.0.1".to_string(),
+                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 sse_port: 18102,
                 rest_port: 14102,
                 max_attempts: 10,
@@ -382,7 +385,7 @@ mod tests {
 
         pub fn example_connection_3() -> Connection {
             Connection {
-                ip_address: "127.0.0.1".to_string(),
+                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 sse_port: 18103,
                 rest_port: 14103,
                 max_attempts: 10,
@@ -399,7 +402,7 @@ mod tests {
     impl Default for Connection {
         fn default() -> Self {
             Self {
-                ip_address: "127.0.0.1".to_string(),
+                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 sse_port: 18101,
                 rest_port: 14101,
                 allow_partial_connection: false,
