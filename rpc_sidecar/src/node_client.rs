@@ -966,7 +966,7 @@ impl FramedNodeClient {
                             current_attempt - 1
                         );
                     }
-                    warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
+                    warn!(%err, "failed to connect to node {}, waiting {wait}ms before retrying", config.address);
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.exponential_backoff.coefficient)
                         .min(config.exponential_backoff.max_delay_ms);

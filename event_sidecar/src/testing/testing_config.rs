@@ -1,6 +1,9 @@
 #[cfg(test)]
 use portpicker::Port;
-use std::sync::{Arc, Mutex};
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    sync::{Arc, Mutex},
+};
 use tempfile::TempDir;
 
 use crate::types::config::{Connection, RestApiServerConfig, SseEventServerConfig, StorageConfig};
@@ -83,14 +86,14 @@ impl TestingConfig {
 
     pub(crate) fn add_connection(
         &mut self,
-        ip_address: Option<String>,
+        ip_address: Option<IpAddr>,
         sse_port: Option<u16>,
         rest_port: Option<u16>,
     ) -> Port {
         let random_port_for_sse = get_port();
         let random_port_for_rest = get_port();
         let connection = Connection {
-            ip_address: ip_address.unwrap_or_else(|| "127.0.0.1".to_string()),
+            ip_address: ip_address.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
             rest_port: rest_port.unwrap_or(random_port_for_rest),
             max_attempts: 2,

@@ -24,11 +24,7 @@ use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use std::process::ExitCode;
-use std::{
-    net::{SocketAddr, ToSocketAddrs},
-    sync::Arc,
-};
+use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 use tracing::warn;
 
 /// Minimal casper protocol version supported by this sidecar.
@@ -98,24 +94,11 @@ async fn run_speculative_exec(
     Ok(())
 }
 
-fn start_listening(address: &str) -> anyhow::Result<ServerBuilder<AddrIncoming>> {
-    let address = resolve_address(address).map_err(|error| {
-        warn!(%error, %address, "failed to start HTTP server, cannot parse address");
-        error
-    })?;
-
-    Server::try_bind(&address).map_err(|error| {
+fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrIncoming>> {
+    Server::try_bind(address).map_err(|error| {
         warn!(%error, %address, "failed to start HTTP server");
         error.into()
     })
-}
-
-/// Parses a network address from a string, with DNS resolution.
-fn resolve_address(address: &str) -> anyhow::Result<SocketAddr> {
-    address
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("failed to resolve address"))
 }
 
 fn encode_request(req: &BinaryRequest, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {

@@ -9,7 +9,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use casper_types::AsymmetricType;
 #[cfg(feature = "additional-metrics")]
-use casper_event_types::metrics;
+use metrics::db::DB_OPERATION_TIMES;
 use itertools::Itertools;
 use tokio::sync::Mutex;
 use $crate::{
@@ -469,7 +469,7 @@ async fn save_event_log(
 #[cfg(feature = "additional-metrics")]
 fn observe_db_operation_time(operation_name: &str, start: Instant) {
     let duration = start.elapsed();
-    metrics::DB_OPERATION_TIMES
+    DB_OPERATION_TIMES
         .with_label_values(&[operation_name])
         .observe(duration.as_nanos() as f64);
 }
