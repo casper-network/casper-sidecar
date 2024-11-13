@@ -1,13 +1,13 @@
 [rpc_server.main_server]
 enable_server = true
-address = "0.0.0.0:8888"
+address = "0.0.0.0:11102"
 qps_limit = 100
 max_body_bytes = 2621440
 cors_origin = ""
 
 [rpc_server.speculative_exec_server]
 enable_server = true
-address = "0.0.0.0:9999"
+address = "0.0.0.0:25102"
 qps_limit = 1
 max_body_bytes = 2621440
 cors_origin = ""
@@ -22,9 +22,9 @@ client_access_timeout_secs = 2
 
 [rpc_server.node_client.exponential_backoff]
 initial_delay_ms = 1000
-max_delay_ms = 4000
+max_delay_ms = 32000
 coefficient = 2
-max_attempts = 10
+max_attempts = 30
 
 [sse_server]
 enable_server = true
@@ -70,7 +70,7 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 
 [storage]
-storage_folder = "./storage/casper-sidecar"
+storage_folder = "/var/lib/casper-sidecar"
 
 [storage.sqlite_config]
 enabled = true

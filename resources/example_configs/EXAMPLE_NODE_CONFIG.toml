@@ -2,7 +2,7 @@
 enable_server = true
 address = "0.0.0.0:7777"
 qps_limit = 100
-max_body_bytes = 4194304
+max_body_bytes = 2621440
 cors_origin = ""
 
 [rpc_server.speculative_exec_server]
@@ -13,7 +13,7 @@ max_body_bytes = 2621440
 cors_origin = ""
 
 [rpc_server.node_client]
-address = "3.139.219.212:7777"
+address = "3.20.57.210:7777"
 max_message_size_bytes = 4194304
 request_limit = 10
 request_buffer_size = 50
@@ -31,7 +31,7 @@ enable_server = true
 disable_event_persistence = false
 
 [[sse_server.connections]]
-ip_address = "3.14.48.188"
+ip_address = "168.254.51.1"
 sse_port = 9999
 rest_port = 8888
 max_attempts = 100
@@ -42,7 +42,7 @@ no_message_timeout_in_seconds = 20
 sleep_between_keep_alive_checks_in_seconds = 10
 
 [[sse_server.connections]]
-ip_address = "3.139.219.212"
+ip_address = "168.254.51.2"
 sse_port = 9999
 rest_port = 8888
 max_attempts = 100
@@ -53,7 +53,7 @@ no_message_timeout_in_seconds = 20
 sleep_between_keep_alive_checks_in_seconds = 10
 
 [[sse_server.connections]]
-ip_address = "18.218.51.191"
+ip_address = "168.254.51.3"
 sse_port = 9999
 rest_port = 8888
 max_attempts = 100
@@ -69,7 +69,7 @@ max_concurrent_subscribers = 100
 event_stream_buffer_length = 5000
 
 [storage]
-storage_folder = "./storage/casper-sidecar"
+storage_folder = "/var/lib/casper-sidecar"
 
 [storage.sqlite_config]
 enabled = true
