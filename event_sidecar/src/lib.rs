@@ -259,6 +259,7 @@ fn builder(
         ip_address: connection.ip_address,
         sse_port: connection.sse_port,
         rest_port: connection.rest_port,
+        network_name: connection.network_name.clone(),
     };
     let event_listener_builder = EventListenerBuilder {
         node: node_interface,

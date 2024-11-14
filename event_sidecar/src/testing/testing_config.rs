@@ -89,6 +89,7 @@ impl TestingConfig {
         ip_address: Option<IpAddr>,
         sse_port: Option<u16>,
         rest_port: Option<u16>,
+        network_name: Option<String>,
     ) -> Port {
         let random_port_for_sse = get_port();
         let random_port_for_rest = get_port();
@@ -103,6 +104,7 @@ impl TestingConfig {
             connection_timeout_in_seconds: Some(100),
             sleep_between_keep_alive_checks_in_seconds: Some(100),
             no_message_timeout_in_seconds: Some(100),
+            network_name,
         };
         self.event_server_config.connections.push(connection);
         random_port_for_sse

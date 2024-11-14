@@ -27,10 +27,10 @@ use crate::{
         sse_events::{BlockAdded, Fault},
     },
     utils::tests::{
-        any_string_contains, build_test_config, build_test_config_with_retries,
-        build_test_config_without_connections, build_test_config_without_db_storage,
-        start_nodes_and_wait, start_sidecar, start_sidecar_with_rest_api, stop_nodes_and_wait,
-        wait_for_n_messages,
+        any_string_contains, build_test_config, build_test_config_with_network_name,
+        build_test_config_with_retries, build_test_config_without_connections,
+        build_test_config_without_db_storage, start_nodes_and_wait, start_sidecar,
+        start_sidecar_with_rest_api, stop_nodes_and_wait, wait_for_n_messages,
     },
 };
 
@@ -40,7 +40,7 @@ async fn should_not_allow_zero_max_attempts() {
 
     let mut testing_config = prepare_config(&temp_storage_dir, true);
 
-    let sse_port_for_node = testing_config.add_connection(None, None, None);
+    let sse_port_for_node = testing_config.add_connection(None, None, None, None);
 
     testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
     let sqlite_database = SqliteDatabase::new_from_config(&testing_config.storage_config)
@@ -290,7 +290,7 @@ async fn should_fail_to_reconnect() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
         event_stream_server_port,
-    ) = build_test_config_with_retries(2, 2, true);
+    ) = build_test_config_with_retries(2, 2, true, None);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
         version: "2.0.0".to_string(),
@@ -339,7 +339,7 @@ async fn should_reconnect() {
         node_port_for_sse_connection,
         node_port_for_rest_connection,
         event_stream_server_port,
-    ) = build_test_config_with_retries(10, 1, true);
+    ) = build_test_config_with_retries(10, 1, true, None);
     let (data_of_node, test_rng) = random_n_block_added(30, 0, test_rng);
     let mut node_mock = MockNodeBuilder {
         version: "2.0.0".to_string(),
@@ -428,7 +428,7 @@ async fn connecting_to_node_prior_to_2_0_0_should_fail() {
     }
     .build();
     start_nodes_and_wait(vec![&mut node_mock]).await;
-    start_sidecar(testing_config).await;
+    let sidecar_join = start_sidecar(testing_config).await;
     let (join_handle, _) = fetch_data_from_endpoint_with_panic_flag(
         "/events?start_from=0",
         event_stream_server_port,
@@ -440,6 +440,59 @@ async fn connecting_to_node_prior_to_2_0_0_should_fail() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 0);
+
+    let shutdown_err = sidecar_join
+        .await
+        .unwrap()
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    assert_eq!(
+        shutdown_err.to_string(),
+        "Connected node(s) are unavailable"
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+async fn connecting_to_node_with_wrong_network_name_should_fail() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config_with_network_name("network-1");
+    let mut node_mock = MockNodeBuilder {
+        version: "2.0.0".to_string(),
+        network_name: "not-network-1".to_string(),
+        data_of_node: sse_server_shutdown_2_0_0_data(),
+        cache_of_node: None,
+        sse_port: Some(node_port_for_sse_connection),
+        rest_port: Some(node_port_for_rest_connection),
+    }
+    .build();
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    let sidecar_join = start_sidecar(testing_config).await;
+    let (join_handle, _) = fetch_data_from_endpoint_with_panic_flag(
+        "/events?start_from=0",
+        event_stream_server_port,
+        false,
+    )
+    .await;
+    sleep(Duration::from_secs(10)).await; //Give some time for sidecar to read data from node (which it actually shouldn't do in this scenario)
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+
+    let events_received = tokio::join!(join_handle).0.unwrap();
+    assert_eq!(events_received.len(), 0);
+
+    let shutdown_err = sidecar_join
+        .await
+        .unwrap()
+        .expect_err("Sidecar should return an Err message on shutdown");
+
+    assert_eq!(
+        shutdown_err.to_string(),
+        "Connected node(s) are unavailable"
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
@@ -827,7 +880,7 @@ pub fn build_testing_config_based_on_ports(
     let (mut testing_config, temp_storage_dir, event_stream_server_port) =
         build_test_config_without_connections(true);
     for (sse_port, rest_port) in ports_of_nodes {
-        testing_config.add_connection(None, Some(sse_port), Some(rest_port));
+        testing_config.add_connection(None, Some(sse_port), Some(rest_port), None);
         testing_config.set_retries_for_node(sse_port, 5, 2);
         testing_config.set_allow_partial_connection_for_node(sse_port, true);
     }

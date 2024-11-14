@@ -274,11 +274,17 @@ pub mod tests {
     }
 
     pub fn build_test_config() -> (TestingConfig, TempDir, u16, u16, u16) {
-        build_test_config_with_retries(10, 1, true)
+        build_test_config_with_retries(10, 1, true, None)
     }
 
     pub fn build_test_config_without_db_storage() -> (TestingConfig, TempDir, u16, u16, u16) {
-        build_test_config_with_retries(10, 1, false)
+        build_test_config_with_retries(10, 1, false, None)
+    }
+
+    pub fn build_test_config_with_network_name(
+        network_name: &str,
+    ) -> (TestingConfig, TempDir, u16, u16, u16) {
+        build_test_config_with_retries(10, 1, true, Some(network_name.into()))
     }
 
     pub fn build_test_config_without_connections(
@@ -294,10 +300,11 @@ pub mod tests {
         max_attempts: usize,
         delay_between_retries: usize,
         enable_db_storage: bool,
+        network_name: Option<String>,
     ) -> (TestingConfig, TempDir, u16, u16, u16) {
         let (mut testing_config, temp_storage_dir, event_stream_server_port) =
             build_test_config_without_connections(enable_db_storage);
-        testing_config.add_connection(None, None, None);
+        testing_config.add_connection(None, None, None, network_name);
         let node_port_for_sse_connection = testing_config
             .event_server_config
             .connections
@@ -409,7 +416,7 @@ pub mod tests {
         let mut testing_config = prepare_config(&temp_storage_dir, true);
         let event_stream_server_port = testing_config.event_stream_server_port();
         testing_config.set_storage(StorageConfig::postgres_with_port(context.port));
-        testing_config.add_connection(None, None, None);
+        testing_config.add_connection(None, None, None, None);
         let node_port_for_sse_connection = testing_config
             .event_server_config
             .connections
