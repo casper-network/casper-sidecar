@@ -18,7 +18,7 @@ base16 = "0.2.1"
 bincode = "1"
 bytes = "1.5.0"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-casper-types = { workspace = true, features = ["datasize", "json-schema", "std"] }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io"] }
 casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
@@ -45,7 +45,7 @@ derive-new = "0.6.0"
 
 [dev-dependencies]
 assert-json-diff = "2"
-casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io", "testing"] }
 casper-binary-port = { workspace = true, features = ["testing"] }
 pretty_assertions = "1"
 regex = "1"
