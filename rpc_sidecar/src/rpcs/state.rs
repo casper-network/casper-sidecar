@@ -2,12 +2,11 @@
 
 use std::{collections::BTreeMap, str, sync::Arc};
 
+use crate::node_client::{EntityResponse, PackageResponse};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::node_client::{EntityResponse, PackageResponse};
 
 use super::{
     common::{
@@ -19,7 +18,7 @@ use super::{
     CURRENT_API_VERSION,
 };
 use casper_binary_port::{
-    DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier,
+    DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier, GlobalStateQueryResult,
     PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
 };
 #[cfg(test)]
@@ -31,15 +30,16 @@ use casper_types::{
     contracts::{ContractHash, ContractPackageHash},
     system::{
         auction::{
-            BidKind, EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            BidKind, EraValidators, SeigniorageRecipientsV1, SeigniorageRecipientsV2,
+            ValidatorWeights, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
         },
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
-    GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey, SecretKey, StoredValue,
-    URef, U512,
+    EraId, GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey, SecretKey,
+    StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -408,8 +408,13 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .ok_or(Error::InvalidAuctionState)?
             .into_t()
             .map_err(|_| Error::InvalidAuctionState)?;
-
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
+        let maybe_version = get_seniorage_recipients_version(
+            Arc::clone(&node_client),
+            state_identifier,
+            auction_hash,
+        )
+        .await?;
         let (snapshot_value, _) = if let Some(result) = node_client
             .query_global_state(
                 state_identifier,
@@ -434,11 +439,9 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         };
         let snapshot = snapshot_value
             .into_cl_value()
-            .ok_or(Error::InvalidAuctionState)?
-            .into_t()
-            .map_err(|_| Error::InvalidAuctionState)?;
+            .ok_or(Error::InvalidAuctionState)?;
 
-        let validators = era_validators_from_snapshot(snapshot);
+        let validators = era_validators_from_snapshot(snapshot, maybe_version)?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
@@ -450,6 +453,54 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             api_version: CURRENT_API_VERSION,
             auction_state,
         })
+    }
+}
+
+async fn get_seniorage_recipients_version(
+    node_client: Arc<dyn NodeClient>,
+    state_identifier: Option<GlobalStateIdentifier>,
+    auction_hash: AddressableEntityHash,
+) -> Result<Option<u8>, Error> {
+    let key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
+    if let Some(result) = fetch_seigniorage_recipients_snapshot_version_key(
+        Arc::clone(&node_client),
+        key,
+        state_identifier,
+    )
+    .await?
+    {
+        Ok(Some(result))
+    } else {
+        let key = Key::Hash(auction_hash.value());
+        fetch_seigniorage_recipients_snapshot_version_key(node_client, key, state_identifier).await
+    }
+}
+
+async fn fetch_seigniorage_recipients_snapshot_version_key(
+    node_client: Arc<dyn NodeClient>,
+    base_key: Key,
+    state_identifier: Option<GlobalStateIdentifier>,
+) -> Result<Option<u8>, Error> {
+    node_client
+        .query_global_state(
+            state_identifier,
+            base_key,
+            vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_owned()],
+        )
+        .await
+        .map(|result| result.and_then(unwrap_seniorage_recipients_result))
+        .map_err(|err| Error::NodeRequest("auction snapshot", err))
+}
+
+fn unwrap_seniorage_recipients_result(query_result: GlobalStateQueryResult) -> Option<u8> {
+    let (version_value, _) = query_result.into_inner();
+    let maybe_cl_value = version_value.into_cl_value();
+    match maybe_cl_value {
+        Some(cl_value) => {
+            let a = cl_value.into_t();
+            Some(a.unwrap())
+        }
+        None => None,
     }
 }
 
@@ -1298,17 +1349,45 @@ impl RpcWithParams for GetTrie {
     }
 }
 
-fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
-    snapshot
-        .into_iter()
-        .map(|(era_id, recipients)| {
-            let validator_weights = recipients
-                .into_iter()
-                .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key, stake)))
-                .collect::<ValidatorWeights>();
-            (era_id, validator_weights)
-        })
-        .collect()
+fn era_validators_from_snapshot(
+    snapshot: CLValue,
+    maybe_version: Option<u8>,
+) -> Result<EraValidators, RpcError> {
+    if maybe_version.is_some() {
+        //handle as condor
+        //TODO add some context to the error
+        let seniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
+            snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
+        Ok(seniorage
+            .into_iter()
+            .map(|(era_id, recipients)| {
+                let validator_weights = recipients
+                    .into_iter()
+                    .filter_map(|(public_key, bid)| {
+                        bid.total_stake().map(|stake| (public_key, stake))
+                    })
+                    .collect::<ValidatorWeights>();
+                (era_id, validator_weights)
+            })
+            .collect())
+    } else {
+        //handle as pre-condor
+        //TODO add some context to the error
+        let seniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
+            snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
+        Ok(seniorage
+            .into_iter()
+            .map(|(era_id, recipients)| {
+                let validator_weights = recipients
+                    .into_iter()
+                    .filter_map(|(public_key, bid)| {
+                        bid.total_stake().map(|stake| (public_key, stake))
+                    })
+                    .collect::<ValidatorWeights>();
+                (era_id, validator_weights)
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -1329,13 +1408,13 @@ mod tests {
         GlobalStateQueryResult, InformationRequestTag, KeyPrefix, ValueWithProof,
     };
     use casper_types::{
-        addressable_entity::{MessageTopics, NamedKeyValue, NamedKeys},
+        addressable_entity::NamedKeyValue,
         contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
-        system::auction::{Bid, BidKind, ValidatorBid},
+        system::auction::{Bid, BidKind, SeigniorageRecipientsSnapshotV1, ValidatorBid},
         testing::TestRng,
         AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
-        ByteCodeKind, Contract, ContractWasm, ContractWasmHash, EntityKind, PackageHash,
+        ByteCodeKind, Contract, ContractWasm, ContractWasmHash, EntityKind, NamedKeys, PackageHash,
         ProtocolVersion, TestBlockBuilder, TransactionRuntime,
     };
     use pretty_assertions::assert_eq;
@@ -1437,7 +1516,7 @@ mod tests {
             bids: Vec<BidKind>,
             legacy_bids: Vec<Bid>,
             contract_hash: AddressableEntityHash,
-            snapshot: SeigniorageRecipientsSnapshot,
+            snapshot: SeigniorageRecipientsSnapshotV1,
         }
 
         #[async_trait]
@@ -1587,7 +1666,7 @@ mod tests {
             bids: Vec<BidKind>,
             legacy_bids: Vec<Bid>,
             contract_hash: AddressableEntityHash,
-            snapshot: SeigniorageRecipientsSnapshot,
+            snapshot: SeigniorageRecipientsSnapshotV1,
         }
 
         #[async_trait]
@@ -1914,7 +1993,6 @@ mod tests {
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
         );
         let addr: EntityAddr = rng.gen();

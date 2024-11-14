@@ -1,10 +1,9 @@
 use casper_types::{
-    addressable_entity::NamedKeys,
     execution::{
         execution_result_v1::{ExecutionEffect, NamedKey, TransformKindV1, TransformV1},
         Effects, ExecutionResultV1, ExecutionResultV2, TransformV2,
     },
-    StoredValue,
+    NamedKeys, StoredValue,
 };
 
 pub fn build_default_execution_result_translator(
@@ -134,8 +133,8 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         StoredValue::ContractWasm(_) => Some(TransformKindV1::WriteContractWasm),
         StoredValue::Contract(_) => Some(TransformKindV1::WriteContract),
         StoredValue::ContractPackage(_) => Some(TransformKindV1::WriteContractPackage),
-        StoredValue::LegacyTransfer(transfer) => {
-            Some(TransformKindV1::WriteTransfer(transfer.clone()))
+        StoredValue::LegacyTransfer(transfer_v1) => {
+            Some(TransformKindV1::WriteTransfer(transfer_v1.clone()))
         }
         StoredValue::DeployInfo(deploy_info) => {
             Some(TransformKindV1::WriteDeployInfo(deploy_info.clone()))
@@ -163,8 +162,9 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         StoredValue::ByteCode(_) => None,
         StoredValue::MessageTopic(_) => None,
         StoredValue::Message(_) => None,
-        StoredValue::Reservation(_) => None,
+        StoredValue::Prepaid(_) => None,
         StoredValue::EntryPoint(_) => None,
+        StoredValue::RawBytes(_) => None,
     }
 }
 
@@ -175,7 +175,6 @@ mod tests {
     };
     use casper_types::{
         account::{AccountHash, ActionThresholds, AssociatedKeys, Weight},
-        addressable_entity::NamedKeys,
         contract_messages::MessageChecksum,
         contracts::{ContractPackage, ContractPackageStatus, ContractVersions, DisabledVersions},
         execution::{
@@ -183,7 +182,7 @@ mod tests {
             Effects, TransformKindV2, TransformV2,
         },
         testing::TestRng,
-        AccessRights, Account, CLValue, Groups, Key, StoredValue, URef,
+        AccessRights, Account, CLValue, Groups, Key, NamedKeys, StoredValue, URef,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
