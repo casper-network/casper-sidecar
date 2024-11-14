@@ -245,7 +245,7 @@ impl Component for RpcApiComponent {
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{IpAddr, Ipv4Addr, SocketAddr},
+        net::{IpAddr, Ipv4Addr},
         sync::Arc,
     };
 
@@ -382,16 +382,21 @@ mod tests {
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
             NodeClientConfig::new_with_port_and_retries(port, 1);
-        config.rpc_server.as_mut().unwrap().main_server.address =
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        config
+
+        let main_server_config = &mut config.rpc_server.as_mut().unwrap().main_server;
+        main_server_config.ip_address = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+        main_server_config.port = port;
+
+        let speculative_exec_server_config = config
             .rpc_server
             .as_mut()
             .unwrap()
             .speculative_exec_server
             .as_mut()
-            .unwrap()
-            .address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+            .unwrap();
+        speculative_exec_server_config.ip_address = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+        speculative_exec_server_config.port = port;
+
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
         assert!(res.unwrap().is_some());

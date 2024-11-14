@@ -1,6 +1,6 @@
 use std::{
     convert::{TryFrom, TryInto},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr},
 };
 
 use datasize::DataSize;
@@ -12,7 +12,8 @@ use crate::SpeculativeExecConfig;
 /// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+const DEFAULT_PORT: u16 = 0;
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 100;
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
@@ -73,8 +74,10 @@ pub struct RpcServerConfig {
 pub struct RpcConfig {
     /// Setting to enable the HTTP server.
     pub enable_server: bool,
-    /// Address to bind JSON-RPC HTTP server to.
-    pub address: SocketAddr,
+    /// IP address to bind JSON-RPC HTTP server to.
+    pub ip_address: IpAddr,
+    /// TCP port to bind JSON-RPC HTTP server to.
+    pub port: u16,
     /// Maximum rate limit in queries per second.
     pub qps_limit: u64,
     /// Maximum number of bytes to accept in a single request body.
@@ -88,7 +91,8 @@ impl RpcConfig {
     pub fn new() -> Self {
         RpcConfig {
             enable_server: true,
-            address: DEFAULT_ADDRESS,
+            ip_address: DEFAULT_IP_ADDRESS,
+            port: DEFAULT_PORT,
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
             cors_origin: DEFAULT_CORS_ORIGIN.to_string(),
@@ -104,7 +108,8 @@ impl Default for RpcConfig {
 
 /// Default address to connect to the node.
 // Change this to SocketAddr, once SocketAddr::new is const stable.
-const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
+const DEFAULT_NODE_CONNECT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+const DEFAULT_NODE_CONNECT_PORT: u16 = 28104;
 /// Default maximum payload size.
 const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
 /// Default message timeout in seconds.
@@ -127,8 +132,10 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeClientConfig {
-    /// Address of the node.
-    pub address: SocketAddr,
+    /// IP address of the node.
+    pub ip_address: IpAddr,
+    /// Port of the node.
+    pub port: u16,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
     /// Message transfer timeout in seconds.
@@ -148,7 +155,8 @@ impl NodeClientConfig {
     /// Creates a default instance for `NodeClientConfig`.
     pub fn new() -> Self {
         NodeClientConfig {
-            address: DEFAULT_NODE_CONNECT_ADDRESS.into(),
+            ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
+            port: DEFAULT_NODE_CONNECT_PORT,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -166,9 +174,10 @@ impl NodeClientConfig {
     /// Creates an instance of `NodeClientConfig` with specified listening port.
     #[cfg(any(feature = "testing", test))]
     pub fn new_with_port(port: u16) -> Self {
-        let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+        let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
-            address: local_socket,
+            ip_address: localhost,
+            port,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -187,9 +196,10 @@ impl NodeClientConfig {
     /// of reconnection retries.
     #[cfg(any(feature = "testing", test))]
     pub fn new_with_port_and_retries(port: u16, num_of_retries: usize) -> Self {
-        let local_socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+        let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
-            address: local_socket,
+            ip_address: localhost,
+            port,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -216,8 +226,10 @@ impl Default for NodeClientConfig {
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeClientConfigTarget {
-    /// Address of the node.
-    pub address: SocketAddr,
+    /// IP address of the node.
+    pub ip_address: IpAddr,
+    /// TCP port of the node
+    pub port: u16,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
     /// Message transfer timeout in seconds.
@@ -245,7 +257,8 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
                     error: e.to_string(),
                 })?;
         Ok(NodeClientConfig {
-            address: value.address,
+            ip_address: value.ip_address,
+            port: value.port,
             request_limit: value.request_limit,
             max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,
