@@ -6,6 +6,7 @@ use metrics::rpc::{inc_disconnect, observe_reconnect_time};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
@@ -948,9 +949,10 @@ impl FramedNodeClient {
         } else {
             &config.exponential_backoff.max_attempts
         };
+        let tcp_socket = SocketAddr::new(config.ip_address, config.port);
         let mut current_attempt = 1;
         loop {
-            match TcpStream::connect(config.address).await {
+            match TcpStream::connect(tcp_socket).await {
                 Ok(stream) => {
                     return Ok(Framed::new(
                         stream,
@@ -962,11 +964,11 @@ impl FramedNodeClient {
                     if !max_attempts.can_attempt(current_attempt) {
                         anyhow::bail!(
                             "Couldn't connect to node {} after {} attempts",
-                            config.address,
+                            tcp_socket,
                             current_attempt - 1
                         );
                     }
-                    warn!(%err, "failed to connect to node {}, waiting {wait}ms before retrying", config.address);
+                    warn!(%err, "failed to connect to node {tcp_socket}, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * config.exponential_backoff.coefficient)
                         .min(config.exponential_backoff.max_delay_ms);
@@ -1025,7 +1027,7 @@ impl NodeClient for FramedNodeClient {
         let result = self.send_request_internal(&req, &mut client).await;
         if let Err(err) = &result {
             warn!(
-                addr = %self.config.address,
+                addr = %self.config.ip_address,
                 err = display_error(&err),
                 "binary port client handler error"
             );
@@ -1039,7 +1041,7 @@ impl NodeClient for FramedNodeClient {
                 Err(err) => {
                     warn!(
                         %err,
-                        addr = %self.config.address,
+                        addr = %self.config.ip_address,
                         "binary port client failed to reconnect"
                     );
                     // schedule standard reconnect process with multiple retries

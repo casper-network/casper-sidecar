@@ -1,19 +1,22 @@
 [rpc_server.main_server]
 enable_server = true
-address = "0.0.0.0:7777"
+ip_address = "0.0.0.0"
+port = 7777
 qps_limit = 100
 max_body_bytes = 2621440
 cors_origin = ""
 
 [rpc_server.speculative_exec_server]
 enable_server = true
-address = "0.0.0.0:7778"
+ip_address = "0.0.0.0"
+port = 7778
 qps_limit = 1
 max_body_bytes = 2621440
 cors_origin = ""
 
 [rpc_server.node_client]
-address = "3.20.57.210:7777"
+ip_address = "3.20.57.210"
+port = 7777
 max_message_size_bytes = 4194304
 request_limit = 10
 request_buffer_size = 50

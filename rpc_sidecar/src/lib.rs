@@ -70,7 +70,7 @@ async fn retype_future_vec(
 async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
     run_rpc_server(
         node_client,
-        start_listening(&config.address)?,
+        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
@@ -85,7 +85,7 @@ async fn run_speculative_exec(
 ) -> anyhow::Result<()> {
     run_speculative_exec_server(
         node_client,
-        start_listening(&config.address)?,
+        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
