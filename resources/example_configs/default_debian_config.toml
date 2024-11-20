@@ -11,7 +11,8 @@ enable_server = true
 # the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
-address = '0.0.0.0:7777'
+ip_address = '0.0.0.0'
+port= 7777
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
@@ -44,7 +45,8 @@ enable_server = true
 # but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
-address = '0.0.0.0:7778'
+ip_address = '0.0.0.0'
+port = 7778
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
@@ -65,7 +67,8 @@ cors_origin = ''
 # =========================================
 [rpc_server.node_client]
 # The address of the node to connect to.
-address = '127.0.0.1:7779'
+ip_address = '127.0.0.1'
+port = 7779
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
 # Maximum number of in-flight node requests.
