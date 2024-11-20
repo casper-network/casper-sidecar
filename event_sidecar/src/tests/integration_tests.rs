@@ -38,9 +38,9 @@ use crate::{
 async fn should_not_allow_zero_max_attempts() {
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
 
-    let mut testing_config = prepare_config(&temp_storage_dir, true);
+    let mut testing_config = prepare_config(&temp_storage_dir, true, None);
 
-    let sse_port_for_node = testing_config.add_connection(None, None, None, None);
+    let sse_port_for_node = testing_config.add_connection(None, None, None);
 
     testing_config.set_retries_for_node(sse_port_for_node, 0, 0);
     let sqlite_database = SqliteDatabase::new_from_config(&testing_config.storage_config)
@@ -51,6 +51,7 @@ async fn should_not_allow_zero_max_attempts() {
         testing_config.inner(),
         storage_folder,
         Some(Database::SqliteDatabaseWrapper(sqlite_database)),
+        None,
     )
     .await
     .expect_err("Sidecar should return an Err on shutdown");
@@ -878,9 +879,9 @@ pub fn build_testing_config_based_on_ports(
     ports_of_nodes: Vec<(u16, u16)>,
 ) -> (TestingConfig, u16, TempDir) {
     let (mut testing_config, temp_storage_dir, event_stream_server_port) =
-        build_test_config_without_connections(true);
+        build_test_config_without_connections(true, None);
     for (sse_port, rest_port) in ports_of_nodes {
-        testing_config.add_connection(None, Some(sse_port), Some(rest_port), None);
+        testing_config.add_connection(None, Some(sse_port), Some(rest_port));
         testing_config.set_retries_for_node(sse_port, 5, 2);
         testing_config.set_allow_partial_connection_for_node(sse_port, true);
     }

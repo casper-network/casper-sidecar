@@ -11,6 +11,7 @@ use thiserror::Error;
 pub struct SidecarConfigTarget {
     max_thread_count: Option<usize>,
     max_blocking_thread_count: Option<usize>,
+    network_name: Option<String>,
     storage: Option<StorageConfigSerdeTarget>,
     rest_api_server: Option<RestApiServerConfig>,
     admin_api_server: Option<AdminApiServerConfig>,
@@ -23,6 +24,7 @@ pub struct SidecarConfigTarget {
 pub struct SidecarConfig {
     pub max_thread_count: Option<usize>,
     pub max_blocking_thread_count: Option<usize>,
+    pub network_name: Option<String>,
     pub sse_server: Option<SseEventServerConfig>,
     pub rpc_server: Option<RpcServerConfig>,
     pub storage: Option<StorageConfig>,
@@ -118,6 +120,7 @@ impl TryFrom<SidecarConfigTarget> for SidecarConfig {
         Ok(SidecarConfig {
             max_thread_count: value.max_thread_count,
             max_blocking_thread_count: value.max_blocking_thread_count,
+            network_name: value.network_name,
             sse_server: sse_server_config,
             rpc_server: rpc_server_config,
             storage: storage_config,

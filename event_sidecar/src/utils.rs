@@ -289,10 +289,12 @@ pub mod tests {
 
     pub fn build_test_config_without_connections(
         enable_db_storage: bool,
+        maybe_network_name: Option<String>,
     ) -> (TestingConfig, TempDir, u16) {
         let temp_storage_dir =
             tempdir().expect("Should have created a temporary storage directory");
-        let testing_config = prepare_config(&temp_storage_dir, enable_db_storage);
+        let testing_config =
+            prepare_config(&temp_storage_dir, enable_db_storage, maybe_network_name);
         let event_stream_server_port = testing_config.event_stream_server_port();
         (testing_config, temp_storage_dir, event_stream_server_port)
     }
@@ -300,11 +302,11 @@ pub mod tests {
         max_attempts: usize,
         delay_between_retries: usize,
         enable_db_storage: bool,
-        network_name: Option<String>,
+        maybe_network_name: Option<String>,
     ) -> (TestingConfig, TempDir, u16, u16, u16) {
         let (mut testing_config, temp_storage_dir, event_stream_server_port) =
-            build_test_config_without_connections(enable_db_storage);
-        testing_config.add_connection(None, None, None, network_name);
+            build_test_config_without_connections(enable_db_storage, maybe_network_name);
+        testing_config.add_connection(None, None, None);
         let node_port_for_sse_connection = testing_config
             .event_server_config
             .connections
@@ -413,10 +415,10 @@ pub mod tests {
         let context = build_postgres_database().await.unwrap();
         let temp_storage_dir =
             tempdir().expect("Should have created a temporary storage directory");
-        let mut testing_config = prepare_config(&temp_storage_dir, true);
+        let mut testing_config = prepare_config(&temp_storage_dir, true, None);
         let event_stream_server_port = testing_config.event_stream_server_port();
         testing_config.set_storage(StorageConfig::postgres_with_port(context.port));
-        testing_config.add_connection(None, None, None, None);
+        testing_config.add_connection(None, None, None);
         let node_port_for_sse_connection = testing_config
             .event_server_config
             .connections
@@ -474,6 +476,12 @@ pub mod tests {
                 run_rest_server(rest_api_server_config, database_for_rest_api).await
             });
         }
-        run(sse_config, storage_folder, maybe_database).await
+        run(
+            sse_config,
+            storage_folder,
+            maybe_database,
+            testing_config.network_name,
+        )
+        .await
     }
 }

@@ -136,9 +136,6 @@ pub struct NodeClientConfig {
     pub ip_address: IpAddr,
     /// Port of the node.
     pub port: u16,
-    /// Network name of the node.
-    /// Will be validated on connect if specified.
-    pub network_name: Option<String>,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
     /// Message transfer timeout in seconds.
@@ -160,7 +157,6 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
             port: DEFAULT_NODE_CONNECT_PORT,
-            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -182,7 +178,6 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: localhost,
             port,
-            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -205,7 +200,6 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: localhost,
             port,
-            network_name: None,
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
@@ -265,7 +259,6 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
         Ok(NodeClientConfig {
             ip_address: value.ip_address,
             port: value.port,
-            network_name: None,
             request_limit: value.request_limit,
             max_message_size_bytes: value.max_message_size_bytes,
             request_buffer_size: value.request_buffer_size,

@@ -822,6 +822,7 @@ pub struct FramedNodeClient {
 impl FramedNodeClient {
     pub async fn new(
         config: NodeClientConfig,
+        maybe_network_name: Option<String>,
     ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
         let stream = Arc::new(RwLock::new(
             Self::connect_with_retries(&config, None).await?,
@@ -835,9 +836,6 @@ impl FramedNodeClient {
             Arc::clone(&shutdown),
             Arc::clone(&reconnect),
         );
-
-        // clone network name for validation later
-        let maybe_network_name = config.network_name.clone();
 
         let node_client = Self {
             client: Arc::clone(&stream),
@@ -1276,7 +1274,7 @@ mod tests {
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
         let config = NodeClientConfig::new_with_port_and_retries(1111, 2);
-        let res = FramedNodeClient::new(config).await;
+        let res = FramedNodeClient::new(config, None).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -1298,7 +1296,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1323,7 +1321,7 @@ mod tests {
             .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
-        let (client, _) = FramedNodeClient::new(config).await.unwrap();
+        let (client, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
@@ -1369,9 +1367,9 @@ mod tests {
         )
         .await;
 
-        let mut config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        config.network_name = Some("not-network-1".into());
-        let res = FramedNodeClient::new(config).await;
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let network_name = Some("not-network-1".into());
+        let res = FramedNodeClient::new(config, network_name).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -1410,7 +1408,7 @@ mod tests {
         .await;
 
         let config = NodeClientConfig::new_with_port(port);
-        let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
+        let (c, reconnect_loop) = FramedNodeClient::new(config, None).await.unwrap();
 
         let scenario = async {
             // Request id = 1
@@ -1478,7 +1476,7 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
             start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
@@ -1558,7 +1556,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1582,7 +1580,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
