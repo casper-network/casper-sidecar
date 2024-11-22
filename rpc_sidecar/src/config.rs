@@ -126,6 +126,8 @@ const DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS: u64 = 1000;
 const DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS: u64 = 64_000;
 /// Default exponential backoff coefficient.
 const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
+/// Default keep alive timeout milliseconds.
+const DEFAULT_KEEPALIVE_TIMEOUT_MS: u64 = 1_000;
 
 /// Node client configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
@@ -147,6 +149,8 @@ pub struct NodeClientConfig {
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
     pub request_buffer_size: usize,
+    /// The amount of ms to wait between sending keepalive requests.
+    pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfig,
 }
@@ -162,6 +166,7 @@ impl NodeClientConfig {
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
+            keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
@@ -183,6 +188,7 @@ impl NodeClientConfig {
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
+            keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
@@ -205,6 +211,7 @@ impl NodeClientConfig {
             request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
+            keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: 500,
                 max_delay_ms: 3000,
@@ -241,6 +248,8 @@ pub struct NodeClientConfigTarget {
     pub request_limit: u16,
     /// Number of node requests that can be buffered.
     pub request_buffer_size: usize,
+    /// The amount of ms to wait between sending keepalive requests.
+    pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfigTarget,
 }
@@ -264,6 +273,7 @@ impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
             request_buffer_size: value.request_buffer_size,
             client_access_timeout_secs: value.client_access_timeout_secs,
             message_timeout_secs: value.message_timeout_secs,
+            keepalive_timeout_ms: value.keepalive_timeout_ms,
             exponential_backoff,
         })
     }

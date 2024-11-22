@@ -822,10 +822,15 @@ pub struct FramedNodeClient {
 impl FramedNodeClient {
     pub async fn new(
         config: NodeClientConfig,
-    ) -> Result<(Self, impl Future<Output = Result<(), AnyhowError>>), AnyhowError> {
+    ) -> Result<(
+        Self,
+        impl Future<Output = Result<(), AnyhowError>>,
+        impl Future<Output = Result<(), AnyhowError>>
+    ), AnyhowError> {
         let stream = Arc::new(RwLock::new(
             Self::connect_with_retries(&config, None).await?,
         ));
+
         let shutdown = Notify::<Shutdown>::new();
         let reconnect = Notify::<Reconnect>::new();
 
@@ -834,6 +839,11 @@ impl FramedNodeClient {
             Arc::clone(&stream),
             Arc::clone(&shutdown),
             Arc::clone(&reconnect),
+        );
+
+        let keepalive_loop = Self::keepalive_loop(
+            config.clone(),
+            Arc::clone(&stream)
         );
 
         Ok((
@@ -846,6 +856,7 @@ impl FramedNodeClient {
                 current_request_id: AtomicU16::new(INITIAL_REQUEST_ID),
             },
             reconnect_loop,
+            keepalive_loop
         ))
     }
 
@@ -871,6 +882,21 @@ impl FramedNodeClient {
                     return Ok(())
                 }
             }
+        }
+    }
+
+    async fn keepalive_loop(
+        config: NodeClientConfig,
+        client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>
+    ) -> Result<(), AnyhowError> {
+        let keepalive_timeout = Duration::from_millis(config.keepalive_timeout_ms);
+
+        loop {
+            tokio::time::sleep(keepalive_timeout).await;
+            
+            // Send an empty payload just to keep the connection alive
+            let mut lock = client.write().await;
+            lock.send(BinaryMessage::new(Vec::new())).await.ok();
         }
     }
 
@@ -1285,7 +1311,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1310,7 +1336,7 @@ mod tests {
             .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
-        let (client, _) = FramedNodeClient::new(config).await.unwrap();
+        let (client, _, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
@@ -1350,7 +1376,7 @@ mod tests {
         .await;
 
         let config = NodeClientConfig::new_with_port(port);
-        let (c, reconnect_loop) = FramedNodeClient::new(config).await.unwrap();
+        let (c, reconnect_loop, keepalive_loop) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
             // Request id = 1
@@ -1408,6 +1434,7 @@ mod tests {
         tokio::select! {
             _ = scenario => (),
             _ = reconnect_loop => panic!("reconnect loop should not exit"),
+            _ = keepalive_loop => panic!("keepalive loop should not exit"),
         }
     }
 
@@ -1418,7 +1445,7 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
             start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
@@ -1498,7 +1525,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1522,7 +1549,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
