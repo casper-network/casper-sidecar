@@ -896,16 +896,21 @@ impl FramedNodeClient {
             let mut client = client.write().await;
 
             let next_id = current_request_id.fetch_add(1, Ordering::Relaxed);
-            let (_, payload) = (
-                next_id, 
-                BinaryMessage::new(encode_request(&BinaryRequest::KeepAliveRequest, next_id).expect("should always serialize a request"))
-            );
+            let payload = BinaryMessage::new(encode_request(&BinaryRequest::KeepAliveRequest, next_id).expect("should always serialize a request"));
 
-            tokio::time::timeout(
+            if tokio::time::timeout(
                 Duration::from_secs(config.message_timeout_secs),
                 client.send(payload),
             )
-            .await.ok();
+            .await
+            .is_err() {
+                continue;
+            }
+
+            tokio::time::timeout(
+                Duration::from_secs(config.message_timeout_secs),
+                client.next(),
+            ).await.ok();
         }
     }
 
