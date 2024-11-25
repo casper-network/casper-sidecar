@@ -80,7 +80,7 @@ message_timeout_secs = 30
 # Timeout specifying how long to wait for binary port client to be available.
 client_access_timeout_secs = 2
 # The amount of time in milliseconds to wait between sending keepalive requests.
-keepalive_timeout_ms = 1_000
+keepalive_timeout_ms = 10_000
 
 [rpc_server.node_client.exponential_backoff]
 # The initial delay in milliseconds before the first retry.
