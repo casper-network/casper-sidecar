@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    system::auction::{EraInfo, SeigniorageAllocation},
+    system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
     AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, StoredValue, U512,
 };
 
@@ -18,11 +18,9 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let validator_public_key =
         PublicKey::from_hex("012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876")
             .unwrap();
-    let delegator = SeigniorageAllocation::delegator(
-        delegator_public_key,
-        validator_public_key,
-        delegator_amount,
-    );
+    let delegator_kind = DelegatorKind::PublicKey(delegator_public_key);
+    let delegator =
+        SeigniorageAllocation::delegator(delegator_kind, validator_public_key, delegator_amount);
     let validator = SeigniorageAllocation::validator(
         PublicKey::from_hex("012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876")
             .unwrap(),
