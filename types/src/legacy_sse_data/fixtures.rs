@@ -378,10 +378,24 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
       "Fixed": { "additional_computation_factor": 0, "gas_price_tolerance": 5 }
     },
     "fields": {
-      "0": "010000001c000000f1a894a7f2bfa889f18687bff399bbb8f3b0bd80f09697aff0989ca63b00000037000000093785a57f89410a5f4d46ac25426cd9807bccd0a32dad671f08119214999e6929fc8c6662d81af9d69b7750baee8f04a93432cf1e706a0e03",
-      "1": "010000000000000000000100000000",
-      "2": "010000000000000000000100000004",
-      "3": "010000000000000000000100000000"
+        "args": {
+          "Named": [
+            [
+              "xyz",
+              {
+                "bytes": "0d0000001af81d860f238f832b8f8e648c",
+                "cl_type": {
+                  "List": "U8"
+                }
+              }
+            ]
+          ]
+        },
+        "entry_point": "AddBid",
+        "scheduling": {
+          "FutureEra": 195120
+        },
+        "target": "Native"
     }
   },
   "approvals": [
@@ -835,11 +849,6 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
                 "limit": "11209375253254652626",
                 "consumed": "10059559442643035623",
                 "cost": "44837501013018610504",
-                "payment": [
-                    {
-                        "source": "uref-da6b7bf686013e620f7efd057bb0285ab512324b5e69be0f16691fd9c6acb4e4-005"
-                    }
-                ],
                 "transfers": [],
                 "effects": [],
                 "size_estimate": 521
@@ -847,6 +856,7 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
         },
         "messages": [
             {
+                "hash_addr": [61,209,4,163,12,194,253,136,176,206,91,89,81,218,9,43,171,179,25,128,122,30,243,188,27,102,105,85,12,193,234,193],
                 "entity_hash": "entity-system-fbd35eaf71f295b3bf35a295e705f629bbea28cefedfc109eda1205fb3650bad",
                 "message": {
                     "String": "cs5rHI2Il75nRJ7GLs7BQM5CilvzMqu0dgFuj57FkqEs3431LJ1qfsZActb05hzR"

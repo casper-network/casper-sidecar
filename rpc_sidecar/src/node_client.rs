@@ -26,7 +26,12 @@ use casper_binary_port::{
     TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes}, contracts::ContractPackage, system::auction::DelegatorKind, AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, SignedBlock, StoredValue, Transaction, TransactionHash, Transfer
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::ContractPackage,
+    system::auction::DelegatorKind,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, SignedBlock,
+    StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},
@@ -254,7 +259,7 @@ pub trait NodeClient: Send + Sync {
         delegator: Option<PublicKey>,
     ) -> Result<Option<RewardResponse>, Error> {
         let validator = validator.into();
-        let delegator = delegator.map(|x| Box::new(DelegatorKind::PublicKey(x)));
+        let delegator = delegator.map(|delegator| Box::new(DelegatorKind::PublicKey(delegator)));
         let resp = self
             .read_info(InformationRequest::Reward {
                 era_identifier,
