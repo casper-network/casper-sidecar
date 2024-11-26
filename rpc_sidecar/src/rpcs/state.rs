@@ -1414,7 +1414,10 @@ mod tests {
         addressable_entity::NamedKeyValue,
         contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
-        system::auction::{Bid, BidKind, SeigniorageRecipientsSnapshotV1, ValidatorBid},
+        system::auction::{
+            Bid, BidKind, SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
+            ValidatorBid,
+        },
         testing::TestRng,
         AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
         ByteCodeKind, Contract, ContractWasm, ContractWasmHash, EntityKind, NamedKeys, PackageHash,
@@ -1519,7 +1522,7 @@ mod tests {
             bids: Vec<BidKind>,
             legacy_bids: Vec<Bid>,
             contract_hash: AddressableEntityHash,
-            snapshot: SeigniorageRecipientsSnapshotV1,
+            snapshot: SeigniorageRecipientsSnapshotV2,
         }
 
         #[async_trait]
@@ -1615,16 +1618,29 @@ mod tests {
                             }
                         ) =>
                     {
-                        let result = GlobalStateQueryResult::new(
-                            StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
-                            vec![],
-                        );
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
-                        ))
+                        let response = match req.clone().destructure() {
+                            (None, GlobalStateEntityQualifier::Item { base_key: _, path })
+                                if path == vec!["seigniorage_recipients_snapshot_version"] =>
+                            {
+                                let result = GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(CLValue::from_t(1_u8).unwrap()),
+                                    vec![],
+                                );
+                                BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION)
+                            }
+                            _ => {
+                                let result = GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(
+                                        CLValue::from_t(self.snapshot.clone()).unwrap(),
+                                    ),
+                                    vec![],
+                                );
+                                BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION)
+                            }
+                        };
+                        Ok(BinaryResponseAndRequest::new(response, &[], 0))
                     }
+
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -1786,15 +1802,30 @@ mod tests {
                             }
                         ) =>
                     {
-                        let result = GlobalStateQueryResult::new(
-                            StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
-                            vec![],
-                        );
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
-                        ))
+                        match req.clone().destructure() {
+                            (None, GlobalStateEntityQualifier::Item { base_key: _, path })
+                                if path == vec!["seigniorage_recipients_snapshot_version"] =>
+                            {
+                                Ok(BinaryResponseAndRequest::new(
+                                    BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
+                                    &[],
+                                    0,
+                                ))
+                            }
+                            _ => {
+                                let result = GlobalStateQueryResult::new(
+                                    StoredValue::CLValue(
+                                        CLValue::from_t(self.snapshot.clone()).unwrap(),
+                                    ),
+                                    vec![],
+                                );
+                                Ok(BinaryResponseAndRequest::new(
+                                    BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
+                                    &[],
+                                    0,
+                                ))
+                            }
+                        }
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
