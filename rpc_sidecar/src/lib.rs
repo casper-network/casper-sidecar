@@ -246,7 +246,7 @@ mod tests {
         // schemars attribute too, indicating it is a hex-encoded string.  See for example
         // `TransactionInvocationTarget::Package::addr`.
         /*
-        TODO -> reinstantiate this assertion once serialization ofhash_addr in Message structure in casper-types is fixed
+        TODO -> reinstantiate this assertion once serialization of DelegatorKind::Purse and UnbondKind::DelegatedPurse in casper-types is fixed
         let regex = Regex::new(
             r#"\s*"type":\s*"array",\s*"items":\s*\{\s*"type":\s*"integer",\s*"format":\s*"uint8",\s*"minimum":\s*0\.0\s*\},"#
         ).unwrap();

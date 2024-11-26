@@ -5612,13 +5612,13 @@
             "additionalProperties": false
           },
           {
-            "description": "A `Package`.",
+            "description": "A smart contract `Package`.",
             "type": "object",
             "required": [
-              "Package"
+              "SmartContract"
             ],
             "properties": {
-              "Package": {
+              "SmartContract": {
                 "$ref": "#/components/schemas/Package"
               }
             },
