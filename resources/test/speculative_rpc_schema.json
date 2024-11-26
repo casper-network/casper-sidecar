@@ -174,7 +174,7 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "ee6b9196dda4cd446d7ac2cfe8d3b76f3d66757f107ac578f878921df7024c26",
+                  "hash": "c4e359a70070d31d50d9d59782f76bb244ca8c24fef78fffa40577a98f004982",
                   "payload": {
                     "initiator_addr": {
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
@@ -189,16 +189,55 @@
                       }
                     },
                     "fields": {
-                      "0": "0400000006000000736f7572636522000000010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070d0c06000000746172676574210000001b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b000c06000000616d6f756e74060000000500ac23fc06080200000069640900000001e7030000000000000d05",
-                      "1": "010000000000000000000100000000",
-                      "2": "010000000000000000000100000002",
-                      "3": "010000000000000000000100000000"
+                      "args": {
+                        "Named": [
+                          [
+                            "source",
+                            {
+                              "cl_type": {
+                                "Option": "URef"
+                              },
+                              "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                              "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
+                            }
+                          ],
+                          [
+                            "target",
+                            {
+                              "cl_type": "URef",
+                              "bytes": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b00",
+                              "parsed": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000"
+                            }
+                          ],
+                          [
+                            "amount",
+                            {
+                              "cl_type": "U512",
+                              "bytes": "0500ac23fc06",
+                              "parsed": "30000000000"
+                            }
+                          ],
+                          [
+                            "id",
+                            {
+                              "cl_type": {
+                                "Option": "U64"
+                              },
+                              "bytes": "01e703000000000000",
+                              "parsed": 999
+                            }
+                          ]
+                        ]
+                      },
+                      "entry_point": "Transfer",
+                      "scheduling": "Standard",
+                      "target": "Native"
                     }
                   },
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0167407d6fd18f67fe8f46407c2c5148a39f01905fe00040c477717e10d5fa3fefada76fe2f35e711a1d0a3e7b5bf322a6eddf5ae6227efdc730706860b6f4820a"
+                      "signature": "0156559645f690954c8b4f870e362fa5af1f25d2ca109c4c13b02b25a6d7cef413b077dbccf0bedeabdf318aef777c387dc706c10f99a78de754dc2aad9f8ac107"
                     }
                   ]
                 }
@@ -400,7 +439,7 @@
                     "description": "Hex-encoded contract hash.",
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/AddressableEntityHash"
+                        "$ref": "#/components/schemas/ContractHash"
                       }
                     ]
                   },
@@ -478,7 +517,7 @@
                     "description": "Hex-encoded contract package hash.",
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/PackageHash"
+                        "$ref": "#/components/schemas/ContractPackageHash"
                       }
                     ]
                   },
@@ -884,12 +923,12 @@
           }
         ]
       },
-      "AddressableEntityHash": {
-        "description": "The hex-encoded address of the addressable entity.",
+      "ContractHash": {
+        "description": "The hash address of the contract",
         "type": "string"
       },
-      "PackageHash": {
-        "description": "The hex-encoded address of the Package.",
+      "ContractPackageHash": {
+        "description": "The hash address of the contract package",
         "type": "string"
       },
       "Approval": {
@@ -1503,7 +1542,7 @@
             "additionalProperties": false
           },
           {
-            "description": "A version 1 (legacy) transfer.",
+            "description": "A version 1 transfer.",
             "type": "object",
             "required": [
               "LegacyTransfer"
@@ -1613,13 +1652,13 @@
             "additionalProperties": false
           },
           {
-            "description": "A `Package`.",
+            "description": "A smart contract `Package`.",
             "type": "object",
             "required": [
-              "Package"
+              "SmartContract"
             ],
             "properties": {
-              "Package": {
+              "SmartContract": {
                 "$ref": "#/components/schemas/Package"
               }
             },
@@ -1681,11 +1720,11 @@
             "description": "A reservation record.",
             "type": "object",
             "required": [
-              "Reservation"
+              "Prepaid"
             ],
             "properties": {
-              "Reservation": {
-                "$ref": "#/components/schemas/ReservationKind"
+              "Prepaid": {
+                "$ref": "#/components/schemas/PrepaidKind"
               }
             },
             "additionalProperties": false
@@ -1699,6 +1738,24 @@
             "properties": {
               "EntryPoint": {
                 "$ref": "#/components/schemas/EntryPointValue"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
+            "type": "object",
+            "required": [
+              "RawBytes"
+            ],
+            "properties": {
+              "RawBytes": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                }
               }
             },
             "additionalProperties": false
@@ -1875,10 +1932,6 @@
             "$ref": "#/components/schemas/ProtocolVersion"
           }
         }
-      },
-      "ContractPackageHash": {
-        "description": "The hash address of the contract package",
-        "type": "string"
       },
       "ContractWasmHash": {
         "description": "The hash address of the contract wasm",
@@ -2100,10 +2153,6 @@
           }
         }
       },
-      "ContractHash": {
-        "description": "The hash address of the contract",
-        "type": "string"
-      },
       "ContractVersionKey": {
         "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
         "type": "array",
@@ -2293,15 +2342,15 @@
                 "type": "object",
                 "required": [
                   "amount",
-                  "delegator_public_key",
+                  "delegator_kind",
                   "validator_public_key"
                 ],
                 "properties": {
-                  "delegator_public_key": {
+                  "delegator_kind": {
                     "description": "Delegator's public key",
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/PublicKey"
+                        "$ref": "#/components/schemas/DelegatorKind"
                       }
                     ]
                   },
@@ -2323,6 +2372,44 @@
                   }
                 },
                 "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DelegatorKind": {
+        "description": "Auction bid variants. Kinds of delegation bids.",
+        "oneOf": [
+          {
+            "description": "Delegation from public key.",
+            "type": "object",
+            "required": [
+              "PublicKey"
+            ],
+            "properties": {
+              "PublicKey": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Delegation from purse.",
+            "type": "object",
+            "required": [
+              "Purse"
+            ],
+            "properties": {
+              "Purse": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
+                "maxItems": 32,
+                "minItems": 32
               }
             },
             "additionalProperties": false
@@ -2623,7 +2710,6 @@
           "byte_code_hash",
           "entity_kind",
           "main_purse",
-          "message_topics",
           "package_hash",
           "protocol_version"
         ],
@@ -2648,9 +2734,6 @@
           },
           "action_thresholds": {
             "$ref": "#/components/schemas/EntityActionThresholds"
-          },
-          "message_topics": {
-            "$ref": "#/components/schemas/Array_of_MessageTopic"
           }
         }
       },
@@ -2750,6 +2833,10 @@
           }
         ]
       },
+      "PackageHash": {
+        "description": "The hex-encoded address of the Package.",
+        "type": "string"
+      },
       "ByteCodeHash": {
         "description": "The hash address of the contract wasm",
         "type": "string"
@@ -2803,35 +2890,6 @@
         "format": "uint8",
         "minimum": 0.0
       },
-      "Array_of_MessageTopic": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/MessageTopic"
-        }
-      },
-      "MessageTopic": {
-        "type": "object",
-        "required": [
-          "topic_name",
-          "topic_name_hash"
-        ],
-        "properties": {
-          "topic_name": {
-            "type": "string"
-          },
-          "topic_name_hash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TopicNameHash"
-              }
-            ]
-          }
-        }
-      },
-      "TopicNameHash": {
-        "description": "The hash of the name of the message topic.",
-        "type": "string"
-      },
       "BidKind": {
         "description": "Auction bid variants.",
         "oneOf": [
@@ -2869,7 +2927,7 @@
             ],
             "properties": {
               "Delegator": {
-                "$ref": "#/components/schemas/Delegator"
+                "$ref": "#/components/schemas/DelegatorBid"
               }
             },
             "additionalProperties": false
@@ -2909,6 +2967,19 @@
             "properties": {
               "Reservation": {
                 "$ref": "#/components/schemas/Reservation"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Unbond",
+            "type": "object",
+            "required": [
+              "Unbond"
+            ],
+            "properties": {
+              "Unbond": {
+                "$ref": "#/components/schemas/Unbond"
               }
             },
             "additionalProperties": false
@@ -2995,6 +3066,41 @@
         },
         "additionalProperties": false
       },
+      "DelegatorBid": {
+        "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
+        "type": "object",
+        "required": [
+          "bonding_purse",
+          "delegator_kind",
+          "staked_amount",
+          "validator_public_key"
+        ],
+        "properties": {
+          "delegator_kind": {
+            "$ref": "#/components/schemas/DelegatorKind"
+          },
+          "staked_amount": {
+            "$ref": "#/components/schemas/U512"
+          },
+          "bonding_purse": {
+            "$ref": "#/components/schemas/URef"
+          },
+          "validator_public_key": {
+            "$ref": "#/components/schemas/PublicKey"
+          },
+          "vesting_schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VestingSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "Bridge": {
         "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
         "type": "object",
@@ -3072,20 +3178,20 @@
         "type": "object",
         "required": [
           "delegation_rate",
-          "delegator_public_key",
+          "delegator_kind",
           "validator_public_key"
         ],
         "properties": {
-          "delegator_public_key": {
-            "description": "Delegator public key",
+          "delegator_kind": {
+            "description": "Delegator kind.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/PublicKey"
+                "$ref": "#/components/schemas/DelegatorKind"
               }
             ]
           },
           "validator_public_key": {
-            "description": "Validator public key",
+            "description": "Validator public key.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/PublicKey"
@@ -3093,10 +3199,139 @@
             ]
           },
           "delegation_rate": {
-            "description": "Individual delegation rate",
+            "description": "Individual delegation rate.",
             "type": "integer",
             "format": "uint8",
             "minimum": 0.0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Unbond": {
+        "type": "object",
+        "required": [
+          "eras",
+          "unbond_kind",
+          "validator_public_key"
+        ],
+        "properties": {
+          "validator_public_key": {
+            "description": "Validators public key.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            ]
+          },
+          "unbond_kind": {
+            "description": "Unbond kind.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnbondKind"
+              }
+            ]
+          },
+          "eras": {
+            "description": "Unbond amounts per era.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnbondEra"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "UnbondKind": {
+        "description": "Unbond variants.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "Validator"
+            ],
+            "properties": {
+              "Validator": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "DelegatedPublicKey"
+            ],
+            "properties": {
+              "DelegatedPublicKey": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "DelegatedPurse"
+            ],
+            "properties": {
+              "DelegatedPurse": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
+                "maxItems": 32,
+                "minItems": 32
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "UnbondEra": {
+        "description": "Unbond amounts per era.",
+        "type": "object",
+        "required": [
+          "amount",
+          "bonding_purse",
+          "era_of_creation"
+        ],
+        "properties": {
+          "bonding_purse": {
+            "description": "Bonding Purse",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "era_of_creation": {
+            "description": "Era in which this unbonding request was created.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EraId"
+              }
+            ]
+          },
+          "amount": {
+            "description": "Unbonding Amount.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "new_validator": {
+            "description": "The validator public key to re-delegate to.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -3196,6 +3431,10 @@
           }
         }
       },
+      "AddressableEntityHash": {
+        "description": "The hex-encoded address of the addressable entity.",
+        "type": "string"
+      },
       "PackageStatus": {
         "description": "A enum to determine the lock status of the package.",
         "oneOf": [
@@ -3247,6 +3486,13 @@
             "enum": [
               "V1CasperWasm"
             ]
+          },
+          {
+            "description": "Byte code to be executed with the version 2 Casper execution engine.",
+            "type": "string",
+            "enum": [
+              "V2CasperWasm"
+            ]
           }
         ]
       },
@@ -3255,7 +3501,8 @@
         "type": "object",
         "required": [
           "blocktime",
-          "message_count"
+          "message_count",
+          "topic_name"
         ],
         "properties": {
           "message_count": {
@@ -3271,6 +3518,10 @@
                 "$ref": "#/components/schemas/BlockTime"
               }
             ]
+          },
+          "topic_name": {
+            "description": "Name of the topic.",
+            "type": "string"
           }
         }
       },
@@ -3310,24 +3561,24 @@
           }
         }
       },
-      "ReservationKind": {
-        "description": "Container for bytes recording location, type and data for a gas reservation",
+      "PrepaidKind": {
+        "description": "Container for bytes recording location, type and data for a gas pre payment",
         "type": "object",
         "required": [
-          "receipt",
-          "reservation_data",
-          "reservation_kind"
+          "prepayment_data",
+          "prepayment_kind",
+          "receipt"
         ],
         "properties": {
           "receipt": {
             "$ref": "#/components/schemas/Digest"
           },
-          "reservation_kind": {
+          "prepayment_kind": {
             "type": "integer",
             "format": "uint8",
             "minimum": 0.0
           },
-          "reservation_data": {
+          "prepayment_data": {
             "$ref": "#/components/schemas/Bytes"
           }
         }
@@ -3344,19 +3595,6 @@
             "properties": {
               "V1CasperVm": {
                 "$ref": "#/components/schemas/EntryPoint2"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Entrypoints to be executed against the V2 Casper VM.",
-            "type": "object",
-            "required": [
-              "V2CasperVm"
-            ],
-            "properties": {
-              "V2CasperVm": {
-                "$ref": "#/components/schemas/EntryPointV2"
               }
             },
             "additionalProperties": false
@@ -3402,49 +3640,27 @@
         "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
         "oneOf": [
           {
-            "description": "The caller must cover cost",
+            "description": "The caller must cover costs",
             "type": "string",
             "enum": [
               "Caller"
             ]
           },
           {
-            "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+            "description": "Will cover costs if directly invoked.",
             "type": "string",
             "enum": [
-              "SelfOnly"
+              "DirectInvocationOnly"
             ]
           },
           {
-            "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+            "description": "will cover costs to execute self including any subsequent invoked contracts",
             "type": "string",
             "enum": [
               "SelfOnward"
             ]
           }
         ]
-      },
-      "EntryPointV2": {
-        "description": "The entry point for the V2 Casper VM.",
-        "type": "object",
-        "required": [
-          "flags",
-          "function_index"
-        ],
-        "properties": {
-          "function_index": {
-            "description": "The selector.",
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
-          },
-          "flags": {
-            "description": "The flags.",
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
-          }
-        }
       },
       "U128": {
         "description": "Decimal representation of a 128-bit integer.",
@@ -3562,20 +3778,16 @@
         "type": "object",
         "required": [
           "block_index",
-          "entity_hash",
+          "hash_addr",
           "message",
           "topic_index",
           "topic_name",
           "topic_name_hash"
         ],
         "properties": {
-          "entity_hash": {
+          "hash_addr": {
             "description": "The identity of the entity that produced the message.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/EntityAddr"
-              }
-            ]
+            "type": "string"
           },
           "message": {
             "description": "The payload of the message.",
@@ -3611,23 +3823,6 @@
           }
         }
       },
-      "EntityAddr": {
-        "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-        "anyOf": [
-          {
-            "description": "The address for a system entity account or contract.",
-            "type": "string"
-          },
-          {
-            "description": "The address of an entity that corresponds to an Account.",
-            "type": "string"
-          },
-          {
-            "description": "The address of an entity that corresponds to a Userland smart contract.",
-            "type": "string"
-          }
-        ]
-      },
       "MessagePayload": {
         "description": "The payload of the message emitted by an addressable entity during execution.",
         "oneOf": [
@@ -3658,6 +3853,10 @@
             "additionalProperties": false
           }
         ]
+      },
+      "TopicNameHash": {
+        "description": "The hash of the name of the message topic.",
+        "type": "string"
       },
       "Transaction": {
         "description": "A versioned wrapper for a transaction or deploy.",
@@ -3712,11 +3911,10 @@
             },
             "uniqueItems": true
           }
-        },
-        "additionalProperties": false
+        }
       },
       "TransactionV1Payload": {
-        "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
+        "description": "Internal payload of the transaction. The actual data over which the signing is done.",
         "type": "object",
         "required": [
           "chain_name",
@@ -3744,9 +3942,7 @@
           },
           "fields": {
             "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Bytes"
-            }
+            "additionalProperties": true
           }
         },
         "additionalProperties": false
@@ -3758,10 +3954,10 @@
             "description": "The original payment model, where the creator of the transaction specifies how much they will pay, at what gas price.",
             "type": "object",
             "required": [
-              "Classic"
+              "PaymentLimited"
             ],
             "properties": {
-              "Classic": {
+              "PaymentLimited": {
                 "type": "object",
                 "required": [
                   "gas_price_tolerance",
@@ -3824,13 +4020,13 @@
             "additionalProperties": false
           },
           {
-            "description": "The payment for this transaction was previously reserved, as proven by the receipt hash (this is for future use, not currently implemented).",
+            "description": "The payment for this transaction was previously paid, as proven by the receipt hash (this is for future use, not currently implemented).",
             "type": "object",
             "required": [
-              "Reserved"
+              "Prepaid"
             ],
             "properties": {
-              "Reserved": {
+              "Prepaid": {
                 "type": "object",
                 "required": [
                   "receipt"

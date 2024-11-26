@@ -158,7 +158,7 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         // following variants will not be understood by old clients since they were introduced in 2.x
         StoredValue::AddressableEntity(_) => None,
         StoredValue::BidKind(_) => None,
-        StoredValue::Package(_) => None,
+        StoredValue::SmartContract(_) => None,
         StoredValue::ByteCode(_) => None,
         StoredValue::MessageTopic(_) => None,
         StoredValue::Message(_) => None,
