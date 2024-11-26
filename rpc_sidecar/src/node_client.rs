@@ -823,11 +823,14 @@ pub struct FramedNodeClient {
 impl FramedNodeClient {
     pub async fn new(
         config: NodeClientConfig,
-    ) -> Result<(
-        Self,
-        impl Future<Output = Result<(), AnyhowError>>,
-        impl Future<Output = Result<(), AnyhowError>>
-    ), AnyhowError> {
+    ) -> Result<
+        (
+            Self,
+            impl Future<Output = Result<(), AnyhowError>>,
+            impl Future<Output = Result<(), AnyhowError>>,
+        ),
+        AnyhowError,
+    > {
         let stream = Arc::new(RwLock::new(
             Self::connect_with_retries(&config, None).await?,
         ));
@@ -846,7 +849,7 @@ impl FramedNodeClient {
         let keepalive_loop = Self::keepalive_loop(
             config.clone(),
             Arc::clone(&stream),
-            Arc::clone(&current_request_id)
+            Arc::clone(&current_request_id),
         );
 
         Ok((
@@ -859,7 +862,7 @@ impl FramedNodeClient {
                 current_request_id,
             },
             reconnect_loop,
-            keepalive_loop
+            keepalive_loop,
         ))
     }
 
@@ -891,31 +894,37 @@ impl FramedNodeClient {
     async fn keepalive_loop(
         config: NodeClientConfig,
         client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
-        current_request_id: Arc<AtomicU16>
+        current_request_id: Arc<AtomicU16>,
     ) -> Result<(), AnyhowError> {
         let keepalive_timeout = Duration::from_millis(config.keepalive_timeout_ms);
 
         loop {
             tokio::time::sleep(keepalive_timeout).await;
-            
+
             let mut client = client.write().await;
 
             let next_id = current_request_id.fetch_add(1, Ordering::Relaxed);
-            let payload = BinaryMessage::new(encode_request(&BinaryRequest::KeepAliveRequest, next_id).expect("should always serialize a request"));
+            let payload = BinaryMessage::new(
+                encode_request(&BinaryRequest::KeepAliveRequest, next_id)
+                    .expect("should always serialize a request"),
+            );
 
             if tokio::time::timeout(
                 Duration::from_secs(config.message_timeout_secs),
                 client.send(payload),
             )
             .await
-            .is_err() {
+            .is_err()
+            {
                 continue;
             }
 
             tokio::time::timeout(
                 Duration::from_secs(config.message_timeout_secs),
                 client.next(),
-            ).await.ok();
+            )
+            .await
+            .ok();
         }
     }
 
