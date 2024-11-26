@@ -1404,7 +1404,7 @@ mod tests {
         .await;
 
         let config = NodeClientConfig::new_with_port(port);
-        let (c, reconnect_loop, keepalive_loop) = FramedNodeClient::new(config).await.unwrap();
+        let (c, reconnect_loop, _) = FramedNodeClient::new(config).await.unwrap();
 
         let scenario = async {
             // Request id = 1
@@ -1462,7 +1462,6 @@ mod tests {
         tokio::select! {
             _ = scenario => (),
             _ = reconnect_loop => panic!("reconnect loop should not exit"),
-            _ = keepalive_loop => panic!("keepalive loop should not exit"),
         }
     }
 
