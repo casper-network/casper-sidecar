@@ -35,7 +35,8 @@ pub const CLIENT_SHUTDOWN_EXIT_CODE: u8 = 0x3;
 
 pub type MaybeRpcServerReturn<'a> = Result<Option<BoxFuture<'a, Result<ExitCode, Error>>>, Error>;
 pub async fn build_rpc_server<'a>(config: RpcServerConfig) -> MaybeRpcServerReturn<'a> {
-    let (node_client, reconnect_loop) = FramedNodeClient::new(config.node_client.clone()).await?;
+    let (node_client, reconnect_loop, keepalive_loop) =
+        FramedNodeClient::new(config.node_client.clone()).await?;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
@@ -58,6 +59,10 @@ pub async fn build_rpc_server<'a>(config: RpcServerConfig) -> MaybeRpcServerRetu
         .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
         .boxed();
     futures.push(reconnect_loop);
+    let keepalive_loop = keepalive_loop
+        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .boxed();
+    futures.push(keepalive_loop);
     Ok(Some(retype_future_vec(futures).boxed()))
 }
 
