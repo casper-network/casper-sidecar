@@ -11,6 +11,7 @@ pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
     pub sse_port: u16,
     pub rest_port: u16,
+    pub network_name: Option<String>,
 }
 
 #[cfg(test)]
@@ -20,6 +21,7 @@ impl Default for NodeConnectionInterface {
             ip_address: "127.0.0.1".parse().unwrap(),
             sse_port: 100,
             rest_port: 200,
+            network_name: None,
         }
     }
 }

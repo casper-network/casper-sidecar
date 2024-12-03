@@ -112,6 +112,7 @@ impl Component for SseServerComponent {
                     sse_server_config.clone(),
                     storage_config.storage_folder.clone(),
                     maybe_database,
+                    config.network_name.clone(),
                 )
                 .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
@@ -203,9 +204,9 @@ impl Component for RpcApiComponent {
         &self,
         config: &SidecarConfig,
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
-        if let Some(config) = config.rpc_server.as_ref() {
-            let is_main_exec_defined = config.main_server.enable_server;
-            let is_speculative_exec_defined = config
+        if let Some(rpc_server_config) = config.rpc_server.as_ref() {
+            let is_main_exec_defined = rpc_server_config.main_server.enable_server;
+            let is_speculative_exec_defined = rpc_server_config
                 .speculative_exec_server
                 .as_ref()
                 .map(|x| x.enable_server)
@@ -221,7 +222,8 @@ impl Component for RpcApiComponent {
             if !is_speculative_exec_defined {
                 info!("Speculative RPC API server is disabled. Only main RPC API will be running.");
             }
-            let res = build_rpc_server(config.clone()).await;
+            let res =
+                build_rpc_server(rpc_server_config.clone(), config.network_name.clone()).await;
             match res {
                 Ok(None) => Ok(None),
                 Ok(Some(fut)) => {

@@ -103,6 +103,25 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     .await
 }
 
+pub async fn start_mock_binary_port_responding_with_given_response(
+    port: u16,
+    request_id: Option<u16>,
+    number_of_responses: Option<u8>,
+    shutdown: Arc<Notify>,
+    binary_response: BinaryResponse,
+) -> JoinHandle<()> {
+    let request = get_dummy_request_payload(request_id);
+    let response =
+        BinaryResponseAndRequest::new(binary_response, &request, request_id.unwrap_or_default());
+    start_mock_binary_port(
+        port,
+        response.to_bytes().unwrap(),
+        number_of_responses.unwrap_or(1), // Single response by default
+        shutdown,
+    )
+    .await
+}
+
 pub async fn start_mock_binary_port(
     port: u16,
     data: Vec<u8>,

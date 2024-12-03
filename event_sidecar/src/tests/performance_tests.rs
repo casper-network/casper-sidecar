@@ -264,7 +264,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let test_rng = TestRng::new();
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
-    let mut testing_config = prepare_config(&temp_storage_dir, true);
+    let mut testing_config = prepare_config(&temp_storage_dir, true, None);
     testing_config.add_connection(None, None, None);
     let node_port_for_sse_connection = testing_config
         .event_server_config
@@ -293,6 +293,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         ip_address,
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
+        network_name: None,
     };
     let (node_event_tx, node_event_rx) = mpsc::channel(100);
     let mut node_event_listener = EventListenerBuilder {
@@ -321,6 +322,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
+        network_name: None,
     };
     let mut sidecar_event_listener = EventListenerBuilder {
         node: sidecar_node_interface,

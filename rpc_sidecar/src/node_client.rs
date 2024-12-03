@@ -823,6 +823,7 @@ pub struct FramedNodeClient {
 impl FramedNodeClient {
     pub async fn new(
         config: NodeClientConfig,
+        maybe_network_name: Option<String>,
     ) -> Result<
         (
             Self,
@@ -852,18 +853,26 @@ impl FramedNodeClient {
             Arc::clone(&current_request_id),
         );
 
-        Ok((
-            Self {
-                client: Arc::clone(&stream),
-                request_limit: Semaphore::new(config.request_limit as usize),
-                reconnect,
-                shutdown,
-                config,
-                current_request_id,
-            },
-            reconnect_loop,
-            keepalive_loop,
-        ))
+        let node_client = Self {
+            client: Arc::clone(&stream),
+            request_limit: Semaphore::new(config.request_limit as usize),
+            reconnect,
+            shutdown,
+            config,
+            current_request_id: AtomicU16::new(INITIAL_REQUEST_ID).into(),
+        };
+
+        // validate network name
+        if let Some(network_name) = maybe_network_name {
+            let node_status = node_client.read_node_status().await?;
+            if network_name != node_status.chainspec_name {
+                let msg = format!("Network name {} does't match name {network_name} configured for node RPC connection", node_status.chainspec_name);
+                error!("{msg}");
+                return Err(AnyhowError::msg(msg));
+            }
+        }
+
+        Ok((node_client, reconnect_loop, keepalive_loop))
     }
 
     fn next_id(&self) -> u16 {
@@ -1221,13 +1230,14 @@ where
 mod tests {
     use crate::testing::{
         get_dummy_request, get_dummy_request_payload, get_port, start_mock_binary_port,
+        start_mock_binary_port_responding_with_given_response,
         start_mock_binary_port_responding_with_stored_value,
     };
 
     use super::*;
-    use casper_binary_port::BinaryRequestHeader;
+    use casper_binary_port::{BinaryRequestHeader, ReactorStateName};
     use casper_types::testing::TestRng;
-    use casper_types::{CLValue, SemVer};
+    use casper_types::{BlockSynchronizerStatus, CLValue, SemVer, TimeDiff, Timestamp};
     use futures::FutureExt;
     use tokio::time::sleep;
 
@@ -1317,7 +1327,7 @@ mod tests {
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
         let config = NodeClientConfig::new_with_port_and_retries(1111, 2);
-        let res = FramedNodeClient::new(config).await;
+        let res = FramedNodeClient::new(config, None).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -1339,7 +1349,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1364,13 +1374,60 @@ mod tests {
             .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
-        let (client, _, _) = FramedNodeClient::new(config).await.unwrap();
+        let (client, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
             .unwrap();
 
         assert_eq!(res, StoredValue::CLValue(CLValue::from_t("Foo").unwrap()))
+    }
+
+    #[tokio::test]
+    async fn should_fail_to_connect_if_network_name_does_not_match() {
+        // prepare node status response with network name
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+        let value = NodeStatus {
+            protocol_version,
+            peers: Peers::random(&mut rng),
+            build_version: rng.random_string(5..10),
+            chainspec_name: "network-1".into(),
+            starting_state_root_hash: Digest::random(&mut rng),
+            last_added_block_info: None,
+            our_public_signing_key: None,
+            round_length: None,
+            next_upgrade: None,
+            uptime: TimeDiff::from_millis(0),
+            reactor_state: ReactorStateName::new(rng.random_string(5..10)),
+            last_progress: Timestamp::random(&mut rng),
+            available_block_range: AvailableBlockRange::random(&mut rng),
+            block_sync: BlockSynchronizerStatus::random(&mut rng),
+            latest_switch_block_hash: None,
+        };
+        let response = BinaryResponse::from_value(value, protocol_version);
+
+        // setup mock binary port with node status response
+        let port = get_port();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let request_id = Some(INITIAL_REQUEST_ID);
+        let _mock_server_handle = start_mock_binary_port_responding_with_given_response(
+            port,
+            request_id,
+            None,
+            Arc::clone(&shutdown),
+            response,
+        )
+        .await;
+
+        let config = NodeClientConfig::new_with_port_and_retries(port, 2);
+        let network_name = Some("not-network-1".into());
+        let res = FramedNodeClient::new(config, network_name).await;
+
+        assert!(res.is_err());
+        let error_message = res.err().unwrap().to_string();
+
+        assert_eq!(error_message, "Network name network-1 does't match name not-network-1 configured for node RPC connection");
     }
 
     async fn query_global_state_for_string_value(
@@ -1404,7 +1461,7 @@ mod tests {
         .await;
 
         let config = NodeClientConfig::new_with_port(port);
-        let (c, reconnect_loop, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, reconnect_loop, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let scenario = async {
             // Request id = 1
@@ -1472,7 +1529,7 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
             start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
-        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
@@ -1552,7 +1609,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1576,7 +1633,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config).await.unwrap();
+        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await

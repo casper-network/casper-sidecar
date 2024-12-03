@@ -64,9 +64,10 @@ pub async fn run(
     config: SseEventServerConfig,
     index_storage_folder: String,
     maybe_database: Option<Database>,
+    maybe_network_name: Option<String>,
 ) -> Result<ExitCode, Error> {
     validate_config(&config)?;
-    let (event_listeners, sse_data_receivers) = build_event_listeners(&config)?;
+    let (event_listeners, sse_data_receivers) = build_event_listeners(&config, maybe_network_name)?;
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
@@ -238,6 +239,7 @@ pub async fn run_rest_server(
 
 fn build_event_listeners(
     config: &SseEventServerConfig,
+    maybe_network_name: Option<String>,
 ) -> Result<(Vec<EventListener>, Vec<Receiver<SseEvent>>), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
     let mut sse_data_receivers = Vec::new();
@@ -245,7 +247,12 @@ fn build_event_listeners(
         let (inbound_sse_data_sender, inbound_sse_data_receiver) =
             mpsc_channel(config.inbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
         sse_data_receivers.push(inbound_sse_data_receiver);
-        let event_listener = builder(connection, inbound_sse_data_sender)?.build();
+        let event_listener = builder(
+            connection,
+            inbound_sse_data_sender,
+            maybe_network_name.clone(),
+        )?
+        .build();
         event_listeners.push(event_listener?);
     }
     Ok((event_listeners, sse_data_receivers))
@@ -254,11 +261,13 @@ fn build_event_listeners(
 fn builder(
     connection: &Connection,
     inbound_sse_data_sender: Sender<SseEvent>,
+    maybe_network_name: Option<String>,
 ) -> Result<EventListenerBuilder, Error> {
     let node_interface = NodeConnectionInterface {
         ip_address: connection.ip_address,
         sse_port: connection.sse_port,
         rest_port: connection.rest_port,
+        network_name: maybe_network_name,
     };
     let event_listener_builder = EventListenerBuilder {
         node: node_interface,

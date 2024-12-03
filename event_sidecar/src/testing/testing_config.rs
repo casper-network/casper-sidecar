@@ -14,6 +14,7 @@ pub struct TestingConfig {
     pub(crate) event_server_config: SseEventServerConfig,
     pub(crate) storage_config: StorageConfig,
     pub(crate) rest_api_server_config: RestApiServerConfig,
+    pub(crate) network_name: Option<String>,
 }
 
 #[cfg(test)]
@@ -44,7 +45,11 @@ pub fn get_port() -> u16 {
 /// - The outbound server (REST & SSE) ports are set dynamically to free ports.
 /// - If `enable_db_storage` is set to false, the database storage is disabled.
 #[cfg(test)]
-pub(crate) fn prepare_config(temp_storage: &TempDir, enable_db_storage: bool) -> TestingConfig {
+pub(crate) fn prepare_config(
+    temp_storage: &TempDir,
+    enable_db_storage: bool,
+    maybe_network_name: Option<String>,
+) -> TestingConfig {
     let path_to_temp_storage = temp_storage.path().to_string_lossy().to_string();
 
     let mut testing_config = TestingConfig::default();
@@ -52,6 +57,7 @@ pub(crate) fn prepare_config(temp_storage: &TempDir, enable_db_storage: bool) ->
         testing_config.storage_config.clear_db_storage();
     }
     testing_config.set_storage_folder(path_to_temp_storage);
+    testing_config.set_network_name(maybe_network_name);
     testing_config.allocate_available_ports();
 
     testing_config
@@ -67,6 +73,7 @@ impl TestingConfig {
             event_server_config,
             storage_config,
             rest_api_server_config,
+            network_name: None,
         }
     }
 
@@ -82,6 +89,10 @@ impl TestingConfig {
 
     pub(crate) fn set_storage(&mut self, storage: StorageConfig) {
         self.storage_config = storage;
+    }
+
+    pub(crate) fn set_network_name(&mut self, maybe_network_name: Option<String>) {
+        self.network_name = maybe_network_name;
     }
 
     pub(crate) fn add_connection(
