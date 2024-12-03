@@ -471,7 +471,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#619192874435ad9730b18a422afbfe5c2b9f1157"
+source = "git+https://github.com/casper-network/casper-node.git?tag=v2.0.0-rc5#619192874435ad9730b18a422afbfe5c2b9f1157"
 dependencies = [
  "bincode",
  "bytes",
@@ -678,7 +678,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "5.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-2.0#619192874435ad9730b18a422afbfe5c2b9f1157"
+source = "git+https://github.com/casper-network/casper-node.git?tag=v2.0.0-rc5#619192874435ad9730b18a422afbfe5c2b9f1157"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -3809,9 +3809,9 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.9.6"
+version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d0e5124fcb30e76a7e79bfee683a2746db83784b86289f6251b54b7950a0dfc"
+checksum = "47c75d7c5c6b673e58bf54d8544a9f432e3a925b0e80f7cd3602ab5c50c55519"
 dependencies = [
  "const-oid",
  "digest 0.10.7",
