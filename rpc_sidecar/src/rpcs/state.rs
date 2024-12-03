@@ -1,5 +1,7 @@
 //! RPCs related to the state.
 
+mod auction_state;
+
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use crate::node_client::{EntityResponse, PackageResponse};
@@ -17,6 +19,7 @@ use super::{
     ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
     CURRENT_API_VERSION,
 };
+use auction_state::AuctionState;
 use casper_binary_port::{
     DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier, GlobalStateQueryResult,
     PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
@@ -36,7 +39,7 @@ use casper_types::{
         },
         AUCTION,
     },
-    AddressableEntity, AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2,
+    AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
     EraId, GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey, SecretKey,
     StoredValue, URef, U512,
