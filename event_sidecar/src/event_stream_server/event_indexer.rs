@@ -13,6 +13,7 @@ pub(super) struct EventIndexer {
 }
 
 impl EventIndexer {
+    #![allow(clippy::cognitive_complexity)]
     pub(super) fn new(storage_path: PathBuf) -> Self {
         fs::create_dir_all(&storage_path).unwrap_or_else(|err| {
             error!("Failed to create directory for sse cache: {}", err);
@@ -32,6 +33,10 @@ impl EventIndexer {
             Ok(cached_bytes) => {
                 if cached_bytes.len() == bytes.len() {
                     bytes.copy_from_slice(cached_bytes.as_slice());
+                    debug!(
+                        file = %persistent_cache.display(),
+                        "successfully read sse index from cache file"
+                    );
                 } else {
                     warn!(
                         file = %persistent_cache.display(),
