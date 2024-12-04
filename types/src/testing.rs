@@ -4,9 +4,7 @@
 //! `casper-node` library.
 
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{
-    testing::TestRng, Deploy, TimeDiff, Timestamp, Transaction, TransactionV1Builder,
-};
+use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp, Transaction};
 #[cfg(test)]
 use casper_types::{BlockHash, Digest, PublicKey};
 #[cfg(feature = "sse-data-testing")]
@@ -22,6 +20,8 @@ pub fn create_test_transaction(
     now: Timestamp,
     test_rng: &mut TestRng,
 ) -> Transaction {
+    use casper_types::{TransactionV1, MINT_LANE_ID};
+
     if test_rng.gen() {
         Transaction::Deploy(Deploy::random_with_timestamp_and_ttl(
             test_rng,
@@ -30,11 +30,12 @@ pub fn create_test_transaction(
         ))
     } else {
         let timestamp = now - created_ago;
-        let transaction = TransactionV1Builder::new_random(test_rng)
-            .with_timestamp(timestamp)
-            .with_ttl(ttl)
-            .build()
-            .unwrap();
+        let transaction = TransactionV1::random_with_lane_and_timestamp_and_ttl(
+            test_rng,
+            MINT_LANE_ID,
+            Some(timestamp),
+            Some(ttl),
+        );
         Transaction::V1(transaction)
     }
 }
