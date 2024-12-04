@@ -1,9 +1,10 @@
 use crate::component::*;
 use crate::config::SidecarConfig;
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use casper_event_sidecar::LazyDatabaseWrapper;
 use std::process::ExitCode;
-use tracing::info;
+use tokio::signal::unix::{signal, SignalKind};
+use tracing::{error, info};
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     let maybe_database = config
@@ -20,10 +21,28 @@ pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     components.push(Box::new(sse_server_component));
     let rpc_api_component = RpcApiComponent::new();
     components.push(Box::new(rpc_api_component));
-    do_run(config, components).await.map_err(|component_error| {
-        info!("The server has exited with an error: {}", component_error);
-        anyhow!(component_error.to_string())
-    })
+
+    // setup signal handler futures to wait for interrupts
+    let mut sigterm =
+        signal(SignalKind::terminate()).context("Failed to initialize SIGTERM handler")?;
+    let mut sigint =
+        signal(SignalKind::interrupt()).context("Failed to initialize SIGINT handler")?;
+
+    // run signal handlers and main task
+    tokio::select! {
+        _ = sigterm.recv() => {
+            info!("Received SIGTERM signal. Shutting down...");
+            Ok(ExitCode::SUCCESS)
+        },
+        _ = sigint.recv() => {
+            info!("Received SIGINT signal. Shutting down...");
+            Ok(ExitCode::SUCCESS)
+        },
+        res = do_run(config, components) => res.map_err(|component_error| {
+            error!("The server has exited with an error: {}", component_error);
+            anyhow!(component_error.to_string())
+        }),
+    }
 }
 
 async fn do_run(

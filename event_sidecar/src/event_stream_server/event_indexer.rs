@@ -32,6 +32,10 @@ impl EventIndexer {
             Ok(cached_bytes) => {
                 if cached_bytes.len() == bytes.len() {
                     bytes.copy_from_slice(cached_bytes.as_slice());
+                    debug!(
+                        file = %persistent_cache.display(),
+                        "successfully read sse index from cache file"
+                    );
                 } else {
                     warn!(
                         file = %persistent_cache.display(),
