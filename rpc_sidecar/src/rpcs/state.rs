@@ -1420,8 +1420,8 @@ mod tests {
         },
         testing::TestRng,
         AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
-        ByteCodeKind, Contract, ContractWasm, ContractWasmHash, EntityKind, NamedKeys, PackageHash,
-        ProtocolVersion, TestBlockBuilder, TransactionRuntime,
+        ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
+        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -2027,7 +2027,7 @@ mod tests {
             rng.gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
+            EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
         );
         let addr: EntityAddr = rng.gen();
 
