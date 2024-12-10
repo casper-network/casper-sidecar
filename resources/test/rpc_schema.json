@@ -166,7 +166,7 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "c4e359a70070d31d50d9d59782f76bb244ca8c24fef78fffa40577a98f004982",
+                  "hash": "e6bc93a30584fefced99be08c1861164b357c74e4904b5d2e7146896aaaaf843",
                   "payload": {
                     "initiator_addr": {
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
@@ -186,10 +186,8 @@
                           [
                             "source",
                             {
-                              "cl_type": {
-                                "Option": "URef"
-                              },
-                              "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                              "cl_type": "URef",
+                              "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                               "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                             }
                           ],
@@ -229,7 +227,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0156559645f690954c8b4f870e362fa5af1f25d2ca109c4c13b02b25a6d7cef413b077dbccf0bedeabdf318aef777c387dc706c10f99a78de754dc2aad9f8ac107"
+                      "signature": "0124fd45fa4ad49f048d116ba86fa84cecc8e4a1c49cbae824db97472a9f5de6c63e6e77723e55d00b78605ee9a69a27ea23a73e47d29d0778534e053f18ca4101"
                     }
                   ]
                 }
@@ -241,7 +239,7 @@
             "value": {
               "api_version": "2.0.0",
               "transaction_hash": {
-                "Version1": "c4e359a70070d31d50d9d59782f76bb244ca8c24fef78fffa40577a98f004982"
+                "Version1": "e6bc93a30584fefced99be08c1861164b357c74e4904b5d2e7146896aaaaf843"
               }
             }
           }
@@ -483,7 +481,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "c4e359a70070d31d50d9d59782f76bb244ca8c24fef78fffa40577a98f004982"
+                "Version1": "e6bc93a30584fefced99be08c1861164b357c74e4904b5d2e7146896aaaaf843"
               }
             },
             {
@@ -497,7 +495,7 @@
               "api_version": "2.0.0",
               "transaction": {
                 "Version1": {
-                  "hash": "c4e359a70070d31d50d9d59782f76bb244ca8c24fef78fffa40577a98f004982",
+                  "hash": "e6bc93a30584fefced99be08c1861164b357c74e4904b5d2e7146896aaaaf843",
                   "payload": {
                     "initiator_addr": {
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
@@ -517,10 +515,8 @@
                           [
                             "source",
                             {
-                              "cl_type": {
-                                "Option": "URef"
-                              },
-                              "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                              "cl_type": "URef",
+                              "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                               "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                             }
                           ],
@@ -560,7 +556,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "0156559645f690954c8b4f870e362fa5af1f25d2ca109c4c13b02b25a6d7cef413b077dbccf0bedeabdf318aef777c387dc706c10f99a78de754dc2aad9f8ac107"
+                      "signature": "0124fd45fa4ad49f048d116ba86fa84cecc8e4a1c49cbae824db97472a9f5de6c63e6e77723e55d00b78605ee9a69a27ea23a73e47d29d0778534e053f18ca4101"
                     }
                   ]
                 }
@@ -6234,7 +6230,7 @@
             ],
             "properties": {
               "SmartContract": {
-                "$ref": "#/components/schemas/TransactionRuntime"
+                "$ref": "#/components/schemas/ContractRuntimeTag"
               }
             },
             "additionalProperties": false
@@ -6274,23 +6270,12 @@
           }
         ]
       },
-      "TransactionRuntime": {
+      "ContractRuntimeTag": {
         "description": "Runtime used to execute a Transaction.",
-        "oneOf": [
-          {
-            "description": "The Casper Version 1 Virtual Machine.",
-            "type": "string",
-            "enum": [
-              "VmCasperV1"
-            ]
-          },
-          {
-            "description": "The Casper Version 2 Virtual Machine.",
-            "type": "string",
-            "enum": [
-              "VmCasperV2"
-            ]
-          }
+        "type": "string",
+        "enum": [
+          "VmCasperV1",
+          "VmCasperV2"
         ]
       },
       "PackageHash": {
