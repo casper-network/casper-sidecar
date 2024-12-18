@@ -28,10 +28,6 @@ pub(crate) mod tests {
         pub routes: HashMap<Vec<String>, CacheAndData>,
     }
 
-    #[derive(Debug)]
-    struct Nope;
-    impl warp::reject::Reject for Nope {}
-
     type ShutdownCallbacks = Arc<Mutex<Vec<broadcast::Sender<Option<(Option<String>, String)>>>>>;
 
     impl SimpleSseServer {

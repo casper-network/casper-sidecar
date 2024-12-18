@@ -9,7 +9,7 @@ use config::{SidecarConfig, SidecarConfigTarget};
 use run::run;
 use std::{
     env, fmt, io,
-    panic::{self, PanicInfo},
+    panic::{self, PanicHookInfo},
     process::{self, ExitCode},
 };
 #[cfg(not(target_env = "msvc"))]
@@ -68,7 +68,7 @@ pub fn read_config(config_path: &str) -> Result<SidecarConfigTarget, Error> {
     toml::from_str(&toml_content).context("Error parsing config into TOML format")
 }
 
-fn panic_hook(info: &PanicInfo) {
+fn panic_hook(info: &PanicHookInfo) {
     let backtrace = Backtrace::new();
 
     eprintln!("{:?}", backtrace);

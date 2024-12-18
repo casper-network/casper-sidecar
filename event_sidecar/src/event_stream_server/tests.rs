@@ -598,11 +598,11 @@ async fn fetch_text(
 ///
 /// The expected order is:
 ///   * data:<JSON-encoded ApiVersion> (note, no ID line follows this first event)
-/// then the following three repeated for as many events as are applicable to that stream:
+///     then the following three repeated for as many events as are applicable to that stream:
 ///   * data:<JSON-encoded event>
 ///   * id:<integer>
 ///   * empty line
-/// then finally, repeated keepalive lines until the server is shut down.
+///     then finally, repeated keepalive lines until the server is shut down.
 #[allow(clippy::too_many_lines)]
 fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> {
     let mut received_events = Vec::new();

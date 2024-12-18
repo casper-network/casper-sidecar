@@ -8,10 +8,13 @@ use casper_event_types::{
     sse_data::{EventFilter, SseData},
     Filter as SseFilter,
 };
-use casper_types::{ProtocolVersion, Transaction};
+use casper_types::ProtocolVersion;
+#[cfg(test)]
+use casper_types::Transaction;
 use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
+#[cfg(test)]
 use serde::Serialize;
 #[cfg(test)]
 use serde_json::Value;
@@ -97,6 +100,7 @@ type UrlProps = (
     IsLegacyFilter,
 );
 
+#[cfg(test)]
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub(super) struct TransactionAccepted {

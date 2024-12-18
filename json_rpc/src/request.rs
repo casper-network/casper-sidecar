@@ -66,6 +66,7 @@ impl Request {
     ///   * `allow_unknown_fields` is `false` and extra fields exist
     ///
     /// Returns a `Rejection` if the "id" field is `None`.
+    #[allow(clippy::result_large_err)]
     pub(super) fn new(
         mut request: Map<String, Value>,
         allow_unknown_fields: bool,

@@ -1206,7 +1206,7 @@ where
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
 
-impl<'a, T> Display for ErrFormatter<'a, T>
+impl<T> Display for ErrFormatter<'_, T>
 where
     T: std::error::Error,
 {

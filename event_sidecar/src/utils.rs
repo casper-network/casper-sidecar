@@ -231,6 +231,8 @@ pub mod tests {
         let infix_str = infix.as_str();
         data.iter().any(|x| x.contains(infix_str))
     }
+
+    #[allow(dead_code)]
     pub struct MockNodeTestProperties {
         pub testing_config: TestingConfig,
         pub temp_storage_dir: TempDir,
