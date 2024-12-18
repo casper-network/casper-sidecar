@@ -90,7 +90,7 @@ pub fn inc_method_call(method: &str) {
 pub fn observe_response_time(method: &str, status: &str, response_time: Duration) {
     let response_time = response_time.as_secs_f64() * 1000.0;
     RESPONSE_TIMES_MS
-        .with_label_values(&[method, &status])
+        .with_label_values(&[method, status])
         .observe(response_time);
 }
 

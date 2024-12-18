@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use once_cell::sync::Lazy;
 use prometheus::{IntCounterVec, Opts, Registry};
 
@@ -25,9 +27,9 @@ pub struct MetricCollectionError {
     reason: String,
 }
 
-impl ToString for MetricCollectionError {
-    fn to_string(&self) -> String {
-        format!("MetricCollectionError: {}", self.reason)
+impl Display for MetricCollectionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MetricCollectionError: {}", self.reason)
     }
 }
 
