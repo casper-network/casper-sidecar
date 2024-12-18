@@ -125,17 +125,11 @@ fn try_resolve_version(raw_response: &Value) -> Result<ProtocolVersion, Error> {
             let raw = build_version_value
                 .as_str()
                 .context("build_version_value should be a string")
-                .map_err(|e| {
-                    count_error("version_value_not_a_string");
-                    e
-                })?
+                .inspect_err(|_| count_error("version_value_not_a_string"))?
                 .split('-')
                 .next()
                 .context("splitting build_version_value should always return at least one slice")
-                .map_err(|e| {
-                    count_error("incomprehensible_build_version_form");
-                    e
-                })?;
+                .inspect_err(|_| count_error("incomprehensible_build_version_form"))?;
             ProtocolVersion::from_str(raw).map_err(|error| {
                 count_error("failed_parsing_protocol_version");
                 anyhow!("failed parsing build version from '{}': {}", raw, error)

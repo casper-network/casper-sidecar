@@ -284,9 +284,29 @@ pub enum DatabaseWriteError {
     Unhandled(anyhow::Error),
 }
 
-impl ToString for DatabaseWriteError {
-    fn to_string(&self) -> String {
-        format!("{:?}", self)
+impl Display for DatabaseWriteError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DatabaseWriteError::Serialisation(error) => {
+                write!(f, "DatabaseWriteError::Serialisation: {}", error)
+            }
+            DatabaseWriteError::SqlConstruction(error) => {
+                write!(f, "DatabaseWriteError::SqlConstruction: {}", error)
+            }
+            DatabaseWriteError::UniqueConstraint(unique_constraint_error) => {
+                write!(
+                    f,
+                    "DatabaseWriteError::UniqueConstraint: table: {}, error: {}",
+                    unique_constraint_error.table, unique_constraint_error.error
+                )
+            }
+            DatabaseWriteError::Database(error) => {
+                write!(f, "DatabaseWriteError::Database: {}", error)
+            }
+            DatabaseWriteError::Unhandled(error) => {
+                write!(f, "DatabaseWriteError::Unhandled: {}", error)
+            }
+        }
     }
 }
 

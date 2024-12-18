@@ -140,7 +140,6 @@ impl DefaultConnectionManagerBuilder {
 impl DefaultConnectionManager {
     /// Start handling traffic from nodes endpoint. This function is blocking, it will return a
     /// ConnectionManagerError result if something went wrong while processing.
-
     async fn connect(
         &mut self,
     ) -> Result<Pin<Box<dyn Stream<Item = EventResult> + Send + 'static>>, ConnectionManagerError>

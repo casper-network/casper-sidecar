@@ -8,7 +8,7 @@ use eventsource_stream::{Event, EventStream, EventStreamError, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
 use std::pin::Pin;
-use std::{fmt::Debug, sync::Arc, time::Duration};
+use std::{fmt::Debug, time::Duration};
 use tokio::select;
 use tokio_stream::Stream;
 use tracing::debug;
@@ -17,7 +17,7 @@ use url::Url;
 #[derive(Clone, Debug)]
 pub enum SseDataStreamingError {
     NoDataTimeout(),
-    ConnectionError(Arc<Error>),
+    ConnectionError(),
 }
 
 pub type EventResult = Result<Event, EventStreamError<SseDataStreamingError>>;
@@ -84,8 +84,8 @@ impl SseConnection {
                                     monitor.tick().await;
                                     yield Ok(bytes);
                                 },
-                                Err(err) => {
-                                    yield Err(SseDataStreamingError::ConnectionError(Arc::new(Error::from(err))));
+                                Err(_) => {
+                                    yield Err(SseDataStreamingError::ConnectionError());
                                     break;
                                 }
                             }
@@ -177,7 +177,6 @@ pub mod tests {
     use std::{
         convert::Infallible,
         pin::Pin,
-        sync::Arc,
         time::{Duration, Instant},
     };
     use tokio::sync::mpsc::channel;
@@ -225,9 +224,7 @@ pub mod tests {
         }
 
         pub fn build_failing_on_message() -> Self {
-            let e = SseDataStreamingError::ConnectionError(Arc::new(Error::msg(
-                "Some error on message",
-            )));
+            let e = SseDataStreamingError::ConnectionError();
             MockSseConnection {
                 data: vec![],
                 failure_on_connection: None,

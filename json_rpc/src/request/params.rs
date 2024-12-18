@@ -24,6 +24,7 @@ pub enum Params {
 }
 
 impl Params {
+    #[allow(clippy::result_large_err)]
     pub(super) fn try_from(request_id: &Value, params: Value) -> Result<Self, ErrorOrRejection> {
         let err_invalid_request = |additional_info: &str| {
             let error = Error::new(ReservedErrorCode::InvalidRequest, additional_info);

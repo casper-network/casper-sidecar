@@ -520,9 +520,9 @@ pub enum InvalidTransactionOrDeploy {
     /// Entry point cannot be 'call'
     #[error("entry point cannot be 'call'")]
     InvalidTransactionEntryPointCannotBeCall,
-    /// Invalid transaction kind
-    #[error("invalid transaction kind")]
-    InvalidTransactionInvalidTransactionKind,
+    /// Invalid transaction lane
+    #[error("invalid transaction lane")]
+    InvalidTransactionInvalidTransactionLane,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -627,8 +627,8 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEntryPointCannotBeCall => {
                 Self::InvalidTransactionEntryPointCannotBeCall
             }
-            ErrorCode::InvalidTransactionInvalidTransactionKind => {
-                Self::InvalidTransactionInvalidTransactionKind
+            ErrorCode::InvalidTransactionInvalidTransactionLane => {
+                Self::InvalidTransactionInvalidTransactionLane
             }
             ErrorCode::InvalidTransactionUnspecified => Self::TransactionUnspecified,
             ErrorCode::InvalidTransactionOrDeployUnspecified => {
@@ -766,7 +766,7 @@ impl Error {
                 | ErrorCode::DeployMissingTransferTarget
                 | ErrorCode::DeployMissingModuleBytes
                 | ErrorCode::InvalidTransactionEntryPointCannotBeCall
-                | ErrorCode::InvalidTransactionInvalidTransactionKind
+                | ErrorCode::InvalidTransactionInvalidTransactionLane
                 | ErrorCode::InvalidTransactionUnspecified
                 | ErrorCode::InvalidTransactionOrDeployUnspecified),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
@@ -1206,7 +1206,7 @@ where
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
 
-impl<'a, T> Display for ErrFormatter<'a, T>
+impl<T> Display for ErrFormatter<'_, T>
 where
     T: std::error::Error,
 {
