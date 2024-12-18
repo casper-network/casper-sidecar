@@ -5511,10 +5511,10 @@
             "description": "A version 1 transfer.",
             "type": "object",
             "required": [
-              "LegacyTransfer"
+              "Transfer"
             ],
             "properties": {
-              "LegacyTransfer": {
+              "Transfer": {
                 "$ref": "#/components/schemas/TransferV1"
               }
             },
@@ -5683,14 +5683,14 @@
             "additionalProperties": false
           },
           {
-            "description": "A reservation record.",
+            "description": "A prepayment record.",
             "type": "object",
             "required": [
-              "Prepaid"
+              "Prepayment"
             ],
             "properties": {
-              "Prepaid": {
-                "$ref": "#/components/schemas/PrepaidKind"
+              "Prepayment": {
+                "$ref": "#/components/schemas/PrepaymentKind"
               }
             },
             "additionalProperties": false
@@ -6560,7 +6560,7 @@
           }
         }
       },
-      "PrepaidKind": {
+      "PrepaymentKind": {
         "description": "Container for bytes recording location, type and data for a gas pre payment",
         "type": "object",
         "required": [

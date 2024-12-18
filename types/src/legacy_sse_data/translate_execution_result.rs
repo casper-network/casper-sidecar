@@ -133,7 +133,7 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         StoredValue::ContractWasm(_) => Some(TransformKindV1::WriteContractWasm),
         StoredValue::Contract(_) => Some(TransformKindV1::WriteContract),
         StoredValue::ContractPackage(_) => Some(TransformKindV1::WriteContractPackage),
-        StoredValue::LegacyTransfer(transfer_v1) => {
+        StoredValue::Transfer(transfer_v1) => {
             Some(TransformKindV1::WriteTransfer(transfer_v1.clone()))
         }
         StoredValue::DeployInfo(deploy_info) => {
