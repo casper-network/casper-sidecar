@@ -12,6 +12,7 @@ pub mod info;
 pub mod speculative_exec;
 pub mod speculative_open_rpc_schema;
 pub mod state;
+mod types;
 
 use std::{fmt, str, sync::Arc, time::Duration};
 

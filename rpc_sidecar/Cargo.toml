@@ -53,6 +53,7 @@ pretty_assertions = "1"
 regex = "1"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+jsonschema = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "8.3.2", default-features = false, features = [
