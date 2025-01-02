@@ -51,6 +51,7 @@ pub struct SpeculativeExecTxnResult {
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
     /// Result of the speculative execution.
+    #[schemars(with = "crate::rpcs::types::SpeculativeExecutionResultSchema")]
     pub execution_result: SpeculativeExecutionResult,
 }
 

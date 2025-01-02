@@ -448,6 +448,7 @@ pub struct GetStatusResult {
     /// The state root hash of the lowest block in the available block range.
     pub starting_state_root_hash: Digest,
     /// The minimal info of the last block from the linear chain.
+    #[schemars(with = "Option<crate::rpcs::types::MinimalBlockInfoSchema>")]
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// Our public signing key.
     pub our_public_signing_key: Option<PublicKey>,
