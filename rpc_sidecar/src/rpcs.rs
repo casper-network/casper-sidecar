@@ -12,6 +12,9 @@ pub mod info;
 pub mod speculative_exec;
 pub mod speculative_open_rpc_schema;
 pub mod state;
+pub(crate) mod state_get_auction_info_v2;
+#[cfg(test)]
+pub(crate) mod test_utils;
 mod types;
 
 use std::{fmt, str, sync::Arc, time::Duration};
