@@ -2,7 +2,7 @@
 
 mod auction_state;
 
-pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeights, ERA_VALIDATORS};
+pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeight, ERA_VALIDATORS};
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use crate::node_client::{EntityResponse, PackageResponse};

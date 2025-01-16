@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::common;
 use super::state::{
     era_validators_from_snapshot, fetch_bid_kinds, get_seigniorage_recipients_version,
-    GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeights,
+    GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeight,
 };
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
@@ -208,9 +208,9 @@ impl AuctionState {
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
         for (era_id, validator_weights) in era_validators.iter() {
-            let mut json_validator_weights: Vec<JsonValidatorWeights> = Vec::new();
+            let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
             for (public_key, weight) in validator_weights.iter() {
-                json_validator_weights.push(JsonValidatorWeights::new(public_key.clone(), *weight));
+                json_validator_weights.push(JsonValidatorWeight::new(public_key.clone(), *weight));
             }
             json_era_validators.push(JsonEraValidators::new(*era_id, json_validator_weights));
         }

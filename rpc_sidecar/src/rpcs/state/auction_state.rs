@@ -70,12 +70,12 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
 /// A validator's weight.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonValidatorWeights {
+pub struct JsonValidatorWeight {
     public_key: PublicKey,
     weight: U512,
 }
 
-impl JsonValidatorWeights {
+impl JsonValidatorWeight {
     pub fn new(public_key: PublicKey, weight: U512) -> Self {
         Self { public_key, weight }
     }
@@ -86,11 +86,11 @@ impl JsonValidatorWeights {
 #[serde(deny_unknown_fields)]
 pub struct JsonEraValidators {
     era_id: EraId,
-    validator_weights: Vec<JsonValidatorWeights>,
+    validator_weights: Vec<JsonValidatorWeight>,
 }
 
 impl JsonEraValidators {
-    pub fn new(era_id: EraId, validator_weights: Vec<JsonValidatorWeights>) -> Self {
+    pub fn new(era_id: EraId, validator_weights: Vec<JsonValidatorWeight>) -> Self {
         Self {
             era_id,
             validator_weights,
@@ -124,9 +124,9 @@ impl AuctionState {
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
         for (era_id, validator_weights) in era_validators.iter() {
-            let mut json_validator_weights: Vec<JsonValidatorWeights> = Vec::new();
+            let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
             for (public_key, weight) in validator_weights.iter() {
-                json_validator_weights.push(JsonValidatorWeights {
+                json_validator_weights.push(JsonValidatorWeight {
                     public_key: public_key.clone(),
                     weight: *weight,
                 });
