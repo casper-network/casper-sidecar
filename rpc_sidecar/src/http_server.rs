@@ -23,6 +23,7 @@ use super::rpcs::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, GetTrie,
         QueryBalance, QueryGlobalState,
     },
+    state_get_auction_info_v2::GetAuctionInfo as GetAuctionInfoV2,
     RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
 };
 
@@ -59,6 +60,7 @@ pub async fn run(
     GetEraInfoBySwitchBlock::register_as_handler(node.clone(), &mut handlers);
     GetEraSummary::register_as_handler(node.clone(), &mut handlers);
     GetAuctionInfo::register_as_handler(node.clone(), &mut handlers);
+    GetAuctionInfoV2::register_as_handler(node.clone(), &mut handlers);
     GetTrie::register_as_handler(node.clone(), &mut handlers);
     GetValidatorChanges::register_as_handler(node.clone(), &mut handlers);
     RpcDiscover::register_as_handler(node.clone(), &mut handlers);

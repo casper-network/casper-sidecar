@@ -2359,7 +2359,7 @@
     },
     {
       "name": "state_get_auction_info",
-      "summary": "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block",
+      "summary": "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block. This is a casper 1.x retro-compatibility endpoint. For blocks created in 1.x protocol it will work exactly the same as it used to. \n        For 2.x blocks it will try to retrofit the changed data structure into previous schema - but it is a lossy process. Use `state_get_auction_info_v2` endpoint to get data in new format. *IMPORTANT* This method is deprecated, has been added only for compatibility with retired nodes json-rpc API and will be removed in a future release of sidecar.",
       "params": [
         {
           "name": "block_identifier",
@@ -2443,6 +2443,108 @@
                         }
                       ],
                       "inactive": false
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "state_get_auction_info_v2",
+      "summary": "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block. It works for blocks created in 1.x and 2.x",
+      "params": [
+        {
+          "name": "block_identifier",
+          "schema": {
+            "description": "The block identifier.",
+            "$ref": "#/components/schemas/BlockIdentifier"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "state_get_auction_info_v2_result",
+        "schema": {
+          "description": "Result for \"state_get_auction_info\" RPC response.",
+          "type": "object",
+          "required": [
+            "api_version",
+            "auction_state"
+          ],
+          "properties": {
+            "api_version": {
+              "description": "The RPC API version.",
+              "type": "string"
+            },
+            "auction_state": {
+              "description": "The auction state.",
+              "$ref": "#/components/schemas/AuctionStateV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "examples": [
+        {
+          "name": "state_get_auction_info_v2_example",
+          "params": [
+            {
+              "name": "block_identifier",
+              "value": {
+                "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_auction_info_v2_example_result",
+            "value": {
+              "api_version": "2.0.0",
+              "auction_state": {
+                "state_root_hash": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+                "block_height": 10,
+                "era_validators": [
+                  {
+                    "era_id": 10,
+                    "validator_weights": [
+                      {
+                        "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                        "weight": "10"
+                      }
+                    ]
+                  }
+                ],
+                "bids": [
+                  {
+                    "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                    "bid": {
+                      "Validator": {
+                        "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                        "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
+                        "staked_amount": "20",
+                        "delegation_rate": 0,
+                        "vesting_schedule": null,
+                        "inactive": false,
+                        "minimum_delegation_amount": 0,
+                        "maximum_delegation_amount": 18446744073709551615,
+                        "reserved_slots": 0
+                      }
+                    }
+                  },
+                  {
+                    "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                    "bid": {
+                      "Delegator": {
+                        "delegator_kind": {
+                          "PublicKey": "014508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff"
+                        },
+                        "staked_amount": "10",
+                        "bonding_purse": "uref-fbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfb-007",
+                        "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                        "vesting_schedule": null
+                      }
                     }
                   }
                 ]
@@ -8472,13 +8574,13 @@
           "validator_weights": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/JsonValidatorWeights"
+              "$ref": "#/components/schemas/JsonValidatorWeight"
             }
           }
         },
         "additionalProperties": false
       },
-      "JsonValidatorWeights": {
+      "JsonValidatorWeight": {
         "description": "A validator's weight.",
         "type": "object",
         "required": [
@@ -8526,6 +8628,63 @@
             ]
           }
         }
+      },
+      "AuctionStateV2": {
+        "description": "Data structure summarizing auction contract data.",
+        "type": "object",
+        "required": [
+          "bids",
+          "block_height",
+          "era_validators",
+          "state_root_hash"
+        ],
+        "properties": {
+          "state_root_hash": {
+            "description": "Global state hash.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              }
+            ]
+          },
+          "block_height": {
+            "description": "Block height.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "era_validators": {
+            "description": "Era validators.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonEraValidators"
+            }
+          },
+          "bids": {
+            "description": "All bids.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BidKindWrapper"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "BidKindWrapper": {
+        "type": "object",
+        "required": [
+          "bid",
+          "public_key"
+        ],
+        "properties": {
+          "public_key": {
+            "$ref": "#/components/schemas/PublicKey"
+          },
+          "bid": {
+            "$ref": "#/components/schemas/BidKind"
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

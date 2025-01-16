@@ -36,7 +36,7 @@ pin-project = "1.1.5"
 rand = "0.8.3"
 regex = "1.6.0"
 reqwest = "0.12.5"
-schemars = "0.8.16"
+schemars = "0.8.21"
 sea-query = "0.30"
 serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
 serde_json = "1.0"

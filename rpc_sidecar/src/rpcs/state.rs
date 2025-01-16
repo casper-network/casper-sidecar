@@ -2,6 +2,7 @@
 
 mod auction_state;
 
+pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeight, ERA_VALIDATORS};
 use std::{collections::BTreeMap, str, sync::Arc};
 
 use crate::node_client::{EntityResponse, PackageResponse};
@@ -333,7 +334,7 @@ impl RpcWithParams for GetBalance {
 /// Params for "state_get_auction_info" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct GetAuctionInfoParams {
+pub(crate) struct GetAuctionInfoParams {
     /// The block identifier.
     pub block_identifier: BlockIdentifier,
 }
@@ -376,27 +377,12 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     ) -> Result<Self::ResponseResult, RpcError> {
         let block_identifier = maybe_params.map(|params| params.block_identifier);
         let block_header = common::get_block_header(&*node_client, block_identifier).await?;
-
         let state_identifier = block_identifier.map(GlobalStateIdentifier::from);
-        let legacy_bid_stored_values = node_client
-            .query_global_state_by_tag(state_identifier, KeyTag::Bid)
-            .await
-            .map_err(|err| Error::NodeRequest("auction bids", err))?
-            .into_iter()
-            .map(|value| {
-                Ok(BidKind::Unified(
-                    value.into_bid().ok_or(Error::InvalidAuctionState)?.into(),
-                ))
-            });
-        let bid_stored_values = node_client
-            .query_global_state_by_tag(state_identifier, KeyTag::BidAddr)
-            .await
-            .map_err(|err| Error::NodeRequest("auction bids", err))?
-            .into_iter()
-            .map(|value| value.into_bid_kind().ok_or(Error::InvalidAuctionState));
-        let bids = legacy_bid_stored_values
-            .chain(bid_stored_values)
-            .collect::<Result<Vec<_>, Error>>()?;
+        let state_identifier =
+            state_identifier.unwrap_or(GlobalStateIdentifier::BlockHeight(block_header.height()));
+
+        let is_not_condor = block_header.protocol_version().value().major == 1;
+        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_not_condor).await?;
 
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
@@ -412,15 +398,15 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_t()
             .map_err(|_| Error::InvalidAuctionState)?;
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
-        let maybe_version = get_seniorage_recipients_version(
+        let maybe_version = get_seigniorage_recipients_version(
             Arc::clone(&node_client),
-            state_identifier,
+            Some(state_identifier),
             auction_hash,
         )
         .await?;
         let (snapshot_value, _) = if let Some(result) = node_client
             .query_global_state(
-                state_identifier,
+                Some(state_identifier),
                 Key::addressable_entity_key(EntityKindTag::System, auction_hash),
                 vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
             )
@@ -431,7 +417,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         } else {
             node_client
                 .query_global_state(
-                    state_identifier,
+                    Some(state_identifier),
                     Key::Hash(auction_hash.value()),
                     vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
                 )
@@ -459,7 +445,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     }
 }
 
-async fn get_seniorage_recipients_version(
+pub(crate) async fn get_seigniorage_recipients_version(
     node_client: Arc<dyn NodeClient>,
     state_identifier: Option<GlobalStateIdentifier>,
     auction_hash: AddressableEntityHash,
@@ -479,7 +465,35 @@ async fn get_seniorage_recipients_version(
     }
 }
 
-async fn fetch_seigniorage_recipients_snapshot_version_key(
+pub(crate) async fn fetch_bid_kinds(
+    node_client: Arc<dyn NodeClient>,
+    state_identifier: GlobalStateIdentifier,
+    is_not_condor: bool,
+) -> Result<Vec<BidKind>, RpcError> {
+    let key_tag = if is_not_condor {
+        KeyTag::Bid
+    } else {
+        KeyTag::BidAddr
+    };
+    let stored_values = node_client
+        .query_global_state_by_tag(Some(state_identifier), key_tag)
+        .await
+        .map_err(|err| Error::NodeRequest("auction bids", err))?
+        .into_iter();
+    let res: Result<Vec<BidKind>, Error> = if is_not_condor {
+        stored_values
+            .map(|v| v.into_bid().ok_or(Error::InvalidAuctionState))
+            .map(|bid_res| bid_res.map(|bid| BidKind::Unified(bid.into())))
+            .collect()
+    } else {
+        stored_values
+            .map(|value| value.into_bid_kind().ok_or(Error::InvalidAuctionState))
+            .collect()
+    };
+    res.map_err(|e| e.into())
+}
+
+pub(crate) async fn fetch_seigniorage_recipients_snapshot_version_key(
     node_client: Arc<dyn NodeClient>,
     base_key: Key,
     state_identifier: Option<GlobalStateIdentifier>,
@@ -491,11 +505,13 @@ async fn fetch_seigniorage_recipients_snapshot_version_key(
             vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_owned()],
         )
         .await
-        .map(|result| result.and_then(unwrap_seniorage_recipients_result))
+        .map(|result| result.and_then(unwrap_seigniorage_recipients_result))
         .map_err(|err| Error::NodeRequest("auction snapshot", err))
 }
 
-fn unwrap_seniorage_recipients_result(query_result: GlobalStateQueryResult) -> Option<u8> {
+pub(crate) fn unwrap_seigniorage_recipients_result(
+    query_result: GlobalStateQueryResult,
+) -> Option<u8> {
     let (version_value, _) = query_result.into_inner();
     let maybe_cl_value = version_value.into_cl_value();
     match maybe_cl_value {
@@ -1352,16 +1368,16 @@ impl RpcWithParams for GetTrie {
     }
 }
 
-fn era_validators_from_snapshot(
+pub(crate) fn era_validators_from_snapshot(
     snapshot: CLValue,
     maybe_version: Option<u8>,
 ) -> Result<EraValidators, RpcError> {
     if maybe_version.is_some() {
         //handle as condor
         //TODO add some context to the error
-        let seniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
+        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
             snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
-        Ok(seniorage
+        Ok(seigniorage
             .into_iter()
             .map(|(era_id, recipients)| {
                 let validator_weights = recipients
@@ -1376,9 +1392,9 @@ fn era_validators_from_snapshot(
     } else {
         //handle as pre-condor
         //TODO add some context to the error
-        let seniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
+        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
             snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
-        Ok(seniorage
+        Ok(seigniorage
             .into_iter()
             .map(|(era_id, recipients)| {
                 let validator_weights = recipients
@@ -1618,8 +1634,8 @@ mod tests {
                             }
                         ) =>
                     {
-                        let response = match req.clone().destructure() {
-                            (None, GlobalStateEntityQualifier::Item { base_key: _, path })
+                        let response: BinaryResponse = match req.clone().destructure() {
+                            (_, GlobalStateEntityQualifier::Item { base_key: _, path })
                                 if path == vec!["seigniorage_recipients_snapshot_version"] =>
                             {
                                 let result = GlobalStateQueryResult::new(
@@ -1672,7 +1688,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    vec![bid, BidKind::Unified(legacy_bid.into())]
+                    vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
@@ -1803,7 +1819,7 @@ mod tests {
                         ) =>
                     {
                         match req.clone().destructure() {
-                            (None, GlobalStateEntityQualifier::Item { base_key: _, path })
+                            (_, GlobalStateEntityQualifier::Item { base_key: _, path })
                                 if path == vec!["seigniorage_recipients_snapshot_version"] =>
                             {
                                 Ok(BinaryResponseAndRequest::new(
@@ -1858,7 +1874,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    vec![bid, BidKind::Unified(legacy_bid.into())]
+                    vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
