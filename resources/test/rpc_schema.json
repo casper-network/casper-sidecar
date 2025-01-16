@@ -8574,13 +8574,13 @@
           "validator_weights": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/JsonValidatorWeights"
+              "$ref": "#/components/schemas/JsonValidatorWeight"
             }
           }
         },
         "additionalProperties": false
       },
-      "JsonValidatorWeights": {
+      "JsonValidatorWeight": {
         "description": "A validator's weight.",
         "type": "object",
         "required": [
