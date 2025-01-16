@@ -2481,7 +2481,7 @@
             },
             "auction_state": {
               "description": "The auction state.",
-              "$ref": "#/components/schemas/AuctionState"
+              "$ref": "#/components/schemas/AuctionStateV2"
             }
           },
           "additionalProperties": false
@@ -8628,6 +8628,47 @@
             ]
           }
         }
+      },
+      "AuctionStateV2": {
+        "description": "Data structure summarizing auction contract data.",
+        "type": "object",
+        "required": [
+          "bids",
+          "block_height",
+          "era_validators",
+          "state_root_hash"
+        ],
+        "properties": {
+          "state_root_hash": {
+            "description": "Global state hash.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              }
+            ]
+          },
+          "block_height": {
+            "description": "Block height.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "era_validators": {
+            "description": "Era validators.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonEraValidators"
+            }
+          },
+          "bids": {
+            "description": "All bids.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BidKindWrapper"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "BidKindWrapper": {
         "type": "object",

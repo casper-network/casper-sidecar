@@ -31,7 +31,7 @@ num-traits = { version = "0.2.10", default-features = false }
 once_cell.workspace = true
 portpicker = "0.1.1"
 rand = "0.8.3"
-schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
+schemars = { version = "0.8.21", features = ["preserve_order", "impl_json_schema"] }
 serde = { workspace = true, default-features = true, features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde-map-to-array = "1.1.0"

@@ -186,6 +186,7 @@ impl BidKindWrapper {
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "AuctionStateV2")]
 pub(crate) struct AuctionState {
     /// Global state hash.
     state_root_hash: Digest,
