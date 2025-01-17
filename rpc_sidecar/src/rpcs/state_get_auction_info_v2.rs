@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::common;
 use super::state::{
-    era_validators_from_snapshot, fetch_bid_kinds, get_seigniorage_recipients_version,
-    GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeight,
+    era_validators_from_snapshot, fetch_bid_kinds, GetAuctionInfoParams, JsonEraValidators,
+    JsonValidatorWeight,
 };
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
@@ -122,12 +122,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_t()
             .map_err(|_| Error::InvalidAuctionState)?;
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
-        let maybe_version = get_seigniorage_recipients_version(
-            Arc::clone(&node_client),
-            Some(state_identifier),
-            auction_hash,
-        )
-        .await?;
+
         let (snapshot_value, _) = if let Some(result) = node_client
             .query_global_state(
                 Some(state_identifier),
@@ -154,7 +149,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?;
 
-        let validators = era_validators_from_snapshot(snapshot, maybe_version)?;
+        let validators = era_validators_from_snapshot(snapshot, is_not_condor)?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
@@ -301,16 +296,6 @@ mod tests {
             .add_system_registry(state_identifier, registry)
             .await;
         binary_port_mock
-            .add_seigniorage_recipients_version_addressable_entity(
-                None,
-                state_identifier,
-                auction_hash,
-            )
-            .await;
-        binary_port_mock
-            .add_seigniorage_recipients_version_key_hash(None, state_identifier, auction_hash)
-            .await;
-        binary_port_mock
             .add_seigniorage_snapshot_under_addressable_entity(state_identifier, auction_hash, None)
             .await;
         binary_port_mock
@@ -389,16 +374,6 @@ mod tests {
             .add_system_registry(state_identifier, registry)
             .await;
         binary_port_mock
-            .add_seigniorage_recipients_version_addressable_entity(
-                None,
-                state_identifier,
-                auction_hash,
-            )
-            .await;
-        binary_port_mock
-            .add_seigniorage_recipients_version_key_hash(Some(2), state_identifier, auction_hash)
-            .await;
-        binary_port_mock
             .add_seigniorage_snapshot_under_addressable_entity(state_identifier, auction_hash, None)
             .await;
         binary_port_mock
@@ -470,13 +445,6 @@ mod tests {
             .await;
         binary_port_mock
             .add_system_registry(state_identifier, registry)
-            .await;
-        binary_port_mock
-            .add_seigniorage_recipients_version_addressable_entity(
-                Some(2),
-                state_identifier,
-                auction_hash,
-            )
             .await;
         binary_port_mock
             .add_seigniorage_snapshot_under_addressable_entity(

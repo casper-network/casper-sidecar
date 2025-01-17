@@ -22,7 +22,7 @@ use super::{
 };
 use auction_state::AuctionState;
 use casper_binary_port::{
-    DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier, GlobalStateQueryResult,
+    DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier,
     PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
 };
 #[cfg(test)]
@@ -36,7 +36,6 @@ use casper_types::{
         auction::{
             BidKind, EraValidators, SeigniorageRecipientsV1, SeigniorageRecipientsV2,
             ValidatorWeights, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
         },
         AUCTION,
     },
@@ -398,12 +397,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_t()
             .map_err(|_| Error::InvalidAuctionState)?;
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionState)?;
-        let maybe_version = get_seigniorage_recipients_version(
-            Arc::clone(&node_client),
-            Some(state_identifier),
-            auction_hash,
-        )
-        .await?;
+
         let (snapshot_value, _) = if let Some(result) = node_client
             .query_global_state(
                 Some(state_identifier),
@@ -430,7 +424,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?;
 
-        let validators = era_validators_from_snapshot(snapshot, maybe_version)?;
+        let validators = era_validators_from_snapshot(snapshot, is_not_condor)?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
@@ -442,26 +436,6 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             api_version: CURRENT_API_VERSION,
             auction_state,
         })
-    }
-}
-
-pub(crate) async fn get_seigniorage_recipients_version(
-    node_client: Arc<dyn NodeClient>,
-    state_identifier: Option<GlobalStateIdentifier>,
-    auction_hash: AddressableEntityHash,
-) -> Result<Option<u8>, Error> {
-    let key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
-    if let Some(result) = fetch_seigniorage_recipients_snapshot_version_key(
-        Arc::clone(&node_client),
-        key,
-        state_identifier,
-    )
-    .await?
-    {
-        Ok(Some(result))
-    } else {
-        let key = Key::Hash(auction_hash.value());
-        fetch_seigniorage_recipients_snapshot_version_key(node_client, key, state_identifier).await
     }
 }
 
@@ -491,36 +465,6 @@ pub(crate) async fn fetch_bid_kinds(
             .collect()
     };
     res.map_err(|e| e.into())
-}
-
-pub(crate) async fn fetch_seigniorage_recipients_snapshot_version_key(
-    node_client: Arc<dyn NodeClient>,
-    base_key: Key,
-    state_identifier: Option<GlobalStateIdentifier>,
-) -> Result<Option<u8>, Error> {
-    node_client
-        .query_global_state(
-            state_identifier,
-            base_key,
-            vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_owned()],
-        )
-        .await
-        .map(|result| result.and_then(unwrap_seigniorage_recipients_result))
-        .map_err(|err| Error::NodeRequest("auction snapshot", err))
-}
-
-pub(crate) fn unwrap_seigniorage_recipients_result(
-    query_result: GlobalStateQueryResult,
-) -> Option<u8> {
-    let (version_value, _) = query_result.into_inner();
-    let maybe_cl_value = version_value.into_cl_value();
-    match maybe_cl_value {
-        Some(cl_value) => {
-            let a = cl_value.into_t();
-            Some(a.unwrap())
-        }
-        None => None,
-    }
 }
 
 /// Identifier of an account.
@@ -1370,12 +1314,12 @@ impl RpcWithParams for GetTrie {
 
 pub(crate) fn era_validators_from_snapshot(
     snapshot: CLValue,
-    maybe_version: Option<u8>,
+    is_not_condor: bool,
 ) -> Result<EraValidators, RpcError> {
-    if maybe_version.is_some() {
-        //handle as condor
+    if is_not_condor {
+        //handle as pre-condor
         //TODO add some context to the error
-        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
+        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
             snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
         Ok(seigniorage
             .into_iter()
@@ -1390,9 +1334,9 @@ pub(crate) fn era_validators_from_snapshot(
             })
             .collect())
     } else {
-        //handle as pre-condor
+        //handle as condor
         //TODO add some context to the error
-        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
+        let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
             snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
         Ok(seigniorage
             .into_iter()
