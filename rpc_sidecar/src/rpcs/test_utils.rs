@@ -8,10 +8,7 @@ use casper_binary_port::{
 use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr::ToBytes,
-    system::auction::{
-        Bid, BidKind, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
-    },
+    system::auction::{Bid, BidKind, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
     AddressableEntityHash, BlockHeader, CLValue, GlobalStateIdentifier, Key, KeyTag,
     ProtocolVersion, SemVer, StoredValue,
 };
@@ -97,54 +94,6 @@ impl BinaryPortMock {
 
         let res = BinaryResponse::from_value(
             GlobalStateQueryResult::new(stored_value, vec![]),
-            *PROTOCOL_VERSION,
-        );
-        self.when_then(BinaryRequest::Get(req), res).await;
-    }
-
-    pub async fn add_seigniorage_recipients_version_addressable_entity(
-        &mut self,
-        maybe_seigniorage_recipients_version: Option<u8>,
-        state_identifier: Option<GlobalStateIdentifier>,
-        auction_hash: AddressableEntityHash,
-    ) {
-        let base_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
-        let req = GetRequest::State(Box::new(GlobalStateRequest::new(
-            state_identifier,
-            GlobalStateEntityQualifier::Item {
-                base_key,
-                path: vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_owned()],
-            },
-        )));
-        let res = BinaryResponse::from_option(
-            maybe_seigniorage_recipients_version.map(|v| {
-                let cl_value = CLValue::from_t(v).unwrap();
-                GlobalStateQueryResult::new(StoredValue::CLValue(cl_value), vec![])
-            }),
-            *PROTOCOL_VERSION,
-        );
-        self.when_then(BinaryRequest::Get(req), res).await;
-    }
-
-    pub async fn add_seigniorage_recipients_version_key_hash(
-        &mut self,
-        maybe_seigniorage_recipients_version: Option<u8>,
-        state_identifier: Option<GlobalStateIdentifier>,
-        auction_hash: AddressableEntityHash,
-    ) {
-        let base_key = Key::Hash(auction_hash.value());
-        let req = GetRequest::State(Box::new(GlobalStateRequest::new(
-            state_identifier,
-            GlobalStateEntityQualifier::Item {
-                base_key,
-                path: vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_owned()],
-            },
-        )));
-        let res = BinaryResponse::from_option(
-            maybe_seigniorage_recipients_version.map(|v| {
-                let cl_value = CLValue::from_t(v).unwrap();
-                GlobalStateQueryResult::new(StoredValue::CLValue(cl_value), vec![])
-            }),
             *PROTOCOL_VERSION,
         );
         self.when_then(BinaryRequest::Get(req), res).await;
