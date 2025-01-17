@@ -105,8 +105,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let state_identifier =
             state_identifier.unwrap_or(GlobalStateIdentifier::BlockHeight(block_header.height()));
 
-        let is_not_condor = block_header.protocol_version().value().major == 1;
-        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_not_condor).await?;
+        let is_1x = block_header.protocol_version().value().major == 1;
+        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_1x).await?;
 
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
@@ -149,7 +149,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?;
 
-        let validators = era_validators_from_snapshot(snapshot, is_not_condor)?;
+        let validators = era_validators_from_snapshot(snapshot, is_1x)?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),

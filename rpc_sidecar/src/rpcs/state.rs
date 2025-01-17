@@ -380,8 +380,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let state_identifier =
             state_identifier.unwrap_or(GlobalStateIdentifier::BlockHeight(block_header.height()));
 
-        let is_not_condor = block_header.protocol_version().value().major == 1;
-        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_not_condor).await?;
+        let is_1x = block_header.protocol_version().value().major == 1;
+        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_1x).await?;
 
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
@@ -424,7 +424,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?;
 
-        let validators = era_validators_from_snapshot(snapshot, is_not_condor)?;
+        let validators = era_validators_from_snapshot(snapshot, is_1x)?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
@@ -442,19 +442,15 @@ impl RpcWithOptionalParams for GetAuctionInfo {
 pub(crate) async fn fetch_bid_kinds(
     node_client: Arc<dyn NodeClient>,
     state_identifier: GlobalStateIdentifier,
-    is_not_condor: bool,
+    is_1x: bool,
 ) -> Result<Vec<BidKind>, RpcError> {
-    let key_tag = if is_not_condor {
-        KeyTag::Bid
-    } else {
-        KeyTag::BidAddr
-    };
+    let key_tag = if is_1x { KeyTag::Bid } else { KeyTag::BidAddr };
     let stored_values = node_client
         .query_global_state_by_tag(Some(state_identifier), key_tag)
         .await
         .map_err(|err| Error::NodeRequest("auction bids", err))?
         .into_iter();
-    let res: Result<Vec<BidKind>, Error> = if is_not_condor {
+    let res: Result<Vec<BidKind>, Error> = if is_1x {
         stored_values
             .map(|v| v.into_bid().ok_or(Error::InvalidAuctionState))
             .map(|bid_res| bid_res.map(|bid| BidKind::Unified(bid.into())))
@@ -1314,9 +1310,9 @@ impl RpcWithParams for GetTrie {
 
 pub(crate) fn era_validators_from_snapshot(
     snapshot: CLValue,
-    is_not_condor: bool,
+    is_1x: bool,
 ) -> Result<EraValidators, RpcError> {
-    if is_not_condor {
+    if is_1x {
         //handle as pre-condor
         //TODO add some context to the error
         let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
