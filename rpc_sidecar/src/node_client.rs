@@ -747,6 +747,24 @@ pub enum Error {
     MalformedBinaryRequestHeader,
     #[error("malformed binary request")]
     MalformedBinaryRequest,
+    #[error("not found")]
+    NotFound,
+    #[error("header has unsupported protocol version")]
+    HeaderHasUnsupportedProtocolVersion,
+    #[error("node reported internal error")]
+    InternalNodeError,
+    #[error("bad request")]
+    BadRequest,
+    #[error("unsupported request")]
+    UnsupportedRequest,
+    #[error("dictionary URef not found")]
+    DictionaryURefNotFound,
+    #[error("no complete blocks")]
+    NoCompleteBlocks,
+    #[error("gas price tolerance too low")]
+    GasPriceToleranceTooLow,
+    #[error("received v1 transaction for speculative execution")]
+    ReceivedV1Transaction,
 }
 
 impl Error {
@@ -852,10 +870,22 @@ impl Error {
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
-            Ok(err) => Self::UnexpectedNodeError {
-                message: err.to_string(),
-                code,
-            },
+            Ok(ErrorCode::NotFound) => Self::NotFound,
+            Ok(ErrorCode::UnsupportedProtocolVersion) => Self::HeaderHasUnsupportedProtocolVersion,
+            Ok(ErrorCode::InternalError) => Self::InternalNodeError,
+            Ok(ErrorCode::BadRequest) => Self::BadRequest,
+            Ok(ErrorCode::UnsupportedRequest) => Self::UnsupportedRequest,
+            Ok(ErrorCode::DictionaryURefNotFound) => Self::DictionaryURefNotFound,
+            Ok(ErrorCode::NoCompleteBlocks) => Self::NoCompleteBlocks,
+            Ok(ErrorCode::GasPriceToleranceTooLow) => Self::GasPriceToleranceTooLow,
+            Ok(ErrorCode::ReceivedV1Transaction) => Self::ReceivedV1Transaction,
+            Ok(ErrorCode::NoError) => {
+                //This code shouldn't be passed in an error scenario
+                Self::UnexpectedNodeError {
+                    message: "Received unexpected 'NoError' error code".to_string(),
+                    code: ErrorCode::NoError as u16,
+                }
+            }
             Err(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,
@@ -1811,6 +1841,42 @@ mod tests {
         assert!(matches!(
             Error::from_error_code(ErrorCode::MalformedBinaryRequest as u16),
             Error::MalformedBinaryRequest
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::NotFound as u16),
+            Error::NotFound
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::UnsupportedProtocolVersion as u16),
+            Error::HeaderHasUnsupportedProtocolVersion
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InternalError as u16),
+            Error::InternalNodeError
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::BadRequest as u16),
+            Error::BadRequest
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::UnsupportedRequest as u16),
+            Error::UnsupportedRequest
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::DictionaryURefNotFound as u16),
+            Error::DictionaryURefNotFound
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::NoCompleteBlocks as u16),
+            Error::NoCompleteBlocks
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::GasPriceToleranceTooLow as u16),
+            Error::GasPriceToleranceTooLow
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::ReceivedV1Transaction as u16),
+            Error::ReceivedV1Transaction
         ));
     }
 }
