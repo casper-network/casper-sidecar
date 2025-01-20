@@ -523,6 +523,30 @@ pub enum InvalidTransactionOrDeploy {
     /// Invalid transaction lane
     #[error("invalid transaction lane")]
     InvalidTransactionInvalidTransactionLane,
+    #[error("expected named arguments")]
+    ExpectedNamedArguments,
+    #[error("invalid transaction runtime")]
+    InvalidTransactionRuntime,
+    #[error("couldn't associate a transaction lane with the transaction")]
+    InvalidTransactionNoWasmLaneMatches,
+    #[error("entry point must be 'call'")]
+    InvalidTransactionEntryPointMustBeCall,
+    #[error("One of the payloads field cannot be deserialized")]
+    InvalidTransactionCannotDeserializeField,
+    #[error("Can't calculate hash of the payload fields")]
+    InvalidTransactionCannotCalculateFieldsHash,
+    #[error("Unexpected fields in payload")]
+    InvalidTransactionUnexpectedFields,
+    #[error("expected bytes arguments")]
+    InvalidTransactionExpectedBytesArguments,
+    #[error("Missing seed field in transaction")]
+    InvalidTransactionMissingSeed,
+    #[error("Pricing mode not supported")]
+    PricingModeNotSupported,
+    #[error("Gas limit not supported")]
+    InvalidDeployGasLimitNotSupported,
+    #[error("Invalid runtime for Transaction::Deploy")]
+    InvalidDeployInvalidRuntime,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -634,6 +658,30 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionOrDeployUnspecified => {
                 Self::TransactionOrDeployUnspecified
             }
+            ErrorCode::ExpectedNamedArguments => Self::ExpectedNamedArguments,
+            ErrorCode::InvalidTransactionRuntime => Self::InvalidTransactionRuntime,
+            ErrorCode::InvalidTransactionNoWasmLaneMatches => {
+                Self::InvalidTransactionNoWasmLaneMatches
+            }
+            ErrorCode::InvalidTransactionEntryPointMustBeCall => {
+                Self::InvalidTransactionEntryPointMustBeCall
+            }
+            ErrorCode::InvalidTransactionCannotDeserializeField => {
+                Self::InvalidTransactionCannotDeserializeField
+            }
+            ErrorCode::InvalidTransactionCannotCalculateFieldsHash => {
+                Self::InvalidTransactionCannotCalculateFieldsHash
+            }
+            ErrorCode::InvalidTransactionUnexpectedFields => {
+                Self::InvalidTransactionUnexpectedFields
+            }
+            ErrorCode::InvalidTransactionExpectedBytesArguments => {
+                Self::InvalidTransactionExpectedBytesArguments
+            }
+            ErrorCode::InvalidTransactionMissingSeed => Self::InvalidTransactionMissingSeed,
+            ErrorCode::PricingModeNotSupported => Self::PricingModeNotSupported,
+            ErrorCode::InvalidDeployGasLimitNotSupported => Self::InvalidDeployGasLimitNotSupported,
+            ErrorCode::InvalidDeployInvalidRuntime => Self::InvalidDeployInvalidRuntime,
             _ => Self::TransactionOrDeployUnspecified,
         }
     }
@@ -687,6 +735,18 @@ pub enum Error {
     BinaryProtocolVersionMismatch,
     #[error("request was throttled by the node")]
     RequestThrottled,
+    #[error("malformed information request")]
+    MalformedInformationRequest,
+    #[error("malformed version bytes in header of binary request")]
+    MalformedBinaryVersion,
+    #[error("malformed protocol version")]
+    MalformedProtocolVersion,
+    #[error("malformed transfer record key")]
+    TransferRecordMalformedKey,
+    #[error("malformed header of binary request")]
+    MalformedBinaryRequestHeader,
+    #[error("malformed binary request")]
+    MalformedBinaryRequest,
 }
 
 impl Error {
@@ -768,9 +828,27 @@ impl Error {
                 | ErrorCode::InvalidTransactionEntryPointCannotBeCall
                 | ErrorCode::InvalidTransactionInvalidTransactionLane
                 | ErrorCode::InvalidTransactionUnspecified
-                | ErrorCode::InvalidTransactionOrDeployUnspecified),
+                | ErrorCode::InvalidTransactionOrDeployUnspecified
+                | ErrorCode::ExpectedNamedArguments
+                | ErrorCode::InvalidTransactionRuntime
+                | ErrorCode::InvalidTransactionNoWasmLaneMatches
+                | ErrorCode::InvalidTransactionEntryPointMustBeCall
+                | ErrorCode::InvalidTransactionCannotDeserializeField
+                | ErrorCode::InvalidTransactionCannotCalculateFieldsHash
+                | ErrorCode::InvalidTransactionUnexpectedFields
+                | ErrorCode::InvalidTransactionExpectedBytesArguments
+                | ErrorCode::InvalidTransactionMissingSeed
+                | ErrorCode::PricingModeNotSupported
+                | ErrorCode::InvalidDeployGasLimitNotSupported
+                | ErrorCode::InvalidDeployInvalidRuntime),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(ErrorCode::RequestThrottled) => Self::RequestThrottled,
+            Ok(ErrorCode::MalformedInformationRequest) => Self::MalformedInformationRequest,
+            Ok(ErrorCode::MalformedBinaryVersion) => Self::MalformedBinaryVersion,
+            Ok(ErrorCode::MalformedProtocolVersion) => Self::MalformedProtocolVersion,
+            Ok(ErrorCode::TransferRecordMalformedKey) => Self::TransferRecordMalformedKey,
+            Ok(ErrorCode::MalformedBinaryRequestHeader) => Self::MalformedBinaryRequestHeader,
+            Ok(ErrorCode::MalformedBinaryRequest) => Self::MalformedBinaryRequest,
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
@@ -1640,5 +1718,99 @@ mod tests {
             .unwrap_err();
         // Expect 'TooManyMismatchResponses' error
         assert!(matches!(res, Error::TooManyMismatchedResponses { max } if max == LIMIT));
+    }
+
+    #[test]
+    fn should_map_errors() {
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionOrDeployUnspecified as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionOrDeployUnspecified)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::ExpectedNamedArguments as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::ExpectedNamedArguments)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionRuntime as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::InvalidTransactionRuntime)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionNoWasmLaneMatches as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionNoWasmLaneMatches
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionEntryPointMustBeCall as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionEntryPointMustBeCall
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionCannotDeserializeField as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionCannotDeserializeField
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionCannotCalculateFieldsHash as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionCannotCalculateFieldsHash
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionUnexpectedFields as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionUnexpectedFields
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionExpectedBytesArguments as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidTransactionExpectedBytesArguments
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionMissingSeed as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::InvalidTransactionMissingSeed)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::PricingModeNotSupported as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::PricingModeNotSupported)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidDeployGasLimitNotSupported as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::InvalidDeployGasLimitNotSupported
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidDeployInvalidRuntime as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::InvalidDeployInvalidRuntime)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::MalformedInformationRequest as u16),
+            Error::MalformedInformationRequest
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::MalformedBinaryVersion as u16),
+            Error::MalformedBinaryVersion
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::MalformedProtocolVersion as u16),
+            Error::MalformedProtocolVersion
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::TransferRecordMalformedKey as u16),
+            Error::TransferRecordMalformedKey
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::MalformedBinaryRequestHeader as u16),
+            Error::MalformedBinaryRequestHeader
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::MalformedBinaryRequest as u16),
+            Error::MalformedBinaryRequest
+        ));
     }
 }
