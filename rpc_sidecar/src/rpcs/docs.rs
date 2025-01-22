@@ -487,9 +487,10 @@ impl RpcWithoutParams for RpcDiscover {
 }
 
 mod doc_example_impls {
+    #[allow(deprecated)]
+    use casper_types::AuctionState;
     use casper_types::{
-        account::Account, AuctionState, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey,
-        Timestamp, Transaction,
+        account::Account, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey, Timestamp, Transaction,
     };
 
     use super::DocExample;
@@ -536,6 +537,7 @@ mod doc_example_impls {
         }
     }
 
+    #[allow(deprecated)]
     impl DocExample for AuctionState {
         fn doc_example() -> &'static Self {
             AuctionState::example()

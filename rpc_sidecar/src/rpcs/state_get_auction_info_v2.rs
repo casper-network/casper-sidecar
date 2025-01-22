@@ -246,6 +246,7 @@ mod tests {
         },
         SUPPORTED_PROTOCOL_VERSION,
     };
+    use casper_binary_port::InformationRequest;
     use casper_types::{
         system::{
             auction::{
@@ -287,7 +288,7 @@ mod tests {
             block_header.height(),
         ));
         binary_port_mock
-            .add_block_header_req_res(block_header.clone())
+            .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
             .add_bids_fetch_res(bids.clone(), state_identifier)
@@ -365,7 +366,7 @@ mod tests {
         let bid_kind_1 = BidKind::Validator(Box::new(validator_bid));
         let bid_kinds = vec![bid_kind_1];
         binary_port_mock
-            .add_block_header_req_res(block_header.clone())
+            .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
             .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)
@@ -438,7 +439,7 @@ mod tests {
         let bid_kind_1 = BidKind::Validator(Box::new(validator_bid));
         let bid_kinds = vec![bid_kind_1];
         binary_port_mock
-            .add_block_header_req_res(block_header.clone())
+            .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
             .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)

@@ -2332,7 +2332,7 @@
                   "EraInfo": {
                     "seigniorage_allocations": [
                       {
-                        "Delegator": {
+                        "DelegatorKind": {
                           "delegator_kind": {
                             "PublicKey": "01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18"
                           },
@@ -2611,7 +2611,7 @@
                   "EraInfo": {
                     "seigniorage_allocations": [
                       {
-                        "Delegator": {
+                        "DelegatorKind": {
                           "delegator_kind": {
                             "PublicKey": "01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18"
                           },
@@ -4278,12 +4278,57 @@
                 "type": "object",
                 "required": [
                   "amount",
+                  "delegator_public_key",
+                  "validator_public_key"
+                ],
+                "properties": {
+                  "delegator_public_key": {
+                    "description": "Delegator's public key",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/PublicKey"
+                      }
+                    ]
+                  },
+                  "validator_public_key": {
+                    "description": "Validator's public key",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/PublicKey"
+                      }
+                    ]
+                  },
+                  "amount": {
+                    "description": "Allocated amount",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/U512"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Info about a seigniorage allocation for a delegator",
+            "type": "object",
+            "required": [
+              "DelegatorKind"
+            ],
+            "properties": {
+              "DelegatorKind": {
+                "type": "object",
+                "required": [
+                  "amount",
                   "delegator_kind",
                   "validator_public_key"
                 ],
                 "properties": {
                   "delegator_kind": {
-                    "description": "Delegator's public key",
+                    "description": "Delegator kind",
                     "allOf": [
                       {
                         "$ref": "#/components/schemas/DelegatorKind"

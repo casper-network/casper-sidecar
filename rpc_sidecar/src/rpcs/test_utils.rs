@@ -8,7 +8,7 @@ use casper_binary_port::{
 use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr::ToBytes,
-    system::auction::{Bid, BidKind, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
+    system::auction::{Bid, BidKind, EraInfo, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
     AddressableEntityHash, BlockHeader, CLValue, GlobalStateIdentifier, Key, KeyTag,
     ProtocolVersion, SemVer, StoredValue,
 };
@@ -31,8 +31,33 @@ impl BinaryPortMock {
         }
     }
 
-    pub async fn add_block_header_req_res(&mut self, block_header: BlockHeader) {
-        let get_request = InformationRequest::BlockHeader(None)
+    pub async fn add_era_info_req_res(
+        &mut self,
+        era_info: EraInfo,
+        state_identifier: Option<GlobalStateIdentifier>,
+    ) {
+        let req = GlobalStateRequest::new(
+            state_identifier,
+            GlobalStateEntityQualifier::Item {
+                base_key: Key::EraSummary,
+                path: vec![],
+            },
+        );
+        let req = BinaryRequest::Get(GetRequest::State(Box::new(req)));
+        let stored_value = StoredValue::EraInfo(era_info);
+        let res = BinaryResponse::from_value(
+            GlobalStateQueryResult::new(stored_value, vec![]),
+            *PROTOCOL_VERSION,
+        );
+        self.when_then(req, res).await;
+    }
+
+    pub async fn add_block_header_req_res(
+        &mut self,
+        block_header: BlockHeader,
+        information_request: InformationRequest,
+    ) {
+        let get_request = information_request
             .try_into()
             .expect("should create request");
         let req = BinaryRequest::Get(get_request);

@@ -483,10 +483,7 @@ fn parse_url_props(
         Some(filter) => filter,
         None => return Err(create_404(enable_legacy_filters)),
     };
-    let start_from = match parse_query(query) {
-        Ok(maybe_id) => maybe_id,
-        Err(error_response) => return Err(error_response),
-    };
+    let start_from = parse_query(query)?;
     Ok((event_filter, stream_filter, start_from, is_legacy_filter))
 }
 
@@ -949,6 +946,9 @@ mod tests {
                 ))
                 .collect();
 
+        let ends_with_id = Regex::new(r"\nid:\d*$").unwrap();
+        let starts_with_data = Regex::new(r"^data:").unwrap();
+
         // Run three cases; where only a single event is duplicated, where five are duplicated, and
         // where the whole initial stream (except the `ApiVersion`) is duplicated.
         for duplicate_count in &[1, 5, NUM_INITIAL_EVENTS] {
@@ -1016,8 +1016,6 @@ mod tests {
                 let expected_data = deduplicated_event.data.clone().unwrap();
                 let mut received_event_str = received_event.to_string().trim().to_string();
 
-                let ends_with_id = Regex::new(r"\nid:\d*$").unwrap();
-                let starts_with_data = Regex::new(r"^data:").unwrap();
                 if let Some(id) = deduplicated_event.id {
                     assert!(received_event_str.ends_with(format!("\nid:{}", id).as_str()));
                 } else {
