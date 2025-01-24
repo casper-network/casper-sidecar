@@ -402,14 +402,17 @@ async fn get_era_summary_by_block(
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::{rpcs::test_utils::BinaryPortMock, ClientError, SUPPORTED_PROTOCOL_VERSION};
     use casper_binary_port::{
         BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-        GlobalStateEntityQualifier, GlobalStateQueryResult, InformationRequestTag, RecordId,
+        GlobalStateEntityQualifier, GlobalStateQueryResult, InformationRequest,
+        InformationRequestTag, RecordId,
     };
     use casper_types::{
-        system::auction::EraInfo, testing::TestRng, Block, BlockSignaturesV1, BlockSignaturesV2,
-        ChainNameDigest, SignedBlock, TestBlockBuilder, TestBlockV1Builder,
+        system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
+        testing::TestRng,
+        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, PublicKey,
+        SignedBlock, TestBlockBuilder, TestBlockV1Builder, U512,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -602,27 +605,41 @@ mod tests {
     #[tokio::test]
     async fn should_read_block_era_info_by_switch_block() {
         let rng = &mut TestRng::new();
-        let block = TestBlockBuilder::new().switch_block(true).build(rng);
+        let mut binary_port_mock = BinaryPortMock::new();
 
-        let resp = GetEraInfoBySwitchBlock::do_handle_request(
-            Arc::new(ValidEraSummaryMock {
-                block: Block::V2(block.clone()),
-                expect_no_block_identifier: true,
-            }),
-            None,
-        )
-        .await
-        .expect("should handle request");
+        let block_header = TestBlockV1Builder::new()
+            .switch_block(true)
+            .build_versioned(rng)
+            .clone_header();
+        binary_port_mock
+            .add_block_header_req_res(
+                block_header.clone(),
+                InformationRequest::LatestSwitchBlockHeader,
+            )
+            .await;
+        let era_info = example_era_info();
+        binary_port_mock
+            .add_era_info_req_res(
+                era_info.clone(),
+                Some(GlobalStateIdentifier::StateRootHash(
+                    *block_header.state_root_hash(),
+                )),
+            )
+            .await;
+
+        let resp = GetEraInfoBySwitchBlock::do_handle_request(Arc::new(binary_port_mock), None)
+            .await
+            .expect("should handle request");
 
         assert_eq!(
             resp,
             GetEraInfoResult {
                 api_version: CURRENT_API_VERSION,
                 era_summary: Some(EraSummary {
-                    block_hash: *block.hash(),
-                    era_id: block.era_id(),
-                    stored_value: StoredValue::EraInfo(EraInfo::new()),
-                    state_root_hash: *block.state_root_hash(),
+                    block_hash: block_header.block_hash(),
+                    era_id: block_header.era_id(),
+                    stored_value: StoredValue::EraInfo(era_info),
+                    state_root_hash: *block_header.state_root_hash(),
                     merkle_proof: String::from("00000000"),
                 })
             }
@@ -632,15 +649,32 @@ mod tests {
     #[tokio::test]
     async fn should_read_block_era_info_by_switch_block_with_block_id() {
         let rng = &mut TestRng::new();
-        let block = TestBlockBuilder::new().switch_block(true).build(rng);
+        let mut binary_port_mock = BinaryPortMock::new();
+
+        let block_header = TestBlockV1Builder::new()
+            .switch_block(true)
+            .build_versioned(rng)
+            .clone_header();
+        binary_port_mock
+            .add_block_header_req_res(
+                block_header.clone(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(150))),
+            )
+            .await;
+        let era_info = example_era_info();
+        binary_port_mock
+            .add_era_info_req_res(
+                era_info.clone(),
+                Some(GlobalStateIdentifier::StateRootHash(
+                    *block_header.state_root_hash(),
+                )),
+            )
+            .await;
 
         let resp = GetEraInfoBySwitchBlock::do_handle_request(
-            Arc::new(ValidEraSummaryMock {
-                block: Block::V2(block.clone()),
-                expect_no_block_identifier: false,
-            }),
+            Arc::new(binary_port_mock),
             Some(GetEraInfoParams {
-                block_identifier: BlockIdentifier::Hash(*block.hash()),
+                block_identifier: BlockIdentifier::Height(150),
             }),
         )
         .await
@@ -651,10 +685,10 @@ mod tests {
             GetEraInfoResult {
                 api_version: CURRENT_API_VERSION,
                 era_summary: Some(EraSummary {
-                    block_hash: *block.hash(),
-                    era_id: block.era_id(),
-                    stored_value: StoredValue::EraInfo(EraInfo::new()),
-                    state_root_hash: *block.state_root_hash(),
+                    block_hash: block_header.block_hash(),
+                    era_id: block_header.era_id(),
+                    stored_value: StoredValue::EraInfo(era_info),
+                    state_root_hash: *block_header.state_root_hash(),
                     merkle_proof: String::from("00000000"),
                 })
             }
@@ -664,18 +698,21 @@ mod tests {
     #[tokio::test]
     async fn should_read_none_block_era_info_by_switch_block_for_non_switch() {
         let rng = &mut TestRng::new();
-        let block = TestBlockBuilder::new().switch_block(false).build(rng);
+        let mut binary_port_mock = BinaryPortMock::new();
 
-        let resp = GetEraInfoBySwitchBlock::do_handle_request(
-            Arc::new(ValidEraSummaryMock {
-                block: Block::V2(block.clone()),
-                expect_no_block_identifier: true,
-            }),
-            None,
-        )
-        .await
-        .expect("should handle request");
-
+        let block_header = TestBlockV1Builder::new()
+            .switch_block(false)
+            .build_versioned(rng)
+            .clone_header();
+        binary_port_mock
+            .add_block_header_req_res(
+                block_header.clone(),
+                InformationRequest::LatestSwitchBlockHeader,
+            )
+            .await;
+        let resp = GetEraInfoBySwitchBlock::do_handle_request(Arc::new(binary_port_mock), None)
+            .await
+            .expect("should handle request");
         assert_eq!(
             resp,
             GetEraInfoResult {
@@ -787,5 +824,35 @@ mod tests {
                 req => unimplemented!("unexpected request: {:?}", req),
             }
         }
+    }
+
+    fn example_era_info() -> EraInfo {
+        let delegator_amount = U512::from(1000);
+        let validator_amount = U512::from(2000);
+        let delegator_public_key = PublicKey::from_hex(
+            "01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18",
+        )
+        .unwrap();
+        let validator_public_key = PublicKey::from_hex(
+            "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876",
+        )
+        .unwrap();
+        let delegator_kind = DelegatorKind::PublicKey(delegator_public_key);
+        let delegator = SeigniorageAllocation::delegator_kind(
+            delegator_kind,
+            validator_public_key,
+            delegator_amount,
+        );
+        let validator = SeigniorageAllocation::validator(
+            PublicKey::from_hex(
+                "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876",
+            )
+            .unwrap(),
+            validator_amount,
+        );
+        let seigniorage_allocations = vec![delegator, validator];
+        let mut era_info = EraInfo::new();
+        *era_info.seigniorage_allocations_mut() = seigniorage_allocations;
+        era_info
     }
 }

@@ -15,6 +15,10 @@ use futures::{future, Stream, StreamExt};
 use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
+use once_cell::sync::Lazy;
+#[cfg(test)]
+use regex::Regex;
+#[cfg(test)]
 use serde::Serialize;
 #[cfg(test)]
 use serde_json::Value;
@@ -90,6 +94,12 @@ const SIGNATURES_FILTER: [EventFilter; 2] =
     [EventFilter::ApiVersion, EventFilter::FinalitySignature];
 /// The filter associated with `/events/sidecar` path.
 const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
+
+#[cfg(test)]
+static ENDS_WITH_ID_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\nid:\d*$").unwrap());
+#[cfg(test)]
+static STARTS_WITH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^data:").unwrap());
+
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
 pub type IsLegacyFilter = bool;
@@ -483,10 +493,7 @@ fn parse_url_props(
         Some(filter) => filter,
         None => return Err(create_404(enable_legacy_filters)),
     };
-    let start_from = match parse_query(query) {
-        Ok(maybe_id) => maybe_id,
-        Err(error_response) => return Err(error_response),
-    };
+    let start_from = parse_query(query)?;
     Ok((event_filter, stream_filter, start_from, is_legacy_filter))
 }
 
@@ -687,7 +694,6 @@ mod tests {
     use super::*;
     use casper_types::{testing::TestRng, TransactionHash};
     use rand::Rng;
-    use regex::Regex;
     use std::iter;
     #[cfg(feature = "additional-metrics")]
     use tokio::sync::mpsc::channel;
@@ -1016,17 +1022,15 @@ mod tests {
                 let expected_data = deduplicated_event.data.clone().unwrap();
                 let mut received_event_str = received_event.to_string().trim().to_string();
 
-                let ends_with_id = Regex::new(r"\nid:\d*$").unwrap();
-                let starts_with_data = Regex::new(r"^data:").unwrap();
                 if let Some(id) = deduplicated_event.id {
                     assert!(received_event_str.ends_with(format!("\nid:{}", id).as_str()));
                 } else {
-                    assert!(!ends_with_id.is_match(received_event_str.as_str()));
+                    assert!(!ENDS_WITH_ID_REGEX.is_match(received_event_str.as_str()));
                 };
-                received_event_str = ends_with_id
+                received_event_str = ENDS_WITH_ID_REGEX
                     .replace_all(received_event_str.as_str(), "")
                     .into_owned();
-                received_event_str = starts_with_data
+                received_event_str = STARTS_WITH_REGEX
                     .replace_all(received_event_str.as_str(), "")
                     .into_owned();
                 if is_legacy_endpoint {
