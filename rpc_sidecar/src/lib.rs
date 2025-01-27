@@ -11,7 +11,7 @@ use anyhow::Error;
 use casper_binary_port::{BinaryRequest, BinaryRequestHeader};
 use casper_types::bytesrepr::ToBytes;
 use casper_types::{bytesrepr, ProtocolVersion};
-pub use config::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
+pub use config::{FieldParseError, RpcServerConfig};
 pub use config::{NodeClientConfig, RpcConfig};
 use futures::future::BoxFuture;
 use futures::FutureExt;

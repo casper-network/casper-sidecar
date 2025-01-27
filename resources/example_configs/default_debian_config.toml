@@ -71,14 +71,10 @@ ip_address = '127.0.0.1'
 port = 7779
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
-# Maximum number of in-flight node requests.
-request_limit = 3
-# Number of node requests that can be buffered.
-request_buffer_size = 16
 # Timeout for a node request in seconds.
 message_timeout_secs = 30
 # Timeout specifying how long to wait for binary port client to be available.
-client_access_timeout_secs = 2
+client_access_timeout_secs = 10
 # The amount of time in milliseconds to wait between sending keepalive requests.
 keepalive_timeout_ms = 10_000
 

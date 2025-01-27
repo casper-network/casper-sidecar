@@ -1,7 +1,4 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    net::{IpAddr, Ipv4Addr},
-};
+use std::net::{IpAddr, Ipv4Addr};
 
 use datasize::DataSize;
 use serde::Deserialize;
@@ -21,32 +18,6 @@ const DEFAULT_QPS_LIMIT: u64 = 100;
 const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 /// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: &str = "";
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
-pub struct RpcServerConfigTarget {
-    pub main_server: RpcConfig,
-    pub speculative_exec_server: Option<SpeculativeExecConfig>,
-    pub node_client: NodeClientConfigTarget,
-}
-
-impl TryFrom<RpcServerConfigTarget> for RpcServerConfig {
-    type Error = FieldParseError;
-    fn try_from(value: RpcServerConfigTarget) -> Result<Self, Self::Error> {
-        let node_client = value.node_client.try_into().map_err(|e: FieldParseError| {
-            FieldParseError::ParseError {
-                field_name: "node_client",
-                error: e.to_string(),
-            }
-        })?;
-        Ok(RpcServerConfig {
-            main_server: value.main_server,
-            speculative_exec_server: value.speculative_exec_server,
-            node_client,
-        })
-    }
-}
 
 #[derive(Error, Debug)]
 pub enum FieldParseError {
@@ -116,10 +87,6 @@ const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
 const DEFAULT_MESSAGE_TIMEOUT_SECS: u64 = 30;
 /// Default timeout for client access.
 const DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS: u64 = 10;
-/// Default request limit.
-const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
-/// Default request buffer size.
-const DEFAULT_REQUEST_BUFFER_SIZE: usize = 16;
 /// Default exponential backoff base delay.
 const DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS: u64 = 1000;
 /// Default exponential backoff maximum delay.
@@ -128,6 +95,8 @@ const DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS: u64 = 64_000;
 const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 /// Default keep alive timeout milliseconds.
 const DEFAULT_KEEPALIVE_TIMEOUT_MS: u64 = 1_000;
+/// Default max attempts
+const DEFAULT_MAX_ATTEMPTS: u32 = 3;
 
 /// Node client configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
@@ -145,10 +114,6 @@ pub struct NodeClientConfig {
     /// Timeout specifying how long to wait for binary port client to be available.
     // Access to the client is synchronized.
     pub client_access_timeout_secs: u64,
-    /// Maximum number of in-flight node requests.
-    pub request_limit: u16,
-    /// Number of node requests that can be buffered.
-    pub request_buffer_size: usize,
     /// The amount of ms to wait between sending keepalive requests.
     pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
@@ -161,9 +126,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
             port: DEFAULT_NODE_CONNECT_PORT,
-            request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
-            request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
             keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
@@ -171,7 +134,7 @@ impl NodeClientConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
-                max_attempts: MaxAttempts::Infinite,
+                max_attempts: DEFAULT_MAX_ATTEMPTS,
             },
         }
     }
@@ -183,9 +146,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: localhost,
             port,
-            request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
-            request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
             keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
@@ -193,7 +154,7 @@ impl NodeClientConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
-                max_attempts: MaxAttempts::Infinite,
+                max_attempts: DEFAULT_MAX_ATTEMPTS,
             },
         }
     }
@@ -201,14 +162,12 @@ impl NodeClientConfig {
     /// Creates an instance of `NodeClientConfig` with specified listening port and maximum number
     /// of reconnection retries.
     #[cfg(any(feature = "testing", test))]
-    pub fn new_with_port_and_retries(port: u16, num_of_retries: usize) -> Self {
+    pub fn new_with_port_and_retries(port: u16, num_of_retries: u32) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
             ip_address: localhost,
             port,
-            request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
-            request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
             keepalive_timeout_ms: DEFAULT_KEEPALIVE_TIMEOUT_MS,
@@ -216,7 +175,7 @@ impl NodeClientConfig {
                 initial_delay_ms: 500,
                 max_delay_ms: 3000,
                 coefficient: 3,
-                max_attempts: MaxAttempts::Finite(num_of_retries),
+                max_attempts: num_of_retries,
             },
         }
     }
@@ -225,57 +184,6 @@ impl NodeClientConfig {
 impl Default for NodeClientConfig {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Node client configuration.
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
-pub struct NodeClientConfigTarget {
-    /// IP address of the node.
-    pub ip_address: IpAddr,
-    /// TCP port of the node
-    pub port: u16,
-    /// Maximum size of a message in bytes.
-    pub max_message_size_bytes: u32,
-    /// Message transfer timeout in seconds.
-    pub message_timeout_secs: u64,
-    /// Timeout specifying how long to wait for binary port client to be available.
-    // Access to the client is synchronized.
-    pub client_access_timeout_secs: u64,
-    /// Maximum number of in-flight node requests.
-    pub request_limit: u16,
-    /// Number of node requests that can be buffered.
-    pub request_buffer_size: usize,
-    /// The amount of ms to wait between sending keepalive requests.
-    pub keepalive_timeout_ms: u64,
-    /// Configuration for exponential backoff to be used for re-connects.
-    pub exponential_backoff: ExponentialBackoffConfigTarget,
-}
-
-impl TryFrom<NodeClientConfigTarget> for NodeClientConfig {
-    type Error = FieldParseError;
-    fn try_from(value: NodeClientConfigTarget) -> Result<Self, Self::Error> {
-        let exponential_backoff =
-            value
-                .exponential_backoff
-                .try_into()
-                .map_err(|e: FieldParseError| FieldParseError::ParseError {
-                    field_name: "exponential_backoff",
-                    error: e.to_string(),
-                })?;
-        Ok(NodeClientConfig {
-            ip_address: value.ip_address,
-            port: value.port,
-            request_limit: value.request_limit,
-            max_message_size_bytes: value.max_message_size_bytes,
-            request_buffer_size: value.request_buffer_size,
-            client_access_timeout_secs: value.client_access_timeout_secs,
-            message_timeout_secs: value.message_timeout_secs,
-            keepalive_timeout_ms: value.keepalive_timeout_ms,
-            exponential_backoff,
-        })
     }
 }
 
@@ -291,131 +199,5 @@ pub struct ExponentialBackoffConfig {
     /// The multiplier to apply to the previous delay to get the next delay.
     pub coefficient: u64,
     /// Maximum number of connection attempts.
-    pub max_attempts: MaxAttempts,
-}
-
-/// Exponential backoff configuration for re-connects.
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
-pub struct ExponentialBackoffConfigTarget {
-    /// Initial wait time before the first re-connect attempt.
-    pub initial_delay_ms: u64,
-    /// Maximum wait time between re-connect attempts.
-    pub max_delay_ms: u64,
-    /// The multiplier to apply to the previous delay to get the next delay.
-    pub coefficient: u64,
-    /// Maximum number of re-connect attempts.
-    pub max_attempts: MaxAttemptsTarget,
-}
-
-impl TryFrom<ExponentialBackoffConfigTarget> for ExponentialBackoffConfig {
-    type Error = FieldParseError;
-    fn try_from(value: ExponentialBackoffConfigTarget) -> Result<Self, Self::Error> {
-        let max_attempts = value
-            .max_attempts
-            .try_into()
-            .map_err(|e: MaxAttemptsError| FieldParseError::ParseError {
-                field_name: "max_attempts",
-                error: e.to_string(),
-            })?;
-        Ok(ExponentialBackoffConfig {
-            initial_delay_ms: value.initial_delay_ms,
-            max_delay_ms: value.max_delay_ms,
-            coefficient: value.coefficient,
-            max_attempts,
-        })
-    }
-}
-
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
-pub enum MaxAttempts {
-    Infinite,
-    Finite(usize),
-}
-
-impl MaxAttempts {
-    pub fn can_attempt(&self, current_attempt: usize) -> bool {
-        match self {
-            MaxAttempts::Infinite => true,
-            MaxAttempts::Finite(max_attempts) => *max_attempts >= current_attempt,
-        }
-    }
-}
-
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum MaxAttemptsTarget {
-    StringBased(String),
-    UsizeBased(usize),
-}
-
-impl TryFrom<MaxAttemptsTarget> for MaxAttempts {
-    type Error = MaxAttemptsError;
-    fn try_from(value: MaxAttemptsTarget) -> Result<Self, Self::Error> {
-        match value {
-            MaxAttemptsTarget::StringBased(s) => {
-                if s == "infinite" {
-                    Ok(MaxAttempts::Infinite)
-                } else {
-                    Err(MaxAttemptsError::UnexpectedValue(s))
-                }
-            }
-            MaxAttemptsTarget::UsizeBased(u) => {
-                if u == 0 {
-                    Err(MaxAttemptsError::UnexpectedValue(u.to_string()))
-                } else {
-                    Ok(MaxAttempts::Finite(u))
-                }
-            }
-        }
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum MaxAttemptsError {
-    #[error("Max attempts must be either 'infinite' or a integer > 0. Got: {}", .0)]
-    UnexpectedValue(String),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_should_deserialize_infinite() {
-        let json = r#""infinite""#.to_string();
-        let deserialized: MaxAttempts = serde_json::from_str::<MaxAttemptsTarget>(&json)
-            .unwrap()
-            .try_into()
-            .unwrap();
-        assert_eq!(deserialized, MaxAttempts::Infinite);
-    }
-
-    #[test]
-    fn test_should_deserialize_finite() {
-        let json = r#"125"#.to_string();
-        let deserialized: MaxAttempts = serde_json::from_str::<MaxAttemptsTarget>(&json)
-            .unwrap()
-            .try_into()
-            .unwrap();
-        assert_eq!(deserialized, MaxAttempts::Finite(125));
-    }
-
-    #[test]
-    fn test_should_fail_on_other_inputs() {
-        assert_failing_deserialization(r#""x""#);
-        assert_failing_deserialization(r#""infiniteee""#);
-        assert_failing_deserialization(r#""infinite ""#);
-        assert_failing_deserialization(r#"" infinite""#);
-        let deserialized = serde_json::from_str::<MaxAttemptsTarget>(r#"-1"#);
-        assert!(deserialized.is_err());
-    }
-
-    fn assert_failing_deserialization(input: &str) {
-        let deserialized: Result<MaxAttempts, MaxAttemptsError> =
-            serde_json::from_str::<MaxAttemptsTarget>(input)
-                .unwrap()
-                .try_into();
-        assert!(deserialized.is_err(), "input = {}", input);
-    }
+    pub max_attempts: u32,
 }

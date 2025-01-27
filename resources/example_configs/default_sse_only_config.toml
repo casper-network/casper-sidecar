@@ -32,7 +32,7 @@ port = 18888
 max_concurrent_requests = 50
 max_requests_per_second = 50
 
-[admin_server]
+[admin_api_server]
 enable_server = true
 port = 18887
 max_concurrent_requests = 1

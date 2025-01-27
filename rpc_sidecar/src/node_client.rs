@@ -1,12 +1,16 @@
-use crate::{config::MaxAttempts, encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION};
+use crate::{
+    config::ExponentialBackoffConfig, encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION,
+};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use futures::{Future, SinkExt, StreamExt};
-use metrics::rpc::{inc_disconnect, observe_reconnect_time};
+use metrics::rpc::{
+    inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
+};
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
@@ -39,7 +43,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{futures::Notified, RwLock, RwLockWriteGuard, Semaphore},
+    sync::{futures::Notified, RwLock, RwLockWriteGuard},
 };
 use tracing::{error, field, info, warn};
 
@@ -765,6 +769,8 @@ pub enum Error {
     GasPriceToleranceTooLow,
     #[error("received v1 transaction for speculative execution")]
     ReceivedV1Transaction,
+    #[error("connection to node lost")]
+    ConnectionLost,
 }
 
 impl Error {
@@ -924,7 +930,6 @@ pub struct FramedNodeClient {
     reconnect: Arc<Notify<Reconnect>>,
     shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
-    request_limit: Semaphore,
     current_request_id: Arc<AtomicU16>,
 }
 
@@ -941,7 +946,13 @@ impl FramedNodeClient {
         AnyhowError,
     > {
         let stream = Arc::new(RwLock::new(
-            Self::connect_with_retries(&config, None).await?,
+            Self::connect_with_retries(
+                &config.ip_address,
+                config.port,
+                &config.exponential_backoff,
+                config.max_message_size_bytes,
+            )
+            .await?,
         ));
 
         let shutdown = Notify::<Shutdown>::new();
@@ -963,7 +974,6 @@ impl FramedNodeClient {
 
         let node_client = Self {
             client: Arc::clone(&stream),
-            request_limit: Semaphore::new(config.request_limit as usize),
             reconnect,
             shutdown,
             config,
@@ -1059,6 +1069,7 @@ impl FramedNodeClient {
         .await
         .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
         {
+            register_timeout("sending_payload");
             return Err(Error::RequestFailed(err.to_string()));
         };
 
@@ -1069,7 +1080,8 @@ impl FramedNodeClient {
             )
             .await
             else {
-                return Err(Error::RequestFailed("timeout".to_owned()));
+                register_timeout("receiving_response");
+                return Err(Error::ConnectionLost);
             };
 
             if let Some(response) = maybe_response {
@@ -1086,12 +1098,16 @@ impl FramedNodeClient {
                         // If our expected ID is greater than the one we received, it means we can
                         // try to recover from the situation by reading more responses from the stream.
                         warn!(%err, "received a response with an outdated id, trying another response");
+                        register_mismatched_id();
                         continue;
                     }
-                    Err(err) => return Err(err),
+                    Err(err) => {
+                        register_mismatched_id();
+                        return Err(err);
+                    }
                 }
             } else {
-                return Err(Error::RequestFailed("disconnected".to_owned()));
+                return Err(Error::ConnectionLost);
             }
         }
 
@@ -1111,28 +1127,26 @@ impl FramedNodeClient {
     }
 
     async fn connect_with_retries(
-        config: &NodeClientConfig,
-        maybe_max_attempts_override: Option<&MaxAttempts>,
+        ip_address: &IpAddr,
+        port: u16,
+        backoff_config: &ExponentialBackoffConfig,
+        max_message_size_bytes: u32,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        let mut wait = config.exponential_backoff.initial_delay_ms;
-        let max_attempts = if let Some(attempts) = maybe_max_attempts_override {
-            attempts
-        } else {
-            &config.exponential_backoff.max_attempts
-        };
-        let tcp_socket = SocketAddr::new(config.ip_address, config.port);
+        let mut wait = backoff_config.initial_delay_ms;
+        let max_attempts = &backoff_config.max_attempts;
+        let tcp_socket = SocketAddr::new(*ip_address, port);
         let mut current_attempt = 1;
         loop {
             match TcpStream::connect(tcp_socket).await {
                 Ok(stream) => {
                     return Ok(Framed::new(
                         stream,
-                        BinaryMessageCodec::new(config.max_message_size_bytes),
+                        BinaryMessageCodec::new(max_message_size_bytes),
                     ))
                 }
                 Err(err) => {
                     current_attempt += 1;
-                    if !max_attempts.can_attempt(current_attempt) {
+                    if *max_attempts < current_attempt {
                         anyhow::bail!(
                             "Couldn't connect to node {} after {} attempts",
                             tcp_socket,
@@ -1141,8 +1155,7 @@ impl FramedNodeClient {
                     }
                     warn!(%err, "failed to connect to node {tcp_socket}, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
-                    wait = (wait * config.exponential_backoff.coefficient)
-                        .min(config.exponential_backoff.max_delay_ms);
+                    wait = (wait * backoff_config.coefficient).min(backoff_config.max_delay_ms);
                 }
             };
         }
@@ -1150,12 +1163,17 @@ impl FramedNodeClient {
 
     async fn reconnect_internal(
         config: &NodeClientConfig,
-        maybe_max_attempts_override: Option<&MaxAttempts>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let disconnected_start = Instant::now();
         inc_disconnect();
         error!("node connection closed, will attempt to reconnect");
-        let stream = Self::connect_with_retries(config, maybe_max_attempts_override).await?;
+        let stream = Self::connect_with_retries(
+            &config.ip_address,
+            config.port,
+            &config.exponential_backoff,
+            config.max_message_size_bytes,
+        )
+        .await?;
         info!("connection with the node has been re-established");
         observe_reconnect_time(disconnected_start.elapsed());
         Ok(stream)
@@ -1164,25 +1182,13 @@ impl FramedNodeClient {
     async fn reconnect(
         config: &NodeClientConfig,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        Self::reconnect_internal(config, None).await
-    }
-
-    async fn reconnect_without_retries(
-        config: &NodeClientConfig,
-    ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        Self::reconnect_internal(config, Some(&MaxAttempts::Finite(1))).await
+        Self::reconnect_internal(config).await
     }
 }
 
 #[async_trait]
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
-        let _permit = self
-            .request_limit
-            .acquire()
-            .await
-            .map_err(|err| Error::RequestFailed(err.to_string()))?;
-
         // TODO: Use queue instead of individual timeouts. Currently it is possible to go pass the
         // semaphore and the immediately wait for the client to become available.
         let mut client = match tokio::time::timeout(
@@ -1192,7 +1198,10 @@ impl NodeClient for FramedNodeClient {
         .await
         {
             Ok(client) => client,
-            Err(err) => return Err(Error::RequestFailed(err.to_string())),
+            Err(_) => {
+                register_timeout("acquiring_client");
+                return Err(Error::ConnectionLost);
+            }
         };
 
         let result = self.send_request_internal(&req, &mut client).await;
@@ -1204,12 +1213,24 @@ impl NodeClient for FramedNodeClient {
             );
             // attempt to reconnect once in case the node was restarted and connection broke
             client.close().await.ok();
-            match Self::reconnect_without_retries(&self.config).await {
-                Ok(new_client) => {
+            let ip_address = &self.config.ip_address;
+
+            match tokio::time::timeout(
+                Duration::from_secs(self.config.client_access_timeout_secs),
+                Self::connect_with_retries(
+                    ip_address,
+                    self.config.port,
+                    &self.config.exponential_backoff,
+                    self.config.max_message_size_bytes,
+                ),
+            )
+            .await
+            {
+                Ok(Ok(new_client)) => {
                     *client = new_client;
                     return self.send_request_internal(&req, &mut client).await;
                 }
-                Err(err) => {
+                Ok(Err(err)) => {
                     warn!(
                         %err,
                         addr = %self.config.ip_address,
@@ -1218,7 +1239,16 @@ impl NodeClient for FramedNodeClient {
                     // schedule standard reconnect process with multiple retries
                     // and return a response
                     self.reconnect.notify_one();
-                    return Err(Error::RequestFailed("disconnected".to_owned()));
+                    return Err(Error::ConnectionLost);
+                }
+                Err(_) => {
+                    warn!(
+                        %err,
+                        addr = %self.config.ip_address,
+                        "failed to reestablish connection in timely fashion"
+                    );
+                    register_timeout("reacquiring_connection");
+                    return Err(Error::ConnectionLost);
                 }
             }
         }
@@ -1585,10 +1615,7 @@ mod tests {
             let err = query_global_state_for_string_value(&mut rng, &c)
                 .await
                 .unwrap_err();
-            assert!(matches!(
-                err,
-                Error::RequestFailed(e) if e == "disconnected"
-            ));
+            assert!(matches!(err, Error::ConnectionLost));
 
             // restart node
             let mock_server_handle = start_mock_binary_port_responding_with_stored_value(
