@@ -1034,9 +1034,10 @@ impl FramedNodeClient {
             client.send(payload),
         )
         .await
-        .map_err(|_| Error::RequestFailed("timeout".to_owned()))?
-        {
+        .map_err(|_| {
             register_timeout("sending_payload");
+            Error::RequestFailed("timeout".to_owned())
+        })? {
             return Err(Error::RequestFailed(err.to_string()));
         };
 
@@ -1162,8 +1163,6 @@ impl FramedNodeClient {
 #[async_trait]
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
-        // TODO: Use queue instead of individual timeouts. Currently it is possible to go pass the
-        // semaphore and the immediately wait for the client to become available.
         let mut client = match tokio::time::timeout(
             Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
@@ -1184,7 +1183,7 @@ impl NodeClient for FramedNodeClient {
                 err = display_error(&err),
                 "binary port client handler error"
             );
-            // attempt to reconnect once in case the node was restarted and connection broke
+            // attempt to reconnect in case the node was restarted and connection broke
             client.close().await.ok();
             let ip_address = &self.config.ip_address;
 

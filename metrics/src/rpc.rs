@@ -74,7 +74,7 @@ static RECONNECT_TIMES_MS: Lazy<Histogram> = Lazy::new(|| {
 static MISMATCHED_IDS: Lazy<IntGauge> = Lazy::new(|| {
     let counter = IntGauge::new(
         "rpc_server_mismatched_ids",
-        "Number of mismathced id events observed in responses from binary port",
+        "Number of mismatched ID events observed in responses from binary port",
     )
     .expect("rpc_server_mismatched_ids metric can't be created");
     REGISTRY

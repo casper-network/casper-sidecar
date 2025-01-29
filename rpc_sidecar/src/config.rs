@@ -96,7 +96,7 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 /// Default keep alive timeout milliseconds.
 const DEFAULT_KEEPALIVE_TIMEOUT_MS: u64 = 1_000;
 /// Default max attempts
-const DEFAULT_MAX_ATTEMPTS: u32 = 3;
+const DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS: u32 = 3;
 
 /// Node client configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
@@ -134,7 +134,7 @@ impl NodeClientConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
-                max_attempts: DEFAULT_MAX_ATTEMPTS,
+                max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
         }
     }
@@ -154,7 +154,7 @@ impl NodeClientConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
-                max_attempts: DEFAULT_MAX_ATTEMPTS,
+                max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
         }
     }

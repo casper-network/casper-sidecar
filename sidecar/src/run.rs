@@ -9,7 +9,7 @@ use tokio::{
 };
 use tracing::{error, info};
 
-const MAX_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 120;
+const MAX_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 30;
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     let maybe_database = config
