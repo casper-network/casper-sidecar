@@ -2,9 +2,14 @@ use crate::component::*;
 use crate::config::SidecarConfig;
 use anyhow::{anyhow, Context, Error};
 use casper_event_sidecar::LazyDatabaseWrapper;
-use std::process::ExitCode;
-use tokio::signal::unix::{signal, SignalKind};
+use std::{process::ExitCode, time::Duration};
+use tokio::{
+    signal::unix::{signal, SignalKind},
+    time::timeout,
+};
 use tracing::{error, info};
+
+const MAX_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 30;
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     let maybe_database = config
@@ -50,8 +55,24 @@ async fn do_run(
     components: Vec<Box<dyn Component>>,
 ) -> Result<ExitCode, ComponentError> {
     let mut component_futures = Vec::new();
+    let max_startup_duration = Duration::from_secs(MAX_COMPONENT_STARTUP_TIMEOUT_SECS);
     for component in components.iter() {
-        let maybe_future = component.prepare_component_task(&config).await?;
+        let component_name = component.name();
+        let component_startup_res = timeout(
+            max_startup_duration,
+            component.prepare_component_task(&config),
+        )
+        .await;
+        if component_startup_res.is_err() {
+            return Err(ComponentError::Initialization {
+                component_name: component_name.clone(),
+                internal_error: anyhow!(
+                    "Failed to start component {component_name} in {MAX_COMPONENT_STARTUP_TIMEOUT_SECS} [s]"
+                ),
+            });
+        }
+
+        let maybe_future = component_startup_res.unwrap()?;
         if let Some(future) = maybe_future {
             component_futures.push(future);
         }

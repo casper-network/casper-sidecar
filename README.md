@@ -208,8 +208,8 @@ address = '0.0.0.0:28101'
 max_message_size_bytes = 4_194_304
 request_limit = 3
 request_buffer_size = 16
-message_timeout_secs = 30
-client_access_timeout_secs = 2
+message_timeout_secs = 10
+client_access_timeout_secs = 10
 
 [rpc_server.speculative_exec_server]
 enable_server = true

@@ -3,7 +3,7 @@ use casper_event_sidecar::{
     AdminApiServerConfig, DatabaseConfigError, RestApiServerConfig, SseEventServerConfig,
     StorageConfig, StorageConfigSerdeTarget,
 };
-use casper_rpc_sidecar::{FieldParseError, RpcServerConfig, RpcServerConfigTarget};
+use casper_rpc_sidecar::{FieldParseError, RpcServerConfig};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -16,7 +16,7 @@ pub struct SidecarConfigTarget {
     rest_api_server: Option<RestApiServerConfig>,
     admin_api_server: Option<AdminApiServerConfig>,
     sse_server: Option<SseEventServerConfig>,
-    rpc_server: Option<RpcServerConfigTarget>,
+    rpc_server: Option<RpcServerConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -114,24 +114,17 @@ impl TryFrom<SidecarConfigTarget> for SidecarConfig {
             .map(|target| target.try_into().map(Some))
             .unwrap_or(Ok(None));
         let storage_config = storage_config_res?;
-        let rpc_server_config_res: Option<Result<RpcServerConfig, FieldParseError>> =
-            value.rpc_server.map(|target| target.try_into());
-        let rpc_server_config = invert(rpc_server_config_res)?;
         Ok(SidecarConfig {
             max_thread_count: value.max_thread_count,
             max_blocking_thread_count: value.max_blocking_thread_count,
             network_name: value.network_name,
             sse_server: sse_server_config,
-            rpc_server: rpc_server_config,
+            rpc_server: value.rpc_server,
             storage: storage_config,
             rest_api_server: value.rest_api_server,
             admin_api_server: value.admin_api_server,
         })
     }
-}
-
-fn invert<T, E>(x: Option<Result<T, E>>) -> Result<Option<T>, E> {
-    x.map_or(Ok(None), |v| v.map(Some))
 }
 
 #[derive(Error, Debug)]
