@@ -72,7 +72,7 @@ port = 7779
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
 # Timeout for a node request in seconds.
-message_timeout_secs = 30
+message_timeout_secs = 10
 # Timeout specifying how long to wait for binary port client to be available.
 client_access_timeout_secs = 10
 # The amount of time in milliseconds to wait between sending keepalive requests.
