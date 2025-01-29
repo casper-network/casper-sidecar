@@ -40,7 +40,7 @@ pub async fn build_rpc_server<'a>(
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
-    let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
+    let node_client: Arc<dyn NodeClient> = node_client;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
