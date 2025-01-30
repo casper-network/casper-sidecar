@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::rpcs::error::Error;
 use casper_types::{
     bytesrepr::ToBytes, contracts::ContractPackage, global_state::TrieMerkleProof, Account,
-    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, ByteCode, Contract,
-    ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, NamedKeys, Package,
-    BlockWithSignatures, StoredValue,
+    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, BlockWithSignatures,
+    ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key,
+    NamedKeys, Package, StoredValue,
 };
 
 use crate::NodeClient;

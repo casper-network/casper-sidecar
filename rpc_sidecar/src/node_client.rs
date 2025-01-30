@@ -33,9 +33,9 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
     system::auction::DelegatorKind,
-    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, BlockWithSignatures,
-    StoredValue, Transaction, TransactionHash, Transfer,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
+    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion,
+    PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
     fmt::{self, Display, Formatter},

@@ -411,8 +411,8 @@ mod tests {
     use casper_types::{
         system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
         testing::TestRng,
-        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, PublicKey,
-        BlockWithSignatures, TestBlockBuilder, TestBlockV1Builder, U512,
+        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, BlockWithSignatures,
+        ChainNameDigest, PublicKey, TestBlockBuilder, TestBlockV1Builder, U512,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
