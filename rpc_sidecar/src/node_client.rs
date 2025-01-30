@@ -34,7 +34,7 @@ use casper_types::{
     contracts::ContractPackage,
     system::auction::DelegatorKind,
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, ChainspecRawBytes, Digest,
-    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, SignedBlock,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, BlockWithSignatures,
     StoredValue, Transaction, TransactionHash, Transfer,
 };
 use std::{
@@ -194,14 +194,14 @@ pub trait NodeClient: Send + Sync {
         parse_response::<BlockHeader>(&resp.into())
     }
 
-    async fn read_signed_block(
+    async fn read_block_with_signatures(
         &self,
         block_identifier: Option<BlockIdentifier>,
-    ) -> Result<Option<SignedBlock>, Error> {
+    ) -> Result<Option<BlockWithSignatures>, Error> {
         let resp = self
-            .read_info(InformationRequest::SignedBlock(block_identifier))
+            .read_info(InformationRequest::BlockWithSignatures(block_identifier))
             .await?;
-        parse_response::<SignedBlock>(&resp.into())
+        parse_response::<BlockWithSignatures>(&resp.into())
     }
 
     async fn read_transaction_with_execution_info(
