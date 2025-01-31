@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::rpcs::error::Error;
 use casper_types::{
     bytesrepr::ToBytes, contracts::ContractPackage, global_state::TrieMerkleProof, Account,
-    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, ByteCode, Contract,
-    ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key, NamedKeys, Package,
-    SignedBlock, StoredValue,
+    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, BlockWithSignatures,
+    ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key,
+    NamedKeys, Package, StoredValue,
 };
 
 use crate::NodeClient;
@@ -105,14 +105,14 @@ impl ContractWasmWithProof {
     }
 }
 
-pub async fn get_signed_block(
+pub async fn get_block_with_signatures(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
-) -> Result<SignedBlock, Error> {
+) -> Result<BlockWithSignatures, Error> {
     match node_client
-        .read_signed_block(identifier)
+        .read_block_with_signatures(identifier)
         .await
-        .map_err(|err| Error::NodeRequest("signed block", err))?
+        .map_err(|err| Error::NodeRequest("block with signatures", err))?
     {
         Some(block) => Ok(block),
         None => {

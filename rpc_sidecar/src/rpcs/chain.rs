@@ -108,7 +108,7 @@ impl RpcWithOptionalParams for GetBlock {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let (block, signatures) = common::get_signed_block(&*node_client, identifier)
+        let (block, signatures) = common::get_block_with_signatures(&*node_client, identifier)
             .await?
             .into_inner();
         Ok(Self::ResponseResult {
@@ -411,8 +411,8 @@ mod tests {
     use casper_types::{
         system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
         testing::TestRng,
-        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, PublicKey,
-        SignedBlock, TestBlockBuilder, TestBlockV1Builder, U512,
+        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, BlockWithSignatures,
+        ChainNameDigest, PublicKey, TestBlockBuilder, TestBlockV1Builder, U512,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -431,7 +431,7 @@ mod tests {
         );
         let resp = GetBlock::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(block.clone(), signatures.into()),
+                block: BlockWithSignatures::new(block.clone(), signatures.into()),
                 transfers: vec![],
             }),
             None,
@@ -455,7 +455,7 @@ mod tests {
 
         let resp = GetBlock::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(
+                block: BlockWithSignatures::new(
                     Block::V1(block.clone()),
                     BlockSignaturesV1::new(*block.hash(), block.era_id()).into(),
                 ),
@@ -492,7 +492,7 @@ mod tests {
         );
         let resp = GetBlockTransfers::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(Block::V2(block.clone()), signatures.into()),
+                block: BlockWithSignatures::new(Block::V2(block.clone()), signatures.into()),
                 transfers: transfers.clone(),
             }),
             None,
@@ -523,7 +523,7 @@ mod tests {
         );
         let resp = GetStateRootHash::do_handle_request(
             Arc::new(ValidBlockMock {
-                block: SignedBlock::new(Block::V2(block.clone()), signatures.into()),
+                block: BlockWithSignatures::new(Block::V2(block.clone()), signatures.into()),
                 transfers: vec![],
             }),
             None,
@@ -723,7 +723,7 @@ mod tests {
     }
 
     struct ValidBlockMock {
-        block: SignedBlock,
+        block: BlockWithSignatures,
         transfers: Vec<Transfer>,
     }
 
@@ -736,7 +736,7 @@ mod tests {
             match req {
                 BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
-                        == Ok(InformationRequestTag::SignedBlock) =>
+                        == Ok(InformationRequestTag::BlockWithSignatures) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.clone(), SUPPORTED_PROTOCOL_VERSION),
