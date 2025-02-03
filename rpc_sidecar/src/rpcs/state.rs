@@ -1359,10 +1359,10 @@ mod tests {
         },
     };
 
-    use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::{rpcs::ErrorCode, ClientError};
     use casper_binary_port::{
-        AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryRequest,
-        BinaryResponse, BinaryResponseAndRequest, ContractInformation, DictionaryQueryResult,
+        AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryResponse,
+        BinaryResponseAndRequest, Command, ContractInformation, DictionaryQueryResult,
         ErrorCode as BinaryErrorCode, GetRequest, GlobalStateEntityQualifier,
         GlobalStateQueryResult, InformationRequestTag, KeyPrefix, ValueWithProof,
     };
@@ -1485,23 +1485,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(self.block.clone_header()),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::AllItems {
@@ -1517,12 +1513,11 @@ mod tests {
                             .map(|bid| StoredValue::Bid(bid.into()))
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(bids),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::AllItems {
@@ -1538,12 +1533,11 @@ mod tests {
                             .map(StoredValue::BidKind)
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(bids),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -1560,12 +1554,11 @@ mod tests {
                             vec![],
                         );
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(result),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -1582,7 +1575,7 @@ mod tests {
                                     StoredValue::CLValue(CLValue::from_t(1_u8).unwrap()),
                                     vec![],
                                 );
-                                BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION)
+                                BinaryResponse::from_value(result)
                             }
                             _ => {
                                 let result = GlobalStateQueryResult::new(
@@ -1591,10 +1584,10 @@ mod tests {
                                     ),
                                     vec![],
                                 );
-                                BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION)
+                                BinaryResponse::from_value(result)
                             }
                         };
-                        Ok(BinaryResponseAndRequest::new(response, &[], 0))
+                        Ok(BinaryResponseAndRequest::new(response, Bytes::from(vec![])))
                     }
 
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1648,23 +1641,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(self.block.clone_header()),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::AllItems {
@@ -1680,12 +1669,11 @@ mod tests {
                             .map(|bid| StoredValue::Bid(bid.into()))
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(bids),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::AllItems {
@@ -1701,12 +1689,11 @@ mod tests {
                             .map(StoredValue::BidKind)
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(bids, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(bids),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure(),
                             (
@@ -1727,12 +1714,11 @@ mod tests {
                             vec![],
                         );
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(result),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -1743,12 +1729,11 @@ mod tests {
                         ) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::new_empty(),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -1763,9 +1748,8 @@ mod tests {
                                 if path == vec!["seigniorage_recipients_snapshot_version"] =>
                             {
                                 Ok(BinaryResponseAndRequest::new(
-                                    BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                                    &[],
-                                    0,
+                                    BinaryResponse::new_empty(),
+                                    Bytes::from(vec![]),
                                 ))
                             }
                             _ => {
@@ -1776,9 +1760,8 @@ mod tests {
                                     vec![],
                                 );
                                 Ok(BinaryResponseAndRequest::new(
-                                    BinaryResponse::from_value(result, SUPPORTED_PROTOCOL_VERSION),
-                                    &[],
-                                    0,
+                                    BinaryResponse::from_value(result),
+                                    Bytes::from(vec![]),
                                 ))
                             }
                         }
@@ -1828,30 +1811,25 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::new_empty(),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::AvailableBlockRange) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                AvailableBlockRange::RANGE_0_0,
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1882,29 +1860,25 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                AddressableEntityInformation::new(
-                                    self.addr,
-                                    ValueWithProof::new(self.entity.clone(), vec![]),
-                                    self.bytecode.as_ref().map(|bytecode| {
-                                        ValueWithProof::new(bytecode.clone(), vec![])
-                                    }),
-                                ),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(AddressableEntityInformation::new(
+                                self.addr,
+                                ValueWithProof::new(self.entity.clone(), vec![]),
+                                self.bytecode
+                                    .as_ref()
+                                    .map(|bytecode| ValueWithProof::new(bytecode.clone(), vec![])),
+                            )),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::ItemsByPrefix {
@@ -1924,13 +1898,11 @@ mod tests {
                                         )
                                     })
                                     .collect::<Vec<_>>(),
-                                SUPPORTED_PROTOCOL_VERSION,
                             ),
-                            &[],
-                            0,
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::ItemsByPrefix {
@@ -1946,13 +1918,11 @@ mod tests {
                                     .cloned()
                                     .map(StoredValue::EntryPoint)
                                     .collect::<Vec<_>>(),
-                                SUPPORTED_PROTOCOL_VERSION,
                             ),
-                            &[],
-                            0,
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::ItemsByPrefix {
@@ -1962,12 +1932,8 @@ mod tests {
                         ) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                Vec::<StoredValue>::new(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(Vec::<StoredValue>::new()),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2090,26 +2056,22 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                ContractInformation::new(
-                                    self.hash,
-                                    ValueWithProof::new(self.contract.clone(), vec![]),
-                                    self.wasm.as_ref().map(|bytecode| {
-                                        ValueWithProof::new(bytecode.clone(), vec![])
-                                    }),
-                                ),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(ContractInformation::new(
+                                self.hash,
+                                ValueWithProof::new(self.contract.clone(), vec![]),
+                                self.wasm
+                                    .as_ref()
+                                    .map(|bytecode| ValueWithProof::new(bytecode.clone(), vec![])),
+                            )),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2170,17 +2132,16 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::Entity) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::new_empty(),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2215,20 +2176,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::Package) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                ValueWithProof::new(self.package.clone(), vec![]),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(ValueWithProof::new(
+                                self.package.clone(),
+                                vec![],
+                            )),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2278,20 +2238,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::Package) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                ValueWithProof::new(self.package.clone(), vec![]),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(ValueWithProof::new(
+                                self.package.clone(),
+                                vec![],
+                            )),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2379,23 +2338,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(self.block.clone_header()),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -2405,18 +2360,14 @@ mod tests {
                         ) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                GlobalStateQueryResult::new(
-                                    StoredValue::CLValue(
-                                        CLValue::from_t(Key::contract_entity_key(self.entity_hash))
-                                            .unwrap(),
-                                    ),
-                                    vec![],
+                            BinaryResponse::from_value(GlobalStateQueryResult::new(
+                                StoredValue::CLValue(
+                                    CLValue::from_t(Key::contract_entity_key(self.entity_hash))
+                                        .unwrap(),
                                 ),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                                vec![],
+                            )),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2455,23 +2406,19 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                    Command::Get(GetRequest::Information { info_type_tag, .. })
                         if InformationRequestTag::try_from(info_type_tag)
                             == Ok(InformationRequestTag::BlockHeader) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::from_value(
-                                self.block.clone_header(),
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
+                            BinaryResponse::from_value(self.block.clone_header()),
+                            Bytes::from(vec![]),
                         ))
                     }
-                    BinaryRequest::Get(GetRequest::State(req))
+                    Command::Get(GetRequest::State(req))
                         if matches!(
                             req.clone().destructure().1,
                             GlobalStateEntityQualifier::Item {
@@ -2481,9 +2428,8 @@ mod tests {
                         ) =>
                     {
                         Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
+                            BinaryResponse::new_empty(),
+                            Bytes::from(vec![]),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2668,22 +2614,21 @@ mod tests {
     impl NodeClient for ValidDictionaryQueryResultMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::DictionaryItem { .. }
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            DictionaryQueryResult::new(self.dict_key, self.query_result.clone()),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(DictionaryQueryResult::new(
+                            self.dict_key,
+                            self.query_result.clone(),
+                        )),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2697,19 +2642,18 @@ mod tests {
     impl NodeClient for ValidGlobalStateResultMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Item { .. }
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.0.clone()),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2726,32 +2670,27 @@ mod tests {
     impl NodeClient for ValidGlobalStateResultWithBlockMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::BlockHeader) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            self.block.clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.block.clone_header()),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Item { .. }
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(self.result.clone(), SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.result.clone()),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2767,23 +2706,22 @@ mod tests {
     impl NodeClient for ValidLegacyAccountMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Entity) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            AccountInformation::new(self.account.clone(), vec![]),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(AccountInformation::new(
+                            self.account.clone(),
+                            vec![],
+                        )),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Item {
@@ -2793,15 +2731,11 @@ mod tests {
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::Account(self.account.clone()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::Account(self.account.clone()),
+                            vec![],
+                        )),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2815,19 +2749,18 @@ mod tests {
     impl NodeClient for ValidBalanceMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Balance { .. }
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(self.0.clone(), SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.0.clone()),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2841,22 +2774,18 @@ mod tests {
     impl NodeClient for BalancePurseNotFoundMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Balance { .. }
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_error(
-                            BinaryErrorCode::PurseNotFound,
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::new_error(BinaryErrorCode::PurseNotFound),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

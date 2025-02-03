@@ -148,12 +148,12 @@ impl RpcWithParams for PutTransaction {
 #[cfg(test)]
 mod tests {
     use casper_binary_port::{
-        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, ErrorCode as BinaryPortErrorCode,
+        BinaryResponse, BinaryResponseAndRequest, Command, ErrorCode as BinaryPortErrorCode,
     };
-    use casper_types::testing::TestRng;
+    use casper_types::{bytesrepr::Bytes, testing::TestRng};
     use pretty_assertions::assert_eq;
 
-    use crate::{rpcs::ErrorCode, SUPPORTED_PROTOCOL_VERSION};
+    use crate::rpcs::ErrorCode;
 
     use super::*;
 
@@ -165,16 +165,13 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::TryAcceptTransaction { .. } => {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
-                        ))
-                    }
+                    Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        Bytes::from(vec![]),
+                    )),
                     _ => unimplemented!(),
                 }
             }
@@ -207,16 +204,13 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::TryAcceptTransaction { .. } => {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_empty(SUPPORTED_PROTOCOL_VERSION),
-                            &[],
-                            0,
-                        ))
-                    }
+                    Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        Bytes::from(vec![]),
+                    )),
                     _ => unimplemented!(),
                 }
             }
@@ -249,19 +243,13 @@ mod tests {
         impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
-                req: BinaryRequest,
+                req: Command,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::TryAcceptTransaction { .. } => {
-                        Ok(BinaryResponseAndRequest::new(
-                            BinaryResponse::new_error(
-                                BinaryPortErrorCode::InvalidTransactionBodyHash,
-                                SUPPORTED_PROTOCOL_VERSION,
-                            ),
-                            &[],
-                            0,
-                        ))
-                    }
+                    Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_error(BinaryPortErrorCode::InvalidTransactionBodyHash),
+                        Bytes::from(vec![]),
+                    )),
                     _ => unimplemented!(),
                 }
             }
