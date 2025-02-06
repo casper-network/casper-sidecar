@@ -13,7 +13,6 @@ mod version_fetcher;
 use crate::event_listener_status::*;
 use anyhow::Error;
 use casper_event_types::Filter;
-use casper_types::ProtocolVersion;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use connections_builder::{ConnectionsBuilder, DefaultConnectionsBuilder};
@@ -28,7 +27,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
-use version_fetcher::{for_status_endpoint, BuildVersionFetchError, VersionFetcher};
+use version_fetcher::{for_status_endpoint, MetadataFetchError, NodeMetadata, NodeMetadataFetcher};
 
 const MAX_CONNECTION_ATTEMPTS_REACHED: &str = "Max connection attempts reached";
 
@@ -60,7 +59,7 @@ impl EventListenerBuilder {
             allow_partial_connection: self.allow_partial_connection,
         });
         Ok(EventListener {
-            node_build_version: ProtocolVersion::from_parts(1, 0, 0),
+            node_metadata: NodeMetadata::default(),
             node: self.node.clone(),
             max_connection_attempts: self.max_connection_attempts,
             delay_between_attempts: self.delay_between_attempts,
@@ -73,8 +72,8 @@ impl EventListenerBuilder {
 
 /// Listener that listens to a node and all the available filters it exposes.
 pub struct EventListener {
-    /// Version of the node the listener is listening to. This version is discovered by the Listener on connection.
-    node_build_version: ProtocolVersion,
+    /// Metadata of the node to which the listener is listening.
+    node_metadata: NodeMetadata,
     /// Data pointing to the node
     node: NodeConnectionInterface,
     /// Maximum numbers the listener will retry connecting to the node.
@@ -85,7 +84,7 @@ pub struct EventListener {
     /// If set to true the listen will proceed after connecting to at least one connection.
     allow_partial_connection: bool,
     /// Fetches the build version of the node
-    version_fetcher: Arc<dyn VersionFetcher>,
+    version_fetcher: Arc<dyn NodeMetadataFetcher>,
     /// Builder of the connections to the node
     connections_builder: Arc<dyn ConnectionsBuilder>,
 }
@@ -95,8 +94,8 @@ enum ConnectOutcome {
     SystemReconnect, //In this case we don't increase the current_attempt counter
 }
 
-enum GetVersionResult {
-    Ok(Option<ProtocolVersion>),
+enum GetNodeMetadataResult {
+    Ok(Option<NodeMetadata>),
     Retry,
     Error(Error),
 }
@@ -114,22 +113,18 @@ impl EventListener {
         log_status_for_event_listener(EventListenerStatus::Connecting, self);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
-            if current_attempt > 1 {
-                sleep(self.delay_between_attempts).await;
-            }
-            match self.get_version(current_attempt).await {
-                GetVersionResult::Ok(Some(protocol_version)) => {
-                    self.node_build_version = protocol_version;
+            self.delay_if_needed(current_attempt).await;
+            match self.get_metadata(current_attempt).await {
+                GetNodeMetadataResult::Ok(Some(node_metadata)) => {
+                    self.node_metadata = node_metadata;
                     current_attempt = 1 // Restart counter if the nodes version changed
                 }
-                GetVersionResult::Retry => {
+                GetNodeMetadataResult::Retry => {
                     current_attempt += 1;
-                    if current_attempt >= self.max_connection_attempts {
-                        log_status_for_event_listener(EventListenerStatus::Defunct, self);
-                    }
+                    self.log_connections_exhausted_if_needed(current_attempt);
                     continue;
                 }
-                GetVersionResult::Error(e) => return Err(e),
+                GetNodeMetadataResult::Error(e) => return Err(e),
                 _ => {}
             }
             if let Ok(ConnectOutcome::ConnectionLost) = self
@@ -143,8 +138,22 @@ impl EventListener {
             }
             current_attempt += 1;
         }
-        log_status_for_event_listener(EventListenerStatus::Defunct, self);
+        log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
         Err(Error::msg(MAX_CONNECTION_ATTEMPTS_REACHED))
+    }
+
+    #[inline(always)]
+    async fn delay_if_needed(&mut self, current_attempt: usize) {
+        if current_attempt > 1 {
+            sleep(self.delay_between_attempts).await;
+        }
+    }
+
+    #[inline(always)]
+    fn log_connections_exhausted_if_needed(&mut self, current_attempt: usize) {
+        if current_attempt >= self.max_connection_attempts {
+            log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
+        }
     }
 
     async fn do_connect(
@@ -157,7 +166,7 @@ impl EventListener {
             .build_connections(
                 last_event_id_for_filter.clone(),
                 last_seen_event_id_sender.clone(),
-                self.node_build_version,
+                self.node_metadata.clone(),
             )
             .await?;
         let connection_join_handles = start_connections(connections);
@@ -207,8 +216,9 @@ impl EventListener {
                     match err {
                         ConnectionManagerError::NonRecoverableError { error } => {
                             error!(
-                                "Restarting event listener {} because of NonRecoverableError: {}",
+                                "Restarting event listener {}:{} because of NonRecoverableError: {}",
                                 self.node.ip_address.to_string(),
+                                self.node.sse_port,
                                 error
                             );
                             log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
@@ -217,7 +227,7 @@ impl EventListener {
                         ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
-                                error!("Restarting event listener {} because of no more active connections left: {}", self.node.ip_address.to_string(), error);
+                                error!("Restarting event listener {}:{} because of no more active connections left: {}", self.node.ip_address.to_string(), self.node.sse_port, error);
                                 log_status_for_event_listener(
                                     EventListenerStatus::Reconnecting,
                                     self,
@@ -232,30 +242,38 @@ impl EventListener {
         }
     }
 
-    async fn get_version(&mut self, current_attempt: usize) -> GetVersionResult {
+    async fn get_metadata(&mut self, current_attempt: usize) -> GetNodeMetadataResult {
         info!(
             "Attempting to connect...\t{}/{}",
             current_attempt, self.max_connection_attempts
         );
         let fetch_result = self.version_fetcher.fetch().await;
         match fetch_result {
-            Ok(new_node_build_version) => {
-                if self.node_build_version != new_node_build_version {
-                    return GetVersionResult::Ok(Some(new_node_build_version));
+            Ok(node_metadata) => {
+                // check if reveived network name matches optional configuration
+                if let Some(network_name) = &self.node.network_name {
+                    if *network_name != node_metadata.network_name {
+                        let msg = format!("Network name {network_name} does't match name {} configured for node connection", node_metadata.network_name);
+                        error!("{msg}");
+                        return GetNodeMetadataResult::Error(Error::msg(msg));
+                    }
                 }
-                GetVersionResult::Ok(None)
+                if self.node_metadata != node_metadata {
+                    return GetNodeMetadataResult::Ok(Some(node_metadata));
+                }
+                GetNodeMetadataResult::Ok(None)
             }
-            Err(BuildVersionFetchError::VersionNotAcceptable(msg)) => {
+            Err(MetadataFetchError::VersionNotAcceptable(msg)) => {
                 log_status_for_event_listener(EventListenerStatus::IncompatibleVersion, self);
                 //The node has a build version which sidecar can't talk to. Failing fast in this case.
-                GetVersionResult::Error(Error::msg(msg))
+                GetNodeMetadataResult::Error(Error::msg(msg))
             }
-            Err(BuildVersionFetchError::Error(err)) => {
+            Err(MetadataFetchError::Error(err)) => {
                 error!(
-                    "Error fetching build version (for {}): {err}",
+                    "Error fetching metadata (for {}): {err}",
                     self.node.ip_address
                 );
-                GetVersionResult::Retry
+                GetNodeMetadataResult::Retry
             }
         }
     }
@@ -325,7 +343,7 @@ fn warn_connection_lost(listener: &EventListener, current_attempt: usize) {
 mod tests {
     use crate::{
         connections_builder::tests::MockConnectionsBuilder,
-        version_fetcher::{tests::MockVersionFetcher, BuildVersionFetchError},
+        version_fetcher::{tests::MockVersionFetcher, MetadataFetchError, NodeMetadata},
         EventListener, NodeConnectionInterface,
     };
     use anyhow::Error;
@@ -334,9 +352,12 @@ mod tests {
 
     #[tokio::test]
     async fn given_event_listener_should_not_connect_when_incompatible_version() {
-        let version_fetcher = MockVersionFetcher::new(vec![Err(
-            BuildVersionFetchError::VersionNotAcceptable("1.5.10".to_string()),
-        )]);
+        let version_fetcher = MockVersionFetcher::new(
+            vec![Err(MetadataFetchError::VersionNotAcceptable(
+                "1.5.10".to_string(),
+            ))],
+            vec![Ok("x".to_string())],
+        );
         let connections_builder = Arc::new(MockConnectionsBuilder::default());
 
         let err = run_event_listener(2, version_fetcher, connections_builder.clone(), true).await;
@@ -347,36 +368,27 @@ mod tests {
     #[tokio::test]
     async fn given_event_listener_should_retry_version_fetch_when_first_response_is_error() {
         let protocol_version = ProtocolVersion::from_str("1.5.10").unwrap();
-        let version_fetcher = MockVersionFetcher::new(vec![
-            Err(BuildVersionFetchError::Error(Error::msg("retryable error"))),
-            Ok(protocol_version),
-        ]);
+        let version_fetcher = MockVersionFetcher::new(
+            vec![
+                Err(MetadataFetchError::Error(Error::msg("retryable error"))),
+                Ok(protocol_version),
+            ],
+            vec![Ok("network-1".to_string()), Ok("network-2".to_string())],
+        );
         let connections_builder = Arc::new(MockConnectionsBuilder::one_ok());
 
         let err = run_event_listener(2, version_fetcher, connections_builder.clone(), true).await;
 
         let received_data = connections_builder.get_received_data().await;
-        assert_eq!(received_data.len(), 2);
-        assert!(set_contains(received_data, vec!["main-1", "events-1"],));
-        assert!(err.to_string().contains("Max connection attempts reached"));
-    }
-
-    #[tokio::test]
-    async fn given_event_listener_should_fail_when_one_connection_manager_fails_other_does_not() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
-        let connections_builder = Arc::new(MockConnectionsBuilder::one_fails_immediatly());
-
-        let err = run_event_listener(1, version_fetcher, connections_builder.clone(), true).await;
-
-        let received_data = connections_builder.get_received_data().await;
         assert_eq!(received_data.len(), 1);
-        assert!(set_contains(received_data, vec!["main-1"],));
+        assert!(set_contains(received_data, vec!["events-1"],));
         assert!(err.to_string().contains("Max connection attempts reached"));
     }
 
     #[tokio::test]
     async fn given_event_listener_should_fail_if_connection_fails() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
+        let version_fetcher =
+            MockVersionFetcher::repeatable_from_protocol_version("1.5.10", "network-1");
         let connections_builder = Arc::new(MockConnectionsBuilder::connection_fails());
 
         let err = run_event_listener(1, version_fetcher, connections_builder.clone(), true).await;
@@ -388,20 +400,22 @@ mod tests {
 
     #[tokio::test]
     async fn given_event_listener_should_fetch_data_if_enough_reconnections() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
+        let version_fetcher =
+            MockVersionFetcher::repeatable_from_protocol_version("2.0.0", "network-1");
         let connections_builder = Arc::new(MockConnectionsBuilder::ok_after_two_fails());
 
         let err = run_event_listener(3, version_fetcher, connections_builder.clone(), true).await;
 
         let received_data = connections_builder.get_received_data().await;
-        assert_eq!(received_data.len(), 2);
-        assert!(set_contains(received_data, vec!["main-2", "events-2"],));
+        assert_eq!(received_data.len(), 1);
+        assert!(set_contains(received_data, vec!["events-2"],));
         assert!(err.to_string().contains("Max connection attempts reached"));
     }
 
     #[tokio::test]
     async fn given_event_listener_should_give_up_retrying_if_runs_out() {
-        let version_fetcher = MockVersionFetcher::repeatable_from_protocol_version("1.5.10");
+        let version_fetcher =
+            MockVersionFetcher::repeatable_from_protocol_version("1.5.10", "network-1");
         let connections_builder = Arc::new(MockConnectionsBuilder::ok_after_two_fails());
 
         let err = run_event_listener(2, version_fetcher, connections_builder.clone(), true).await;
@@ -417,7 +431,7 @@ mod tests {
         allow_partial_connection: bool,
     ) -> Error {
         let mut listener = EventListener {
-            node_build_version: ProtocolVersion::from_parts(1, 0, 0),
+            node_metadata: NodeMetadata::default(),
             node: NodeConnectionInterface::default(),
             max_connection_attempts,
             delay_between_attempts: Duration::from_secs(1),

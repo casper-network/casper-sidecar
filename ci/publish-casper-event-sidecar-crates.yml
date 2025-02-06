@@ -1,5 +1,5 @@
 ---
-name: publish-casper-event-sidecar-crates
+name: publish-casper-sidecar-crates
 
 on:
   push:

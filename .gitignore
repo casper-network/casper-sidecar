@@ -1,2 +1,6 @@
 /target
 /test_output
+# direnv-related files
+.direnv/
+.envrc
+

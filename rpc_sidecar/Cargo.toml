@@ -1,0 +1,81 @@
+[package]
+name = "casper-rpc-sidecar"
+version = "1.0.0"
+authors = ["Jacek Malec <jacek@casperlabs.io>"]
+edition = "2018"
+description = "The Casper blockchain RPC sidecard"
+documentation = "https://docs.rs/casper-rpc-sidecar"
+readme = "README.md"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/rpc_sidecard"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1.50"
+backtrace = "0.3.50"
+base16 = "0.2.1"
+bincode = "1"
+bytes = "1.5.0"
+casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io"] }
+casper-binary-port.workspace = true
+datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
+futures = { workspace = true }
+http = "0.2.1"
+hyper = "0.14.26"
+juliet = { version ="0.3", features = ["tracing"] }
+metrics = { workspace = true }
+num_cpus = "1"
+num-traits = { version = "0.2.10", default-features = false }
+once_cell.workspace = true
+portpicker = "0.1.1"
+rand = "0.8.3"
+schemars = { version = "0.8.21", features = ["preserve_order", "impl_json_schema"] }
+serde = { workspace = true, default-features = true, features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde-map-to-array = "1.1.0"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-util = { version = "0.6.4", features = ["codec"] }
+toml = { workspace = true }
+tower = { version = "0.4.6", features = ["limit"] }
+tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
+warp = { version = "0.3.6", features = ["compression"] }
+derive-new = "0.6.0"
+
+[dev-dependencies]
+assert-json-diff = "2"
+casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io", "testing"] }
+casper-binary-port = { workspace = true, features = ["testing"] }
+pretty_assertions = "1"
+regex = "1"
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+jsonschema = { workspace = true }
+
+[build-dependencies]
+vergen = { version = "8.3.2", default-features = false, features = [
+    "git",
+    "gitoxide",
+] }
+
+[features]
+testing = ["casper-types/testing", "casper-binary-port/testing"]
+
+[package.metadata.deb]
+revision = "0"
+assets = [
+    ["../target/release/casper-rpc-sidecar", "/usr/bin/casper-rpc-sidecar", "755"]
+]
+maintainer-scripts = "../resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper RPC sidecar.
+
+For information on using package, see https://github.com/casper-network/casper-node
+"""
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_rpc_sidecar"
+restart-after-upgrade = false

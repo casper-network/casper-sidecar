@@ -1,5 +1,5 @@
 //! Common types used when dealing with serialization/deserialization of data from nodes,
-//! also a "contemporary" data model which is based on 1.4.x node specification
+//! also a "contemporary" data model which is based on 2.0.x node specification
 
 /// A filter for event types a client has subscribed to receive.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -7,9 +7,9 @@ pub enum EventFilter {
     ApiVersion,
     SidecarVersion,
     BlockAdded,
-    DeployAccepted,
-    DeployProcessed,
-    DeployExpired,
+    TransactionAccepted,
+    TransactionProcessed,
+    TransactionExpired,
     Fault,
     FinalitySignature,
     Step,
@@ -17,10 +17,15 @@ pub enum EventFilter {
 
 #[cfg(feature = "sse-data-testing")]
 use super::testing;
-use crate::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(feature = "sse-data-testing")]
-use casper_types::testing::TestRng;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::ChainNameDigest;
+use casper_types::{
+    contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, EraId,
+    FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
+};
+#[cfg(feature = "sse-data-testing")]
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -40,16 +45,14 @@ pub(crate) fn to_error(msg: String) -> SseDataDeserializeError {
     SseDataDeserializeError::DeserializationError(msg)
 }
 
-/// Deserializes a string which should contain json data and returns a result of either SseData (which is 1.4.x compliant) or an SseDataDeserializeError
+/// Deserializes a string which should contain json data and returns a result of either SseData (which is 2.0.x compliant) or an SseDataDeserializeError
 ///
 /// * `json_raw`: string slice which should contain raw json data.
-pub fn deserialize(json_raw: &str) -> Result<(SseData, bool), SseDataDeserializeError> {
-    serde_json::from_str::<SseData>(json_raw)
-        .map(|el| (el, false))
-        .map_err(|err| {
-            let error_message = format!("Serde Error: {}", err);
-            to_error(error_message)
-        })
+pub fn deserialize(json_raw: &str) -> Result<SseData, SseDataDeserializeError> {
+    serde_json::from_str::<SseData>(json_raw).map_err(|err| {
+        let error_message = format!("Error when deserializing SSE event from node: {}", err);
+        to_error(error_message)
+    })
 }
 
 /// The "data" field of the events sent on the event stream to clients.
@@ -65,26 +68,22 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<JsonBlock>,
+        block: Box<Block>,
     },
-    /// The given deploy has been newly-accepted by this node.
-    DeployAccepted {
-        #[serde(flatten)]
-        // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
-        deploy: Arc<Deploy>,
-    },
-    /// The given deploy has been executed, committed and forms part of the given block.
-    DeployProcessed {
-        deploy_hash: Box<DeployHash>,
-        account: Box<PublicKey>,
+    /// The given transaction has been newly-accepted by this node.
+    TransactionAccepted(Arc<Transaction>),
+    /// The given transaction has been executed, committed and forms part of the given block.
+    TransactionProcessed {
+        transaction_hash: Box<TransactionHash>,
+        initiator_addr: Box<InitiatorAddr>,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
-    /// The given deploy has expired.
-    DeployExpired { deploy_hash: DeployHash },
+    /// The given transaction has expired.
+    TransactionExpired { transaction_hash: TransactionHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -96,22 +95,41 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        execution_effect: Box<RawValue>,
+        execution_effects: Box<RawValue>,
     },
     /// The node is about to shut down.
     Shutdown,
 }
 
 impl SseData {
+    pub fn type_label(&self) -> &str {
+        match self {
+            SseData::ApiVersion(_) => "ApiVersion",
+            SseData::SidecarVersion(_) => "SidecarVersion",
+            SseData::BlockAdded { .. } => "BlockAdded",
+            SseData::TransactionAccepted(_) => "TransactionAccepted",
+            SseData::TransactionProcessed { .. } => "TransactionProcessed",
+            SseData::TransactionExpired { .. } => "TransactionExpired",
+            SseData::Fault { .. } => "Fault",
+            SseData::FinalitySignature(_) => "FinalitySignature",
+            SseData::Step { .. } => "Step",
+            SseData::Shutdown => "Shutdown",
+        }
+    }
     pub fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
             SseData::Shutdown => true,
-            SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
+            //Keeping the rest part as explicit match so that if a new variant is added, it will be caught by the compiler
             SseData::SidecarVersion(_) => filter.contains(&EventFilter::SidecarVersion),
+            SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
-            SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
-            SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
-            SseData::DeployExpired { .. } => filter.contains(&EventFilter::DeployExpired),
+            SseData::TransactionAccepted { .. } => {
+                filter.contains(&EventFilter::TransactionAccepted)
+            }
+            SseData::TransactionProcessed { .. } => {
+                filter.contains(&EventFilter::TransactionProcessed)
+            }
+            SseData::TransactionExpired { .. } => filter.contains(&EventFilter::TransactionExpired),
             SseData::Fault { .. } => filter.contains(&EventFilter::Fault),
             SseData::FinalitySignature(_) => filter.contains(&EventFilter::FinalitySignature),
             SseData::Step { .. } => filter.contains(&EventFilter::Step),
@@ -133,41 +151,48 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = JsonBlock::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
-            block_hash: block.hash,
-            block: Box::new(block),
+            block_hash: *block.hash(),
+            block: Box::new(block.into()),
         }
     }
 
-    /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let deploy = Deploy::random(rng);
-        let event = SseData::DeployAccepted {
-            deploy: Arc::new(deploy.clone()),
+    /// Returns a random `SseData::TransactionAccepted`, along with the random `Transaction`.
+    pub fn random_transaction_accepted(rng: &mut TestRng) -> (Self, Transaction) {
+        let transaction = Transaction::random(rng);
+        let event = SseData::TransactionAccepted(Arc::new(transaction.clone()));
+        (event, transaction)
+    }
+
+    /// Returns a random `SseData::TransactionProcessed`.
+    pub fn random_transaction_processed(rng: &mut TestRng) -> Self {
+        let transaction = Transaction::random(rng);
+        let timestamp = match &transaction {
+            Transaction::Deploy(deploy) => deploy.header().timestamp(),
+            Transaction::V1(v1_transaction) => v1_transaction.timestamp(),
         };
-        (event, deploy)
-    }
+        let ttl = match &transaction {
+            Transaction::Deploy(deploy) => deploy.header().ttl(),
+            Transaction::V1(v1_transaction) => v1_transaction.ttl(),
+        };
 
-    /// Returns a random `SseData::DeployProcessed`.
-    pub fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
-        SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.hash()),
-            account: Box::new(deploy.header().account().clone()),
-            timestamp: deploy.header().timestamp(),
-            ttl: deploy.header().ttl(),
-            dependencies: deploy.header().dependencies().clone(),
+        SseData::TransactionProcessed {
+            transaction_hash: Box::new(TransactionHash::random(rng)),
+            initiator_addr: Box::new(transaction.initiator_addr().clone()),
+            timestamp,
+            ttl,
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(rng.gen()),
+            execution_result: Box::new(ExecutionResult::random(rng)),
+            messages: rng.random_vec(1..5),
         }
     }
 
-    /// Returns a random `SseData::DeployExpired`
-    pub fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
-        SseData::DeployExpired {
-            deploy_hash: *deploy.hash(),
+    /// Returns a random `SseData::TransactionExpired`
+    pub fn random_transaction_expired(rng: &mut TestRng) -> Self {
+        let transaction = testing::create_expired_transaction(Timestamp::now(), rng);
+        SseData::TransactionExpired {
+            transaction_hash: transaction.hash(),
         }
     }
 
@@ -182,29 +207,44 @@ impl SseData {
 
     /// Returns a random `SseData::FinalitySignature`.
     pub fn random_finality_signature(rng: &mut TestRng) -> Self {
+        let block_hash = BlockHash::random(rng);
+        let block_height = rng.gen::<u64>();
+        let era_id = EraId::random(rng);
+        let chain_name_digest = ChainNameDigest::random(rng);
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
-            BlockHash::random(rng),
-            rng.gen(),
+            block_hash,
+            block_height,
+            era_id,
+            chain_name_digest,
             rng,
         )))
     }
 
     /// Returns a random `SseData::Step`.
     pub fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effect = match rng.gen::<ExecutionResult>() {
-            ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
-                effect
-            }
-        };
+        let execution_effects = ExecutionResultV2::random(rng);
+
         SseData::Step {
             era_id: EraId::new(rng.gen()),
-            execution_effect: to_raw_value(&execution_effect).unwrap(),
+            execution_effects: to_raw_value(&execution_effects).unwrap(),
         }
+    }
+
+    /// Returns a random `SseData::SidecarVersion`.
+    pub fn random_sidecar_version(rng: &mut TestRng) -> Self {
+        let protocol_version = ProtocolVersion::from_parts(
+            rng.gen_range(2..10),
+            rng.gen::<u8>() as u32,
+            rng.gen::<u8>() as u32,
+        );
+        SseData::SidecarVersion(protocol_version)
     }
 }
 
 #[cfg(feature = "sse-data-testing")]
 pub mod test_support {
+    use serde_json::json;
+
     pub const BLOCK_HASH_1: &str =
         "ca52062424e9d5631a34b7b401e123927ce29d4bd10bc97c7df0aa752f131bb7";
     pub const BLOCK_HASH_2: &str =
@@ -215,21 +255,21 @@ pub mod test_support {
         "000625a798318315a4f401828f6d53371a623d79653db03a79a4cfbdd1e4ae53";
 
     pub fn example_api_version() -> String {
-        "{\"ApiVersion\":\"1.5.2\"}".to_string()
+        "{\"ApiVersion\":\"2.0.0\"}".to_string()
     }
 
     pub fn shutdown() -> String {
         "\"Shutdown\"".to_string()
     }
 
-    pub fn example_block_added_1_5_2(block_hash: &str, height: &str) -> String {
-        let raw_block_added = format!("{{\"BlockAdded\":{{\"block_hash\":\"{block_hash}\",\"block\":{{\"hash\":\"{block_hash}\",\"header\":{{\"parent_hash\":\"4a28718301a83a43563ec42a184294725b8dd188aad7a9fceb8a2fa1400c680e\",\"state_root_hash\":\"63274671f2a860e39bb029d289e688526e4828b70c79c678649748e5e376cb07\",\"body_hash\":\"6da90c09f3fc4559d27b9fff59ab2453be5752260b07aec65e0e3a61734f656a\",\"random_bit\":true,\"accumulated_seed\":\"c8b4f30a3e3e082f4f206f972e423ffb23d152ca34241ff94ba76189716b61da\",\"era_end\":{{\"era_report\":{{\"equivocators\":[],\"rewards\":[{{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"amount\":1559401400039}},{{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"amount\":25895190891}}],\"inactive_validators\":[]}},\"next_era_validator_weights\":[{{\"validator\":\"01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80\",\"weight\":\"50538244651768072\"}},{{\"validator\":\"010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8\",\"weight\":\"839230678448335\"}}]}},\"timestamp\":\"2021-04-08T05:14:14.912Z\",\"era_id\":90,\"height\":{height},\"protocol_version\":\"1.0.0\"}},\"body\":{{\"proposer\":\"012bac1d0ff9240ff0b7b06d555815640497861619ca12583ddef434885416e69b\",\"deploy_hashes\":[],\"transfer_hashes\":[]}},\"proofs\":[]}}}}}}");
+    pub fn example_block_added_2_0_0(hash: &str, height: u64) -> String {
+        let raw_block_added = json!({"BlockAdded":{"block_hash":hash,"block":{"Version2":{"hash":hash,"header":{"parent_hash":"327a6be4f8b23115e089875428ff03d9071a7020ce3e0f4734c43e4279ad77fc","state_root_hash":"4f1638725e8a92ad6432a76124ba4a6db365b00ff352beb58b8c48ed9ed4b68d","body_hash":"337a4c9e510e01e142a19e5d81203bdc43e59a4f9039288c01f7b89370e1d104","random_bit":true,"accumulated_seed":"7b7d7b18668dcc8ffecda5f5de1037f26cd61394f72357cdc9ba84f0f48e37c8","era_end":null,"timestamp":"2024-05-10T19:55:20.415Z","era_id":77,"height":height,"protocol_version":"2.0.0","proposer":"01cee2ff4318180282a73bfcd1446f8145e4d80508fecd76fc38dce13af491f0e5","current_gas_price":1,"last_switch_block_hash":"a3533c2625c6413be2287e581c5fca1a0165ebac02b051f9f07ccf1ad483cf2d"},"body":{"transactions":{"0":[],"1":[],"2":[],"3":[]},"rewarded_signatures":[[248],[0],[0]]}}}}}).to_string();
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }
 
-    pub fn example_finality_signature_1_5_2(block_hash: &str) -> String {
-        let raw_block_added = format!("{{\"FinalitySignature\":{{\"block_hash\":\"{block_hash}\",\"era_id\":8538,\"signature\":\"0157368db32b578c1cf97256c3012d50afc5745fe22df2f4be1efd0bdf82b63ce072b4726fdfb7c026068b38aaa67ea401b49d969ab61ae587af42c64de8914101\",\"public_key\":\"0138e64f04c03346e94471e340ca7b94ba3581e5697f4d1e59f5a31c0da720de45\"}}}}");
+    pub fn example_finality_signature_2_0_0(hash: &str) -> String {
+        let raw_block_added = format!("{{\"FinalitySignature\":{{\"V2\":{{\"block_hash\":\"{hash}\",\"block_height\":123026,\"era_id\":279,\"chain_name_hash\":\"f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301\",\"signature\":\"01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d\",\"public_key\":\"0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf\"}}}}}}");
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }

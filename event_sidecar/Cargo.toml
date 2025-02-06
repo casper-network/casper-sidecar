@@ -1,0 +1,68 @@
+[package]
+name = "casper-event-sidecar"
+authors = ["George Williamson <george@casperlabs.io>", "Jakub Zajkowski <jakub@casperlabs.io>"]
+version = "1.0.0"
+edition = "2018"
+readme = "README.md"
+description = "App for storing and republishing sse events of a casper node"
+license-file = "../LICENSE"
+documentation = "README.md"
+homepage = "https://github.com/casper-network/casper-sidecar/"
+repository = "https://github.com/casper-network/casper-sidecar/"
+
+[features]
+additional-metrics = ["casper-event-types/additional-metrics", "metrics/additional-metrics"]
+testing = []
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1.56"
+bytes = "1.2.0"
+casper-event-listener = { path = "../listener", version = "1.0.0" }
+casper-event-types.workspace = true
+casper-types = { workspace = true, features = ["std", "json-schema"] }
+derive-new = "0.5.9"
+eventsource-stream = "0.2.3"
+futures = { workspace = true }
+hex = "0.4.3"
+hex_fmt = "0.3.0"
+http = "0.2.1"
+hyper = "0.14.4"
+indexmap = "2.0.0"
+itertools = { workspace = true }
+jsonschema = "0.17.1"
+metrics = { workspace = true }
+pin-project = "1.1.5"
+rand = "0.8.3"
+regex = "1.6.0"
+reqwest = "0.12.5"
+schemars = "0.8.21"
+sea-query = "0.30"
+serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite", "postgres"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-stream = { version = "0.1.4", features = ["sync"] }
+tower = { version = "0.4.13", features = ["buffer", "limit", "make", "timeout"] }
+tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true }
+utoipa = { version = "4", features = ["rc_schema"] }
+utoipa-swagger-ui = { version = "6" }
+warp = { version = "0.3.6", features = ["compression"] }
+wheelbuf = "0.2.0"
+
+[dev-dependencies]
+async-stream = { workspace = true }
+casper-event-types = { workspace = true, features = ["sse-data-testing"] }
+casper-types = { workspace = true, features = ["std", "testing"] }
+colored = "2.0.0"
+futures-util = { workspace = true }
+once_cell = { workspace = true }
+pg-embed = { git = "https://github.com/zajko/pg-embed", branch = "bump_dependencies" }
+portpicker = "0.1.1"
+pretty_assertions = "1"
+reqwest = { version = "0.12.5", features = ["stream"] }
+tabled = { version = "0.10.0", features = ["derive", "color"] }
+tempfile = "3"
+tokio-util = "0.7.8"

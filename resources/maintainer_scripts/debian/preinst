@@ -4,8 +4,8 @@ set -e
 # Default Variables
 # ---
 DEFAULT_USERNAME="csidecar"
-DEFAULT_CONFIG_DIRECTORY="/etc/casper-event-sidecar"
-DEFAULT_DATA_DIRECTORY="/var/lib/casper-event-sidecar"
+DEFAULT_CONFIG_DIRECTORY="/etc/casper-sidecar"
+DEFAULT_DATA_DIRECTORY="/var/lib/casper-sidecar"
 
 # Creation of Files/Directories
 # ---
