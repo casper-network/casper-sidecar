@@ -9,8 +9,7 @@ mod tests;
 
 use anyhow::Error;
 use hyper::Server;
-use std::net::TcpListener;
-use std::time::Duration;
+use std::{net::TcpListener, time::Duration};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use tracing::info;
 use warp::Filter;

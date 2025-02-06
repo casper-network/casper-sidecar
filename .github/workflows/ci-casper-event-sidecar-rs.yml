@@ -13,7 +13,6 @@ on:
   pull_request:
     branches:
       - "dev"
-      - "feat-*"
     paths-ignore:
       - '**.md'
 
