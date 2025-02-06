@@ -8,7 +8,7 @@ mod speculative_exec_server;
 pub mod testing;
 
 use anyhow::Error;
-use casper_binary_port::{BinaryRequestHeader, Command};
+use casper_binary_port::{Command, CommandHeader};
 use casper_types::bytesrepr::ToBytes;
 use casper_types::{bytesrepr, ProtocolVersion};
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
@@ -108,7 +108,7 @@ fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrInc
 }
 
 fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(req.tag(), id);
+    let header = CommandHeader::new(req.tag(), id);
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;

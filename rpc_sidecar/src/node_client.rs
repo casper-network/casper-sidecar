@@ -19,7 +19,7 @@ use tokio_util::codec::Framed;
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, Command,
+    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
     ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
     DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
@@ -732,20 +732,20 @@ pub enum Error {
     #[error("received an unexpected node error: {message} ({code})")]
     UnexpectedNodeError { message: String, code: u16 },
     #[error("binary protocol version mismatch")]
-    BinaryRequestHeaderVersionMismatch,
+    CommandHeaderVersionMismatch,
     #[error("request was throttled by the node")]
     RequestThrottled,
     #[error("malformed information request")]
     MalformedInformationRequest,
-    #[error("malformed version bytes in header of binary request")]
+    #[error("malformed version bytes in command header")]
     TooLittleBytesForRequestHeaderVersion,
     #[error("malformed protocol version")]
-    MalformedBinaryRequestHeaderVersion,
+    MalformedCommandHeaderVersion,
     #[error("malformed transfer record key")]
     TransferRecordMalformedKey,
-    #[error("malformed header of binary request")]
-    MalformedBinaryRequestHeader,
-    #[error("malformed binary request")]
+    #[error("malformed command header")]
+    MalformedCommandHeader,
+    #[error("malformed command")]
     MalformedCommand,
     #[error("not found")]
     NotFound,
@@ -776,9 +776,7 @@ impl Error {
             Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
             Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
             Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
-            Ok(ErrorCode::BinaryRequestHeaderVersionMismatch) => {
-                Self::BinaryRequestHeaderVersionMismatch
-            }
+            Ok(ErrorCode::CommandHeaderVersionMismatch) => Self::CommandHeaderVersionMismatch,
             Ok(ErrorCode::PurseNotFound) => Self::PurseNotFound,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
@@ -867,11 +865,9 @@ impl Error {
             Ok(ErrorCode::TooLittleBytesForRequestHeaderVersion) => {
                 Self::TooLittleBytesForRequestHeaderVersion
             }
-            Ok(ErrorCode::MalformedBinaryRequestHeaderVersion) => {
-                Self::MalformedBinaryRequestHeaderVersion
-            }
+            Ok(ErrorCode::MalformedCommandHeaderVersion) => Self::MalformedCommandHeaderVersion,
             Ok(ErrorCode::TransferRecordMalformedKey) => Self::TransferRecordMalformedKey,
-            Ok(ErrorCode::MalformedBinaryRequestHeader) => Self::MalformedBinaryRequestHeader,
+            Ok(ErrorCode::MalformedCommandHeader) => Self::MalformedCommandHeader,
             Ok(ErrorCode::MalformedCommand) => Self::MalformedCommand,
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
@@ -1267,11 +1263,11 @@ fn try_parse_request_id(request: &[u8]) -> Result<u16, anyhow::Error> {
     Ok(header.id())
 }
 
-fn extract_header(payload: &[u8]) -> Result<(BinaryRequestHeader, &[u8]), anyhow::Error> {
+fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), anyhow::Error> {
     const BINARY_VERSION_LENGTH_BYTES: usize = std::mem::size_of::<u16>();
 
     if payload.len() < BINARY_VERSION_LENGTH_BYTES {
-        anyhow::bail!("Not enough bytes to read version of the binary request header");
+        anyhow::bail!("Not enough bytes to read version of the command header");
     }
 
     let binary_protocol_version = match u16::from_bytes(payload) {
@@ -1281,14 +1277,14 @@ fn extract_header(payload: &[u8]) -> Result<(BinaryRequestHeader, &[u8]), anyhow
         }
     };
 
-    if binary_protocol_version != BinaryRequestHeader::BINARY_REQUEST_VERSION {
+    if binary_protocol_version != CommandHeader::HEADER_VERSION {
         anyhow::bail!("Header version does not meet expectation");
     }
 
-    match BinaryRequestHeader::from_bytes(payload) {
+    match CommandHeader::from_bytes(payload) {
         Ok((header, remainder)) => Ok((header, remainder)),
         Err(error) => {
-            anyhow::bail!("Malformed BinaryRequestHeader definition: {}", error);
+            anyhow::bail!("Malformed CommandHeader definition: {}", error);
         }
     }
 }
@@ -1374,7 +1370,7 @@ mod tests {
     };
 
     use super::*;
-    use casper_binary_port::{BinaryRequestHeader, ReactorStateName};
+    use casper_binary_port::{CommandHeader, ReactorStateName};
     use casper_types::testing::TestRng;
     use casper_types::{BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp};
     use tokio::time::sleep;
@@ -1586,7 +1582,7 @@ mod tests {
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
                 let (_, binary_message) = c.generate_payload(&get_dummy_request());
-                let header = BinaryRequestHeader::from_bytes(binary_message.payload())
+                let header = CommandHeader::from_bytes(binary_message.payload())
                     .unwrap()
                     .0;
                 header.id()
@@ -1767,16 +1763,16 @@ mod tests {
             Error::TooLittleBytesForRequestHeaderVersion
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedBinaryRequestHeaderVersion as u16),
-            Error::MalformedBinaryRequestHeaderVersion
+            Error::from_error_code(ErrorCode::MalformedCommandHeaderVersion as u16),
+            Error::MalformedCommandHeaderVersion
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::TransferRecordMalformedKey as u16),
             Error::TransferRecordMalformedKey
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedBinaryRequestHeader as u16),
-            Error::MalformedBinaryRequestHeader
+            Error::from_error_code(ErrorCode::MalformedCommandHeader as u16),
+            Error::MalformedCommandHeader
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::MalformedCommand as u16),
