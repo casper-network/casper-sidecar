@@ -6,8 +6,8 @@ use crate::{
 use casper_types::{
     system::auction::ValidatorWeights, testing::TestRng, BlockHash, BlockV2, Deploy, DeployHash,
     Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
-    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionV1,
-    TransactionV1Hash, U512,
+    SingleBlockRewardedSignatures, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionV1, TransactionV1Hash, U512,
 };
 use rand::Rng;
 use std::{
