@@ -8,7 +8,7 @@ mod speculative_exec_server;
 pub mod testing;
 
 use anyhow::Error;
-use casper_binary_port::{BinaryRequest, BinaryRequestHeader};
+use casper_binary_port::{Command, CommandHeader};
 use casper_types::bytesrepr::ToBytes;
 use casper_types::{bytesrepr, ProtocolVersion};
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
@@ -25,7 +25,6 @@ pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
 use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 use tracing::warn;
-
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -108,8 +107,8 @@ fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrInc
     })
 }
 
-fn encode_request(req: &BinaryRequest, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag(), id);
+fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
+    let header = CommandHeader::new(req.tag(), id);
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;

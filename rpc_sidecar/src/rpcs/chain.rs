@@ -402,13 +402,13 @@ async fn get_era_summary_by_block(
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{rpcs::test_utils::BinaryPortMock, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::{rpcs::test_utils::BinaryPortMock, ClientError};
     use casper_binary_port::{
-        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-        GlobalStateEntityQualifier, GlobalStateQueryResult, InformationRequest,
-        InformationRequestTag, RecordId,
+        BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, GlobalStateEntityQualifier,
+        GlobalStateQueryResult, InformationRequest, InformationRequestTag, RecordId,
     };
     use casper_types::{
+        bytesrepr::Bytes,
         system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
         testing::TestRng,
         AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, BlockWithSignatures,
@@ -731,39 +731,33 @@ mod tests {
     impl NodeClient for ValidBlockMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::BlockWithSignatures) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(self.block.clone(), SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.block.clone()),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::BlockHeader) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            self.block.block().clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.block.block().clone_header()),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::Get(GetRequest::Record {
+                Command::Get(GetRequest::Record {
                     record_type_tag, ..
                 }) if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
                     Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         RecordId::Transfer,
                         &self.transfers,
-                        SUPPORTED_PROTOCOL_VERSION,
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -780,7 +774,7 @@ mod tests {
     impl NodeClient for ValidEraSummaryMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             let expected_tag = if self.expect_no_block_identifier {
                 InformationRequestTag::LatestSwitchBlockHeader
@@ -788,19 +782,15 @@ mod tests {
                 InformationRequestTag::BlockHeader
             };
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag) == Ok(expected_tag) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            self.block.clone_header(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.block.clone_header()),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::Get(GetRequest::State(req))
+                Command::Get(GetRequest::State(req))
                     if matches!(
                         req.clone().destructure().1,
                         GlobalStateEntityQualifier::Item {
@@ -810,15 +800,11 @@ mod tests {
                     ) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            GlobalStateQueryResult::new(
-                                StoredValue::EraInfo(EraInfo::new()),
-                                vec![],
-                            ),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::EraInfo(EraInfo::new()),
+                            vec![],
+                        )),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

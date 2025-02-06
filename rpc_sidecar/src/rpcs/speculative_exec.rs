@@ -170,13 +170,13 @@ mod tests {
     use std::convert::TryFrom;
 
     use casper_binary_port::{
-        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest, InformationRequestTag,
+        BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, InformationRequestTag,
         SpeculativeExecutionResult,
     };
-    use casper_types::testing::TestRng;
+    use casper_types::{bytesrepr::Bytes, testing::TestRng};
     use pretty_assertions::assert_eq;
 
-    use crate::{ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::ClientError;
 
     use super::*;
 
@@ -234,29 +234,21 @@ mod tests {
     impl NodeClient for ValidSpecExecMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::BlockHeader) =>
                 {
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(
-                            self.execution_result.clone(),
-                            SUPPORTED_PROTOCOL_VERSION,
-                        ),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(self.execution_result.clone()),
+                        Bytes::from(vec![]),
                     ))
                 }
-                BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::from_value(
-                        self.execution_result.clone(),
-                        SUPPORTED_PROTOCOL_VERSION,
-                    ),
-                    &[],
-                    0,
+                Command::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(self.execution_result.clone()),
+                    Bytes::from(vec![]),
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
             }

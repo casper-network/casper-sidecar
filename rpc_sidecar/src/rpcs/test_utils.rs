@@ -2,26 +2,21 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
 
 use async_trait::async_trait;
 use casper_binary_port::{
-    BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest,
-    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, GlobalStateEntityQualifier,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
 };
 use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr::ToBytes,
     system::auction::{Bid, BidKind, EraInfo, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
-    AddressableEntityHash, BlockHeader, CLValue, GlobalStateIdentifier, Key, KeyTag,
-    ProtocolVersion, SemVer, StoredValue,
+    AddressableEntityHash, BlockHeader, CLValue, GlobalStateIdentifier, Key, KeyTag, StoredValue,
 };
-use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
 use crate::{ClientError, NodeClient};
 
-pub(crate) static PROTOCOL_VERSION: Lazy<ProtocolVersion> =
-    Lazy::new(|| ProtocolVersion::new(SemVer::new(2, 0, 0)));
-
 pub(crate) struct BinaryPortMock {
-    request_responses: Arc<Mutex<Vec<(BinaryRequest, BinaryResponseAndRequest)>>>,
+    request_responses: Arc<Mutex<Vec<(Command, BinaryResponseAndRequest)>>>,
 }
 
 impl BinaryPortMock {
@@ -43,12 +38,9 @@ impl BinaryPortMock {
                 path: vec![],
             },
         );
-        let req = BinaryRequest::Get(GetRequest::State(Box::new(req)));
+        let req = Command::Get(GetRequest::State(Box::new(req)));
         let stored_value = StoredValue::EraInfo(era_info);
-        let res = BinaryResponse::from_value(
-            GlobalStateQueryResult::new(stored_value, vec![]),
-            *PROTOCOL_VERSION,
-        );
+        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, vec![]));
         self.when_then(req, res).await;
     }
 
@@ -60,8 +52,8 @@ impl BinaryPortMock {
         let get_request = information_request
             .try_into()
             .expect("should create request");
-        let req = BinaryRequest::Get(get_request);
-        let res = BinaryResponse::from_option(Some(block_header), *PROTOCOL_VERSION);
+        let req = Command::Get(get_request);
+        let res = BinaryResponse::from_option(Some(block_header));
         self.when_then(req, res).await;
     }
 
@@ -78,8 +70,8 @@ impl BinaryPortMock {
         )));
         let stored_values: Vec<StoredValue> =
             bid_kinds.into_iter().map(StoredValue::BidKind).collect();
-        let res = BinaryResponse::from_value(stored_values, *PROTOCOL_VERSION);
-        self.when_then(BinaryRequest::Get(req), res).await;
+        let res = BinaryResponse::from_value(stored_values);
+        self.when_then(Command::Get(req), res).await;
     }
 
     pub async fn add_bids_fetch_res(
@@ -98,8 +90,8 @@ impl BinaryPortMock {
             .into_iter()
             .map(|b| StoredValue::Bid(Box::new(b)))
             .collect();
-        let res = BinaryResponse::from_value(stored_values, *PROTOCOL_VERSION);
-        self.when_then(BinaryRequest::Get(req), res).await;
+        let res = BinaryResponse::from_value(stored_values);
+        self.when_then(Command::Get(req), res).await;
     }
 
     pub async fn add_system_registry(
@@ -117,11 +109,8 @@ impl BinaryPortMock {
         let cl_value = CLValue::from_t(registry).unwrap();
         let stored_value = StoredValue::CLValue(cl_value);
 
-        let res = BinaryResponse::from_value(
-            GlobalStateQueryResult::new(stored_value, vec![]),
-            *PROTOCOL_VERSION,
-        );
-        self.when_then(BinaryRequest::Get(req), res).await;
+        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, vec![]));
+        self.when_then(Command::Get(req), res).await;
     }
 
     pub async fn add_seigniorage_snapshot_under_addressable_entity(
@@ -140,9 +129,8 @@ impl BinaryPortMock {
         )));
         let res = BinaryResponse::from_option(
             maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, vec![])),
-            *PROTOCOL_VERSION,
         );
-        self.when_then(BinaryRequest::Get(req), res).await;
+        self.when_then(Command::Get(req), res).await;
     }
 
     pub async fn add_seigniorage_snapshot_under_key_hash(
@@ -161,14 +149,13 @@ impl BinaryPortMock {
         )));
         let res = BinaryResponse::from_option(
             maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, vec![])),
-            *PROTOCOL_VERSION,
         );
-        self.when_then(BinaryRequest::Get(req), res).await;
+        self.when_then(Command::Get(req), res).await;
     }
 
-    pub async fn when_then(&self, when: BinaryRequest, then: BinaryResponse) {
+    pub async fn when_then(&self, when: Command, then: BinaryResponse) {
         let payload = when.to_bytes().unwrap();
-        let response_and_request = BinaryResponseAndRequest::new(then, &payload, 0);
+        let response_and_request = BinaryResponseAndRequest::new(then, payload.into());
         let mut guard = self.request_responses.lock().await;
         guard.push((when, response_and_request));
     }
@@ -176,10 +163,7 @@ impl BinaryPortMock {
 
 #[async_trait]
 impl NodeClient for BinaryPortMock {
-    async fn send_request(
-        &self,
-        req: BinaryRequest,
-    ) -> Result<BinaryResponseAndRequest, ClientError> {
+    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, ClientError> {
         let mut guard = self.request_responses.lock().await;
         let (request, response) = guard.remove(0);
         if request != req {
