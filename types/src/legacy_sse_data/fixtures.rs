@@ -1,19 +1,19 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::str::FromStr;
-
-use casper_types::system::auction::ValidatorWeights;
+use super::{structs, LegacySseData};
+use crate::{
+    sse_data::SseData,
+    testing::{parse_block_hash, parse_digest, parse_public_key},
+};
 use casper_types::{
-    BlockHash, BlockV2, Deploy, DeployHash, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction,
-    TransactionV1, TransactionV1Hash, U512,
+    system::auction::ValidatorWeights, testing::TestRng, BlockHash, BlockV2, Deploy, DeployHash,
+    Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
+    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionV1,
+    TransactionV1Hash, U512,
 };
 use rand::Rng;
-
-use super::{structs, LegacySseData};
-use crate::sse_data::SseData;
-use crate::testing::{parse_block_hash, parse_digest, parse_public_key};
-use casper_types::testing::TestRng;
-use casper_types::TestBlockBuilder;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr,
+};
 
 pub fn legacy_block_added() -> LegacySseData {
     serde_json::from_str(RAW_LEGACY_BLOCK_ADDED).unwrap()

@@ -88,7 +88,7 @@ pub(super) trait RpcWithParams {
         serde_json::from_value::<Self::RequestParams>(params).map_err(|error| {
             RpcError::new(
                 ReservedErrorCode::InvalidParams,
-                format!("Failed to parse 'params' field: {}", error),
+                format!("Failed to parse 'params' field: {error}"),
             )
         })
     }
@@ -229,7 +229,7 @@ pub(super) trait RpcWithOptionalParams {
         serde_json::from_value::<Option<Self::OptionalRequestParams>>(params).map_err(|error| {
             RpcError::new(
                 ReservedErrorCode::InvalidParams,
-                format!("Failed to parse 'params' field: {}", error),
+                format!("Failed to parse 'params' field: {error}"),
             )
         })
     }
@@ -301,7 +301,7 @@ pub(super) async fn run_with_cors(
         .service(make_svc);
 
     let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started {} server", server_name);
+    info!(address = %server.local_addr(), "started {server_name} server");
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
     let server_with_shutdown = server.with_graceful_shutdown(async {
@@ -310,7 +310,7 @@ pub(super) async fn run_with_cors(
 
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
-    info!("{} server shut down", server_name);
+    info!("{server_name} server shut down");
 }
 
 /// Start JSON RPC server in a background.
@@ -345,7 +345,7 @@ pub(super) async fn run(
         .service(make_svc);
 
     let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started {} server", server_name);
+    info!(address = %server.local_addr(), "started {server_name} server");
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
     let server_with_shutdown = server.with_graceful_shutdown(async {
@@ -354,7 +354,7 @@ pub(super) async fn run(
 
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
-    info!("{} server shut down", server_name);
+    info!("{server_name} server shut down");
 }
 
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -406,7 +406,7 @@ mod tests {
         maybe_params: Option<&str>,
         filter: &BoxedFilter<(impl Reply + 'static,)>,
     ) -> Response {
-        let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{}""#, method);
+        let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{method}""#);
         match maybe_params {
             Some(params) => write!(body, r#","params":{}}}"#, params).unwrap(),
             None => body += "}",

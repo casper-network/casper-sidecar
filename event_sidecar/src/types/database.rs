@@ -15,10 +15,10 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::{
     fmt::{Display, Formatter},
     path::Path,
+    sync::Arc,
 };
 use tokio::sync::OnceCell;
 use utoipa::ToSchema;

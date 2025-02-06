@@ -1,7 +1,7 @@
 use casper_types::{
     execution::{
         execution_result_v1::{ExecutionEffect, NamedKey, TransformKindV1, TransformV1},
-        Effects, ExecutionResultV1, ExecutionResultV2, TransformV2,
+        Effects, ExecutionResultV1, ExecutionResultV2, TransformKindV2, TransformV2,
     },
     NamedKeys, StoredValue,
 };
@@ -86,30 +86,16 @@ impl ExecutionEffectsTranslator for DefaultExecutionEffectsTranslator {
 
 fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
     let maybe_transform_kind = match ex_ef.kind() {
-        casper_types::execution::TransformKindV2::Identity => Some(TransformKindV1::Identity),
-        casper_types::execution::TransformKindV2::Write(stored_value) => {
-            maybe_tanslate_stored_value(stored_value)
-        }
-        casper_types::execution::TransformKindV2::AddInt32(v) => {
-            Some(TransformKindV1::AddInt32(*v))
-        }
-        casper_types::execution::TransformKindV2::AddUInt64(v) => {
-            Some(TransformKindV1::AddUInt64(*v))
-        }
-        casper_types::execution::TransformKindV2::AddUInt128(v) => {
-            Some(TransformKindV1::AddUInt128(*v))
-        }
-        casper_types::execution::TransformKindV2::AddUInt256(v) => {
-            Some(TransformKindV1::AddUInt256(*v))
-        }
-        casper_types::execution::TransformKindV2::AddUInt512(v) => {
-            Some(TransformKindV1::AddUInt512(*v))
-        }
-        casper_types::execution::TransformKindV2::AddKeys(keys) => handle_named_keys(keys),
-        casper_types::execution::TransformKindV2::Prune(key) => Some(TransformKindV1::Prune(*key)),
-        casper_types::execution::TransformKindV2::Failure(err) => {
-            Some(TransformKindV1::Failure(err.to_string()))
-        }
+        TransformKindV2::Identity => Some(TransformKindV1::Identity),
+        TransformKindV2::Write(stored_value) => maybe_tanslate_stored_value(stored_value),
+        TransformKindV2::AddInt32(v) => Some(TransformKindV1::AddInt32(*v)),
+        TransformKindV2::AddUInt64(v) => Some(TransformKindV1::AddUInt64(*v)),
+        TransformKindV2::AddUInt128(v) => Some(TransformKindV1::AddUInt128(*v)),
+        TransformKindV2::AddUInt256(v) => Some(TransformKindV1::AddUInt256(*v)),
+        TransformKindV2::AddUInt512(v) => Some(TransformKindV1::AddUInt512(*v)),
+        TransformKindV2::AddKeys(keys) => handle_named_keys(keys),
+        TransformKindV2::Prune(key) => Some(TransformKindV1::Prune(*key)),
+        TransformKindV2::Failure(err) => Some(TransformKindV1::Failure(err.to_string())),
     };
     maybe_transform_kind
 }
@@ -156,15 +142,15 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
             }
         }
         // following variants will not be understood by old clients since they were introduced in 2.x
-        StoredValue::AddressableEntity(_) => None,
-        StoredValue::BidKind(_) => None,
-        StoredValue::SmartContract(_) => None,
-        StoredValue::ByteCode(_) => None,
-        StoredValue::MessageTopic(_) => None,
-        StoredValue::Message(_) => None,
-        StoredValue::Prepayment(_) => None,
-        StoredValue::EntryPoint(_) => None,
-        StoredValue::RawBytes(_) => None,
+        StoredValue::AddressableEntity(_)
+        | StoredValue::BidKind(_)
+        | StoredValue::SmartContract(_)
+        | StoredValue::ByteCode(_)
+        | StoredValue::MessageTopic(_)
+        | StoredValue::Message(_)
+        | StoredValue::Prepayment(_)
+        | StoredValue::EntryPoint(_)
+        | StoredValue::RawBytes(_) => None,
     }
 }
 

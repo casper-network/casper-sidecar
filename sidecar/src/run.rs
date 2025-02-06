@@ -44,7 +44,7 @@ pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
             Ok(ExitCode::SUCCESS)
         },
         res = do_run(config, components) => res.map_err(|component_error| {
-            error!("The server has exited with an error: {}", component_error);
+            error!("The server has exited with an error: {component_error}");
             anyhow!(component_error.to_string())
         }),
     }

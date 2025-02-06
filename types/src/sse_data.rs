@@ -119,7 +119,7 @@ impl SseData {
     pub fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
             SseData::Shutdown => true,
-            //Keeping the rest part as explicit match so that if a new variant is added, it will be caught by the compiler            SseData::Shutdown
+            //Keeping the rest part as explicit match so that if a new variant is added, it will be caught by the compiler
             SseData::SidecarVersion(_) => filter.contains(&EventFilter::SidecarVersion),
             SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),

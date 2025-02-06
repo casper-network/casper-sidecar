@@ -1,10 +1,9 @@
 use serde::Deserialize;
-use std::net::IpAddr;
-use std::string::ToString;
-use std::vec;
 use std::{
     convert::{TryFrom, TryInto},
+    net::IpAddr,
     num::ParseIntError,
+    string::ToString,
 };
 
 use crate::database::{
@@ -26,7 +25,9 @@ pub enum LegacySseApiTag {
     // This tag is to point to sse endpoint of casper node in version 1.x
     V1,
 }
-
+fn default_disable_event_persistence() -> bool {
+    false
+}
 // This struct is used to parse the toml-formatted config file so the values can be utilised in the code.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct SseEventServerConfig {
@@ -36,13 +37,8 @@ pub struct SseEventServerConfig {
     pub outbound_channel_size: Option<usize>,
     pub connections: Vec<Connection>,
     pub event_stream_server: EventStreamServerConfig,
-    disable_event_persistence: Option<bool>,
-}
-
-impl SseEventServerConfig {
-    pub fn is_event_persistence_disabled(&self) -> bool {
-        self.disable_event_persistence.unwrap_or(false)
-    }
+    #[serde(default = "default_disable_event_persistence")]
+    pub disable_event_persistence: bool,
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -55,7 +51,7 @@ impl Default for SseEventServerConfig {
             outbound_channel_size: Some(100),
             connections: vec![],
             event_stream_server: EventStreamServerConfig::default(),
-            disable_event_persistence: Some(false),
+            disable_event_persistence: false,
         }
     }
 }
@@ -64,7 +60,7 @@ impl SseEventServerConfig {
     #[cfg(any(feature = "testing", test))]
     pub fn default_no_persistence() -> Self {
         Self {
-            disable_event_persistence: Some(true),
+            disable_event_persistence: true,
             ..Default::default()
         }
     }

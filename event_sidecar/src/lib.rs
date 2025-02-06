@@ -16,10 +16,7 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
-use std::collections::HashMap;
-use std::process::ExitCode;
-use std::sync::Arc;
-use std::{path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
 
 use crate::types::config::LegacySseApiTag;
 use crate::{
@@ -324,7 +321,9 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
 ) {
     match &sse_event.data {
         SseData::SidecarVersion(_) => {
-            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
+            error!("Received SseData::SidecarVersion on inbound SSE from the node which should never happen");
+            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
+            //to the outbound
         }
         SseData::ApiVersion(version) => {
             handle_api_version(

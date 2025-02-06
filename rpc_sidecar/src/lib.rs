@@ -9,11 +9,12 @@ pub mod testing;
 
 use anyhow::Error;
 use casper_binary_port::{Command, CommandHeader};
-use casper_types::bytesrepr::ToBytes;
-use casper_types::{bytesrepr, ProtocolVersion};
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    ProtocolVersion,
+};
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
-use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{future::BoxFuture, FutureExt};
 pub use http_server::run as run_rpc_server;
 use hyper::{
     server::{conn::AddrIncoming, Builder as ServerBuilder},
@@ -24,7 +25,7 @@ pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
 use std::{net::SocketAddr, process::ExitCode, sync::Arc};
-use tracing::warn;
+use tracing::{error, warn};
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -43,7 +44,12 @@ pub async fn build_rpc_server<'a>(
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
         let future = run_rpc(main_server_config, node_client.clone())
-            .map(|_| Ok(ExitCode::SUCCESS))
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("Rpc server finished with error: {}", e);
+                }
+                Ok(ExitCode::SUCCESS)
+            })
             .boxed();
         futures.push(future);
     }
@@ -51,17 +57,32 @@ pub async fn build_rpc_server<'a>(
     if let Some(config) = speculative_server_config {
         if config.enable_server {
             let future = run_speculative_exec(config, node_client.clone())
-                .map(|_| Ok(ExitCode::SUCCESS))
+                .map(|q| {
+                    if let Err(e) = q {
+                        error!("Rpc speculative server finished with error: {}", e);
+                    }
+                    Ok(ExitCode::SUCCESS)
+                })
                 .boxed();
             futures.push(future);
         }
     }
     let reconnect_loop = reconnect_loop
-        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .map(|q| {
+            if let Err(e) = q {
+                error!("reconect_loop finished with error: {}", e);
+            }
+            Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+        })
         .boxed();
     futures.push(reconnect_loop);
     let keepalive_loop = keepalive_loop
-        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .map(|q| {
+            if let Err(e) = q {
+                error!("keepalive_loop finished with error: {}", e);
+            }
+            Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+        })
         .boxed();
     futures.push(keepalive_loop);
     Ok(Some(retype_future_vec(futures).boxed()))

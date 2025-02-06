@@ -206,8 +206,6 @@ cors_origin = ''
 [rpc_server.node_client]
 address = '0.0.0.0:28101'
 max_message_size_bytes = 4_194_304
-request_limit = 3
-request_buffer_size = 16
 message_timeout_secs = 10
 client_access_timeout_secs = 10
 
@@ -240,8 +238,6 @@ max_attempts = 30
 
 - `node_client.address` - Address of the Casper Node binary port.
 - `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
-- `node_client.request_limit` - Maximum number of in-flight requests.
-- `node_client.request_buffer_size` - Number of node requests that can be buffered.
 - `node_client.message_timeout_secs` - Timeout for the message.
 - `node_client.client_access_timeout_secs` - Timeout for the client connection.
 

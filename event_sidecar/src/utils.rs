@@ -147,29 +147,24 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::database::postgresql_database::PostgreSqlDatabase;
-    use crate::database::sqlite_database::SqliteDatabase;
-    use crate::run;
-    use crate::run_rest_server;
-    use crate::testing::mock_node::tests::MockNode;
-    use crate::testing::testing_config::get_port;
-    use crate::testing::testing_config::prepare_config;
-    use crate::testing::testing_config::TestingConfig;
-    use crate::Database;
-    use anyhow::Error;
-    use anyhow::Error as AnyhowError;
-    use pg_embed::pg_enums::PgAuthMethod;
-    use pg_embed::postgres::PgSettings;
-    use pg_embed::{
-        pg_fetch::{PgFetchSettings, PG_V13},
-        postgres::PgEmbed,
+    use crate::{
+        database::{postgresql_database::PostgreSqlDatabase, sqlite_database::SqliteDatabase},
+        run, run_rest_server,
+        testing::{
+            mock_node::tests::MockNode,
+            testing_config::{get_port, prepare_config, TestingConfig},
+        },
+        Database,
     };
-    use std::path::PathBuf;
-    use std::process::ExitCode;
-    use std::time::Duration;
+    use anyhow::Error as AnyhowError;
+    use pg_embed::{
+        pg_enums::PgAuthMethod,
+        pg_fetch::{PgFetchSettings, PG_V13},
+        postgres::{PgEmbed, PgSettings},
+    };
+    use std::{path::PathBuf, process::ExitCode, time::Duration};
     use tempfile::{tempdir, TempDir};
-    use tokio::sync::mpsc::Receiver;
-    use tokio::time::timeout;
+    use tokio::{sync::mpsc::Receiver, time::timeout};
 
     pub(crate) fn display_duration(duration: Duration) -> String {
         // less than a second
@@ -211,9 +206,9 @@ pub mod tests {
         });
         match timeout(timeout_after, join_handle).await {
             Ok(res) => {
-                res.map_err(|err| Error::msg(format!("Failed to wait for receiver, {}", err)))
+                res.map_err(|err| AnyhowError::msg(format!("Failed to wait for receiver, {}", err)))
             }
-            Err(_) => Err(Error::msg("Waiting for messages timed out")),
+            Err(_) => Err(AnyhowError::msg("Waiting for messages timed out")),
         }
         .unwrap()
     }
@@ -263,14 +258,14 @@ pub mod tests {
 
     pub async fn start_sidecar_with_rest_api(
         config: TestingConfig,
-    ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
+    ) -> tokio::task::JoinHandle<Result<ExitCode, AnyhowError>> {
         tokio::spawn(async move { unpack_test_config_and_run(config, true).await })
         // starting the sidecar
     }
 
     pub async fn start_sidecar(
         config: TestingConfig,
-    ) -> tokio::task::JoinHandle<Result<ExitCode, Error>> {
+    ) -> tokio::task::JoinHandle<Result<ExitCode, AnyhowError>> {
         tokio::spawn(async move { unpack_test_config_and_run(config, false).await })
         // starting the sidecar
     }
@@ -452,7 +447,7 @@ pub mod tests {
     pub async fn unpack_test_config_and_run(
         testing_config: TestingConfig,
         spin_up_rest_api: bool,
-    ) -> Result<ExitCode, Error> {
+    ) -> Result<ExitCode, AnyhowError> {
         let has_db_configured = testing_config.has_db_configured();
         let sse_config = testing_config.inner();
         let storage_config = testing_config.storage_config;
@@ -468,7 +463,7 @@ pub mod tests {
 
         if spin_up_rest_api {
             if !has_db_configured {
-                return Err(Error::msg(
+                return Err(AnyhowError::msg(
                     "Can't unpack TestingConfig with REST API if no database is configured",
                 ));
             }

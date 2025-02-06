@@ -77,12 +77,7 @@ impl SidecarConfig {
     }
 
     fn is_sse_storing_events(&self) -> bool {
-        self.is_sse_server_enabled()
-            && !self
-                .sse_server
-                .as_ref()
-                .unwrap()
-                .is_event_persistence_disabled()
+        self.is_sse_server_enabled() && !self.sse_server.as_ref().unwrap().disable_event_persistence
     }
 
     fn is_postgres_enabled(&self) -> bool {

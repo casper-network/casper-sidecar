@@ -1,22 +1,6 @@
 use crate::{config::ExponentialBackoffConfig, encode_request, NodeClientConfig};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
-use futures::{Future, SinkExt, StreamExt};
-use metrics::rpc::{
-    inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
-};
-use serde::de::DeserializeOwned;
-use std::{
-    convert::{TryFrom, TryInto},
-    net::{IpAddr, SocketAddr},
-    sync::{
-        atomic::{AtomicU16, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio_util::codec::Framed;
-
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
@@ -35,14 +19,26 @@ use casper_types::{
     ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey,
     StoredValue, Transaction, TransactionHash, Transfer,
 };
+use futures::{Future, SinkExt, StreamExt};
+use metrics::rpc::{
+    inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
+};
+use serde::de::DeserializeOwned;
 use std::{
+    convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    time::Instant,
+    net::{IpAddr, SocketAddr},
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
 };
 use tokio::{
     net::TcpStream,
     sync::{futures::Notified, RwLock, RwLockWriteGuard},
 };
+use tokio_util::codec::Framed;
 use tracing::{error, field, info, warn};
 
 const MAX_MISMATCHED_ID_RETRIES: u8 = 100;
@@ -1371,8 +1367,9 @@ mod tests {
 
     use super::*;
     use casper_binary_port::{CommandHeader, ReactorStateName};
-    use casper_types::testing::TestRng;
-    use casper_types::{BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp};
+    use casper_types::{
+        testing::TestRng, BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp,
+    };
     use tokio::time::sleep;
 
     #[tokio::test]

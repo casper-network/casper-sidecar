@@ -102,7 +102,7 @@ pub struct DefaultConnectionManagerBuilder {
     pub(super) sleep_between_keep_alive_checks: Duration,
     /// Time of inactivity of a node connection that is allowed by KeepAliveMonitor
     pub(super) no_message_timeout: Duration,
-    /// Name of the network to which the node is connected to
+    /// Name of the network to which the node is connected
     pub(super) network_name: String,
 }
 

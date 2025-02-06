@@ -1,11 +1,3 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use async_trait::async_trait;
-use casper_types::{testing::TestRng, AsymmetricType, FinalitySignature as FinSig};
-use rand::Rng;
-
 use crate::database::types::SseEnvelope;
 use crate::types::{
     database::{
@@ -13,6 +5,14 @@ use crate::types::{
         TransactionAggregate, TransactionTypeId,
     },
     sse_events::*,
+};
+use async_trait::async_trait;
+use casper_types::{testing::TestRng, AsymmetricType, FinalitySignature as FinSig};
+use rand::Rng;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Clone)]
