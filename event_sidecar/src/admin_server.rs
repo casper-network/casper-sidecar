@@ -3,13 +3,10 @@ use crate::utils::{resolve_address, root_filter, Unexpected};
 use anyhow::Error;
 use hyper::Server;
 use metrics::metrics_summary;
-use std::net::TcpListener;
-use std::process::ExitCode;
-use std::time::Duration;
+use std::{net::TcpListener, process::ExitCode, time::Duration};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use tracing::info;
-use warp::Filter;
-use warp::{Rejection, Reply};
+use warp::{Filter, Rejection, Reply};
 
 const BIND_ALL_INTERFACES: &str = "0.0.0.0";
 struct AdminServer {
@@ -30,7 +27,7 @@ impl AdminServer {
             .concurrency_limit(self.max_concurrent_requests as usize)
             .rate_limit(self.max_requests_per_second as u64, Duration::from_secs(1))
             .service(warp_service);
-        info!(address = %address, "started {} server", "Admin API");
+        info!(address = %address, "started Admin API server");
         Server::from_tcp(listener)?
             .serve(Shared::new(Buffer::new(tower_service, 50)))
             .await?;

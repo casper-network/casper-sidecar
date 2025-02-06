@@ -3,18 +3,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use casper_types::testing::TestRng;
-use casper_types::AsymmetricType;
+use casper_types::{testing::TestRng, AsymmetricType, FinalitySignature as FinSig};
 use rand::Rng;
 
-use casper_types::FinalitySignature as FinSig;
-
 use crate::database::types::SseEnvelope;
-use crate::types::database::TransactionTypeId;
 use crate::types::{
     database::{
         DatabaseReadError, DatabaseReader, DatabaseWriteError, DatabaseWriter, Migration,
-        TransactionAggregate,
+        TransactionAggregate, TransactionTypeId,
     },
     sse_events::*,
 };

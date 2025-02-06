@@ -1,5 +1,4 @@
-use casper_types::AsymmetricType;
-use casper_types::FinalitySignature as FinSig;
+use casper_types::{AsymmetricType, FinalitySignature as FinSig};
 use http::StatusCode;
 use warp::test::request;
 

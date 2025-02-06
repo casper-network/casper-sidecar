@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::*;
+use crate::{
+    BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
+    TransactionProcessed,
+};
 
 /// This struct holds flags that steer DDL generation for specific databases.
 pub struct DDLConfiguration {
