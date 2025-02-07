@@ -20,7 +20,7 @@ port = 28102
 max_message_size_bytes = 4194304
 message_timeout_secs = 10
 client_access_timeout_secs = 10
-keepalive_timeout_ms = 10_000
+keepalive_timeout_ms = 4_000
 
 [rpc_server.node_client.exponential_backoff]
 initial_delay_ms = 1000
