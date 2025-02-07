@@ -80,7 +80,7 @@
 
 mod error;
 pub mod filters;
-mod rejections;
+pub mod rejections;
 mod request;
 mod request_handlers;
 mod response;

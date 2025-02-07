@@ -72,7 +72,7 @@ impl EventListenerBuilder {
 
 /// Listener that listens to a node and all the available filters it exposes.
 pub struct EventListener {
-    /// Metadata of the node to which the listener is listening to.
+    /// Metadata of the node to which the listener is listening.
     node_metadata: NodeMetadata,
     /// Data pointing to the node
     node: NodeConnectionInterface,

@@ -33,7 +33,7 @@ const RPC_API_SERVER_NAME: &str = "JSON RPC";
 pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
-    qps_limit: u64,
+    qps_limit: u32,
     max_body_bytes: u64,
     cors_origin: String,
 ) {

@@ -1,5 +1,7 @@
-use crate::connection_manager::{non_recoverable_error, recoverable_error, ConnectionManagerError};
-use crate::keep_alive_monitor::KeepAliveMonitor;
+use crate::{
+    connection_manager::{non_recoverable_error, recoverable_error, ConnectionManagerError},
+    keep_alive_monitor::KeepAliveMonitor,
+};
 use anyhow::Error;
 use async_stream::stream;
 use async_trait::async_trait;
@@ -7,11 +9,10 @@ use bytes::Bytes;
 use eventsource_stream::{Event, EventStream, EventStreamError, Eventsource};
 use futures::StreamExt;
 use reqwest::Client;
-use std::pin::Pin;
-use std::{fmt::Debug, time::Duration};
+use std::{fmt::Debug, pin::Pin, time::Duration};
 use tokio::select;
 use tokio_stream::Stream;
-use tracing::debug;
+use tracing::{debug, trace};
 use url::Url;
 
 #[derive(Clone, Debug)]
@@ -84,7 +85,8 @@ impl SseConnection {
                                     monitor.tick().await;
                                     yield Ok(bytes);
                                 },
-                                Err(_) => {
+                                Err(e) => {
+                                    trace!("Error when receiving bytes: {}", e);
                                     yield Err(SseDataStreamingError::ConnectionError());
                                     break;
                                 }

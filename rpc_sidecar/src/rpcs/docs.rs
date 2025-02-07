@@ -401,10 +401,10 @@ impl Example {
         };
 
         Example {
-            name: format!("{}_example", method_name),
+            name: format!("{method_name}_example"),
             params,
             result: ExampleResult {
-                name: format!("{}_example_result", method_name),
+                name: format!("{method_name}_example_result"),
                 value: result_value,
             },
         }

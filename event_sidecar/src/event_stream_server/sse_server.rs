@@ -56,8 +56,6 @@ pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
 /// The URL path part to subscribe to only `FinalitySignature` events.
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 
-/// The URL path part to subscribe to all events other than `TransactionAccepted`s and
-/// `FinalitySignature`s.
 /// The URL path part to subscribe to sidecar specific events.
 pub const SSE_API_SIDECAR_PATH: &str = "sidecar";
 /// The URL query string field name.
@@ -122,7 +120,10 @@ pub(super) struct TransactionAccepted {
 pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
-    /// Payload of the event. This generally shouldn't be an Option, but untill we have legacy filter endpoints we need to be prepared to have a event that is a comment and has no data. When legacy filter endpoints go away this should be of type SseData
+    /// Payload of the event. This generally shouldn't be an Option, but untill
+    /// we have legacy filter endpoints we need to be prepared to have a event
+    /// that is a comment and has no data. When legacy filter endpoints go away
+    /// this should be of type SseData
     pub(super) data: Option<SseData>,
     /// Comment of the event
     pub(super) comment: Option<&'static str>,

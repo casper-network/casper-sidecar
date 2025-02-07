@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use casper_binary_port::{
-    BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
+    BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command,
     GetRequest, GlobalStateQueryResult,
 };
-use casper_types::bytesrepr;
-use casper_types::{bytesrepr::ToBytes, CLValue, ProtocolVersion, StoredValue};
+use casper_types::bytesrepr::Bytes;
+use casper_types::{bytesrepr::ToBytes, CLValue, StoredValue};
 use futures::{SinkExt, StreamExt};
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
@@ -14,7 +14,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     time::sleep,
 };
-use tokio_util::codec::Framed;
+use tokio_util::codec::{Encoder, Framed};
 
 use crate::encode_request;
 
@@ -90,10 +90,9 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
 ) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
     let data = GlobalStateQueryResult::new(value, vec![]);
-    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
-    let val = BinaryResponse::from_value(data, protocol_version);
+    let val = BinaryResponse::from_value(data);
     let request = get_dummy_request_payload(request_id);
-    let response = BinaryResponseAndRequest::new(val, &request, request_id.unwrap_or_default());
+    let response = BinaryResponseAndRequest::new(val, request);
     start_mock_binary_port(
         port,
         response.to_bytes().unwrap(),
@@ -111,8 +110,7 @@ pub async fn start_mock_binary_port_responding_with_given_response(
     binary_response: BinaryResponse,
 ) -> JoinHandle<()> {
     let request = get_dummy_request_payload(request_id);
-    let response =
-        BinaryResponseAndRequest::new(binary_response, &request, request_id.unwrap_or_default());
+    let response = BinaryResponseAndRequest::new(binary_response, request);
     start_mock_binary_port(
         port,
         response.to_bytes().unwrap(),
@@ -136,16 +134,18 @@ pub async fn start_mock_binary_port(
     handler
 }
 
-pub(crate) fn get_dummy_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::Information {
+pub(crate) fn get_dummy_request() -> Command {
+    Command::Get(GetRequest::Information {
         info_type_tag: 0,
         key: vec![],
     })
 }
 
-pub(crate) fn get_dummy_request_payload(request_id: Option<u16>) -> bytesrepr::Bytes {
+pub(crate) fn get_dummy_request_payload(request_id: Option<u16>) -> Bytes {
     let dummy_request = get_dummy_request();
-    encode_request(&dummy_request, request_id.unwrap_or_default())
-        .unwrap()
-        .into()
+    let bytes = encode_request(&dummy_request, request_id.unwrap_or_default()).unwrap();
+    let mut codec = BinaryMessageCodec::new(u32::MAX);
+    let mut buf = bytes::BytesMut::new();
+    codec.encode(BinaryMessage::new(bytes), &mut buf).unwrap();
+    Bytes::from(buf.freeze().to_vec())
 }

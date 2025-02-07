@@ -15,10 +15,10 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use casper_types::FinalitySignature as FinSig;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::{
     fmt::{Display, Formatter},
     path::Path,
+    sync::Arc,
 };
 use tokio::sync::OnceCell;
 use utoipa::ToSchema;
@@ -539,15 +539,13 @@ impl Migration {
                 let insert_event_types_stmt = tables::event_type::create_initialise_stmt()
                     .map_err(|err| {
                         Error::msg(format!(
-                            "Error building event types insert statement: {:?}",
-                            err
+                            "Error building event types insert statement: {err:?}"
                         ))
                     })?;
                 let insert_transaction_types_stmt =
                     tables::transaction_type::create_initialise_stmt().map_err(|err| {
                         Error::msg(format!(
-                            "Error building transaction types insert statement: {:?}",
-                            err
+                            "Error building transaction types insert statement: {err:?}"
                         ))
                     })?;
                 Ok(migration_1_ddl_statements(

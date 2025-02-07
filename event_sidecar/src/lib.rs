@@ -16,10 +16,7 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
-use std::collections::HashMap;
-use std::process::ExitCode;
-use std::sync::Arc;
-use std::{path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
 
 use crate::types::config::LegacySseApiTag;
 use crate::{
@@ -89,8 +86,7 @@ pub async fn run(
         config
             .emulate_legacy_sse_apis
             .as_ref()
-            .map(|v| v.contains(&LegacySseApiTag::V1))
-            .unwrap_or(false),
+            .is_some_and(|v| v.contains(&LegacySseApiTag::V1)),
     );
     info!(address = %config.event_stream_server.port, "started {} server", "SSE");
     tokio::try_join!(
@@ -324,7 +320,9 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
 ) {
     match &sse_event.data {
         SseData::SidecarVersion(_) => {
-            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar to the outbound
+            error!("Received SseData::SidecarVersion on inbound SSE from the node which should never happen");
+            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
+            //to the outbound
         }
         SseData::ApiVersion(version) => {
             handle_api_version(
@@ -496,7 +494,7 @@ async fn start_multi_threaded_events_consumer<
 
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         if let Some(tx) = senders_map.get(&sse_event.inbound_filter) {
-            tx.send(sse_event).await.unwrap()
+            tx.send(sse_event).await.unwrap();
         } else {
             error!(
                 "Failed to find an sse handler queue for inbound filter {}",

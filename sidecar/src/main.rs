@@ -71,13 +71,13 @@ pub fn read_config(config_path: &str) -> Result<SidecarConfigTarget, Error> {
 fn panic_hook(info: &PanicHookInfo) {
     let backtrace = Backtrace::new();
 
-    eprintln!("{:?}", backtrace);
+    eprintln!("{backtrace:?}");
 
     // Print panic info
     if let Some(s) = info.payload().downcast_ref::<&str>() {
-        eprintln!("sidecar panicked: {}", s);
+        eprintln!("sidecar panicked: {s}");
     } else {
-        eprintln!("{}", info);
+        eprintln!("{info}");
     }
     process::abort()
 }
@@ -99,9 +99,9 @@ fn init_logging() -> anyhow::Result<()> {
         value: &dyn fmt::Debug,
     ) -> fmt::Result {
         match field.name() {
-            LOG_FIELD_MESSAGE => write!(writer, "{:?}", value),
+            LOG_FIELD_MESSAGE => write!(writer, "{value:?}"),
             LOG_FIELD_TARGET | LOG_FIELD_MODULE | LOG_FIELD_FILE | LOG_FIELD_LINE => Ok(()),
-            _ => write!(writer, "; {}={:?}", field, value),
+            _ => write!(writer, "; {field}={value:?}"),
         }
     }
 

@@ -1,6 +1,5 @@
 mod config;
 mod http_server;
-mod limiter;
 mod node_client;
 mod rpcs;
 mod speculative_exec_config;
@@ -11,7 +10,7 @@ pub mod testing;
 use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 
 use anyhow::Error;
-use casper_binary_port::{BinaryRequest, BinaryRequestHeader};
+use casper_binary_port::{Command, CommandHeader};
 use casper_types::{
     bytesrepr::{self, ToBytes},
     ProtocolVersion,
@@ -27,8 +26,7 @@ use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use tracing::warn;
-
+use tracing::{error, warn};
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -46,7 +44,12 @@ pub async fn build_rpc_server<'a>(
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
         let future = run_rpc(main_server_config, node_client.clone())
-            .map(|_| Ok(ExitCode::SUCCESS))
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("Rpc server finished with error: {e}");
+                }
+                Ok(ExitCode::SUCCESS)
+            })
             .boxed();
         futures.push(future);
     }
@@ -54,17 +57,32 @@ pub async fn build_rpc_server<'a>(
     if let Some(config) = speculative_server_config {
         if config.enable_server {
             let future = run_speculative_exec(config, node_client)
-                .map(|_| Ok(ExitCode::SUCCESS))
+                .map(|q| {
+                    if let Err(e) = q {
+                        error!("Rpc speculative server finished with error: {e}");
+                    }
+                    Ok(ExitCode::SUCCESS)
+                })
                 .boxed();
             futures.push(future);
         }
     }
     let reconnect_loop = reconnect_loop
-        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .map(|q| {
+            if let Err(e) = q {
+                error!("reconect_loop finished with error: {}", e);
+            }
+            Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+        })
         .boxed();
     futures.push(reconnect_loop);
     let keepalive_loop = keepalive_loop
-        .map(|_| Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE)))
+        .map(|q| {
+            if let Err(e) = q {
+                error!("keepalive_loop finished with error: {}", e);
+            }
+            Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+        })
         .boxed();
     futures.push(keepalive_loop);
     Ok(Some(retype_future_vec(futures).boxed()))
@@ -110,8 +128,8 @@ fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrInc
     })
 }
 
-fn encode_request(req: &BinaryRequest, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
-    let header = BinaryRequestHeader::new(SUPPORTED_PROTOCOL_VERSION, req.tag(), id);
+fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
+    let header = CommandHeader::new(req.tag(), id);
     let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;

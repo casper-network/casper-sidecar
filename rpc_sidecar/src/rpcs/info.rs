@@ -625,13 +625,13 @@ fn version_string() -> String {
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{rpcs::ErrorCode, ClientError, SUPPORTED_PROTOCOL_VERSION};
+    use crate::{rpcs::ErrorCode, ClientError};
     use casper_binary_port::{
-        BinaryRequest, BinaryResponse, BinaryResponseAndRequest, GetRequest, InformationRequest,
+        BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, InformationRequest,
         InformationRequestTag, RewardResponse, TransactionWithExecutionInfo,
     };
     use casper_types::{
-        bytesrepr::{FromBytes, ToBytes},
+        bytesrepr::{Bytes, FromBytes, ToBytes},
         testing::TestRng,
         BlockHash, TransactionV1,
     };
@@ -874,10 +874,10 @@ mod tests {
     impl NodeClient for ValidTransactionMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, key })
+                Command::Get(GetRequest::Information { info_type_tag, key })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Transaction) =>
                 {
@@ -895,9 +895,8 @@ mod tests {
                         TransactionWithExecutionInfo::from_bytes(&self.transaction_bytes)
                             .expect("should deserialize transaction");
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(transaction, SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(transaction),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -916,10 +915,10 @@ mod tests {
     impl NodeClient for RewardMock {
         async fn send_request(
             &self,
-            req: BinaryRequest,
+            req: Command,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Information { info_type_tag, .. })
+                Command::Get(GetRequest::Information { info_type_tag, .. })
                     if InformationRequestTag::try_from(info_type_tag)
                         == Ok(InformationRequestTag::Reward) =>
                 {
@@ -930,9 +929,8 @@ mod tests {
                         self.switch_block_hash,
                     );
                     Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(resp, SUPPORTED_PROTOCOL_VERSION),
-                        &[],
-                        0,
+                        BinaryResponse::from_value(resp),
+                        Bytes::from(vec![]),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

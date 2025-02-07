@@ -1,8 +1,24 @@
-use crate::{
-    config::ExponentialBackoffConfig, encode_request, NodeClientConfig, SUPPORTED_PROTOCOL_VERSION,
-};
+use crate::{config::ExponentialBackoffConfig, encode_request, NodeClientConfig};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
+use casper_binary_port::{
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
+    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
+    ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
+    InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
+    PayloadEntity, PurseIdentifier, RecordId, ResponseType, RewardResponse,
+    SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
+};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::ContractPackage,
+    system::auction::DelegatorKind,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
+    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey,
+    StoredValue, Transaction, TransactionHash, Transfer,
+};
 use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{
     inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
@@ -18,30 +34,11 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio_util::codec::Framed;
-
-use casper_binary_port::{
-    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryRequest, BinaryResponse, BinaryResponseAndRequest,
-    ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, KeyPrefix, NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier,
-    RecordId, ResponseType, RewardResponse, SpeculativeExecutionResult,
-    TransactionWithExecutionInfo, ValueWithProof,
-};
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::ContractPackage,
-    system::auction::DelegatorKind,
-    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
-    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion,
-    PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
-};
 use tokio::{
     net::TcpStream,
     sync::{futures::Notified, RwLock, RwLockWriteGuard},
 };
+use tokio_util::codec::Framed;
 use tracing::{error, field, info, warn};
 
 const MAX_MISMATCHED_ID_RETRIES: u8 = 100;
@@ -52,7 +49,7 @@ const INITIAL_REQUEST_ID: u16 = 1;
 
 #[async_trait]
 pub trait NodeClient: Send + Sync {
-    async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error>;
+    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error>;
 
     async fn read_record(
         &self,
@@ -63,12 +60,12 @@ pub trait NodeClient: Send + Sync {
             record_type_tag: record_id.into(),
             key: key.to_vec(),
         };
-        self.send_request(BinaryRequest::Get(get)).await
+        self.send_request(Command::Get(get)).await
     }
 
     async fn read_info(&self, req: InformationRequest) -> Result<BinaryResponseAndRequest, Error> {
         let get = req.try_into().expect("should always be able to convert");
-        self.send_request(BinaryRequest::Get(get)).await
+        self.send_request(Command::Get(get)).await
     }
 
     async fn query_global_state(
@@ -82,7 +79,7 @@ pub trait NodeClient: Send + Sync {
             GlobalStateEntityQualifier::Item { base_key, path },
         );
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(req))))
+            .send_request(Command::Get(GetRequest::State(Box::new(req))))
             .await?;
         parse_response::<GlobalStateQueryResult>(&resp.into())
     }
@@ -97,7 +94,7 @@ pub trait NodeClient: Send + Sync {
             GlobalStateEntityQualifier::AllItems { key_tag },
         );
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .send_request(Command::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -112,7 +109,7 @@ pub trait NodeClient: Send + Sync {
             GlobalStateEntityQualifier::ItemsByPrefix { key_prefix },
         );
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .send_request(Command::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<Vec<StoredValue>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -127,14 +124,14 @@ pub trait NodeClient: Send + Sync {
             GlobalStateEntityQualifier::Balance { purse_identifier },
         );
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .send_request(Command::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<BalanceResponse>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::Trie { trie_key }))
+            .send_request(Command::Get(GetRequest::Trie { trie_key }))
             .await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(<Vec<u8>>::from))
@@ -150,13 +147,13 @@ pub trait NodeClient: Send + Sync {
             GlobalStateEntityQualifier::DictionaryItem { identifier },
         );
         let resp = self
-            .send_request(BinaryRequest::Get(GetRequest::State(Box::new(get))))
+            .send_request(Command::Get(GetRequest::State(Box::new(get))))
             .await?;
         parse_response::<DictionaryQueryResult>(&resp.into())
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
-        let request = BinaryRequest::TryAcceptTransaction { transaction };
+        let request = Command::TryAcceptTransaction { transaction };
         let response = self.send_request(request).await?;
 
         if response.is_success() {
@@ -170,7 +167,7 @@ pub trait NodeClient: Send + Sync {
         &self,
         transaction: Transaction,
     ) -> Result<SpeculativeExecutionResult, Error> {
-        let request = BinaryRequest::TrySpeculativeExec { transaction };
+        let request = Command::TrySpeculativeExec { transaction };
         let resp = self.send_request(request).await?;
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -727,30 +724,26 @@ pub enum Error {
     UnsupportedRewardsV1Request,
     #[error("purse was not found for given identifier")]
     PurseNotFound,
-    #[error("received a response with an unsupported protocol version: {0}")]
-    UnsupportedProtocolVersion(ProtocolVersion),
     #[error("received an unexpected node error: {message} ({code})")]
     UnexpectedNodeError { message: String, code: u16 },
     #[error("binary protocol version mismatch")]
-    BinaryProtocolVersionMismatch,
+    CommandHeaderVersionMismatch,
     #[error("request was throttled by the node")]
     RequestThrottled,
     #[error("malformed information request")]
     MalformedInformationRequest,
-    #[error("malformed version bytes in header of binary request")]
-    MalformedBinaryVersion,
+    #[error("malformed version bytes in command header")]
+    TooLittleBytesForRequestHeaderVersion,
     #[error("malformed protocol version")]
-    MalformedProtocolVersion,
+    MalformedCommandHeaderVersion,
     #[error("malformed transfer record key")]
     TransferRecordMalformedKey,
-    #[error("malformed header of binary request")]
-    MalformedBinaryRequestHeader,
-    #[error("malformed binary request")]
-    MalformedBinaryRequest,
+    #[error("malformed command header")]
+    MalformedCommandHeader,
+    #[error("malformed command")]
+    MalformedCommand,
     #[error("not found")]
     NotFound,
-    #[error("header has unsupported protocol version")]
-    HeaderHasUnsupportedProtocolVersion,
     #[error("node reported internal error")]
     InternalNodeError,
     #[error("bad request")]
@@ -778,7 +771,7 @@ impl Error {
             Ok(ErrorCode::SwitchBlockNotFound) => Self::SwitchBlockNotFound,
             Ok(ErrorCode::SwitchBlockParentNotFound) => Self::SwitchBlockParentNotFound,
             Ok(ErrorCode::UnsupportedRewardsV1Request) => Self::UnsupportedRewardsV1Request,
-            Ok(ErrorCode::BinaryProtocolVersionMismatch) => Self::BinaryProtocolVersionMismatch,
+            Ok(ErrorCode::CommandHeaderVersionMismatch) => Self::CommandHeaderVersionMismatch,
             Ok(ErrorCode::PurseNotFound) => Self::PurseNotFound,
             Ok(
                 err @ (ErrorCode::InvalidDeployChainName
@@ -864,16 +857,17 @@ impl Error {
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(ErrorCode::RequestThrottled) => Self::RequestThrottled,
             Ok(ErrorCode::MalformedInformationRequest) => Self::MalformedInformationRequest,
-            Ok(ErrorCode::MalformedBinaryVersion) => Self::MalformedBinaryVersion,
-            Ok(ErrorCode::MalformedProtocolVersion) => Self::MalformedProtocolVersion,
+            Ok(ErrorCode::TooLittleBytesForRequestHeaderVersion) => {
+                Self::TooLittleBytesForRequestHeaderVersion
+            }
+            Ok(ErrorCode::MalformedCommandHeaderVersion) => Self::MalformedCommandHeaderVersion,
             Ok(ErrorCode::TransferRecordMalformedKey) => Self::TransferRecordMalformedKey,
-            Ok(ErrorCode::MalformedBinaryRequestHeader) => Self::MalformedBinaryRequestHeader,
-            Ok(ErrorCode::MalformedBinaryRequest) => Self::MalformedBinaryRequest,
+            Ok(ErrorCode::MalformedCommandHeader) => Self::MalformedCommandHeader,
+            Ok(ErrorCode::MalformedCommand) => Self::MalformedCommand,
             Ok(err @ (ErrorCode::WasmPreprocessing | ErrorCode::InvalidItemVariant)) => {
                 Self::SpecExecutionFailed(err.to_string())
             }
             Ok(ErrorCode::NotFound) => Self::NotFound,
-            Ok(ErrorCode::UnsupportedProtocolVersion) => Self::HeaderHasUnsupportedProtocolVersion,
             Ok(ErrorCode::InternalError) => Self::InternalNodeError,
             Ok(ErrorCode::BadRequest) => Self::BadRequest,
             Ok(ErrorCode::UnsupportedRequest) => Self::UnsupportedRequest,
@@ -897,7 +891,6 @@ impl Error {
 }
 
 struct Reconnect;
-struct Shutdown;
 
 struct Notify<T> {
     inner: tokio::sync::Notify,
@@ -924,7 +917,6 @@ impl<T> Notify<T> {
 pub struct FramedNodeClient {
     client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
     reconnect: Arc<Notify<Reconnect>>,
-    shutdown: Arc<Notify<Shutdown>>,
     config: NodeClientConfig,
     current_request_id: Arc<AtomicU16>,
 }
@@ -951,20 +943,14 @@ impl FramedNodeClient {
             .await?,
         ));
 
-        let shutdown = Notify::<Shutdown>::new();
         let reconnect = Notify::<Reconnect>::new();
 
-        let reconnect_loop = Self::reconnect_loop(
-            config.clone(),
-            Arc::clone(&stream),
-            Arc::clone(&shutdown),
-            Arc::clone(&reconnect),
-        );
+        let reconnect_loop =
+            Self::reconnect_loop(config.clone(), Arc::clone(&stream), Arc::clone(&reconnect));
         let keepalive_timeout = Duration::from_millis(config.keepalive_timeout_ms);
         let node_client = Arc::new(Self {
             client: Arc::clone(&stream),
             reconnect,
-            shutdown,
             config,
             current_request_id: AtomicU16::new(INITIAL_REQUEST_ID).into(),
         });
@@ -990,7 +976,6 @@ impl FramedNodeClient {
     async fn reconnect_loop(
         config: NodeClientConfig,
         client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
-        shutdown: Arc<Notify<Shutdown>>,
         reconnect: Arc<Notify<Reconnect>>,
     ) -> Result<(), AnyhowError> {
         loop {
@@ -1000,10 +985,6 @@ impl FramedNodeClient {
                     let new_client = Self::reconnect(&config.clone()).await?;
                     *lock = new_client;
                 },
-                () = shutdown.notified() => {
-                    info!("node client shutdown has been requested");
-                    return Ok(())
-                }
             }
         }
     }
@@ -1014,13 +995,18 @@ impl FramedNodeClient {
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::time::sleep(keepalive_timeout).await;
-            client.send_request(BinaryRequest::KeepAliveRequest).await?;
+            client
+                .send_request(Command::Get(GetRequest::Information {
+                    info_type_tag: InformationRequestTag::ProtocolVersion.into(),
+                    key: vec![],
+                }))
+                .await?;
         }
     }
 
     async fn send_request_internal(
         &self,
-        req: &BinaryRequest,
+        req: &Command,
         client: &mut RwLockWriteGuard<'_, Framed<TcpStream, BinaryMessageCodec>>,
     ) -> Result<BinaryResponseAndRequest, Error> {
         let (request_id, payload) = self.generate_payload(req);
@@ -1061,7 +1047,7 @@ impl FramedNodeClient {
                     );
                     Error::EnvelopeDeserialization
                 })?;
-                match validate_response(resp, request_id, &self.shutdown) {
+                match validate_response(resp, request_id) {
                     Ok(response) => return Ok(response),
                     Err(err) if matches!(err, Error::RequestResponseIdMismatch { expected, got } if expected > got) =>
                     {
@@ -1085,7 +1071,7 @@ impl FramedNodeClient {
         })
     }
 
-    fn generate_payload(&self, req: &BinaryRequest) -> (u16, BinaryMessage) {
+    fn generate_payload(&self, req: &Command) -> (u16, BinaryMessage) {
         let next_id = self.next_id();
         (
             next_id,
@@ -1157,7 +1143,7 @@ impl FramedNodeClient {
 
 #[async_trait]
 impl NodeClient for FramedNodeClient {
-    async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
+    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error> {
         let Ok(mut client) = tokio::time::timeout(
             Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
@@ -1236,23 +1222,61 @@ pub enum PackageResponse {
 fn validate_response(
     resp: BinaryResponseAndRequest,
     expected_id: u16,
-    shutdown: &Notify<Shutdown>,
 ) -> Result<BinaryResponseAndRequest, Error> {
-    let original_id = resp.original_request_id();
+    let original_id = match try_parse_request_id(resp.request()) {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Error when decoding original_id: {}", e);
+            0
+        }
+    };
     if original_id != expected_id {
         return Err(Error::RequestResponseIdMismatch {
             expected: expected_id,
             got: original_id,
         });
     }
+    Ok(resp)
+}
 
-    let version = resp.response().protocol_version();
-    if version.is_compatible_with(&SUPPORTED_PROTOCOL_VERSION) {
-        Ok(resp)
-    } else {
-        info!("received a response with incompatible major version from the node {version}, shutting down");
-        shutdown.notify_one();
-        Err(Error::UnsupportedProtocolVersion(version))
+fn try_parse_request_id(request: &[u8]) -> Result<u16, anyhow::Error> {
+    if request.len() < 4 {
+        anyhow::bail!(
+            "Node responded with request that doesn't have enough bytes to read payload length"
+        )
+    }
+    let (payload_length, remainder) =
+        u32::from_bytes(request).map_err(|e| anyhow::Error::msg(e.to_string()))?;
+    if payload_length != remainder.len() as u32 {
+        anyhow::bail!("Node responded with request that has a mismatch in declared bytes vs the payload length")
+    }
+    let (header, _) = extract_header(remainder)?;
+    Ok(header.id())
+}
+
+fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), anyhow::Error> {
+    const BINARY_VERSION_LENGTH_BYTES: usize = std::mem::size_of::<u16>();
+
+    if payload.len() < BINARY_VERSION_LENGTH_BYTES {
+        anyhow::bail!("Not enough bytes to read version of the command header");
+    }
+
+    let binary_protocol_version = match u16::from_bytes(payload) {
+        Ok((binary_protocol_version, _)) => binary_protocol_version,
+        Err(_) => {
+            anyhow::bail!("Could not read header version from request");
+        }
+    };
+
+    if binary_protocol_version != CommandHeader::HEADER_VERSION {
+        anyhow::bail!("Header version does not meet expectation");
+    }
+
+    match CommandHeader::from_bytes(payload) {
+        Ok((header, remainder)) => Ok((header, remainder)),
+        Err(error) => {
+            anyhow::bail!("Malformed CommandHeader definition: {}", error);
+        }
     }
 }
 
@@ -1337,95 +1361,11 @@ mod tests {
     };
 
     use super::*;
-    use casper_binary_port::{BinaryRequestHeader, ReactorStateName};
+    use casper_binary_port::{CommandHeader, ReactorStateName};
     use casper_types::{
-        testing::TestRng, BlockSynchronizerStatus, CLValue, SemVer, TimeDiff, Timestamp,
+        testing::TestRng, BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp,
     };
-    use futures::FutureExt;
     use tokio::time::sleep;
-
-    #[tokio::test]
-    async fn should_reject_bad_major_version() {
-        let notify = Notify::<Shutdown>::new();
-        let bad_version = ProtocolVersion::from_parts(10, 0, 0);
-
-        let request = get_dummy_request_payload(None);
-
-        let result = validate_response(
-            BinaryResponseAndRequest::new(
-                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, bad_version),
-                &request,
-                0,
-            ),
-            0,
-            &notify,
-        );
-
-        assert_eq!(result, Err(Error::UnsupportedProtocolVersion(bad_version)));
-        assert_eq!(notify.notified().now_or_never(), Some(()))
-    }
-
-    #[tokio::test]
-    async fn should_accept_different_minor_version() {
-        let notify = Notify::<Shutdown>::new();
-        let version = ProtocolVersion::new(SemVer {
-            minor: SUPPORTED_PROTOCOL_VERSION.value().minor + 1,
-            ..SUPPORTED_PROTOCOL_VERSION.value()
-        });
-
-        let request = get_dummy_request_payload(None);
-
-        let result = validate_response(
-            BinaryResponseAndRequest::new(
-                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request,
-                0,
-            ),
-            0,
-            &notify,
-        );
-
-        assert_eq!(
-            result,
-            Ok(BinaryResponseAndRequest::new(
-                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request,
-                0
-            ))
-        );
-        assert_eq!(notify.notified().now_or_never(), None)
-    }
-
-    #[tokio::test]
-    async fn should_accept_different_patch_version() {
-        let notify = Notify::<Shutdown>::new();
-        let version = ProtocolVersion::new(SemVer {
-            patch: SUPPORTED_PROTOCOL_VERSION.value().patch + 1,
-            ..SUPPORTED_PROTOCOL_VERSION.value()
-        });
-
-        let request = get_dummy_request_payload(None);
-
-        let result = validate_response(
-            BinaryResponseAndRequest::new(
-                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request,
-                0,
-            ),
-            0,
-            &notify,
-        );
-
-        assert_eq!(
-            result,
-            Ok(BinaryResponseAndRequest::new(
-                BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0, version),
-                &request,
-                0
-            ))
-        );
-        assert_eq!(notify.notified().now_or_never(), None)
-    }
 
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
@@ -1508,7 +1448,7 @@ mod tests {
             block_sync: BlockSynchronizerStatus::random(&mut rng),
             latest_switch_block_hash: None,
         };
-        let response = BinaryResponse::from_value(value, protocol_version);
+        let response = BinaryResponse::from_value(value);
 
         // setup mock binary port with node status response
         let port = get_port();
@@ -1634,7 +1574,7 @@ mod tests {
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
                 let (_, binary_message) = c.generate_payload(&get_dummy_request());
-                let header = BinaryRequestHeader::from_bytes(binary_message.payload())
+                let header = CommandHeader::from_bytes(binary_message.payload())
                     .unwrap()
                     .0;
                 header.id()
@@ -1649,16 +1589,14 @@ mod tests {
 
     #[test]
     fn should_reject_mismatched_request_id() {
-        let notify = Notify::<Shutdown>::new();
-
         let expected_id = 1;
         let actual_id = 2;
 
         let req = get_dummy_request_payload(Some(actual_id));
-        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+        let resp = BinaryResponse::new_empty();
+        let resp_and_req = BinaryResponseAndRequest::new(resp, req);
 
-        let result = validate_response(resp_and_req, expected_id, &notify);
+        let result = validate_response(resp_and_req, expected_id);
         assert!(matches!(
             result,
             Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 1 && got == 2
@@ -1668,10 +1606,10 @@ mod tests {
         let actual_id = 1;
 
         let req = get_dummy_request_payload(Some(actual_id));
-        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+        let resp = BinaryResponse::new_empty();
+        let resp_and_req = BinaryResponseAndRequest::new(resp, req);
 
-        let result = validate_response(resp_and_req, expected_id, &notify);
+        let result = validate_response(resp_and_req, expected_id);
         assert!(matches!(
             result,
             Err(Error::RequestResponseIdMismatch { expected, got }) if expected == 2 && got == 1
@@ -1680,16 +1618,14 @@ mod tests {
 
     #[test]
     fn should_accept_matching_request_id() {
-        let notify = Notify::<Shutdown>::new();
-
         let expected_id = 1;
         let actual_id = 1;
 
         let req = get_dummy_request_payload(Some(actual_id));
-        let resp = BinaryResponse::new_empty(ProtocolVersion::V2_0_0);
-        let resp_and_req = BinaryResponseAndRequest::new(resp, &req, actual_id);
+        let resp = BinaryResponse::new_empty();
+        let resp_and_req = BinaryResponseAndRequest::new(resp, req);
 
-        let result = validate_response(resp_and_req, expected_id, &notify);
+        let result = validate_response(resp_and_req, expected_id);
         dbg!(&result);
         assert!(result.is_ok())
     }
@@ -1815,32 +1751,28 @@ mod tests {
             Error::MalformedInformationRequest
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedBinaryVersion as u16),
-            Error::MalformedBinaryVersion
+            Error::from_error_code(ErrorCode::TooLittleBytesForRequestHeaderVersion as u16),
+            Error::TooLittleBytesForRequestHeaderVersion
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedProtocolVersion as u16),
-            Error::MalformedProtocolVersion
+            Error::from_error_code(ErrorCode::MalformedCommandHeaderVersion as u16),
+            Error::MalformedCommandHeaderVersion
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::TransferRecordMalformedKey as u16),
             Error::TransferRecordMalformedKey
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedBinaryRequestHeader as u16),
-            Error::MalformedBinaryRequestHeader
+            Error::from_error_code(ErrorCode::MalformedCommandHeader as u16),
+            Error::MalformedCommandHeader
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::MalformedBinaryRequest as u16),
-            Error::MalformedBinaryRequest
+            Error::from_error_code(ErrorCode::MalformedCommand as u16),
+            Error::MalformedCommand
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::NotFound as u16),
             Error::NotFound
-        ));
-        assert!(matches!(
-            Error::from_error_code(ErrorCode::UnsupportedProtocolVersion as u16),
-            Error::HeaderHasUnsupportedProtocolVersion
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::InternalError as u16),
