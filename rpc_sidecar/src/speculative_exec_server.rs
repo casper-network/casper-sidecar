@@ -22,7 +22,7 @@ pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
     qps_limit: u64,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
@@ -53,7 +53,7 @@ pub async fn run(
                 SPECULATIVE_EXEC_SERVER_NAME,
                 CorsOrigin::Any,
             )
-            .await
+            .await;
         }
         _ => {
             super::rpcs::run_with_cors(
@@ -65,7 +65,7 @@ pub async fn run(
                 SPECULATIVE_EXEC_SERVER_NAME,
                 CorsOrigin::Specified(cors_origin),
             )
-            .await
+            .await;
         }
     }
 }

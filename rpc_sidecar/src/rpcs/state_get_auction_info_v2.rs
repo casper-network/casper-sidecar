@@ -202,9 +202,9 @@ impl AuctionState {
         bids: Vec<BidKind>,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
-        for (era_id, validator_weights) in era_validators.iter() {
+        for (era_id, validator_weights) in &era_validators {
             let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
-            for (public_key, weight) in validator_weights.iter() {
+            for (public_key, weight) in validator_weights {
                 json_validator_weights.push(JsonValidatorWeight::new(public_key.clone(), *weight));
             }
             json_era_validators.push(JsonEraValidators::new(*era_id, json_validator_weights));

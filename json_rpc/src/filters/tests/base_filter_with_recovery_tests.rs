@@ -5,7 +5,7 @@ use super::ResponseBodyOnRejection;
 use crate::filters::{base_filter, handle_rejection, CONTENT_TYPE_VALUE};
 
 const PATH: &str = "rpc";
-const MAX_BODY_BYTES: u32 = 10;
+const MAX_BODY_BYTES: u64 = 10;
 
 fn base_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     base_filter(PATH, MAX_BODY_BYTES)

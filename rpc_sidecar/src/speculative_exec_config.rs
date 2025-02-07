@@ -11,7 +11,7 @@ const DEFAULT_PORT: u16 = 1;
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 1;
 /// Default max body bytes (2.5MB).
-const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
+const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: &str = "";
 
@@ -29,13 +29,14 @@ pub struct Config {
     /// Maximum rate limit in queries per second.
     pub qps_limit: u64,
     /// Maximum number of bytes to accept in a single request body.
-    pub max_body_bytes: u32,
+    pub max_body_bytes: u64,
     /// CORS origin.
     pub cors_origin: String,
 }
 
 impl Config {
     /// Creates a default instance for `RpcServer`.
+    #[must_use]
     pub fn new() -> Self {
         Config {
             enable_server: false,

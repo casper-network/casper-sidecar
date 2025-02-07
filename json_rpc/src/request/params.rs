@@ -54,50 +54,57 @@ impl Params {
     }
 
     /// Returns `true` if `self` is an Array, otherwise returns `false`.
+    #[must_use]
     pub fn is_array(&self) -> bool {
         self.as_array().is_some()
     }
 
     /// Returns a reference to the inner `Vec` if `self` is an Array, otherwise returns `None`.
+    #[must_use]
     pub fn as_array(&self) -> Option<&Vec<Value>> {
         match self {
             Params::Array(array) => Some(array),
-            _ => None,
+            Params::Object(_) => None,
         }
     }
 
     /// Returns a mutable reference to the inner `Vec` if `self` is an Array, otherwise returns
     /// `None`.
+    #[must_use]
     pub fn as_array_mut(&mut self) -> Option<&mut Vec<Value>> {
         match self {
             Params::Array(array) => Some(array),
-            _ => None,
+            Params::Object(_) => None,
         }
     }
 
     /// Returns `true` if `self` is an Object, otherwise returns `false`.
+    #[must_use]
     pub fn is_object(&self) -> bool {
         self.as_object().is_some()
     }
 
     /// Returns a reference to the inner `Map` if `self` is an Object, otherwise returns `None`.
+    #[must_use]
     pub fn as_object(&self) -> Option<&Map<String, Value>> {
         match self {
             Params::Object(map) => Some(map),
-            _ => None,
+            Params::Array(_) => None,
         }
     }
 
     /// Returns a mutable reference to the inner `Map` if `self` is an Object, otherwise returns
     /// `None`.
+    #[must_use]
     pub fn as_object_mut(&mut self) -> Option<&mut Map<String, Value>> {
         match self {
             Params::Object(map) => Some(map),
-            _ => None,
+            Params::Array(_) => None,
         }
     }
 
     /// Returns `true` if `self` is an empty Array or an empty Object, otherwise returns `false`.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         match self {
             Params::Array(array) => array.is_empty(),

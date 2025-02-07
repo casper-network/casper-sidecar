@@ -10,12 +10,13 @@ use metrics::rpc::{
 use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
+    fmt::{self, Display, Formatter},
     net::{IpAddr, SocketAddr},
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio_util::codec::Framed;
 
@@ -36,10 +37,6 @@ use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
     ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion,
     PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
-};
-use std::{
-    fmt::{self, Display, Formatter},
-    time::Instant,
 };
 use tokio::{
     net::TcpStream,
@@ -163,9 +160,9 @@ pub trait NodeClient: Send + Sync {
         let response = self.send_request(request).await?;
 
         if response.is_success() {
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::from_error_code(response.error_code()));
+            Err(Error::from_error_code(response.error_code()))
         }
     }
 
@@ -323,7 +320,6 @@ pub trait NodeClient: Send + Sync {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-
 pub enum InvalidTransactionOrDeploy {
     ///The deploy had an invalid chain name
     #[error("The deploy had an invalid chain name")]
@@ -921,7 +917,7 @@ impl<T> Notify<T> {
     }
 
     fn notify_one(&self) {
-        self.inner.notify_one()
+        self.inner.notify_one();
     }
 }
 
@@ -999,12 +995,12 @@ impl FramedNodeClient {
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
-                _ = reconnect.notified() => {
+                () = reconnect.notified() => {
                     let mut lock = client.write().await;
                     let new_client = Self::reconnect(&config.clone()).await?;
                     *lock = new_client;
                 },
-                _ = shutdown.notified() => {
+                () = shutdown.notified() => {
                     info!("node client shutdown has been requested");
                     return Ok(())
                 }
@@ -1080,9 +1076,8 @@ impl FramedNodeClient {
                         return Err(err);
                     }
                 }
-            } else {
-                return Err(Error::ConnectionLost);
             }
+            return Err(Error::ConnectionLost);
         }
 
         Err(Error::TooManyMismatchedResponses {
@@ -1163,17 +1158,14 @@ impl FramedNodeClient {
 #[async_trait]
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
-        let mut client = match tokio::time::timeout(
+        let Ok(mut client) = tokio::time::timeout(
             Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
         )
         .await
-        {
-            Ok(client) => client,
-            Err(_) => {
-                register_timeout("acquiring_client");
-                return Err(Error::ConnectionLost);
-            }
+        else {
+            register_timeout("acquiring_client");
+            return Err(Error::ConnectionLost);
         };
 
         let result = self.send_request_internal(&req, &mut client).await;
@@ -1324,7 +1316,7 @@ where
         let mut opt_source: Option<&(dyn std::error::Error)> = Some(self.0);
 
         while let Some(source) = opt_source {
-            write!(f, "{}", source)?;
+            write!(f, "{source}")?;
             opt_source = source.source();
 
             if opt_source.is_some() {
@@ -1346,8 +1338,9 @@ mod tests {
 
     use super::*;
     use casper_binary_port::{BinaryRequestHeader, ReactorStateName};
-    use casper_types::testing::TestRng;
-    use casper_types::{BlockSynchronizerStatus, CLValue, SemVer, TimeDiff, Timestamp};
+    use casper_types::{
+        testing::TestRng, BlockSynchronizerStatus, CLValue, SemVer, TimeDiff, Timestamp,
+    };
     use futures::FutureExt;
     use tokio::time::sleep;
 

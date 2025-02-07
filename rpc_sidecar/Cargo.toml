@@ -12,42 +12,63 @@ license = "Apache-2.0"
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = "0.1.50"
-backtrace = "0.3.50"
+async-trait = "0.1.86"
+backtrace = "0.3.74"
 base16 = "0.2.1"
 bincode = "1"
-bytes = "1.5.0"
+bytes = "1.10.0"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io"] }
+casper-types = { workspace = true, features = [
+    "datasize",
+    "json-schema",
+    "std",
+    "std-fs-io",
+] }
 casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
+derive-new = "0.7.0"
+forwarded-header-value = "0.1.1"
 futures = { workspace = true }
-http = "0.2.1"
-hyper = "0.14.26"
-juliet = { version ="0.3", features = ["tracing"] }
+governor = "0.8.0"
+http = "0.2.12"
+hyper = "0.14.32"
+juliet = { version = "0.3", features = ["tracing"] }
 metrics = { workspace = true }
 num_cpus = "1"
-num-traits = { version = "0.2.10", default-features = false }
+num-traits = { version = "0.2.19", default-features = false }
 once_cell.workspace = true
+pin-project = "1"
 portpicker = "0.1.1"
-rand = "0.8.3"
-schemars = { version = "0.8.21", features = ["preserve_order", "impl_json_schema"] }
+rand = "0.8.5"
+schemars = { version = "0.8.21", features = [
+    "preserve_order",
+    "impl_json_schema",
+] }
 serde = { workspace = true, default-features = true, features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde-map-to-array = "1.1.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tokio-util = { version = "0.6.4", features = ["codec"] }
+tokio-util = { version = "0.6.10", features = ["codec"] }
 toml = { workspace = true }
-tower = { version = "0.4.6", features = ["limit"] }
+tower = { version = "0.5.2", features = ["limit", "util"] }
 tracing = { workspace = true, default-features = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
-warp = { version = "0.3.6", features = ["compression"] }
-derive-new = "0.6.0"
+tracing-subscriber = { workspace = true, features = [
+    "env-filter",
+    "fmt",
+    "json",
+] }
+warp = { version = "0.3.7", features = ["compression"] }
 
 [dev-dependencies]
 assert-json-diff = "2"
-casper-types = { workspace = true, features = ["datasize", "json-schema", "std", "std-fs-io", "testing"] }
+casper-types = { workspace = true, features = [
+    "datasize",
+    "json-schema",
+    "std",
+    "std-fs-io",
+    "testing",
+] }
 casper-binary-port = { workspace = true, features = ["testing"] }
 pretty_assertions = "1"
 regex = "1"
@@ -67,7 +88,11 @@ testing = ["casper-types/testing", "casper-binary-port/testing"]
 [package.metadata.deb]
 revision = "0"
 assets = [
-    ["../target/release/casper-rpc-sidecar", "/usr/bin/casper-rpc-sidecar", "755"]
+    [
+        "../target/release/casper-rpc-sidecar",
+        "/usr/bin/casper-rpc-sidecar",
+        "755",
+    ],
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """

@@ -117,7 +117,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     );
     schema.push_with_optional_params::<GetAuctionInfo>(
         "returns the bids and validators as of either a specific block (by height or hash), or \
-        the most recently added block. This is a casper 1.x retro-compatibility endpoint. For blocks created in 1.x protocol it will work exactly the same as it used to. 
+        the most recently added block. This is a casper 1.x retro-compatibility endpoint. For blocks created in 1.x protocol it will work exactly the same as it used to.
         For 2.x blocks it will try to retrofit the changed data structure into previous schema - but it is a lossy process. Use `state_get_auction_info_v2` endpoint to get data in new format. *IMPORTANT* This method is deprecated, has been added only for compatibility with retired nodes json-rpc API and will be removed in a future release of sidecar.",
     );
     schema.push_with_optional_params::<GetAuctionInfoV2>(
@@ -310,7 +310,7 @@ impl OpenRpcSchema {
                     assert_eq!(
                         current_value.get().clone().into_object().metadata,
                         value.into_object().metadata
-                    )
+                    );
                 }
                 MapEntry::Vacant(vacant) => {
                     let _ = vacant.insert(value);

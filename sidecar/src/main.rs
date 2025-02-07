@@ -91,7 +91,7 @@ fn init_logging() -> anyhow::Result<()> {
     const LOG_FIELD_FILE: &str = "log.file";
     const LOG_FIELD_LINE: &str = "log.line";
 
-    type FormatDebugFn = fn(&mut Writer, &Field, &dyn std::fmt::Debug) -> fmt::Result;
+    type FormatDebugFn = fn(&mut Writer, &Field, &dyn fmt::Debug) -> fmt::Result;
 
     fn format_into_debug_writer(
         writer: &mut Writer,

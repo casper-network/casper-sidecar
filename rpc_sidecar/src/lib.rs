@@ -1,5 +1,6 @@
 mod config;
 mod http_server;
+mod limiter;
 mod node_client;
 mod rpcs;
 mod speculative_exec_config;
@@ -7,13 +8,16 @@ mod speculative_exec_server;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
+use std::{net::SocketAddr, process::ExitCode, sync::Arc};
+
 use anyhow::Error;
 use casper_binary_port::{BinaryRequest, BinaryRequestHeader};
-use casper_types::bytesrepr::ToBytes;
-use casper_types::{bytesrepr, ProtocolVersion};
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    ProtocolVersion,
+};
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
-use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{future::BoxFuture, FutureExt};
 pub use http_server::run as run_rpc_server;
 use hyper::{
     server::{conn::AddrIncoming, Builder as ServerBuilder},
@@ -23,7 +27,6 @@ use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 use tracing::warn;
 
 /// Minimal casper protocol version supported by this sidecar.
@@ -39,7 +42,6 @@ pub async fn build_rpc_server<'a>(
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
-    let node_client: Arc<dyn NodeClient> = node_client;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
@@ -51,7 +53,7 @@ pub async fn build_rpc_server<'a>(
     let speculative_server_config = config.speculative_exec_server;
     if let Some(config) = speculative_server_config {
         if config.enable_server {
-            let future = run_speculative_exec(config, node_client.clone())
+            let future = run_speculative_exec(config, node_client)
                 .map(|_| Ok(ExitCode::SUCCESS))
                 .boxed();
             futures.push(future);

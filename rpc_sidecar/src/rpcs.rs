@@ -17,11 +17,15 @@ pub(crate) mod state_get_auction_info_v2;
 pub(crate) mod test_utils;
 mod types;
 
+use std::net::SocketAddr;
 use std::{fmt, str, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use http::header::ACCEPT_ENCODING;
-use hyper::server::{conn::AddrIncoming, Builder};
+use hyper::{
+    server::{conn::AddrIncoming, Builder},
+    service::make_service_fn,
+};
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -41,6 +45,7 @@ use docs::DocExample;
 pub use error::Error;
 pub use error_code::ErrorCode;
 
+use crate::limiter::GovernorLayer;
 use crate::{ClientError, NodeClient};
 
 pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(2, 0, 0));
@@ -88,7 +93,7 @@ pub(super) trait RpcWithParams {
         serde_json::from_value::<Self::RequestParams>(params).map_err(|error| {
             RpcError::new(
                 ReservedErrorCode::InvalidParams,
-                format!("Failed to parse 'params' field: {}", error),
+                format!("Failed to parse 'params' field: {error}"),
             )
         })
     }
@@ -106,7 +111,7 @@ pub(super) trait RpcWithParams {
                 Self::do_handle_request(node_client, params).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Tries to parse the params, and on success, returns the doc example, regardless of the value
@@ -117,7 +122,7 @@ pub(super) trait RpcWithParams {
             let _params = Self::try_parse_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(
@@ -166,7 +171,7 @@ pub(super) trait RpcWithoutParams {
                 Self::do_handle_request(node_client).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Checks the params, and on success, returns the doc example.
@@ -176,7 +181,7 @@ pub(super) trait RpcWithoutParams {
             Self::check_no_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(
@@ -229,7 +234,7 @@ pub(super) trait RpcWithOptionalParams {
         serde_json::from_value::<Option<Self::OptionalRequestParams>>(params).map_err(|error| {
             RpcError::new(
                 ReservedErrorCode::InvalidParams,
-                format!("Failed to parse 'params' field: {}", error),
+                format!("Failed to parse 'params' field: {error}"),
             )
         })
     }
@@ -247,7 +252,7 @@ pub(super) trait RpcWithOptionalParams {
                 Self::do_handle_request(node_client, params).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Tries to parse the params, and on success, returns the doc example, regardless of the value
@@ -272,12 +277,12 @@ pub(super) async fn run_with_cors(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
     qps_limit: u64,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
     cors_header: CorsOrigin,
 ) {
-    let make_svc = hyper::service::make_service_fn(move |_| {
+    let make_svc = make_service_fn(move |_| {
         let service_routes = casper_json_rpc::route_with_cors(
             api_path,
             max_body_bytes,
@@ -293,15 +298,15 @@ pub(super) async fn run_with_cors(
             .with(warp::compression::gzip());
 
         let service = warp::service(service_routes_gzip.or(service_routes));
-        async move { Ok::<_, Infallible>(service.clone()) }
+        async move { Ok::<_, Infallible>(service) }
     });
 
-    let make_svc = ServiceBuilder::new()
-        .rate_limit(qps_limit, Duration::from_secs(1))
+    let service = ServiceBuilder::new()
+        // .layer(GovernorLayer::new(Duration::from_secs(1), qps_limit as u32))
         .service(make_svc);
 
-    let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started {} server", server_name);
+    let server = builder.serve(service);
+    info!(address = %server.local_addr(), "started {server_name} server");
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
     let server_with_shutdown = server.with_graceful_shutdown(async {
@@ -310,7 +315,7 @@ pub(super) async fn run_with_cors(
 
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
-    info!("{} server shut down", server_name);
+    info!("{server_name} server shut down");
 }
 
 /// Start JSON RPC server in a background.
@@ -318,11 +323,11 @@ pub(super) async fn run(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
     qps_limit: u64,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
 ) {
-    let make_svc = hyper::service::make_service_fn(move |_| {
+    let make_svc = make_service_fn(move |_| {
         let service_routes = casper_json_rpc::route(
             api_path,
             max_body_bytes,
@@ -337,7 +342,7 @@ pub(super) async fn run(
             .with(warp::compression::gzip());
 
         let service = warp::service(service_routes_gzip.or(service_routes));
-        async move { Ok::<_, Infallible>(service.clone()) }
+        async move { Ok::<_, Infallible>(service) }
     });
 
     let make_svc = ServiceBuilder::new()
@@ -345,7 +350,7 @@ pub(super) async fn run(
         .service(make_svc);
 
     let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started {} server", server_name);
+    info!(address = %server.local_addr(), "started {server_name} server");
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
     let server_with_shutdown = server.with_graceful_shutdown(async {
@@ -354,10 +359,10 @@ pub(super) async fn run(
 
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
-    info!("{} server shut down", server_name);
+    info!("{server_name} server shut down");
 }
 
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ApiVersion(SemVer);
 
 impl Serialize for ApiVersion {

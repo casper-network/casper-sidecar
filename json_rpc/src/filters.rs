@@ -35,34 +35,35 @@ const CONTENT_TYPE_VALUE: &str = "application/json";
 ///   * setting the method to POST
 ///   * ensuring the "content-type" header exists and is set to "application/json"
 ///   * ensuring the body has at most `max_body_bytes` bytes
-pub fn base_filter<P: AsRef<str>>(path: P, max_body_bytes: u32) -> BoxedFilter<()> {
+pub fn base_filter<P: AsRef<str>>(path: P, max_body_bytes: u64) -> BoxedFilter<()> {
     let path = path.as_ref().to_string();
     warp::path::path(path)
         .and(warp::path::end())
         .and(warp::filters::method::post())
         .and(
             warp::filters::header::headers_cloned().and_then(|headers: HeaderMap| async move {
-                for (name, value) in headers.iter() {
-                    if name.as_str() == CONTENT_TYPE.as_str() {
+                for (name, value) in &headers {
+                    if name == CONTENT_TYPE {
                         if value
                             .as_bytes()
                             .eq_ignore_ascii_case(CONTENT_TYPE_VALUE.as_bytes())
                         {
                             return Ok(());
-                        } else {
-                            trace!(content_type = ?value.to_str(), "invalid {}", CONTENT_TYPE);
-                            return Err(reject::custom(UnsupportedMediaType));
                         }
+                        trace!(content_type = ?value.to_str(), "invalid {CONTENT_TYPE}");
+                        return Err(reject::custom(UnsupportedMediaType));
                     }
                 }
-                trace!("missing {}", CONTENT_TYPE);
+                trace!("missing {CONTENT_TYPE}");
                 Err(reject::custom(MissingContentTypeHeader))
             }),
         )
         .untuple_one()
-        .and(body::content_length_limit(max_body_bytes as u64).or_else(
-            move |_rejection| async move { Err(reject::custom(BodyTooLarge(max_body_bytes))) },
-        ))
+        .and(
+            body::content_length_limit(max_body_bytes).or_else(move |_rejection| async move {
+                Err(reject::custom(BodyTooLarge(max_body_bytes)))
+            }),
+        )
         .boxed()
 }
 
@@ -112,6 +113,7 @@ async fn handle_body(
 ///
 /// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
 /// respond with an error.
+#[must_use]
 pub fn main_filter(
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
@@ -194,7 +196,7 @@ pub async fn handle_rejection(error: Rejection) -> Result<WithStatus<reply::Json
     } else {
         // We should handle all rejection types before this.
         warn!(?error, "unhandled warp rejection in json-rpc server");
-        message = format!("Internal server error: unhandled rejection: {:?}", error);
+        message = format!("Internal server error: unhandled rejection: {error:?}");
         code = StatusCode::INTERNAL_SERVER_ERROR;
     }
 
