@@ -65,10 +65,10 @@ impl Display for ConnectionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::NonRecoverableError { error } => {
-                write!(f, "NonRecoverableError: {}", error)
+                write!(f, "NonRecoverableError: {error}")
             }
             Self::InitialConnectionError { error } => {
-                write!(f, "InitialConnectionError: {}", error)
+                write!(f, "InitialConnectionError: {error}")
             }
         }
     }
@@ -156,13 +156,13 @@ impl DefaultConnectionManager {
         let receiver = match self.connect().await {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
-                    tasks.register_success()
+                    tasks.register_success();
                 };
                 stream
             }
             Err(error) => {
                 if let Some(tasks) = &self.maybe_tasks {
-                    tasks.register_failure()
+                    tasks.register_failure();
                 };
                 return Err(error);
             }
@@ -197,8 +197,7 @@ impl DefaultConnectionManager {
                                 .await
                                 .map_err(|err| {
                                     non_recoverable_error(Error::msg(format!(
-                                        "Error when trying to report observed event id {}",
-                                        err
+                                        "Error when trying to report observed event id {err}"
                                     )))
                                 })?;
                         }
@@ -207,7 +206,7 @@ impl DefaultConnectionManager {
                             // This gate saves displaying a warning for a trivial error.
                             if !event.data.contains(API_VERSION) {
                                 count_error(EVENT_WITHOUT_ID);
-                                warn!("Parse Error: {}", parse_error);
+                                warn!("Parse Error: {parse_error}");
                             }
                         }
                     }
@@ -218,7 +217,7 @@ impl DefaultConnectionManager {
                 Err(stream_error) => {
                     count_error(FETCHING_FROM_STREAM_FAILED);
                     let error_message =
-                        format!("EventStream Error ({}): {:?}", self.filter, stream_error);
+                        format!("EventStream Error ({}): {stream_error:?}", self.filter);
                     return Err(non_recoverable_error(Error::msg(error_message)));
                 }
             }
@@ -229,9 +228,9 @@ impl DefaultConnectionManager {
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match deserialize(&event.data) {
             Err(serde_error) => {
-                let reason = format!("{}:{}", DESERIALIZATION_ERROR, self.filter);
+                let reason = format!("{DESERIALIZATION_ERROR}:{}", self.filter);
                 count_error(&reason);
-                let error_message = format!("Serde Error: {}", serde_error);
+                let error_message = format!("Serde Error: {serde_error}");
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
@@ -302,7 +301,7 @@ impl DefaultConnectionManager {
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(API_VERSION_SENDING_FAILED);
                     non_recoverable_error(Error::msg(ERROR_WHEN_TRYING_TO_SEND_MESSAGE))
-                })?
+                })?;
             }
             Ok(_sse_data) => {
                 count_error(API_VERSION_EXPECTED);
@@ -345,16 +344,12 @@ fn failed_to_get_first_event<T>(error: T) -> ConnectionManagerError
 where
     T: Debug,
 {
-    non_recoverable_error(Error::msg(format!(
-        "failed to get first event: {:?}",
-        error
-    )))
+    non_recoverable_error(Error::msg(format!("failed to get first event: {error:?}")))
 }
 
 fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerError {
     non_recoverable_error(Error::msg(format!(
-        "Expected first message to be ApiVersion, got: {:?}",
-        data
+        "Expected first message to be ApiVersion, got: {data:?}"
     )))
 }
 

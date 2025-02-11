@@ -429,7 +429,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             *block_header.state_root_hash(),
             block_header.height(),
             validators,
-            bids,
+            &bids,
         );
 
         Ok(Self::ResponseResult {
@@ -1621,7 +1621,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    vec![BidKind::Unified(legacy_bid.into())]
+                    &vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
@@ -1797,7 +1797,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     Default::default(),
-                    vec![BidKind::Unified(legacy_bid.into())]
+                    &vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );

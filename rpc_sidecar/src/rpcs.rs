@@ -31,7 +31,7 @@ use governor::{
     DefaultKeyedRateLimiter, Quota,
 };
 use http::{
-    header::{ACCEPT_ENCODING, FORWARDED},
+    header::{ACCEPT_ENCODING, FORWARDED, RETRY_AFTER},
     StatusCode,
 };
 use hyper::{
@@ -293,8 +293,8 @@ pub(super) trait RpcWithOptionalParams {
     ) -> Result<Self::ResponseResult, RpcError>;
 }
 
-const X_REAL_IP: &str = "x-real-ip";
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
+const X_REAL_IP: &str = "x-real-ip";
 
 #[derive(Debug)]
 struct TooManyRequests(Duration);
@@ -309,7 +309,7 @@ async fn handle_rejection(error: Rejection) -> Result<impl Reply, Rejection> {
         );
         Ok(reply::with_header(
             response,
-            "retry-after",
+            RETRY_AFTER,
             rejection.0.as_secs().to_string(),
         ))
     } else {

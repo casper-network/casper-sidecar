@@ -64,7 +64,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
 
     let height: u64 = 10;
     let era_validators = ERA_VALIDATORS.clone();
-    AuctionState::new(state_root_hash, height, era_validators, bids)
+    AuctionState::new(state_root_hash, height, era_validators, &bids)
 });
 
 /// A validator's weight.
@@ -120,12 +120,12 @@ impl AuctionState {
         state_root_hash: Digest,
         block_height: u64,
         era_validators: EraValidators,
-        bids: Vec<BidKind>,
+        bids: &[BidKind],
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
-        for (era_id, validator_weights) in era_validators.iter() {
+        for (era_id, validator_weights) in &era_validators {
             let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
-            for (public_key, weight) in validator_weights.iter() {
+            for (public_key, weight) in validator_weights {
                 json_validator_weights.push(JsonValidatorWeight {
                     public_key: public_key.clone(),
                     weight: *weight,

@@ -101,6 +101,7 @@ enum GetNodeMetadataResult {
 }
 
 impl EventListener {
+    #[must_use]
     pub fn get_node_interface(&self) -> NodeConnectionInterface {
         self.node.clone()
     }
@@ -109,7 +110,10 @@ impl EventListener {
     pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
         log_status_for_event_listener(EventListenerStatus::Preparing, self);
         let (last_event_id_for_filter, last_seen_event_id_sender) =
-            self.start_last_event_id_registry(self.node.ip_address.to_string(), self.node.sse_port);
+            Self::start_last_event_id_registry(
+                self.node.ip_address.to_string(),
+                self.node.sse_port,
+            );
         log_status_for_event_listener(EventListenerStatus::Connecting, self);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
@@ -117,7 +121,7 @@ impl EventListener {
             match self.get_metadata(current_attempt).await {
                 GetNodeMetadataResult::Ok(Some(node_metadata)) => {
                     self.node_metadata = node_metadata;
-                    current_attempt = 1 // Restart counter if the nodes version changed
+                    current_attempt = 1; // Restart counter if the nodes version changed
                 }
                 GetNodeMetadataResult::Retry => {
                     current_attempt += 1;
@@ -125,7 +129,7 @@ impl EventListener {
                     continue;
                 }
                 GetNodeMetadataResult::Error(e) => return Err(e),
-                _ => {}
+                GetNodeMetadataResult::Ok(_) => {}
             }
             if let Ok(ConnectOutcome::ConnectionLost) = self
                 .do_connect(
@@ -209,17 +213,16 @@ impl EventListener {
             }
             let res = task_result.unwrap();
             match res {
-                Ok(_) => {
+                Ok(()) => {
                     return ConnectOutcome::SystemReconnect;
                 }
                 Err(err) => {
                     match err {
                         ConnectionManagerError::NonRecoverableError { error } => {
                             error!(
-                                "Restarting event listener {}:{} because of NonRecoverableError: {}",
-                                self.node.ip_address.to_string(),
+                                "Restarting event listener {}:{} because of NonRecoverableError: {error}",
+                                self.node.ip_address,
                                 self.node.sse_port,
-                                error
                             );
                             log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
                             return ConnectOutcome::ConnectionLost;
@@ -227,7 +230,10 @@ impl EventListener {
                         ConnectionManagerError::InitialConnectionError { error } => {
                             //No futures_left means no more filters active, we need to restart the whole listener
                             if futures_left.is_empty() {
-                                error!("Restarting event listener {}:{} because of no more active connections left: {}", self.node.ip_address.to_string(), self.node.sse_port, error);
+                                error!(
+                                    "Restarting event listener {}:{} because of no more active connections left: {error}",
+                                    self.node.ip_address, self.node.sse_port
+                                );
                                 log_status_for_event_listener(
                                     EventListenerStatus::Reconnecting,
                                     self,
@@ -238,7 +244,7 @@ impl EventListener {
                     }
                 }
             }
-            connection_join_handles = futures_left
+            connection_join_handles = futures_left;
         }
     }
 
@@ -279,7 +285,6 @@ impl EventListener {
     }
 
     fn start_last_event_id_registry(
-        &self,
         node_address: String,
         sse_port: u16,
     ) -> (CurrentFilterToIdHolder, FilterWithEventId) {
@@ -310,9 +315,9 @@ fn start_connections(
             tokio::spawn(async move {
                 let res = connection.start_handling().await;
                 match res {
-                    Ok(_) => Ok(()),
+                    Ok(()) => Ok(()),
                     Err(e) => {
-                        error!("Error on start_handling: {}", e);
+                        error!("Error on start_handling: {e}");
                         Err(e)
                     }
                 }
@@ -328,14 +333,14 @@ fn log_status_for_event_listener(status: EventListenerStatus, event_listener: &E
 }
 
 fn status_endpoint(ip_address: IpAddr, rest_port: u16) -> Result<Url, Error> {
-    let status_endpoint_str = format!("http://{}:{}/status", ip_address, rest_port);
+    let status_endpoint_str = format!("http://{ip_address}:{rest_port}/status");
     Url::from_str(&status_endpoint_str).map_err(Error::from)
 }
 
 fn warn_connection_lost(listener: &EventListener, current_attempt: usize) {
     warn!(
-        "Lost connection to node {}, on attempt {}/{}",
-        listener.node.ip_address, current_attempt, listener.max_connection_attempts
+        "Lost connection to node {}, on attempt {current_attempt}/{}",
+        listener.node.ip_address, listener.max_connection_attempts
     );
 }
 

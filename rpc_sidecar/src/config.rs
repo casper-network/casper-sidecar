@@ -143,6 +143,7 @@ impl NodeClientConfig {
 
     /// Creates an instance of `NodeClientConfig` with specified listening port.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port(port: u16) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
@@ -164,6 +165,7 @@ impl NodeClientConfig {
     /// Creates an instance of `NodeClientConfig` with specified listening port and maximum number
     /// of reconnection retries.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port_and_retries(port: u16, num_of_retries: u32) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {

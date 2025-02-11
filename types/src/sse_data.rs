@@ -102,6 +102,7 @@ pub enum SseData {
 }
 
 impl SseData {
+    #[must_use]
     pub fn type_label(&self) -> &str {
         match self {
             SseData::ApiVersion(_) => "ApiVersion",
@@ -116,6 +117,8 @@ impl SseData {
             SseData::Shutdown => "Shutdown",
         }
     }
+
+    #[must_use]
     pub fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
             SseData::Shutdown => true,
