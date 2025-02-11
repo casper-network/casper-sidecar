@@ -11,6 +11,7 @@ pub struct NodeConnectionInterface {
     pub ip_address: IpAddr,
     pub sse_port: u16,
     pub rest_port: u16,
+    pub network_name: Option<String>,
 }
 
 #[cfg(test)]
@@ -20,6 +21,7 @@ impl Default for NodeConnectionInterface {
             ip_address: "127.0.0.1".parse().unwrap(),
             sse_port: 100,
             rest_port: 200,
+            network_name: None,
         }
     }
 }
@@ -32,11 +34,12 @@ pub struct SseEvent {
     pub data: SseData,
     /// Source from which we got the message
     pub source: Url,
-    /// In some cases it is required to emit the data exactly as we got it from the node.
-    /// For those situations we store the exact text of the raw payload in this field.
-    pub json_data: Option<String>,
     /// Info from which filter we received the message. For some events (Shutdown in particularly) we want to push only to the same outbound as we received them from so we don't duplicate.
     pub inbound_filter: Filter,
+    /// Api version which was reported for the node from which the event was received.
+    pub api_version: String,
+    /// Network name of the node from which the event was received.
+    pub network_name: String,
 }
 
 impl SseEvent {
@@ -44,8 +47,9 @@ impl SseEvent {
         id: u32,
         data: SseData,
         mut source: Url,
-        json_data: Option<String>,
         inbound_filter: Filter,
+        api_version: String,
+        network_name: String,
     ) -> Self {
         // This is to remove the path e.g. /events/main
         // Leaving just the IP and port
@@ -54,8 +58,9 @@ impl SseEvent {
             id,
             data,
             source,
-            json_data,
             inbound_filter,
+            api_version,
+            network_name,
         }
     }
 }

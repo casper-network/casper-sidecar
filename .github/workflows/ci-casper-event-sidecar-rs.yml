@@ -1,5 +1,5 @@
 ---
-name: ci-casper-event-sidecar
+name: ci-casper-sidecar
 
 on:
   push:
@@ -44,9 +44,9 @@ jobs:
       - name: audit
         # Hope to get to here:
         # run: cargo audit --deny warnings
-        # RUSTSEC-2022-0093 - that is an issue that comes form casper-types, need to update that depenency as soon as a new release is made
         # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
-        run: cargo audit --ignore RUSTSEC-2022-0093 --ignore RUSTSEC-2023-0071
+        # RUSTSEC-2024-0363 - issue in sqlx 0.8.0, no fix available yet
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2024-0363
 
       - name: test
         run: cargo test
@@ -56,4 +56,4 @@ jobs:
           cargo install cargo-deb
 
       - name: deb
-        run: cargo deb --package casper-event-sidecar
+        run: cargo deb --package casper-sidecar

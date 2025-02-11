@@ -4,18 +4,20 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
-pub mod block;
-pub mod deploy;
-mod digest;
-mod executable_deploy_item;
 mod filter;
-pub mod metrics;
+pub mod legacy_sse_data;
 pub mod sse_data;
-#[cfg(feature = "sse-data-testing")]
+#[cfg(any(feature = "sse-data-testing", test))]
 mod testing;
 
-pub use crate::executable_deploy_item::ExecutableDeployItem;
-pub use block::{json_compatibility::JsonBlock, Block, BlockHash, FinalitySignature};
-pub use deploy::{Deploy, DeployHash};
-pub use digest::Digest;
+use casper_types::ProtocolVersion;
 pub use filter::Filter;
+use std::str::FromStr;
+
+use once_cell::sync::Lazy;
+pub static SIDECAR_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    let major: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MAJOR")).unwrap();
+    let minor: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MINOR")).unwrap();
+    let patch: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap();
+    ProtocolVersion::from_parts(major, minor, patch)
+});

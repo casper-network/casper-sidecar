@@ -1,0 +1,94 @@
+[rpc_server.main_server]
+enable_server = true
+ip_address = "0.0.0.0"
+port = 11102
+qps_limit = 100
+max_body_bytes = 2621440
+cors_origin = ""
+
+[rpc_server.speculative_exec_server]
+enable_server = true
+ip_address = "0.0.0.0"
+port = 25102
+qps_limit = 1
+max_body_bytes = 2621440
+cors_origin = ""
+
+[rpc_server.node_client]
+ip_address = "0.0.0.0"
+port = 28102
+max_message_size_bytes = 4194304
+message_timeout_secs = 10
+client_access_timeout_secs = 10
+keepalive_timeout_ms = 4_000
+
+[rpc_server.node_client.exponential_backoff]
+initial_delay_ms = 1000
+max_delay_ms = 32000
+coefficient = 2
+max_attempts = 30
+
+[sse_server]
+enable_server = true
+disable_event_persistence = false
+
+[[sse_server.connections]]
+ip_address = "127.0.0.1"
+sse_port = 18101
+rest_port = 14101
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
+no_message_timeout_in_seconds = 10
+sleep_between_keep_alive_checks_in_seconds = 5
+
+[[sse_server.connections]]
+ip_address = "127.0.0.1"
+sse_port = 18102
+rest_port = 14102
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
+no_message_timeout_in_seconds = 10
+sleep_between_keep_alive_checks_in_seconds = 5
+
+[[sse_server.connections]]
+ip_address = "127.0.0.1"
+sse_port = 18103
+rest_port = 14103
+max_attempts = 10
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = false
+connection_timeout_in_seconds = 3
+no_message_timeout_in_seconds = 10
+sleep_between_keep_alive_checks_in_seconds = 5
+
+[sse_server.event_stream_server]
+port = 19999
+max_concurrent_subscribers = 100
+event_stream_buffer_length = 5000
+
+[storage]
+storage_folder = "/var/lib/casper-sidecar"
+
+[storage.postgresql_config]
+enabled = true
+database_name = "event_sidecar"
+host = "localhost"
+database_password = "p@$$w0rd"
+database_username = "postgres"
+max_connections_in_pool = 30
+
+[rest_api_server]
+enable_server = true
+port = 18888
+max_concurrent_requests = 50
+max_requests_per_second = 50
+
+[admin_api_server]
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 1

@@ -1,0 +1,89 @@
+# ==================================================
+# Configuration options for the JSON-RPC HTTP server
+# ==================================================
+[rpc_server.main_server]
+# Enables the JSON-RPC HTTP server.
+enable_server = true
+
+# Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+ip_address = '0.0.0.0'
+port= 7777
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
+
+# Maximum number of bytes to accept in a single request body.
+max_body_bytes = 2_621_440
+
+# Specifies which origin will be reported as allowed by RPC server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
+
+
+# ========================================================================
+# Configuration options for the speculative execution JSON-RPC HTTP server
+# ========================================================================
+[rpc_server.speculative_exec_server]
+
+# Enables the speculative execution JSON-RPC HTTP server.
+enable_server = true
+
+# Listening address for speculative execution JSON-RPC HTTP server.  If the port
+# is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.
+# If binding fails, the speculative execution JSON-RPC HTTP server will not run,
+# but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+ip_address = '0.0.0.0'
+port = 7778
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 1
+
+# Maximum number of bytes to accept in a single request body.
+max_body_bytes = 2_621_440
+
+# Specifies which origin will be reported as allowed by speculative execution server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
+
+# =========================================
+# Configuration options for the node client
+# =========================================
+[rpc_server.node_client]
+# The address of the node to connect to.
+ip_address = '127.0.0.1'
+port = 7779
+# Maximum size of a message in bytes.
+max_message_size_bytes = 4_194_304
+# Timeout for a node request in seconds.
+message_timeout_secs = 10
+# Timeout specifying how long to wait for binary port client to be available.
+client_access_timeout_secs = 10
+# The amount of time in milliseconds to wait between sending keepalive requests.
+keepalive_timeout_ms = 4_000
+
+[rpc_server.node_client.exponential_backoff]
+# The initial delay in milliseconds before the first retry.
+initial_delay_ms = 1000
+# The maximum delay in milliseconds before a retry.
+max_delay_ms = 32_000
+# The multiplier to apply to the previous delay to get the next delay.
+coefficient = 2
+# Maximum number of connection attempts.
+max_attempts = 30
