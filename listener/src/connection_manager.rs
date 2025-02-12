@@ -222,7 +222,7 @@ impl DefaultConnectionManager {
                 }
             }
         }
-        Err(decorate_with_event_stream_closed(self.bind_address.clone()))
+        Err(decorate_with_event_stream_closed(&self.bind_address))
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
@@ -236,7 +236,7 @@ impl DefaultConnectionManager {
             }
             Ok(sse_data) => {
                 let payload_size = event.data.len();
-                self.observe_bytes(sse_data.type_label(), payload_size);
+                Self::observe_bytes(sse_data.type_label(), payload_size);
                 let api_version = self.api_version.ok_or(anyhow!(
                     "Expected ApiVersion to be present when handling messages."
                 ))?;
@@ -271,7 +271,7 @@ impl DefaultConnectionManager {
                 if event.data.contains(API_VERSION) {
                     self.try_handle_api_version_message(&event, receiver).await
                 } else {
-                    Err(expected_first_message_to_be_api_version(event.data))
+                    Err(expected_first_message_to_be_api_version(&event.data))
                 }
             }
         }
@@ -288,7 +288,7 @@ impl DefaultConnectionManager {
             // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
             Ok(SseData::ApiVersion(semver)) => {
                 let payload_size = event.data.len();
-                self.observe_bytes("ApiVersion", payload_size);
+                Self::observe_bytes("ApiVersion", payload_size);
                 self.api_version = Some(semver);
                 let sse_event = SseEvent::new(
                     0,
@@ -320,7 +320,7 @@ impl DefaultConnectionManager {
         Ok(receiver)
     }
 
-    fn observe_bytes(&self, sse_type_label: &str, payload_size: usize) {
+    fn observe_bytes(sse_type_label: &str, payload_size: usize) {
         register_sse_message_size(sse_type_label, payload_size as f64);
     }
 }
@@ -333,8 +333,8 @@ pub fn recoverable_error(error: Error) -> ConnectionManagerError {
     ConnectionManagerError::InitialConnectionError { error }
 }
 
-fn decorate_with_event_stream_closed(address: Url) -> ConnectionManagerError {
-    let message = format!("Event stream closed for filter: {:?}", address.as_str());
+fn decorate_with_event_stream_closed(address: &Url) -> ConnectionManagerError {
+    let message = format!("Event stream closed for filter: {address:?}");
     ConnectionManagerError::NonRecoverableError {
         error: Error::msg(message),
     }
@@ -347,7 +347,7 @@ where
     non_recoverable_error(Error::msg(format!("failed to get first event: {error:?}")))
 }
 
-fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerError {
+fn expected_first_message_to_be_api_version(data: &str) -> ConnectionManagerError {
     non_recoverable_error(Error::msg(format!(
         "Expected first message to be ApiVersion, got: {data:?}"
     )))

@@ -19,13 +19,20 @@ clap = { version = "4.0.32", features = ["derive"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 futures = { workspace = true }
 num_cpus = "1"
-serde = { workspace = true, default-features = false, features = ["alloc", "derive"] }
+serde = { workspace = true, default-features = false, features = [
+    "alloc",
+    "derive",
+] }
 tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
 tracing = { workspace = true, default-features = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
+tracing-subscriber = { workspace = true, features = [
+    "env-filter",
+    "fmt",
+    "json",
+] }
 thiserror = { workspace = true }
-derive-new = "0.6.0"
+derive-new = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
@@ -39,9 +46,21 @@ tikv-jemallocator = "0.5"
 [package.metadata.deb]
 revision = "0"
 assets = [
-    ["../target/release/casper-sidecar", "/usr/bin/casper-sidecar", "755"],
-    ["../resources/ETC_README.md", "/etc/casper-sidecar/README.md", "644"],
-    ["../resources/example_configs/default_debian_config.toml", "/etc/casper-sidecar/config.toml", "644"]
+    [
+        "../target/release/casper-sidecar",
+        "/usr/bin/casper-sidecar",
+        "755",
+    ],
+    [
+        "../resources/ETC_README.md",
+        "/etc/casper-sidecar/README.md",
+        "644",
+    ],
+    [
+        "../resources/example_configs/default_debian_config.toml",
+        "/etc/casper-sidecar/config.toml",
+        "644",
+    ],
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """

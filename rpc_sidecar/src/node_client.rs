@@ -998,7 +998,7 @@ impl FramedNodeClient {
             client
                 .send_request(Command::Get(GetRequest::Information {
                     info_type_tag: InformationRequestTag::ProtocolVersion.into(),
-                    key: vec![],
+                    key: Vec::new(),
                 }))
                 .await?;
         }
@@ -1483,7 +1483,7 @@ mod tests {
             .query_global_state(
                 Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
                 base_key,
-                vec![],
+                Vec::new(),
             )
             .await?
             .ok_or(Error::NoResponseBody)
@@ -1568,7 +1568,7 @@ mod tests {
         let config = NodeClientConfig::new_with_port(port);
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
-            start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
+            start_mock_binary_port(port, Vec::new(), 1, Arc::clone(&shutdown)).await;
         let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)

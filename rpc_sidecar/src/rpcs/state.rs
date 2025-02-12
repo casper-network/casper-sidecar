@@ -155,7 +155,7 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
             "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
         )
         .unwrap(),
-        path: vec![],
+        path: Vec::new(),
     });
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
@@ -386,7 +386,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
         let (registry_value, _) = node_client
-            .query_global_state(None, Key::SystemEntityRegistry, vec![])
+            .query_global_state(None, Key::SystemEntityRegistry, Vec::new())
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -542,7 +542,7 @@ impl RpcWithParams for GetAccountInfo {
             Key::Account(account_hash)
         };
         let (account_value, merkle_proof) = node_client
-            .query_global_state(maybe_state_identifier, base_key, vec![])
+            .query_global_state(maybe_state_identifier, base_key, Vec::new())
             .await
             .map_err(|err| Error::NodeRequest("account info", err))?
             .ok_or(Error::AccountNotFound)?
@@ -1401,7 +1401,7 @@ mod tests {
             GetItemParams {
                 state_root_hash: rng.gen(),
                 key,
-                path: vec![],
+                path: Vec::new(),
             },
         )
         .await
@@ -1494,7 +1494,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(self.block.clone_header()),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1514,7 +1514,7 @@ mod tests {
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1534,7 +1534,7 @@ mod tests {
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1551,11 +1551,11 @@ mod tests {
                                 .collect::<BTreeMap<_, _>>();
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(system_contracts).unwrap()),
-                            vec![],
+                            Vec::new(),
                         );
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1573,7 +1573,7 @@ mod tests {
                             {
                                 let result = GlobalStateQueryResult::new(
                                     StoredValue::CLValue(CLValue::from_t(1_u8).unwrap()),
-                                    vec![],
+                                    Vec::new(),
                                 );
                                 BinaryResponse::from_value(result)
                             }
@@ -1582,12 +1582,15 @@ mod tests {
                                     StoredValue::CLValue(
                                         CLValue::from_t(self.snapshot.clone()).unwrap(),
                                     ),
-                                    vec![],
+                                    Vec::new(),
                                 );
                                 BinaryResponse::from_value(result)
                             }
                         };
-                        Ok(BinaryResponseAndRequest::new(response, Bytes::from(vec![])))
+                        Ok(BinaryResponseAndRequest::new(
+                            response,
+                            Bytes::from(Vec::new()),
+                        ))
                     }
 
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1650,7 +1653,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(self.block.clone_header()),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1670,7 +1673,7 @@ mod tests {
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1690,7 +1693,7 @@ mod tests {
                             .collect::<Vec<_>>();
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(bids),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1711,11 +1714,11 @@ mod tests {
                                 .collect::<BTreeMap<_, _>>();
                         let result = GlobalStateQueryResult::new(
                             StoredValue::CLValue(CLValue::from_t(system_contracts).unwrap()),
-                            vec![],
+                            Vec::new(),
                         );
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(result),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1730,7 +1733,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1749,7 +1752,7 @@ mod tests {
                             {
                                 Ok(BinaryResponseAndRequest::new(
                                     BinaryResponse::new_empty(),
-                                    Bytes::from(vec![]),
+                                    Bytes::from(Vec::new()),
                                 ))
                             }
                             _ => {
@@ -1757,11 +1760,11 @@ mod tests {
                                     StoredValue::CLValue(
                                         CLValue::from_t(self.snapshot.clone()).unwrap(),
                                     ),
-                                    vec![],
+                                    Vec::new(),
                                 );
                                 Ok(BinaryResponseAndRequest::new(
                                     BinaryResponse::from_value(result),
-                                    Bytes::from(vec![]),
+                                    Bytes::from(Vec::new()),
                                 ))
                             }
                         }
@@ -1820,7 +1823,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::Information { info_type_tag, .. })
@@ -1829,7 +1832,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -1870,12 +1873,12 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(AddressableEntityInformation::new(
                                 self.addr,
-                                ValueWithProof::new(self.entity.clone(), vec![]),
-                                self.bytecode
-                                    .as_ref()
-                                    .map(|bytecode| ValueWithProof::new(bytecode.clone(), vec![])),
+                                ValueWithProof::new(self.entity.clone(), Vec::new()),
+                                self.bytecode.as_ref().map(|bytecode| {
+                                    ValueWithProof::new(bytecode.clone(), Vec::new())
+                                }),
                             )),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1899,7 +1902,7 @@ mod tests {
                                     })
                                     .collect::<Vec<_>>(),
                             ),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1919,7 +1922,7 @@ mod tests {
                                     .map(StoredValue::EntryPoint)
                                     .collect::<Vec<_>>(),
                             ),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -1933,7 +1936,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(Vec::<StoredValue>::new()),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2066,12 +2069,12 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(ContractInformation::new(
                                 self.hash,
-                                ValueWithProof::new(self.contract.clone(), vec![]),
-                                self.wasm
-                                    .as_ref()
-                                    .map(|bytecode| ValueWithProof::new(bytecode.clone(), vec![])),
+                                ValueWithProof::new(self.contract.clone(), Vec::new()),
+                                self.wasm.as_ref().map(|bytecode| {
+                                    ValueWithProof::new(bytecode.clone(), Vec::new())
+                                }),
                             )),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2141,7 +2144,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2186,9 +2189,9 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(ValueWithProof::new(
                                 self.package.clone(),
-                                vec![],
+                                Vec::new(),
                             )),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2248,9 +2251,9 @@ mod tests {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(ValueWithProof::new(
                                 self.package.clone(),
-                                vec![],
+                                Vec::new(),
                             )),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2347,7 +2350,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(self.block.clone_header()),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -2365,9 +2368,9 @@ mod tests {
                                     CLValue::from_t(Key::contract_entity_key(self.entity_hash))
                                         .unwrap(),
                                 ),
-                                vec![],
+                                Vec::new(),
                             )),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2415,7 +2418,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::from_value(self.block.clone_header()),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     Command::Get(GetRequest::State(req))
@@ -2429,7 +2432,7 @@ mod tests {
                     {
                         Ok(BinaryResponseAndRequest::new(
                             BinaryResponse::new_empty(),
-                            Bytes::from(vec![]),
+                            Bytes::from(Vec::new()),
                         ))
                     }
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -2463,7 +2466,7 @@ mod tests {
 
         let uref = URef::new(rng.gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
-        let query_result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
+        let query_result = GlobalStateQueryResult::new(stored_value.clone(), Vec::new());
         let dict_key = Key::dictionary(uref, item_key.as_bytes());
 
         let resp = GetDictionaryItem::do_handle_request(
@@ -2498,7 +2501,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
         let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
-        let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), Vec::new());
 
         let resp = QueryGlobalState::do_handle_request(
             Arc::new(ValidGlobalStateResultWithBlockMock {
@@ -2508,7 +2511,7 @@ mod tests {
             QueryGlobalStateParams {
                 state_identifier: Some(GlobalStateIdentifier::BlockHash(*block.hash())),
                 key: rng.gen(),
-                path: vec![],
+                path: Vec::new(),
             },
         )
         .await
@@ -2600,7 +2603,7 @@ mod tests {
                 available_balance,
                 total_balance_proof: common::encode_proof(&vec![*balance.total_balance_proof])
                     .expect("should encode proof"),
-                holds: vec![],
+                holds: Vec::new(),
             }
         );
     }
@@ -2628,7 +2631,7 @@ mod tests {
                             self.dict_key,
                             self.query_result.clone(),
                         )),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2653,7 +2656,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2679,7 +2682,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.clone_header()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::Get(GetRequest::State(req))
@@ -2690,7 +2693,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.result.clone()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2716,9 +2719,9 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(AccountInformation::new(
                             self.account.clone(),
-                            vec![],
+                            Vec::new(),
                         )),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::Get(GetRequest::State(req))
@@ -2733,9 +2736,9 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(GlobalStateQueryResult::new(
                             StoredValue::Account(self.account.clone()),
-                            vec![],
+                            Vec::new(),
                         )),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2760,7 +2763,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.0.clone()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -2785,7 +2788,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::new_error(BinaryErrorCode::PurseNotFound),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

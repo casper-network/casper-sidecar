@@ -896,7 +896,7 @@ mod tests {
                             .expect("should deserialize transaction");
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(transaction),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -930,7 +930,7 @@ mod tests {
                     );
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(resp),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

@@ -26,7 +26,7 @@ casper-types = { workspace = true, features = [
 ] }
 casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
-derive-new = "0.7.0"
+derive-new = { workspace = true }
 forwarded-header-value = "0.1.1"
 futures = { workspace = true }
 governor = "0.8.0"

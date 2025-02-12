@@ -361,39 +361,39 @@ async fn get_era_summary_by_block(
     fn create_era_summary(
         block_header: &BlockHeader,
         stored_value: StoredValue,
-        merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
+        merkle_proof: &Vec<TrieMerkleProof<Key, StoredValue>>,
     ) -> Result<EraSummary, Error> {
         Ok(EraSummary {
             block_hash: block_header.block_hash(),
             era_id: block_header.era_id(),
             stored_value,
             state_root_hash: *block_header.state_root_hash(),
-            merkle_proof: common::encode_proof(&merkle_proof)?,
+            merkle_proof: common::encode_proof(merkle_proof)?,
         })
     }
 
     let state_identifier = GlobalStateIdentifier::StateRootHash(*block_header.state_root_hash());
     let result = node_client
-        .query_global_state(Some(state_identifier), Key::EraSummary, vec![])
+        .query_global_state(Some(state_identifier), Key::EraSummary, Vec::new())
         .await
         .map_err(|err| Error::NodeRequest("era summary", err))?;
 
     let era_summary = if let Some(result) = result {
         let (value, merkle_proof) = result.into_inner();
-        create_era_summary(block_header, value, merkle_proof)?
+        create_era_summary(block_header, value, &merkle_proof)?
     } else {
         let (result, merkle_proof) = node_client
             .query_global_state(
                 Some(state_identifier),
                 Key::EraInfo(block_header.era_id()),
-                vec![],
+                Vec::new(),
             )
             .await
             .map_err(|err| Error::NodeRequest("era info", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
             .into_inner();
 
-        create_era_summary(block_header, result, merkle_proof)?
+        create_era_summary(block_header, result, &merkle_proof)?
     };
     Ok(era_summary)
 }
@@ -432,7 +432,7 @@ mod tests {
         let resp = GetBlock::do_handle_request(
             Arc::new(ValidBlockMock {
                 block: BlockWithSignatures::new(block.clone(), signatures.into()),
-                transfers: vec![],
+                transfers: Vec::new(),
             }),
             None,
         )
@@ -459,7 +459,7 @@ mod tests {
                     Block::V1(block.clone()),
                     BlockSignaturesV1::new(*block.hash(), block.era_id()).into(),
                 ),
-                transfers: vec![],
+                transfers: Vec::new(),
             }),
             None,
         )
@@ -480,7 +480,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
 
-        let mut transfers = vec![];
+        let mut transfers = Vec::new();
         for _ in 0..rng.gen_range(0..10) {
             transfers.push(Transfer::random(rng));
         }
@@ -524,7 +524,7 @@ mod tests {
         let resp = GetStateRootHash::do_handle_request(
             Arc::new(ValidBlockMock {
                 block: BlockWithSignatures::new(Block::V2(block.clone()), signatures.into()),
-                transfers: vec![],
+                transfers: Vec::new(),
             }),
             None,
         )
@@ -740,7 +740,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.clone()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::Get(GetRequest::Information { info_type_tag, .. })
@@ -749,7 +749,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.block().clone_header()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::Get(GetRequest::Record {
@@ -787,7 +787,7 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.block.clone_header()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::Get(GetRequest::State(req))
@@ -802,9 +802,9 @@ mod tests {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(GlobalStateQueryResult::new(
                             StoredValue::EraInfo(EraInfo::new()),
-                            vec![],
+                            Vec::new(),
                         )),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

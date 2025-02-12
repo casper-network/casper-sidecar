@@ -72,7 +72,7 @@ impl SseConnection {
     ) -> impl Stream<Item = Result<Bytes, SseDataStreamingError>> {
         let monitor =
             KeepAliveMonitor::new(self.sleep_between_keepalive_checks, self.no_message_timeout);
-        monitor.start().await;
+        monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         let mut stream = sse_response.bytes_stream();
         stream! {
@@ -86,7 +86,7 @@ impl SseConnection {
                                     yield Ok(bytes);
                                 },
                                 Err(e) => {
-                                    trace!("Error when receiving bytes: {}", e);
+                                    trace!("Error when receiving bytes: {e}");
                                     yield Err(SseDataStreamingError::ConnectionError());
                                     break;
                                 }
@@ -95,7 +95,7 @@ impl SseConnection {
                             break;
                         }
                     }
-                    _ = cancellation_token.cancelled() => {
+                    () = cancellation_token.cancelled() => {
                         yield Err(SseDataStreamingError::NoDataTimeout());
                         break;
                     }
@@ -114,7 +114,7 @@ impl StreamConnector for SseConnection {
     {
         let mut bind_address = self.bind_address.clone();
         if let Some(event_id) = current_event_id {
-            let query = format!("start_from={}", event_id);
+            let query = format!("start_from={event_id}");
             bind_address.set_query(Some(&query));
         }
         let mut retry_count = 0;
@@ -134,7 +134,7 @@ impl StreamConnector for SseConnection {
         }
         Err(couldnt_connect(
             last_error,
-            bind_address.clone(),
+            &bind_address,
             self.max_attempts,
         ))
     }
@@ -142,14 +142,10 @@ impl StreamConnector for SseConnection {
 
 fn couldnt_connect(
     last_error: Option<ConnectionManagerError>,
-    url: Url,
+    url: &Url,
     attempts: usize,
 ) -> ConnectionManagerError {
-    let message = format!(
-        "Couldn't connect to address {:?} in {:?} attempts",
-        url.as_str(),
-        attempts
-    );
+    let message = format!("Couldn't connect to address {url:?} in {attempts:?} attempts");
     match last_error {
         None => non_recoverable_error(Error::msg(message)),
         Some(ConnectionManagerError::InitialConnectionError { error }) => {
@@ -197,7 +193,7 @@ pub mod tests {
 
     impl MockSseConnection {
         pub fn build_with_data(input_data: Vec<String>) -> Self {
-            let mut data = vec![];
+            let mut data = Vec::new();
             for (i, raw) in input_data.iter().enumerate() {
                 let event = Event {
                     event: "".to_string(),
@@ -217,7 +213,7 @@ pub mod tests {
         pub fn build_failing_on_connection() -> Self {
             let e = Error::msg("Some error on connection");
             MockSseConnection {
-                data: vec![],
+                data: Vec::new(),
                 failure_on_connection: Some(ConnectionManagerError::NonRecoverableError {
                     error: e,
                 }),
@@ -228,7 +224,7 @@ pub mod tests {
         pub fn build_failing_on_message() -> Self {
             let e = SseDataStreamingError::ConnectionError();
             MockSseConnection {
-                data: vec![],
+                data: Vec::new(),
                 failure_on_connection: None,
                 failure_on_message: Some(e),
             }
@@ -392,7 +388,7 @@ pub mod tests {
         connection: &mut dyn StreamConnector,
         timeout_after: Duration,
     ) -> Vec<String> {
-        let mut data = vec![];
+        let mut data = Vec::new();
         let connection = timeout(Duration::from_secs(5), connection.connect(None)).await;
         if connection.is_err() {
             panic!("Couln't connect to sse endpoint in 5 seconds");

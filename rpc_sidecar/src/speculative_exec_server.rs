@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{num::NonZeroU32, sync::Arc};
 
 use hyper::server::{conn::AddrIncoming, Builder};
 
@@ -21,7 +21,7 @@ pub const SPECULATIVE_EXEC_SERVER_NAME: &str = "speculative execution";
 pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
-    qps_limit: u32,
+    qps_limit: NonZeroU32,
     max_body_bytes: u64,
     cors_origin: String,
 ) {

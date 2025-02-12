@@ -7,7 +7,7 @@ mod speculative_exec_server;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
-use std::{net::SocketAddr, process::ExitCode, sync::Arc};
+use std::{net::SocketAddr, num::NonZeroU32, process::ExitCode, sync::Arc};
 
 use anyhow::Error;
 use casper_binary_port::{Command, CommandHeader};
@@ -98,7 +98,7 @@ async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<
     run_rpc_server(
         node_client,
         start_listening(&SocketAddr::new(config.ip_address, config.port))?,
-        config.qps_limit,
+        NonZeroU32::new(config.qps_limit).unwrap(),
         config.max_body_bytes,
         config.cors_origin.clone(),
     )
@@ -113,7 +113,7 @@ async fn run_speculative_exec(
     run_speculative_exec_server(
         node_client,
         start_listening(&SocketAddr::new(config.ip_address, config.port))?,
-        config.qps_limit,
+        NonZeroU32::new(config.qps_limit).unwrap(),
         config.max_body_bytes,
         config.cors_origin.clone(),
     )

@@ -160,7 +160,7 @@ impl OpenRpcSchema {
             openrpc,
             info,
             servers,
-            methods: vec![],
+            methods: Vec::new(),
             components: Components::default(),
         }
     }
@@ -213,7 +213,7 @@ impl OpenRpcSchema {
         let method = Method {
             name: T::METHOD.to_string(),
             summary: summary.to_string(),
-            params: vec![],
+            params: Vec::new(),
             result,
             examples,
         };
@@ -397,7 +397,7 @@ impl Example {
                     value: value.clone(),
                 })
                 .collect(),
-            None => vec![],
+            None => Vec::new(),
         };
 
         Example {

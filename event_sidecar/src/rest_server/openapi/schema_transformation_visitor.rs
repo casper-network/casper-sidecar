@@ -62,7 +62,7 @@ fn replace_null_and_multi_type(schema: &mut SchemaObject) {
                 //OpenApi schemas don't support multiple types definitions, we need to change it to a collection of "anyOf"
                 let mut new_schema = SchemaObject::default();
                 let mut subschema_validation = SubschemaValidation::default();
-                let mut vals: Vec<schemars::schema::Schema> = vec![];
+                let mut vals: Vec<schemars::schema::Schema> = Vec::new();
                 for t in types.iter() {
                     let mut single_type_schema = schema.clone();
                     if *t == InstanceType::Null {

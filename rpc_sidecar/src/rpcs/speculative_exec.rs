@@ -243,12 +243,12 @@ mod tests {
                 {
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(self.execution_result.clone()),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 Command::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(self.execution_result.clone()),
-                    Bytes::from(vec![]),
+                    Bytes::from(Vec::new()),
                 )),
                 req => unimplemented!("unexpected request: {:?}", req),
             }

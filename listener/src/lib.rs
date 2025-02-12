@@ -1,6 +1,5 @@
 #![deny(clippy::complexity)]
 #![deny(clippy::cognitive_complexity)]
-#![deny(clippy::too_many_lines)]
 
 mod connection_manager;
 mod connection_tasks;

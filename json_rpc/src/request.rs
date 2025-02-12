@@ -89,8 +89,7 @@ impl Request {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
                     format!(
-                        "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{}'",
-                        jsonrpc
+                        "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{jsonrpc}'"
                     ),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
@@ -107,7 +106,7 @@ impl Request {
             None => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("Missing '{}' field", JSONRPC_FIELD_NAME),
+                    format!("Missing '{JSONRPC_FIELD_NAME}' field"),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }

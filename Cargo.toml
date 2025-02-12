@@ -22,6 +22,7 @@ casper-event-sidecar = { path = "./event_sidecar", version = "1.0.0" }
 casper-event-types = { path = "./types", version = "1.0.0" }
 casper-rpc-sidecar = { path = "./rpc_sidecar", version = "1.0.0" }
 datasize = "0.2"
+derive-new = "0.7"
 futures = "0"
 futures-util = "0.3"
 itertools = "0.14"

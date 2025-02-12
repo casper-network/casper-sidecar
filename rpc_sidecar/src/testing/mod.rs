@@ -91,7 +91,7 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     shutdown: Arc<Notify>,
 ) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
-    let data = GlobalStateQueryResult::new(value, vec![]);
+    let data = GlobalStateQueryResult::new(value, Vec::new());
     let val = BinaryResponse::from_value(data);
     let request = get_dummy_request_payload(request_id);
     let response = BinaryResponseAndRequest::new(val, request);
@@ -139,7 +139,7 @@ pub async fn start_mock_binary_port(
 pub(crate) fn get_dummy_request() -> Command {
     Command::Get(GetRequest::Information {
         info_type_tag: 0,
-        key: vec![],
+        key: Vec::new(),
     })
 }
 

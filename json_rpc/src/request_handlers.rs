@@ -75,6 +75,7 @@ pub struct RequestHandlersBuilder(HashMap<&'static str, RequestHandler>);
 
 impl RequestHandlersBuilder {
     /// Returns a new builder.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -119,6 +120,7 @@ impl RequestHandlersBuilder {
     }
 
     /// Finalize building by converting `self` to a [`RequestHandlers`].
+    #[must_use]
     pub fn build(self) -> RequestHandlers {
         RequestHandlers(Arc::new(self.0))
     }

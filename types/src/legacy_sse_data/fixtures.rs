@@ -224,7 +224,7 @@ pub fn block_v2(
         era_id,
         height,
         proposer,
-        vec![],
+        Vec::new(),
     )
 }
 
@@ -254,8 +254,8 @@ pub fn block_v1_no_deploys_no_era(
         ProtocolVersion::V2_0_0,
         proposer,
         block_hash,
-        vec![],
-        vec![],
+        Vec::new(),
+        Vec::new(),
     )
 }
 

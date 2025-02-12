@@ -49,7 +49,7 @@ impl Default for SseEventServerConfig {
             emulate_legacy_sse_apis: Some(vec![LegacySseApiTag::V1]),
             inbound_channel_size: Some(100),
             outbound_channel_size: Some(100),
-            connections: vec![],
+            connections: Vec::new(),
             event_stream_server: EventStreamServerConfig::default(),
             disable_event_persistence: false,
         }

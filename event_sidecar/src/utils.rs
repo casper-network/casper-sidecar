@@ -181,7 +181,7 @@ pub mod tests {
     }
     /// Forces a stop on the given nodes and waits until all starts finish. Will timeout if the nodes can't start in 3 minutes.
     pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
-        let mut futures = vec![];
+        let mut futures = Vec::new();
         for node in nodes {
             futures.push(node.start());
         }
@@ -214,7 +214,7 @@ pub mod tests {
     }
     /// Forces a stop on the given nodes and waits until the stop happens. Will timeout if the nodes can't stop in 3 minutes.
     pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
-        let mut futures = vec![];
+        let mut futures = Vec::new();
         for node in nodes {
             futures.push(node.stop());
         }

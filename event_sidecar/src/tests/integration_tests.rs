@@ -852,7 +852,7 @@ pub async fn fetch_data_from_endpoint_with_panic_flag(
             if panic_on_cant_connect {
                 panic!("Unable to connect to stream")
             }
-            vec![]
+            Vec::new()
         }
     });
     (join, receiver)

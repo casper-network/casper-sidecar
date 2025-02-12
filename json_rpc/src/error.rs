@@ -48,6 +48,7 @@ pub trait ErrorCodeT:
     ///
     /// This should normally be left with the default return value of `false`.
     #[doc(hidden)]
+    #[must_use]
     fn is_reserved() -> bool {
         false
     }
@@ -131,8 +132,7 @@ impl Error {
                 code,
                 message: Cow::Borrowed(message),
                 data: Some(Value::String(format!(
-                    "attempted to return reserved error code {}",
-                    code
+                    "attempted to return reserved error code {code}"
                 ))),
             };
         }
@@ -147,8 +147,7 @@ impl Error {
                     code,
                     message: Cow::Borrowed(message),
                     data: Some(Value::String(format!(
-                        "failed to json-encode additional info in json-rpc error: {}",
-                        error
+                        "failed to json-encode additional info in json-rpc error: {error}"
                     ))),
                 };
             }
@@ -162,6 +161,7 @@ impl Error {
     }
 
     /// Returns the code of the error.
+    #[must_use]
     pub fn code(&self) -> i64 {
         self.code
     }

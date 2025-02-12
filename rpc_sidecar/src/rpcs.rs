@@ -321,21 +321,20 @@ async fn handle_rejection(error: Rejection) -> Result<impl Reply, Rejection> {
 async fn run_service(
     builder: Builder<AddrIncoming>,
     service_routes: BoxedFilter<(impl Reply + 'static,)>,
-    qps_limit: u32,
+    qps_limit: NonZeroU32,
     server_name: &'static str,
 ) {
-    let period = Duration::from_secs(10);
+    // TODO: make period configurable, but then rename `qps_limit`.
+    let period = Duration::from_secs(1);
     let limiter = Arc::new(AddrRateLimiter::keyed(
-        Quota::with_period(period)
-            .unwrap()
-            .allow_burst(NonZeroU32::new(qps_limit).unwrap()),
+        Quota::with_period(period).unwrap().allow_burst(qps_limit),
     ));
 
     let make_svc = make_service_fn(move |socket: &AddrStream| {
         let remote_addr = socket.remote_addr();
         let limiter = limiter.clone();
 
-        // Try to get client's IP address from headers, with callback to connection IP address.
+        // Try to get client's IP address from headers, with fallback to connection IP address.
         let host_ip = warp::header(X_REAL_IP)
             .or(warp::header(X_FORWARDED_FOR))
             .unify()
@@ -390,7 +389,7 @@ async fn run_service(
 pub(super) async fn run_with_cors(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
-    qps_limit: u32,
+    qps_limit: NonZeroU32,
     max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
@@ -410,7 +409,7 @@ pub(super) async fn run_with_cors(
 pub(super) async fn run(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
-    qps_limit: u32,
+    qps_limit: NonZeroU32,
     max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
@@ -475,7 +474,7 @@ mod tests {
     ) -> Response {
         let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{method}""#);
         match maybe_params {
-            Some(params) => write!(body, r#","params":{}}}"#, params).unwrap(),
+            Some(params) => write!(body, r#","params":{params}}}"#).unwrap(),
             None => body += "}",
         }
 

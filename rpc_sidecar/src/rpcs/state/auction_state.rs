@@ -39,7 +39,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let validator_public_key = PublicKey::from(&validator_secret_key);
 
-    let mut bids = vec![];
+    let mut bids = Vec::new();
     let validator_bid = ValidatorBid::unlocked(
         validator_public_key.clone(),
         URef::new([250; 32], AccessRights::READ_ADD_WRITE),

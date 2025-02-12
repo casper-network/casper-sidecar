@@ -35,7 +35,7 @@ impl Params {
         };
 
         match params {
-            Value::Null => Ok(Params::Array(vec![])),
+            Value::Null => Ok(Params::Array(Vec::new())),
             Value::Bool(false) => err_invalid_request(
                 "If present, 'params' must be an Array or Object, but was 'false'",
             ),
@@ -122,7 +122,7 @@ impl Display for Params {
 /// The default value for `Params` is an empty Array.
 impl Default for Params {
     fn default() -> Self {
-        Params::Array(vec![])
+        Params::Array(Vec::new())
     }
 }
 
@@ -186,7 +186,7 @@ mod tests {
     fn should_convert_params_from_an_array() {
         let original_id = Value::from(1_i8);
 
-        let params = Params::try_from(&original_id, Value::Array(vec![])).unwrap();
+        let params = Params::try_from(&original_id, Value::Array(Vec::new())).unwrap();
         assert!(matches!(params, Params::Array(v) if v.is_empty()));
 
         let array = vec![Value::from(9_i16), Value::Bool(false)];
