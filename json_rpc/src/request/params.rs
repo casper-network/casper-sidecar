@@ -164,22 +164,22 @@ mod tests {
 
     #[test]
     fn should_fail_to_convert_params_from_false() {
-        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'")
+        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_true() {
-        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'")
+        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_number() {
-        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number")
+        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_string() {
-        should_fail_to_convert_invalid_params(Value::from("s"), "a String")
+        should_fail_to_convert_invalid_params(Value::from("s"), "a String");
     }
 
     #[test]

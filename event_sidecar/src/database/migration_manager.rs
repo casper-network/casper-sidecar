@@ -100,27 +100,24 @@ fn error_migration_without_version() -> Error {
 }
 
 fn error_when_executing_initial_migration(err: DatabaseWriteError) -> Error {
-    Error::msg(format!("Error when executing initial migration {:?}", err))
+    Error::msg(format!("Error when executing initial migration {err:?}"))
 }
 
 fn error_last_migration_failed(version: u32) -> Error {
     Error::msg(format!(
-        "Cannot proceed with migration, newest migration version: {} didn't finish correctly.",
-        version
+        "Cannot proceed with migration, newest migration version: {version} didn't finish correctly."
     ))
 }
 
 fn error_execute_migration_failed(version: u32, err: DatabaseWriteError) -> Error {
     Error::msg(format!(
-        "Error when executing migration {:?}. Underlying: {:?}",
-        version, err
+        "Error when executing migration {version:?}. Underlying: {err:?}"
     ))
 }
 
 fn error_version_fetch_failed(err: DatabaseReadError) -> Error {
     Error::msg(format!(
-        "Error when fetching newest migration version: {:?}",
-        err
+        "Error when fetching newest migration version: {err:?}"
     ))
 }
 
@@ -140,8 +137,7 @@ fn validate_uniqueness_of_migration_versions(migrations: Vec<Migration>) -> Resu
     });
     if let Some(version) = first_duplicate_version {
         Err(Error::msg(format!(
-            "Duplicate version {} defined in migrations.",
-            version
+            "Duplicate version {version} defined in migrations."
         )))
     } else {
         Ok(())

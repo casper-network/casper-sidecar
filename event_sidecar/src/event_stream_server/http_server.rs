@@ -53,7 +53,7 @@ pub(super) async fn run(
                     }
                 }
                 maybe_data = data_receiver.recv() => {
-                    if handle_incoming_data(maybe_data, &mut latest_protocol_version, &mut buffer, &broadcaster).await.is_err() {
+                    if handle_incoming_data(maybe_data, &mut latest_protocol_version, &mut buffer, &broadcaster).is_err() {
                         break;
                     }
                 }
@@ -90,22 +90,18 @@ async fn send_api_version_from_global_state(
         .send(ServerSentEvent::initial_event(protocol_version))
 }
 
-async fn send_legacy_comment(
-    subscriber: &NewSubscriberInfo,
-) -> Result<(), SendError<ServerSentEvent>> {
+fn send_legacy_comment(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::legacy_comment_event())
 }
-async fn send_sidecar_version(
-    subscriber: &NewSubscriberInfo,
-) -> Result<(), SendError<ServerSentEvent>> {
+fn send_sidecar_version(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::sidecar_version_event(*SIDECAR_VERSION))
 }
 
-async fn handle_incoming_data(
+fn handle_incoming_data(
     maybe_data: Option<InboundData>,
     latest_protocol_version: &mut Option<ProtocolVersion>,
     buffer: &mut WheelBuf<
@@ -117,7 +113,7 @@ async fn handle_incoming_data(
     match maybe_data {
         Some((maybe_event_index, data, inbound_filter)) => {
             // Buffer the data and broadcast it to subscribed clients.
-            trace!("Event stream server received {:?}", data);
+            trace!("Event stream server received {data:?}");
             let event = ServerSentEvent {
                 id: maybe_event_index,
                 comment: None,
@@ -155,9 +151,9 @@ async fn register_new_subscriber(
     latest_protocol_version: Option<ProtocolVersion>,
 ) {
     if subscriber.enable_legacy_filters {
-        let _ = send_legacy_comment(&subscriber).await;
+        let _ = send_legacy_comment(&subscriber);
     }
-    let _ = send_sidecar_version(&subscriber).await;
+    let _ = send_sidecar_version(&subscriber);
     let mut observed_events = false;
     // If the client supplied a "start_from" index, provide the buffered events.
     // If they requested more than is buffered, just provide the whole buffer.

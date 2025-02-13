@@ -584,36 +584,36 @@ mod tests {
     #[test]
     fn check_chain_get_block_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetBlock>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 
     #[test]
     fn check_chain_get_block_transfers_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetBlockTransfers>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 
     #[test]
     fn check_chain_get_state_root_hash_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetStateRootHash>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 
     #[test]
     fn check_chain_get_era_info_by_switch_block_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetEraInfoBySwitchBlock>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 
     #[test]
     fn check_state_get_auction_info_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetAuctionInfo>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 
     #[test]
     fn check_state_get_auction_info_v2_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetAuctionInfoV2>();
-        assert!(incorrect_optional_params.is_empty())
+        assert!(incorrect_optional_params.is_empty());
     }
 }

@@ -62,7 +62,7 @@ impl SidecarConfig {
     }
 
     fn is_storage_enabled(&self) -> bool {
-        self.storage.as_ref().is_some_and(|x| x.is_enabled())
+        self.storage.as_ref().is_some_and(StorageConfig::is_enabled)
     }
 
     fn is_rpc_server_enabled(&self) -> bool {
@@ -80,11 +80,13 @@ impl SidecarConfig {
     fn is_postgres_enabled(&self) -> bool {
         self.storage
             .as_ref()
-            .is_some_and(|x| x.is_postgres_enabled())
+            .is_some_and(StorageConfig::is_postgres_enabled)
     }
 
     fn is_sqlite_enabled(&self) -> bool {
-        self.storage.as_ref().is_some_and(|x| x.is_sqlite_enabled())
+        self.storage
+            .as_ref()
+            .is_some_and(StorageConfig::is_sqlite_enabled)
     }
 
     fn is_rest_api_server_enabled(&self) -> bool {

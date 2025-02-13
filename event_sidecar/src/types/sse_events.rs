@@ -124,7 +124,7 @@ impl TransactionAccepted {
 
     #[cfg(test)]
     pub fn transaction_hash(&self) -> TransactionHash {
-        self.transaction.hash().to_owned()
+        self.transaction.hash()
     }
 
     pub fn hex_encoded_hash(&self) -> String {

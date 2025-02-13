@@ -58,6 +58,7 @@ impl Default for SseEventServerConfig {
 
 impl SseEventServerConfig {
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn default_no_persistence() -> Self {
         Self {
             disable_event_persistence: true,
@@ -88,6 +89,7 @@ pub struct StorageConfig {
 }
 
 impl StorageConfig {
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.sqlite_config
             .as_ref()
@@ -95,8 +97,7 @@ impl StorageConfig {
             .unwrap_or_else(|| {
                 self.postgresql_config
                     .as_ref()
-                    .map(|config| config.enabled)
-                    .unwrap_or(false)
+                    .is_some_and(|config| config.enabled)
             })
     }
 
@@ -112,6 +113,7 @@ impl StorageConfig {
     }
 
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn two_dbs() -> Self {
         StorageConfig {
             storage_folder: "abc".to_string(),
@@ -121,6 +123,7 @@ impl StorageConfig {
     }
 
     #[cfg(test)]
+    #[must_use]
     pub fn postgres_with_port(port: u16) -> Self {
         Self {
             storage_folder: "storage".to_string(),
@@ -138,6 +141,7 @@ impl StorageConfig {
     }
 
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn no_dbs() -> Self {
         Self {
             storage_folder: "storage".to_string(),
@@ -147,6 +151,7 @@ impl StorageConfig {
     }
 
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn no_enabled_dbs() -> Self {
         let sqlite_config = SqliteConfig {
             enabled: false,
@@ -163,18 +168,18 @@ impl StorageConfig {
         }
     }
 
+    #[must_use]
     pub fn is_postgres_enabled(&self) -> bool {
         self.postgresql_config
             .as_ref()
-            .map(|config| config.enabled)
-            .unwrap_or(false)
+            .is_some_and(|config| config.enabled)
     }
 
+    #[must_use]
     pub fn is_sqlite_enabled(&self) -> bool {
         self.sqlite_config
             .as_ref()
-            .map(|config| config.enabled)
-            .unwrap_or(false)
+            .is_some_and(|config| config.enabled)
     }
 }
 
@@ -349,6 +354,7 @@ mod tests {
     use super::*;
 
     impl Connection {
+        #[must_use]
         pub fn example_connection_1() -> Connection {
             Connection {
                 ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -364,6 +370,7 @@ mod tests {
             }
         }
 
+        #[must_use]
         pub fn example_connection_2() -> Connection {
             Connection {
                 ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -379,6 +386,7 @@ mod tests {
             }
         }
 
+        #[must_use]
         pub fn example_connection_3() -> Connection {
             Connection {
                 ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),

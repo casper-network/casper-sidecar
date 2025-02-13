@@ -230,7 +230,7 @@ pub async fn run_rest_server(
         Database::SqliteDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
         Database::PostgreSqlDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
     }
-    .map(|_| ExitCode::SUCCESS)
+    .map(|()| ExitCode::SUCCESS)
 }
 
 fn build_event_listeners(

@@ -284,7 +284,7 @@ pub(super) trait RpcWithOptionalParams {
             let _params = Self::try_parse_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(

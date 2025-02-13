@@ -307,7 +307,7 @@ pub mod tests {
     #[tokio::test]
     async fn given_sse_connection_should_read_data() {
         let sse_port = portpicker::pick_unused_port().unwrap();
-        sse_server_finite_messages(sse_port).await;
+        sse_server_finite_messages(sse_port);
         let mut connection = SseConnection {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
@@ -450,7 +450,7 @@ pub mod tests {
         });
     }
 
-    async fn sse_server_finite_messages(sse_port: u16) {
+    fn sse_server_finite_messages(sse_port: u16) {
         fn sse_events() -> impl futures_util::Stream<Item = Result<SseEvent, Infallible>> {
             iter(vec![
                 Ok(SseEvent::default().data("msg 1")),

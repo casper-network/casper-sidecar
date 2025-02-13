@@ -173,7 +173,7 @@ pub mod tests {
             // more than a minute
         } else if duration.as_secs() > 60 {
             let (minutes, seconds) = (duration.as_secs() / 60, duration.as_secs() % 60);
-            format!("{}min. {}s", minutes, seconds)
+            format!("{minutes}min. {seconds}s")
             // over a second / under a minute
         } else {
             format!("{}s", duration.as_secs())
@@ -222,9 +222,8 @@ pub mod tests {
             .await
             .unwrap()
     }
-    pub(crate) fn any_string_contains(data: &[String], infix: String) -> bool {
-        let infix_str = infix.as_str();
-        data.iter().any(|x| x.contains(infix_str))
+    pub(crate) fn any_string_contains(data: &[String], infix: &str) -> bool {
+        data.iter().any(|x| x.contains(infix))
     }
 
     #[allow(dead_code)]

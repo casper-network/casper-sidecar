@@ -64,6 +64,7 @@ pub struct LazyDatabaseWrapper {
 }
 
 impl LazyDatabaseWrapper {
+    #[must_use]
     pub fn new(config: StorageConfig) -> Self {
         let cell = Arc::new(tokio::sync::OnceCell::new());
         Self {
@@ -80,6 +81,7 @@ impl LazyDatabaseWrapper {
     }
 
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn for_tests() -> Self {
         let db = Database::for_tests();
         let cell = Arc::new(tokio::sync::OnceCell::from(Ok(db)));
@@ -110,6 +112,7 @@ impl Database {
     }
 
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn for_tests() -> Database {
         let sqlite_database = SqliteDatabase::new_in_memory_no_migrations(100).unwrap();
         Database::SqliteDatabaseWrapper(sqlite_database)
@@ -288,10 +291,10 @@ impl Display for DatabaseWriteError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DatabaseWriteError::Serialisation(error) => {
-                write!(f, "DatabaseWriteError::Serialisation: {}", error)
+                write!(f, "DatabaseWriteError::Serialisation: {error}")
             }
             DatabaseWriteError::SqlConstruction(error) => {
-                write!(f, "DatabaseWriteError::SqlConstruction: {}", error)
+                write!(f, "DatabaseWriteError::SqlConstruction: {error}")
             }
             DatabaseWriteError::UniqueConstraint(unique_constraint_error) => {
                 write!(
@@ -301,10 +304,10 @@ impl Display for DatabaseWriteError {
                 )
             }
             DatabaseWriteError::Database(error) => {
-                write!(f, "DatabaseWriteError::Database: {}", error)
+                write!(f, "DatabaseWriteError::Database: {error}")
             }
             DatabaseWriteError::Unhandled(error) => {
-                write!(f, "DatabaseWriteError::Unhandled: {}", error)
+                write!(f, "DatabaseWriteError::Unhandled: {error}")
             }
         }
     }
@@ -331,7 +334,7 @@ impl From<sqlx::Error> for DatabaseWriteError {
                         //"23505" is postgresql unique constraint violation violation
                         let table = db_err
                             .table()
-                            .map(|table_name| table_name.to_string())
+                            .map(ToString::to_string)
                             .unwrap_or(db_err.message().to_string());
                         return Self::UniqueConstraint(UniqueConstraintError {
                             table,
