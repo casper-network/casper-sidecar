@@ -1,6 +1,9 @@
 [package]
 name = "casper-event-sidecar"
-authors = ["George Williamson <george@casperlabs.io>", "Jakub Zajkowski <jakub@casperlabs.io>"]
+authors = [
+    "George Williamson <george@casperlabs.io>",
+    "Jakub Zajkowski <jakub@casperlabs.io>",
+]
 version = "1.0.0"
 edition = "2018"
 readme = "README.md"
@@ -11,7 +14,10 @@ homepage = "https://github.com/casper-network/casper-sidecar/"
 repository = "https://github.com/casper-network/casper-sidecar/"
 
 [features]
-additional-metrics = ["casper-event-types/additional-metrics", "metrics/additional-metrics"]
+additional-metrics = [
+    "casper-event-types/additional-metrics",
+    "metrics/additional-metrics",
+]
 testing = []
 
 [dependencies]
@@ -21,7 +27,7 @@ bytes = "1.2.0"
 casper-event-listener = { path = "../listener", version = "1.0.0" }
 casper-event-types.workspace = true
 casper-types = { workspace = true, features = ["std", "json-schema"] }
-derive-new = "0.5.9"
+derive-new = { workspace = true }
 eventsource-stream = "0.2.3"
 futures = { workspace = true }
 hex = "0.4.3"
@@ -38,13 +44,25 @@ regex = "1.6.0"
 reqwest = "0.12.5"
 schemars = "0.8.21"
 sea-query = "0.30"
-serde = { workspace = true, default-features = true, features = ["derive", "rc"] }
+serde = { workspace = true, default-features = true, features = [
+    "derive",
+    "rc",
+] }
 serde_json = "1.0"
-sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite", "postgres"] }
+sqlx = { version = "0.7", features = [
+    "runtime-tokio-native-tls",
+    "sqlite",
+    "postgres",
+] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
-tower = { version = "0.4.13", features = ["buffer", "limit", "make", "timeout"] }
+tower = { version = "0.4.13", features = [
+    "buffer",
+    "limit",
+    "make",
+    "timeout",
+] }
 tracing = { workspace = true, default-features = true }
 tracing-subscriber = { workspace = true }
 utoipa = { version = "4", features = ["rc_schema"] }

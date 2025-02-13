@@ -38,14 +38,14 @@ where
             if let Some(err_msg) = &result.error_message {
                 Some(ExecutionResultV1::Failure {
                     effect,
-                    transfers: vec![],
+                    transfers: Vec::new(),
                     cost: result.cost,
                     error_message: err_msg.to_string(),
                 })
             } else {
                 Some(ExecutionResultV1::Success {
                     effect,
-                    transfers: vec![],
+                    transfers: Vec::new(),
                     cost: result.cost,
                 })
             }
@@ -78,7 +78,7 @@ impl ExecutionEffectsTranslator for DefaultExecutionEffectsTranslator {
         }
         Some(ExecutionEffect {
             // Operations will be empty since we can't translate them (no V2 entity has a corresponding entity in V1).
-            operations: vec![],
+            operations: Vec::new(),
             transforms,
         })
     }
@@ -101,7 +101,7 @@ fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
 }
 
 fn handle_named_keys(keys: &NamedKeys) -> Option<TransformKindV1> {
-    let mut named_keys = vec![];
+    let mut named_keys = Vec::new();
     for (name, key) in keys.iter() {
         let named_key = NamedKey {
             name: name.to_string(),

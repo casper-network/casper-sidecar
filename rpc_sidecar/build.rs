@@ -4,7 +4,7 @@ use vergen::EmitBuilder;
 
 fn main() {
     if let Err(error) = EmitBuilder::builder().fail_on_error().git_sha(true).emit() {
-        println!("cargo:warning={}", error);
+        println!("cargo:warning={error}");
         println!("cargo:warning=casper-rpc-sidecar build version will not include git short hash");
     }
 

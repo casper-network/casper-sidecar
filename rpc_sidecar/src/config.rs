@@ -9,13 +9,13 @@ use crate::SpeculativeExecConfig;
 /// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 const DEFAULT_PORT: u16 = 0;
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 100;
+const DEFAULT_QPS_LIMIT: u32 = 100;
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
 /// JSON-RPC request, which would be an "account_put_deploy".
-const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
+const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: &str = "";
 
@@ -50,15 +50,16 @@ pub struct RpcConfig {
     /// TCP port to bind JSON-RPC HTTP server to.
     pub port: u16,
     /// Maximum rate limit in queries per second.
-    pub qps_limit: u64,
+    pub qps_limit: u32,
     /// Maximum number of bytes to accept in a single request body.
-    pub max_body_bytes: u32,
+    pub max_body_bytes: u64,
     /// CORS origin.
     pub cors_origin: String,
 }
 
 impl RpcConfig {
     /// Creates a default instance for `RpcServer`.
+    #[must_use]
     pub fn new() -> Self {
         RpcConfig {
             enable_server: true,
@@ -122,6 +123,7 @@ pub struct NodeClientConfig {
 
 impl NodeClientConfig {
     /// Creates a default instance for `NodeClientConfig`.
+    #[must_use]
     pub fn new() -> Self {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
@@ -141,6 +143,7 @@ impl NodeClientConfig {
 
     /// Creates an instance of `NodeClientConfig` with specified listening port.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port(port: u16) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
@@ -162,6 +165,7 @@ impl NodeClientConfig {
     /// Creates an instance of `NodeClientConfig` with specified listening port and maximum number
     /// of reconnection retries.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port_and_retries(port: u16, num_of_retries: u32) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {

@@ -27,6 +27,7 @@ pub enum ComponentError {
 }
 
 impl ComponentError {
+    #[must_use]
     pub fn runtime_error(component_name: String, error: Error) -> Self {
         ComponentError::Runtime {
             component_name,
@@ -34,6 +35,7 @@ impl ComponentError {
         }
     }
 
+    #[must_use]
     pub fn initialization_error(component_name: String, error: Error) -> Self {
         ComponentError::Initialization {
             component_name,
@@ -50,16 +52,14 @@ impl Display for ComponentError {
                 internal_error,
             } => write!(
                 f,
-                "Error initializing component '{}': {}",
-                component_name, internal_error
+                "Error initializing component '{component_name}': {internal_error}"
             ),
             ComponentError::Runtime {
                 component_name,
                 internal_error,
             } => write!(
                 f,
-                "Error running component '{}': {}",
-                component_name, internal_error
+                "Error running component '{component_name}': {internal_error}"
             ),
         }
     }
@@ -209,8 +209,7 @@ impl Component for RpcApiComponent {
             let is_speculative_exec_defined = rpc_server_config
                 .speculative_exec_server
                 .as_ref()
-                .map(|x| x.enable_server)
-                .unwrap_or(false);
+                .is_some_and(|x| x.enable_server);
             if !is_main_exec_defined && !is_speculative_exec_defined {
                 //There was no main rpc server of speculative exec server configured, we shouldn't bother with proceeding
                 info!("RPC API server is disabled. Skipping...");

@@ -37,6 +37,7 @@ pub enum Response {
 
 impl Response {
     /// Returns a new `Response::Success`.
+    #[must_use]
     pub fn new_success(id: Value, result: Value) -> Self {
         Response::Success {
             jsonrpc: Cow::Borrowed(JSON_RPC_VERSION),
@@ -46,6 +47,7 @@ impl Response {
     }
 
     /// Returns a new `Response::Failure`.
+    #[must_use]
     pub fn new_failure(id: Value, error: Error) -> Self {
         Response::Failure {
             jsonrpc: Cow::Borrowed(JSON_RPC_VERSION),
@@ -55,16 +57,19 @@ impl Response {
     }
 
     /// Returns `true` is this is a `Response::Success`.
+    #[must_use]
     pub fn is_success(&self) -> bool {
         matches!(self, Response::Success { .. })
     }
 
     /// Returns `true` is this is a `Response::Failure`.
+    #[must_use]
     pub fn is_failure(&self) -> bool {
         matches!(self, Response::Failure { .. })
     }
 
     /// Returns the "result" field, or `None` if this is a `Response::Failure`.
+    #[must_use]
     pub fn raw_result(&self) -> Option<&Value> {
         match &self {
             Response::Success { result, .. } => Some(result),
@@ -74,6 +79,7 @@ impl Response {
 
     /// Returns the "result" field parsed as `T`, or `None` if this is a `Response::Failure` or if
     /// parsing fails.
+    #[must_use]
     pub fn result<T: DeserializeOwned>(&self) -> Option<T> {
         match &self {
             Response::Success { result, .. } => serde_json::from_value(result.clone())
@@ -86,6 +92,7 @@ impl Response {
     }
 
     /// Returns the "error" field or `None` if this is a `Response::Success`.
+    #[must_use]
     pub fn error(&self) -> Option<&Error> {
         match &self {
             Response::Success { .. } => None,
@@ -94,6 +101,7 @@ impl Response {
     }
 
     /// Returns the "id" field.
+    #[must_use]
     pub fn id(&self) -> &Value {
         match &self {
             Response::Success { id, .. } | Response::Failure { id, .. } => id,

@@ -57,7 +57,7 @@ impl Reject for MissingId {}
 /// Wraps the configured maximum allowed on the server, set via the `max_body_bytes` parameter in
 /// `base_filter()`.
 #[derive(Debug)]
-pub(crate) struct BodyTooLarge(pub(crate) u32);
+pub(crate) struct BodyTooLarge(pub(crate) u64);
 
 impl Display for BodyTooLarge {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {

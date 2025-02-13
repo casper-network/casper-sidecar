@@ -50,7 +50,7 @@ impl Display for ResolveAddressErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ResolveAddressErrorKind::ErrorResolving(err) => {
-                write!(f, "could not run dns resolution: {}", err)
+                write!(f, "could not run dns resolution: {err}")
             }
             ResolveAddressErrorKind::NoAddressFound => {
                 write!(f, "no addresses found")
@@ -173,7 +173,7 @@ pub mod tests {
             // more than a minute
         } else if duration.as_secs() > 60 {
             let (minutes, seconds) = (duration.as_secs() / 60, duration.as_secs() % 60);
-            format!("{}min. {}s", minutes, seconds)
+            format!("{minutes}min. {seconds}s")
             // over a second / under a minute
         } else {
             format!("{}s", duration.as_secs())
@@ -181,7 +181,7 @@ pub mod tests {
     }
     /// Forces a stop on the given nodes and waits until all starts finish. Will timeout if the nodes can't start in 3 minutes.
     pub(crate) async fn start_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
-        let mut futures = vec![];
+        let mut futures = Vec::new();
         for node in nodes {
             futures.push(node.start());
         }
@@ -206,7 +206,7 @@ pub mod tests {
         });
         match timeout(timeout_after, join_handle).await {
             Ok(res) => {
-                res.map_err(|err| AnyhowError::msg(format!("Failed to wait for receiver, {}", err)))
+                res.map_err(|err| AnyhowError::msg(format!("Failed to wait for receiver, {err}")))
             }
             Err(_) => Err(AnyhowError::msg("Waiting for messages timed out")),
         }
@@ -214,7 +214,7 @@ pub mod tests {
     }
     /// Forces a stop on the given nodes and waits until the stop happens. Will timeout if the nodes can't stop in 3 minutes.
     pub(crate) async fn stop_nodes_and_wait(nodes: Vec<&mut MockNode>) -> Vec<()> {
-        let mut futures = vec![];
+        let mut futures = Vec::new();
         for node in nodes {
             futures.push(node.stop());
         }
@@ -222,9 +222,8 @@ pub mod tests {
             .await
             .unwrap()
     }
-    pub(crate) fn any_string_contains(data: &[String], infix: String) -> bool {
-        let infix_str = infix.as_str();
-        data.iter().any(|x| x.contains(infix_str))
+    pub(crate) fn any_string_contains(data: &[String], infix: &str) -> bool {
+        data.iter().any(|x| x.contains(infix))
     }
 
     #[allow(dead_code)]

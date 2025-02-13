@@ -40,7 +40,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let validator_public_key = PublicKey::from(&validator_secret_key);
 
-    let mut bids = vec![];
+    let mut bids = Vec::new();
     let validator_bid = ValidatorBid::unlocked(
         validator_public_key.clone(),
         URef::new([250; 32], AccessRights::READ_ADD_WRITE),
@@ -111,7 +111,11 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
         let (registry_value, _) = node_client
-            .query_global_state(Some(state_identifier), Key::SystemEntityRegistry, vec![])
+            .query_global_state(
+                Some(state_identifier),
+                Key::SystemEntityRegistry,
+                Vec::new(),
+            )
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -202,9 +206,9 @@ impl AuctionState {
         bids: Vec<BidKind>,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
-        for (era_id, validator_weights) in era_validators.iter() {
+        for (era_id, validator_weights) in &era_validators {
             let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
-            for (public_key, weight) in validator_weights.iter() {
+            for (public_key, weight) in validator_weights {
                 json_validator_weights.push(JsonValidatorWeight::new(public_key.clone(), *weight));
             }
             json_era_validators.push(JsonEraValidators::new(*era_id, json_validator_weights));

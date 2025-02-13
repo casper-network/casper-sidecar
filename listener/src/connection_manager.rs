@@ -65,10 +65,10 @@ impl Display for ConnectionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::NonRecoverableError { error } => {
-                write!(f, "NonRecoverableError: {}", error)
+                write!(f, "NonRecoverableError: {error}")
             }
             Self::InitialConnectionError { error } => {
-                write!(f, "InitialConnectionError: {}", error)
+                write!(f, "InitialConnectionError: {error}")
             }
         }
     }
@@ -156,13 +156,13 @@ impl DefaultConnectionManager {
         let receiver = match self.connect().await {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
-                    tasks.register_success()
+                    tasks.register_success();
                 };
                 stream
             }
             Err(error) => {
                 if let Some(tasks) = &self.maybe_tasks {
-                    tasks.register_failure()
+                    tasks.register_failure();
                 };
                 return Err(error);
             }
@@ -197,8 +197,7 @@ impl DefaultConnectionManager {
                                 .await
                                 .map_err(|err| {
                                     non_recoverable_error(Error::msg(format!(
-                                        "Error when trying to report observed event id {}",
-                                        err
+                                        "Error when trying to report observed event id {err}"
                                     )))
                                 })?;
                         }
@@ -207,7 +206,7 @@ impl DefaultConnectionManager {
                             // This gate saves displaying a warning for a trivial error.
                             if !event.data.contains(API_VERSION) {
                                 count_error(EVENT_WITHOUT_ID);
-                                warn!("Parse Error: {}", parse_error);
+                                warn!("Parse Error: {parse_error}");
                             }
                         }
                     }
@@ -218,26 +217,26 @@ impl DefaultConnectionManager {
                 Err(stream_error) => {
                     count_error(FETCHING_FROM_STREAM_FAILED);
                     let error_message =
-                        format!("EventStream Error ({}): {:?}", self.filter, stream_error);
+                        format!("EventStream Error ({}): {stream_error:?}", self.filter);
                     return Err(non_recoverable_error(Error::msg(error_message)));
                 }
             }
         }
-        Err(decorate_with_event_stream_closed(self.bind_address.clone()))
+        Err(decorate_with_event_stream_closed(&self.bind_address))
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match deserialize(&event.data) {
             Err(serde_error) => {
-                let reason = format!("{}:{}", DESERIALIZATION_ERROR, self.filter);
+                let reason = format!("{DESERIALIZATION_ERROR}:{}", self.filter);
                 count_error(&reason);
-                let error_message = format!("Serde Error: {}", serde_error);
+                let error_message = format!("Serde Error: {serde_error}");
                 error!(error_message);
                 return Err(Error::msg(error_message));
             }
             Ok(sse_data) => {
                 let payload_size = event.data.len();
-                self.observe_bytes(sse_data.type_label(), payload_size);
+                Self::observe_bytes(sse_data.type_label(), payload_size);
                 let api_version = self.api_version.ok_or(anyhow!(
                     "Expected ApiVersion to be present when handling messages."
                 ))?;
@@ -272,7 +271,7 @@ impl DefaultConnectionManager {
                 if event.data.contains(API_VERSION) {
                     self.try_handle_api_version_message(&event, receiver).await
                 } else {
-                    Err(expected_first_message_to_be_api_version(event.data))
+                    Err(expected_first_message_to_be_api_version(&event.data))
                 }
             }
         }
@@ -289,7 +288,7 @@ impl DefaultConnectionManager {
             // are assuming that it's an ApiVersion and ApiVersion is the same across all semvers
             Ok(SseData::ApiVersion(semver)) => {
                 let payload_size = event.data.len();
-                self.observe_bytes("ApiVersion", payload_size);
+                Self::observe_bytes("ApiVersion", payload_size);
                 self.api_version = Some(semver);
                 let sse_event = SseEvent::new(
                     0,
@@ -302,7 +301,7 @@ impl DefaultConnectionManager {
                 self.sse_event_sender.send(sse_event).await.map_err(|_| {
                     count_error(API_VERSION_SENDING_FAILED);
                     non_recoverable_error(Error::msg(ERROR_WHEN_TRYING_TO_SEND_MESSAGE))
-                })?
+                })?;
             }
             Ok(_sse_data) => {
                 count_error(API_VERSION_EXPECTED);
@@ -321,7 +320,7 @@ impl DefaultConnectionManager {
         Ok(receiver)
     }
 
-    fn observe_bytes(&self, sse_type_label: &str, payload_size: usize) {
+    fn observe_bytes(sse_type_label: &str, payload_size: usize) {
         register_sse_message_size(sse_type_label, payload_size as f64);
     }
 }
@@ -334,8 +333,8 @@ pub fn recoverable_error(error: Error) -> ConnectionManagerError {
     ConnectionManagerError::InitialConnectionError { error }
 }
 
-fn decorate_with_event_stream_closed(address: Url) -> ConnectionManagerError {
-    let message = format!("Event stream closed for filter: {:?}", address.as_str());
+fn decorate_with_event_stream_closed(address: &Url) -> ConnectionManagerError {
+    let message = format!("Event stream closed for filter: {address:?}");
     ConnectionManagerError::NonRecoverableError {
         error: Error::msg(message),
     }
@@ -345,16 +344,12 @@ fn failed_to_get_first_event<T>(error: T) -> ConnectionManagerError
 where
     T: Debug,
 {
-    non_recoverable_error(Error::msg(format!(
-        "failed to get first event: {:?}",
-        error
-    )))
+    non_recoverable_error(Error::msg(format!("failed to get first event: {error:?}")))
 }
 
-fn expected_first_message_to_be_api_version(data: String) -> ConnectionManagerError {
+fn expected_first_message_to_be_api_version(data: &str) -> ConnectionManagerError {
     non_recoverable_error(Error::msg(format!(
-        "Expected first message to be ApiVersion, got: {:?}",
-        data
+        "Expected first message to be ApiVersion, got: {data:?}"
     )))
 }
 

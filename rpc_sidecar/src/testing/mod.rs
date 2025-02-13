@@ -1,17 +1,18 @@
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use casper_binary_port::{
     BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command,
     GetRequest, GlobalStateQueryResult,
 };
-use casper_types::bytesrepr::Bytes;
-use casper_types::{bytesrepr::ToBytes, CLValue, StoredValue};
+use casper_types::{
+    bytesrepr::{Bytes, ToBytes},
+    CLValue, StoredValue,
+};
 use futures::{SinkExt, StreamExt};
-use tokio::sync::Notify;
-use tokio::task::JoinHandle;
 use tokio::{
     net::{TcpListener, TcpStream},
+    sync::Notify,
+    task::JoinHandle,
     time::sleep,
 };
 use tokio_util::codec::{Encoder, Framed};
@@ -38,13 +39,13 @@ impl BinaryPortMock {
 
     pub async fn start(&self, shutdown: Arc<Notify>) {
         let port = self.port;
-        let addr = format!("{}:{}", LOCALHOST, port);
+        let addr = format!("{LOCALHOST}:{port}");
         let listener = TcpListener::bind(addr.clone())
             .await
             .expect("failed to listen");
         loop {
             tokio::select! {
-                _ = shutdown.notified() => {
+                () = shutdown.notified() => {
                     break;
                 }
                 val = listener.accept() => {
@@ -54,7 +55,7 @@ impl BinaryPortMock {
                             tokio::spawn(handle_client(stream, response_payload, self.number_of_responses));
                         }
                         Err(io_err) => {
-                            println!("acceptance failure: {:?}", io_err);
+                            println!("acceptance failure: {io_err:?}");
                         }
                     }
                 }
@@ -78,6 +79,7 @@ async fn handle_client(stream: TcpStream, response: Vec<u8>, number_of_responses
     }
 }
 
+#[must_use]
 pub fn get_port() -> u16 {
     portpicker::pick_unused_port().unwrap()
 }
@@ -89,7 +91,7 @@ pub async fn start_mock_binary_port_responding_with_stored_value(
     shutdown: Arc<Notify>,
 ) -> JoinHandle<()> {
     let value = StoredValue::CLValue(CLValue::from_t("Foo").unwrap());
-    let data = GlobalStateQueryResult::new(value, vec![]);
+    let data = GlobalStateQueryResult::new(value, Vec::new());
     let val = BinaryResponse::from_value(data);
     let request = get_dummy_request_payload(request_id);
     let response = BinaryResponseAndRequest::new(val, request);
@@ -137,7 +139,7 @@ pub async fn start_mock_binary_port(
 pub(crate) fn get_dummy_request() -> Command {
     Command::Get(GetRequest::Information {
         info_type_tag: 0,
-        key: vec![],
+        key: Vec::new(),
     })
 }
 

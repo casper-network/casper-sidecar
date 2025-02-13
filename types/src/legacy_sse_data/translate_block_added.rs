@@ -30,7 +30,7 @@ pub struct DefaultEraEndV2Translator;
 impl EraEndV2Translator for DefaultEraEndV2Translator {
     fn translate(&self, era_end: &EraEndV2) -> Option<EraEndV1> {
         let mut rewards = BTreeMap::new();
-        for (k, v) in era_end.rewards().iter() {
+        for (k, v) in era_end.rewards() {
             let amount = v.iter().cloned().sum::<U512>();
             if amount > U512::from(u64::MAX) {
                 //We're not able to cast the reward to u64, so we skip this era end.
@@ -193,8 +193,8 @@ mod tests {
         );
         let era_end_ref = block_v2.header().era_end().unwrap();
         prepare_era_end_mock(&mut era_end_translator, era_end_ref, None);
-        prepare_deploys_mock(&mut deploy_hash_translator, &block_v2, vec![]);
-        prepare_transfer_mock(&mut transfer_hash_translator, &block_v2, vec![]);
+        prepare_deploys_mock(&mut deploy_hash_translator, &block_v2, Vec::new());
+        prepare_transfer_mock(&mut transfer_hash_translator, &block_v2, Vec::new());
         let under_test = DefaultBlockV2Translator {
             era_end_translator,
             deploy_hash_translator,

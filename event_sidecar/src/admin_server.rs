@@ -77,7 +77,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_config_should_start_admin_server() {
         let port = pick_unused_port().unwrap();
-        let request_url = format!("http://localhost:{}/metrics", port);
+        let request_url = format!("http://localhost:{port}/metrics");
         let admin_config = AdminApiServerConfig {
             enable_server: true,
             port,

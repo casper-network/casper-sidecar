@@ -170,7 +170,7 @@ mod tests {
                 match req {
                     Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::new_empty(),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     )),
                     _ => unimplemented!(),
                 }
@@ -209,7 +209,7 @@ mod tests {
                 match req {
                     Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::new_empty(),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     )),
                     _ => unimplemented!(),
                 }
@@ -248,7 +248,7 @@ mod tests {
                 match req {
                     Command::TryAcceptTransaction { .. } => Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::new_error(BinaryPortErrorCode::InvalidTransactionBodyHash),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     )),
                     _ => unimplemented!(),
                 }

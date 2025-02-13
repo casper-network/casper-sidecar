@@ -22,7 +22,7 @@ pub(crate) struct BinaryPortMock {
 impl BinaryPortMock {
     pub fn new() -> Self {
         Self {
-            request_responses: Arc::new(Mutex::new(vec![])),
+            request_responses: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -35,12 +35,12 @@ impl BinaryPortMock {
             state_identifier,
             GlobalStateEntityQualifier::Item {
                 base_key: Key::EraSummary,
-                path: vec![],
+                path: Vec::new(),
             },
         );
         let req = Command::Get(GetRequest::State(Box::new(req)));
         let stored_value = StoredValue::EraInfo(era_info);
-        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, vec![]));
+        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, Vec::new()));
         self.when_then(req, res).await;
     }
 
@@ -103,13 +103,13 @@ impl BinaryPortMock {
             state_identifier,
             GlobalStateEntityQualifier::Item {
                 base_key: Key::SystemEntityRegistry,
-                path: vec![],
+                path: Vec::new(),
             },
         )));
         let cl_value = CLValue::from_t(registry).unwrap();
         let stored_value = StoredValue::CLValue(cl_value);
 
-        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, vec![]));
+        let res = BinaryResponse::from_value(GlobalStateQueryResult::new(stored_value, Vec::new()));
         self.when_then(Command::Get(req), res).await;
     }
 
@@ -128,7 +128,7 @@ impl BinaryPortMock {
             },
         )));
         let res = BinaryResponse::from_option(
-            maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, vec![])),
+            maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, Vec::new())),
         );
         self.when_then(Command::Get(req), res).await;
     }
@@ -148,7 +148,7 @@ impl BinaryPortMock {
             },
         )));
         let res = BinaryResponse::from_option(
-            maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, vec![])),
+            maybe_seigniorage_snapshot.map(|v| GlobalStateQueryResult::new(v, Vec::new())),
         );
         self.when_then(Command::Get(req), res).await;
     }

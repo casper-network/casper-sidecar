@@ -475,7 +475,7 @@ async fn subscribe_slow(
     let mut stream = response.bytes_stream();
 
     let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
-    let mut bytes_buf: Vec<u8> = vec![];
+    let mut bytes_buf: Vec<u8> = Vec::new();
     while let Some(item) = stream.next().await {
         // The function is expected to exit here with an `UnexpectedEof` error.
         let bytes = item?;
@@ -487,7 +487,7 @@ async fn subscribe_slow(
                     debug!("{} received keepalive: exiting", client_id);
                     break;
                 }
-                bytes_buf = vec![];
+                bytes_buf = Vec::new();
             }
             Err(_) => {
                 bytes_buf = res;
@@ -555,7 +555,7 @@ async fn fetch_text(
     client_id: &str,
     final_event_id: u32,
 ) -> Result<String, reqwest::Error> {
-    let mut bytes_buf: Vec<u8> = vec![];
+    let mut bytes_buf: Vec<u8> = Vec::new();
     let mut response_text = String::new();
     // The stream from the server is not always chunked into events, so gather the stream into a
     // single `String` until we receive a keepalive. Furthermore - a chunk of bytes can even split a utf8 character in half
@@ -580,7 +580,7 @@ async fn fetch_text(
                     );
                     return Ok(response_text);
                 }
-                bytes_buf = vec![];
+                bytes_buf = Vec::new();
             }
             Err(_) => {
                 bytes_buf = res;

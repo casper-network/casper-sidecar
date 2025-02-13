@@ -434,8 +434,7 @@ async fn connecting_to_node_prior_to_2_0_0_should_fail() {
         "/events?start_from=0",
         event_stream_server_port,
         false,
-    )
-    .await;
+    );
     sleep(Duration::from_secs(10)).await; //Give some time for sidecar to read data from node (which it actually shouldn't do in this scenario)
     stop_nodes_and_wait(vec![&mut node_mock]).await;
 
@@ -477,8 +476,7 @@ async fn connecting_to_node_with_wrong_network_name_should_fail() {
         "/events?start_from=0",
         event_stream_server_port,
         false,
-    )
-    .await;
+    );
     sleep(Duration::from_secs(10)).await; //Give some time for sidecar to read data from node (which it actually shouldn't do in this scenario)
     stop_nodes_and_wait(vec![&mut node_mock]).await;
 
@@ -679,15 +677,15 @@ async fn sidecar_should_connect_to_multiple_nodes() {
     assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_2}\"")
+        &format!("\"{BLOCK_HASH_2}\"")
     ));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_3}\"")
+        &format!("\"{BLOCK_HASH_3}\"")
     ));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_4}\"")
+        &format!("\"{BLOCK_HASH_4}\"")
     ));
 }
 
@@ -717,11 +715,11 @@ async fn sidecar_should_not_downgrade_api_version_when_new_nodes_disconnect() {
     assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_2}\"")
+        &format!("\"{BLOCK_HASH_2}\"")
     ));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_3}\"")
+        &format!("\"{BLOCK_HASH_3}\"")
     ));
 }
 
@@ -748,11 +746,11 @@ async fn sidecar_should_report_only_one_api_version_if_there_was_no_update() {
     assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_2}\"")
+        &format!("\"{BLOCK_HASH_2}\"")
     ));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_3}\"")
+        &format!("\"{BLOCK_HASH_3}\"")
     ));
 }
 
@@ -781,11 +779,11 @@ async fn sidecar_should_connect_to_multiple_nodes_even_if_some_of_them_dont_resp
     assert!(events_received.first().unwrap().contains("\"2.0.0\""));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_2}\"")
+        &format!("\"{BLOCK_HASH_2}\"")
     ));
     assert!(any_string_contains(
         &events_received,
-        format!("\"{BLOCK_HASH_3}\"")
+        &format!("\"{BLOCK_HASH_3}\"")
     ));
 }
 
@@ -833,10 +831,10 @@ pub async fn fetch_data_from_endpoint(
     endpoint: &str,
     port: u16,
 ) -> (tokio::task::JoinHandle<Vec<String>>, mpsc::Receiver<()>) {
-    fetch_data_from_endpoint_with_panic_flag(endpoint, port, true).await
+    fetch_data_from_endpoint_with_panic_flag(endpoint, port, true)
 }
 
-pub async fn fetch_data_from_endpoint_with_panic_flag(
+pub fn fetch_data_from_endpoint_with_panic_flag(
     endpoint: &str,
     port: u16,
     panic_on_cant_connect: bool,
@@ -852,7 +850,7 @@ pub async fn fetch_data_from_endpoint_with_panic_flag(
             if panic_on_cant_connect {
                 panic!("Unable to connect to stream")
             }
-            vec![]
+            Vec::new()
         }
     });
     (join, receiver)

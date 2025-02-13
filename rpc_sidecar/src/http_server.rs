@@ -1,16 +1,7 @@
-use std::sync::Arc;
-
-use hyper::server::{conn::AddrIncoming, Builder};
+use std::{num::NonZeroU32, sync::Arc};
 
 use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
-
-use crate::{
-    rpcs::{
-        info::{GetPeers, GetReward, GetStatus, GetTransaction},
-        state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
-    },
-    NodeClient,
-};
+use hyper::server::{conn::AddrIncoming, Builder};
 
 use super::rpcs::{
     account::{PutDeploy, PutTransaction},
@@ -26,18 +17,24 @@ use super::rpcs::{
     state_get_auction_info_v2::GetAuctionInfo as GetAuctionInfoV2,
     RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
 };
+use crate::{
+    rpcs::{
+        info::{GetPeers, GetReward, GetStatus, GetTransaction},
+        state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
+    },
+    NodeClient,
+};
 
 /// The URL path for all JSON-RPC requests.
-pub const RPC_API_PATH: &str = "rpc";
-
-pub const RPC_API_SERVER_NAME: &str = "JSON RPC";
+const RPC_API_PATH: &str = "rpc";
+const RPC_API_SERVER_NAME: &str = "JSON RPC";
 
 /// Run the JSON-RPC server.
 pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
-    qps_limit: u64,
-    max_body_bytes: u32,
+    qps_limit: NonZeroU32,
+    max_body_bytes: u64,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
@@ -80,7 +77,7 @@ pub async fn run(
                 RPC_API_PATH,
                 RPC_API_SERVER_NAME,
             )
-            .await
+            .await;
         }
         "*" => {
             super::rpcs::run_with_cors(
@@ -92,7 +89,7 @@ pub async fn run(
                 RPC_API_SERVER_NAME,
                 CorsOrigin::Any,
             )
-            .await
+            .await;
         }
         _ => {
             super::rpcs::run_with_cors(
@@ -104,7 +101,7 @@ pub async fn run(
                 RPC_API_SERVER_NAME,
                 CorsOrigin::Specified(cors_origin),
             )
-            .await
+            .await;
         }
     }
 }

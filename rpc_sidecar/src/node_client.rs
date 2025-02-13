@@ -157,9 +157,9 @@ pub trait NodeClient: Send + Sync {
         let response = self.send_request(request).await?;
 
         if response.is_success() {
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::from_error_code(response.error_code()));
+            Err(Error::from_error_code(response.error_code()))
         }
     }
 
@@ -317,7 +317,6 @@ pub trait NodeClient: Send + Sync {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-
 pub enum InvalidTransactionOrDeploy {
     ///The deploy had an invalid chain name
     #[error("The deploy had an invalid chain name")]
@@ -911,7 +910,7 @@ impl<T> Notify<T> {
     }
 
     fn notify_one(&self) {
-        self.inner.notify_one()
+        self.inner.notify_one();
     }
 }
 
@@ -981,7 +980,7 @@ impl FramedNodeClient {
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
-                _ = reconnect.notified() => {
+                () = reconnect.notified() => {
                     let mut lock = client.write().await;
                     let new_client = Self::reconnect(&config.clone()).await?;
                     *lock = new_client;
@@ -999,7 +998,7 @@ impl FramedNodeClient {
             client
                 .send_request(Command::Get(GetRequest::Information {
                     info_type_tag: InformationRequestTag::ProtocolVersion.into(),
-                    key: vec![],
+                    key: Vec::new(),
                 }))
                 .await?;
         }
@@ -1063,9 +1062,8 @@ impl FramedNodeClient {
                         return Err(err);
                     }
                 }
-            } else {
-                return Err(Error::ConnectionLost);
             }
+            return Err(Error::ConnectionLost);
         }
 
         Err(Error::TooManyMismatchedResponses {
@@ -1146,17 +1144,14 @@ impl FramedNodeClient {
 #[async_trait]
 impl NodeClient for FramedNodeClient {
     async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error> {
-        let mut client = match tokio::time::timeout(
+        let Ok(mut client) = tokio::time::timeout(
             Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
         )
         .await
-        {
-            Ok(client) => client,
-            Err(_) => {
-                register_timeout("acquiring_client");
-                return Err(Error::ConnectionLost);
-            }
+        else {
+            register_timeout("acquiring_client");
+            return Err(Error::ConnectionLost);
         };
 
         let result = self.send_request_internal(&req, &mut client).await;
@@ -1345,7 +1340,7 @@ where
         let mut opt_source: Option<&(dyn std::error::Error)> = Some(self.0);
 
         while let Some(source) = opt_source {
-            write!(f, "{}", source)?;
+            write!(f, "{source}")?;
             opt_source = source.source();
 
             if opt_source.is_some() {
@@ -1488,7 +1483,7 @@ mod tests {
             .query_global_state(
                 Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
                 base_key,
-                vec![],
+                Vec::new(),
             )
             .await?
             .ok_or(Error::NoResponseBody)
@@ -1573,7 +1568,7 @@ mod tests {
         let config = NodeClientConfig::new_with_port(port);
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
-            start_mock_binary_port(port, vec![], 1, Arc::clone(&shutdown)).await;
+            start_mock_binary_port(port, Vec::new(), 1, Arc::clone(&shutdown)).await;
         let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)

@@ -80,7 +80,7 @@ impl Request {
                 if jsonrpc != JSON_RPC_VERSION {
                     let error = Error::new(
                         ReservedErrorCode::InvalidRequest,
-                        format!("Expected 'jsonrpc' to be '2.0', but got '{}'", jsonrpc),
+                        format!("Expected 'jsonrpc' to be '2.0', but got '{jsonrpc}'"),
                     );
                     return Err(ErrorOrRejection::Error { id, error });
                 }
@@ -89,8 +89,7 @@ impl Request {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
                     format!(
-                        "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{}'",
-                        jsonrpc
+                        "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{jsonrpc}'"
                     ),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
@@ -99,8 +98,7 @@ impl Request {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
                     format!(
-                        "Expected 'jsonrpc' to be a String with value '2.0', but got '{}'",
-                        jsonrpc
+                        "Expected 'jsonrpc' to be a String with value '2.0', but got '{jsonrpc}'"
                     ),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
@@ -108,7 +106,7 @@ impl Request {
             None => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("Missing '{}' field", JSONRPC_FIELD_NAME),
+                    format!("Missing '{JSONRPC_FIELD_NAME}' field"),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }
@@ -119,14 +117,14 @@ impl Request {
             Some(_) => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("Expected '{}' to be a String", METHOD_FIELD_NAME),
+                    format!("Expected '{METHOD_FIELD_NAME}' to be a String"),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }
             None => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("Missing '{}' field", METHOD_FIELD_NAME),
+                    format!("Missing '{METHOD_FIELD_NAME}' field"),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }
@@ -154,7 +152,7 @@ impl Request {
                 format!(
                     "Unexpected field{}: {}",
                     if request.len() > 1 { "s" } else { "" },
-                    request.keys().map(|f| format!("'{}'", f)).join(", ")
+                    request.keys().map(|f| format!("'{f}'")).join(", ")
                 ),
             );
             return Err(ErrorOrRejection::Error { id, error });

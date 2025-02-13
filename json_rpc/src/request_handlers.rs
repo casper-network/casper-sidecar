@@ -41,13 +41,10 @@ impl RequestHandlers {
             None => {
                 let elapsed = start.elapsed();
                 observe_response_time("unknown-handler", "unknown-handler", elapsed);
-                debug!(requested_method = %request.method.as_str(), "failed to get handler");
+                debug!(requested_method = %request_method, "failed to get handler");
                 let error = Error::new(
                     ReservedErrorCode::MethodNotFound,
-                    format!(
-                        "'{}' is not a supported json-rpc method on this server",
-                        request.method.as_str()
-                    ),
+                    format!("'{request_method}' is not a supported json-rpc method on this server"),
                 );
                 return Response::new_failure(request.id, error);
             }
@@ -55,14 +52,13 @@ impl RequestHandlers {
         inc_method_call(request_method);
         register_request_size(request_method, request_size as f64);
 
+        let elapsed = start.elapsed();
         match handler(request.params).await {
             Ok(result) => {
-                let elapsed = start.elapsed();
                 observe_response_time(request_method, "success", elapsed);
                 Response::new_success(request.id, result)
             }
             Err(error) => {
-                let elapsed = start.elapsed();
                 observe_response_time(request_method, &error.code().to_string(), elapsed);
                 Response::new_failure(request.id, error)
             }
@@ -79,6 +75,7 @@ pub struct RequestHandlersBuilder(HashMap<&'static str, RequestHandler>);
 
 impl RequestHandlersBuilder {
     /// Returns a new builder.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -97,7 +94,6 @@ impl RequestHandlersBuilder {
         Fut: Future<Output = Result<T, Error>> + Send,
         T: Serialize + 'static,
     {
-        let handler = Arc::clone(&handler);
         // The provided handler returns a future with output of `Result<T, Error>`. We need to
         // convert that to a boxed future with output `Result<Value, Error>` to store it in a
         // homogenous collection.
@@ -109,7 +105,7 @@ impl RequestHandlersBuilder {
                     error!(%error, "failed to encode json-rpc response value");
                     Error::new(
                         ReservedErrorCode::InternalError,
-                        format!("failed to encode json-rpc response value: {}", error),
+                        format!("failed to encode json-rpc response value: {error}"),
                     )
                 })
             }
@@ -124,6 +120,7 @@ impl RequestHandlersBuilder {
     }
 
     /// Finalize building by converting `self` to a [`RequestHandlers`].
+    #[must_use]
     pub fn build(self) -> RequestHandlers {
         RequestHandlers(Arc::new(self.0))
     }

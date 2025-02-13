@@ -45,16 +45,14 @@ pub fn metrics_summary() -> Result<String, MetricCollectionError> {
     let mut buffer = Vec::new();
     if let Err(e) = encoder.encode(&REGISTRY.gather(), &mut buffer) {
         return Err(MetricCollectionError::new(format!(
-            "could not encode custom metrics: {}",
-            e
+            "could not encode custom metrics: {e}"
         )));
     };
     let mut res = match String::from_utf8(buffer.clone()) {
         Ok(v) => v,
         Err(e) => {
             return Err(MetricCollectionError::new(format!(
-                "custom metrics have a non-utf8 character: {}",
-                e
+                "custom metrics have a non-utf8 character: {e}"
             )));
         }
     };
@@ -63,16 +61,14 @@ pub fn metrics_summary() -> Result<String, MetricCollectionError> {
     let mut buffer = Vec::new();
     if let Err(e) = encoder.encode(&prometheus::gather(), &mut buffer) {
         return Err(MetricCollectionError::new(format!(
-            "error when encoding default prometheus metrics: {}",
-            e
+            "error when encoding default prometheus metrics: {e}"
         )));
     };
     let res_custom = match String::from_utf8(buffer.clone()) {
         Ok(v) => v,
         Err(e) => {
             return Err(MetricCollectionError::new(format!(
-                "default and custom metrics have a non-utf8 character: {}",
-                e
+                "default and custom metrics have a non-utf8 character: {e}"
             )))
         }
     };

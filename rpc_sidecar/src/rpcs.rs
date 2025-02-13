@@ -1,6 +1,14 @@
 //! The set of JSON-RPCs which the API server handles.
 
-use std::convert::{Infallible, TryFrom};
+use std::{
+    convert::{Infallible, TryFrom},
+    fmt,
+    net::{IpAddr, SocketAddr},
+    num::NonZeroU32,
+    str,
+    sync::Arc,
+    time::Duration,
+};
 
 pub mod account;
 pub mod chain;
@@ -17,18 +25,34 @@ pub(crate) mod state_get_auction_info_v2;
 pub(crate) mod test_utils;
 mod types;
 
-use std::{fmt, str, sync::Arc, time::Duration};
-
 use async_trait::async_trait;
-use http::header::ACCEPT_ENCODING;
-use hyper::server::{conn::AddrIncoming, Builder};
+use governor::{
+    clock::{Clock, DefaultClock},
+    DefaultKeyedRateLimiter, Quota,
+};
+use http::{
+    header::{ACCEPT_ENCODING, FORWARDED, RETRY_AFTER},
+    StatusCode,
+};
+use hyper::{
+    server::{
+        conn::{AddrIncoming, AddrStream},
+        Builder,
+    },
+    service::make_service_fn,
+};
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::oneshot;
 use tower::ServiceBuilder;
 use tracing::info;
-use warp::Filter;
+use warp::{
+    filters::BoxedFilter,
+    reject::{Reject, Rejection},
+    reply::{self, Reply},
+    Filter,
+};
 
 use casper_json_rpc::{
     CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
@@ -50,6 +74,8 @@ pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(2, 0, 0));
 ///
 /// It will be changed to `false` for casper-node v2.0.0.
 const ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST: bool = true;
+
+type AddrRateLimiter = DefaultKeyedRateLimiter<IpAddr>;
 
 /// A JSON-RPC requiring the "params" field to be present.
 #[async_trait]
@@ -106,7 +132,7 @@ pub(super) trait RpcWithParams {
                 Self::do_handle_request(node_client, params).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Tries to parse the params, and on success, returns the doc example, regardless of the value
@@ -117,7 +143,7 @@ pub(super) trait RpcWithParams {
             let _params = Self::try_parse_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(
@@ -166,7 +192,7 @@ pub(super) trait RpcWithoutParams {
                 Self::do_handle_request(node_client).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Checks the params, and on success, returns the doc example.
@@ -176,7 +202,7 @@ pub(super) trait RpcWithoutParams {
             Self::check_no_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(
@@ -247,7 +273,7 @@ pub(super) trait RpcWithOptionalParams {
                 Self::do_handle_request(node_client, params).await
             }
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     /// Tries to parse the params, and on success, returns the doc example, regardless of the value
@@ -258,7 +284,7 @@ pub(super) trait RpcWithOptionalParams {
             let _params = Self::try_parse_params(maybe_params)?;
             Ok(Self::ResponseResult::doc_example())
         };
-        handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
+        handlers_builder.register_handler(Self::METHOD, Arc::new(handler));
     }
 
     async fn do_handle_request(
@@ -267,24 +293,68 @@ pub(super) trait RpcWithOptionalParams {
     ) -> Result<Self::ResponseResult, RpcError>;
 }
 
-/// Start JSON RPC server with CORS enabled in a background.
-pub(super) async fn run_with_cors(
-    builder: Builder<AddrIncoming>,
-    handlers: RequestHandlers,
-    qps_limit: u64,
-    max_body_bytes: u32,
-    api_path: &'static str,
-    server_name: &'static str,
-    cors_header: CorsOrigin,
-) {
-    let make_svc = hyper::service::make_service_fn(move |_| {
-        let service_routes = casper_json_rpc::route_with_cors(
-            api_path,
-            max_body_bytes,
-            handlers.clone(),
-            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
-            &cors_header,
+const X_FORWARDED_FOR: &str = "x-forwarded-for";
+const X_REAL_IP: &str = "x-real-ip";
+
+#[derive(Debug)]
+struct TooManyRequests(Duration);
+
+impl Reject for TooManyRequests {}
+
+async fn handle_rejection(error: Rejection) -> Result<impl Reply, Rejection> {
+    if let Some(rejection) = error.find::<TooManyRequests>() {
+        let response = reply::with_status(
+            reply::json(&json!({ "message": "Too many requests" })),
+            StatusCode::TOO_MANY_REQUESTS,
         );
+        Ok(reply::with_header(
+            response,
+            RETRY_AFTER,
+            rejection.0.as_secs().to_string(),
+        ))
+    } else {
+        Err(error)
+    }
+}
+
+/// The actual service runner, common to `run()` and `run_with_cors()`.
+async fn run_service(
+    builder: Builder<AddrIncoming>,
+    service_routes: BoxedFilter<(impl Reply + 'static,)>,
+    qps_limit: NonZeroU32,
+    server_name: &'static str,
+) {
+    // TODO: make period configurable, but then rename `qps_limit`.
+    let period = Duration::from_secs(1);
+    let limiter = Arc::new(AddrRateLimiter::keyed(
+        Quota::with_period(period).unwrap().allow_burst(qps_limit),
+    ));
+
+    let make_svc = make_service_fn(move |socket: &AddrStream| {
+        let remote_addr = socket.remote_addr();
+        let limiter = limiter.clone();
+
+        // Try to get client's IP address from headers, with fallback to connection IP address.
+        let host_ip = warp::header(X_REAL_IP)
+            .or(warp::header(X_FORWARDED_FOR))
+            .unify()
+            .or(warp::header(FORWARDED.as_str()))
+            .unify()
+            .or(warp::addr::remote()
+                .map(move |remote: Option<SocketAddr>| remote.unwrap_or(remote_addr).ip()))
+            .unify()
+            .and_then(move |ip_addr: IpAddr| {
+                let limiter = limiter.clone();
+                async move {
+                    if let Err(negative) = limiter.check_key(&ip_addr) {
+                        let wait_time = negative.wait_time_from(DefaultClock::default().now());
+                        Err(warp::reject::custom(TooManyRequests(wait_time)))
+                    } else {
+                        Ok(())
+                    }
+                }
+            })
+            .untuple_one();
 
         // Supports content negotiation for gzip responses. This is an interim fix until
         // https://github.com/seanmonstar/warp/pull/513 moves forward.
@@ -292,15 +362,17 @@ pub(super) async fn run_with_cors(
             .and(service_routes.clone())
             .with(warp::compression::gzip());
 
-        let service = warp::service(service_routes_gzip.or(service_routes));
-        async move { Ok::<_, Infallible>(service.clone()) }
+        let service = warp::service(
+            host_ip
+                .and(service_routes_gzip.or(service_routes.clone()))
+                .recover(handle_rejection),
+        );
+        async move { Ok::<_, Infallible>(service) }
     });
 
-    let make_svc = ServiceBuilder::new()
-        .rate_limit(qps_limit, Duration::from_secs(1))
-        .service(make_svc);
+    let service = ServiceBuilder::new().service(make_svc);
 
-    let server = builder.serve(make_svc);
+    let server = builder.serve(service);
     info!(address = %server.local_addr(), "started {server_name} server");
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
@@ -311,53 +383,47 @@ pub(super) async fn run_with_cors(
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
     info!("{server_name} server shut down");
+}
+
+/// Start JSON RPC server with CORS enabled in a background.
+pub(super) async fn run_with_cors(
+    builder: Builder<AddrIncoming>,
+    handlers: RequestHandlers,
+    qps_limit: NonZeroU32,
+    max_body_bytes: u64,
+    api_path: &'static str,
+    server_name: &'static str,
+    cors_header: CorsOrigin,
+) {
+    let service_routes = casper_json_rpc::route_with_cors(
+        api_path,
+        max_body_bytes,
+        handlers,
+        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        &cors_header,
+    );
+    run_service(builder, service_routes, qps_limit, server_name).await;
 }
 
 /// Start JSON RPC server in a background.
 pub(super) async fn run(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
-    qps_limit: u64,
-    max_body_bytes: u32,
+    qps_limit: NonZeroU32,
+    max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
 ) {
-    let make_svc = hyper::service::make_service_fn(move |_| {
-        let service_routes = casper_json_rpc::route(
-            api_path,
-            max_body_bytes,
-            handlers.clone(),
-            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
-        );
-
-        // Supports content negotiation for gzip responses. This is an interim fix until
-        // https://github.com/seanmonstar/warp/pull/513 moves forward.
-        let service_routes_gzip = warp::header::exact(ACCEPT_ENCODING.as_str(), "gzip")
-            .and(service_routes.clone())
-            .with(warp::compression::gzip());
-
-        let service = warp::service(service_routes_gzip.or(service_routes));
-        async move { Ok::<_, Infallible>(service.clone()) }
-    });
-
-    let make_svc = ServiceBuilder::new()
-        .rate_limit(qps_limit, Duration::from_secs(1))
-        .service(make_svc);
-
-    let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started {server_name} server");
-
-    let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-    let server_with_shutdown = server.with_graceful_shutdown(async {
-        shutdown_receiver.await.ok();
-    });
-
-    let _ = tokio::spawn(server_with_shutdown).await;
-    let _ = shutdown_sender.send(());
-    info!("{server_name} server shut down");
+    let service_routes = casper_json_rpc::route(
+        api_path,
+        max_body_bytes,
+        handlers,
+        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+    );
+    run_service(builder, service_routes, qps_limit, server_name).await;
 }
 
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ApiVersion(SemVer);
 
 impl Serialize for ApiVersion {
@@ -408,7 +474,7 @@ mod tests {
     ) -> Response {
         let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{method}""#);
         match maybe_params {
-            Some(params) => write!(body, r#","params":{}}}"#, params).unwrap(),
+            Some(params) => write!(body, r#","params":{params}}}"#).unwrap(),
             None => body += "}",
         }
 

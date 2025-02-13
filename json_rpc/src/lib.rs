@@ -80,7 +80,7 @@
 
 mod error;
 pub mod filters;
-mod rejections;
+pub mod rejections;
 mod request;
 mod request_handlers;
 mod response;
@@ -121,7 +121,7 @@ pub enum CorsOrigin {
 /// For further details, see the docs for the [`filters`] functions.
 pub fn route<P: AsRef<str>>(
     path: P,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
 ) -> BoxedFilter<(impl Reply,)> {
@@ -155,7 +155,7 @@ pub fn route<P: AsRef<str>>(
 /// For further details, see the docs for the [`filters`] functions.
 pub fn route_with_cors<P: AsRef<str>>(
     path: P,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
     cors_header: &CorsOrigin,

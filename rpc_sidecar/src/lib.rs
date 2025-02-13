@@ -7,6 +7,8 @@ mod speculative_exec_server;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
+use std::{net::SocketAddr, num::NonZeroU32, process::ExitCode, sync::Arc};
+
 use anyhow::Error;
 use casper_binary_port::{Command, CommandHeader};
 use casper_types::{
@@ -24,7 +26,6 @@ use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 use tracing::{error, warn};
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
@@ -39,14 +40,13 @@ pub async fn build_rpc_server<'a>(
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
-    let node_client: Arc<dyn NodeClient> = node_client;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
         let future = run_rpc(main_server_config, node_client.clone())
             .map(|q| {
                 if let Err(e) = q {
-                    error!("Rpc server finished with error: {}", e);
+                    error!("Rpc server finished with error: {e}");
                 }
                 Ok(ExitCode::SUCCESS)
             })
@@ -56,10 +56,10 @@ pub async fn build_rpc_server<'a>(
     let speculative_server_config = config.speculative_exec_server;
     if let Some(config) = speculative_server_config {
         if config.enable_server {
-            let future = run_speculative_exec(config, node_client.clone())
+            let future = run_speculative_exec(config, node_client)
                 .map(|q| {
                     if let Err(e) = q {
-                        error!("Rpc speculative server finished with error: {}", e);
+                        error!("Rpc speculative server finished with error: {e}");
                     }
                     Ok(ExitCode::SUCCESS)
                 })
@@ -98,7 +98,7 @@ async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<
     run_rpc_server(
         node_client,
         start_listening(&SocketAddr::new(config.ip_address, config.port))?,
-        config.qps_limit,
+        NonZeroU32::new(config.qps_limit).unwrap(),
         config.max_body_bytes,
         config.cors_origin.clone(),
     )
@@ -113,7 +113,7 @@ async fn run_speculative_exec(
     run_speculative_exec_server(
         node_client,
         start_listening(&SocketAddr::new(config.ip_address, config.port))?,
-        config.qps_limit,
+        NonZeroU32::new(config.qps_limit).unwrap(),
         config.max_body_bytes,
         config.cors_origin.clone(),
     )
