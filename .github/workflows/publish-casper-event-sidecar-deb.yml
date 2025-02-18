@@ -59,7 +59,7 @@ jobs:
         run: cargo install cargo-deb
 
       - name: Cargo deb
-        run: cargo deb --package casper-sidecar --no-build --variant ${{ matrix.code_name }}
+        run: cargo deb --package casper-sidecar --variant ${{ matrix.code_name }}
 
       - name: Upload binaries to repo
         env:
