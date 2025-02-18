@@ -69,7 +69,7 @@ jobs:
           PLUGIN_REGION: ${{ secrets.AWS_ACCESS_REGION_REPO }}
           PLUGIN_GPG_KEY: ${{ secrets.APTLY_GPG_KEY }}
           PLUGIN_GPG_PASS: ${{ secrets.APTLY_GPG_PASS }}
-          PLUGIN_ACL: 'public-read'
+          PLUGIN_ACL: 'private'
           PLUGIN_PREFIX: 'releases'
           PLUGIN_DEB_PATH: './target/debian'
           PLUGIN_OS_CODENAME: ${{ matrix.code_name }}
