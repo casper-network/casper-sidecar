@@ -59,21 +59,21 @@ jobs:
         run: cargo install cargo-deb
 
       - name: Cargo deb
-        run: cargo deb --no-build --variant ${{ matrix.code_name }}
-#
-#      - name: Upload binaries to repo
-#        env:
+        run: cargo deb --package casper-sidecar --no-build --variant ${{ matrix.code_name }}
+
+      - name: Upload binaries to repo
+        env:
 #          AWS_SECRET_ACCESS_KEY: ${{ secrets.APTLY_SECRET_KEY }}
 #          AWS_ACCESS_KEY_ID: ${{ secrets.APTLY_ACCESS_KEY }}
-#          PLUGIN_REPO_NAME: ${{ secrets.APTLY_REPO }}
-#          PLUGIN_REGION: ${{ secrets.APTLY_REGION }}
-#          PLUGIN_GPG_KEY: ${{ secrets.APTLY_GPG_KEY }}
-#          PLUGIN_GPG_PASS: ${{ secrets.APTLY_GPG_PASS }}
-#          PLUGIN_ACL: 'public-read'
-#          PLUGIN_PREFIX: 'releases'
-#          PLUGIN_DEB_PATH: './target/debian'
-#          PLUGIN_OS_CODENAME: ${{ matrix.code_name }}
-#        run: ./ci/publish_deb_to_repo.sh
+          PLUGIN_REPO_NAME: ${{ secrets.AWS_BUCKET_REPO }}
+          PLUGIN_REGION: ${{ secrets.AWS_ACCESS_REGION_REPO }}
+          PLUGIN_GPG_KEY: ${{ secrets.APTLY_GPG_KEY }}
+          PLUGIN_GPG_PASS: ${{ secrets.APTLY_GPG_PASS }}
+          PLUGIN_ACL: 'public-read'
+          PLUGIN_PREFIX: 'releases'
+          PLUGIN_DEB_PATH: './target/debian'
+          PLUGIN_OS_CODENAME: ${{ matrix.code_name }}
+        run: ./ci/publish_deb_to_repo.sh
 #
 #      - name: Invalidate cloudfront
 #        uses: chetan/invalidate-cloudfront-action@c384d5f09592318a77b1e5c0c8d4772317e48b25 #v2.4
