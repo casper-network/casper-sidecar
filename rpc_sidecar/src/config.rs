@@ -1,5 +1,11 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+    num::NonZeroU32,
+};
 
+use casper_json_rpc::{nonzero_u32, ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
+use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;
 use thiserror::Error;
@@ -9,15 +15,15 @@ use crate::SpeculativeExecConfig;
 /// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 const DEFAULT_PORT: u16 = 0;
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 100;
+const DEFAULT_QPS_LIMIT: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100) };
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
 /// JSON-RPC request, which would be an "account_put_deploy".
-const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
+const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.
-const DEFAULT_CORS_ORIGIN: &str = "";
+const DEFAULT_CORS_ORIGIN: String = String::new();
 
 #[derive(Error, Debug)]
 pub enum FieldParseError {
@@ -28,7 +34,7 @@ pub enum FieldParseError {
     },
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 #[cfg_attr(any(feature = "testing", test), derive(Default))]
@@ -39,7 +45,7 @@ pub struct RpcServerConfig {
 }
 
 /// JSON-RPC HTTP server configuration.
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, DataSize, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct RpcConfig {
@@ -50,15 +56,24 @@ pub struct RpcConfig {
     /// TCP port to bind JSON-RPC HTTP server to.
     pub port: u16,
     /// Maximum rate limit in queries per second.
-    pub qps_limit: u64,
+    #[data_size(with = nonzero_u32)]
+    pub qps_limit: NonZeroU32,
     /// Maximum number of bytes to accept in a single request body.
-    pub max_body_bytes: u32,
+    pub max_body_bytes: u64,
     /// CORS origin.
     pub cors_origin: String,
+    /// Default value for limiter's number of requests.
+    #[data_size(with = nonzero_u32)]
+    pub default_limit_requests: NonZeroU32,
+    /// Default value for limiter's period of time.
+    pub default_limit_period: TimeDiff,
+    /// Limits; key is RPC method name.
+    pub limits: HashMap<String, ConfigLimit>,
 }
 
 impl RpcConfig {
     /// Creates a default instance for `RpcServer`.
+    #[must_use]
     pub fn new() -> Self {
         RpcConfig {
             enable_server: true,
@@ -66,7 +81,17 @@ impl RpcConfig {
             port: DEFAULT_PORT,
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
-            cors_origin: DEFAULT_CORS_ORIGIN.to_string(),
+            cors_origin: DEFAULT_CORS_ORIGIN,
+            default_limit_requests: DEFAULT_LIMIT_REQUESTS,
+            default_limit_period: DEFAULT_LIMIT_PERIOD,
+            limits: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn default_limit(&self) -> ConfigLimit {
+        ConfigLimit {
+            requests: self.default_limit_requests,
+            period: self.default_limit_period,
         }
     }
 }
@@ -99,7 +124,7 @@ const DEFAULT_KEEPALIVE_TIMEOUT_MS: u64 = 1_000;
 const DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS: u32 = 3;
 
 /// Node client configuration.
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, DataSize, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeClientConfig {
@@ -122,6 +147,7 @@ pub struct NodeClientConfig {
 
 impl NodeClientConfig {
     /// Creates a default instance for `NodeClientConfig`.
+    #[must_use]
     pub fn new() -> Self {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
@@ -141,6 +167,7 @@ impl NodeClientConfig {
 
     /// Creates an instance of `NodeClientConfig` with specified listening port.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port(port: u16) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
@@ -162,6 +189,7 @@ impl NodeClientConfig {
     /// Creates an instance of `NodeClientConfig` with specified listening port and maximum number
     /// of reconnection retries.
     #[cfg(any(feature = "testing", test))]
+    #[must_use]
     pub fn new_with_port_and_retries(port: u16, num_of_retries: u32) -> Self {
         let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
@@ -188,7 +216,7 @@ impl Default for NodeClientConfig {
 }
 
 /// Exponential backoff configuration for re-connects.
-#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, DataSize, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct ExponentialBackoffConfig {

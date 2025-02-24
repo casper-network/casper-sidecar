@@ -8,34 +8,6 @@ use std::fmt::{self, Display, Formatter};
 
 use warp::reject::Reject;
 
-/// Indicates the "Content-Type" header of the request is not "application/json".
-///
-/// This rejection is converted into an HTTP 415 (unsupported media type) error.
-#[derive(Debug)]
-pub(crate) struct UnsupportedMediaType;
-
-impl Display for UnsupportedMediaType {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        formatter.write_str("The request's content-type is not supported")
-    }
-}
-
-impl Reject for UnsupportedMediaType {}
-
-/// Indicates the "Content-Type" header is missing from the request.
-///
-/// This rejection is converted into an HTTP 400 (bad request) error.
-#[derive(Debug)]
-pub(crate) struct MissingContentTypeHeader;
-
-impl Display for MissingContentTypeHeader {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        formatter.write_str("The request's content-type is not set")
-    }
-}
-
-impl Reject for MissingContentTypeHeader {}
-
 /// Indicates the JSON-RPC request is missing the `id` field.
 ///
 /// As per the JSON-RPC specification, this is classed as a Notification and the server should not
@@ -57,7 +29,7 @@ impl Reject for MissingId {}
 /// Wraps the configured maximum allowed on the server, set via the `max_body_bytes` parameter in
 /// `base_filter()`.
 #[derive(Debug)]
-pub(crate) struct BodyTooLarge(pub(crate) u32);
+pub(crate) struct BodyTooLarge(pub(crate) u64);
 
 impl Display for BodyTooLarge {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {

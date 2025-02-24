@@ -12,27 +12,25 @@ repository = "https://github.com/casper-network/casper-sidecar/"
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
-bytes = "1.2.0"
+bytes = "1.10"
 casper-event-types.workspace = true
 casper-types = { workspace = true, features = ["std"] }
-eventsource-stream = "0.2.3"
+eventsource-stream = "0.2"
 futures = { workspace = true }
 futures-util = { workspace = true }
 metrics = { workspace = true }
 once_cell = { workspace = true }
 reqwest = { version = "0.12", features = ["json", "stream"] }
-serde = { workspace = true, default-features = true, features = ["derive"] }
 serde_json = "1.0"
-thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-stream = { version = "0.1.4", features = ["sync"] }
-tokio-util = "0.7.8"
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = "0.7"
 tracing = { workspace = true, default-features = true }
-url = "2.3.1"
+url = "2.5"
 
 [dev-dependencies]
 casper-event-types = { workspace = true, features = ["sse-data-testing"] }
-eventsource-stream = "0.2.3"
-mockito = "1.2.0"
-portpicker = "0.1.1"
-warp = { version = "0.3.6" }
+eventsource-stream = "0.2"
+mockito = "1.2"
+portpicker = "0.1"
+warp = { workspace = true }

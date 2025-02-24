@@ -7,6 +7,8 @@ mod speculative_exec_server;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
+use std::{process::ExitCode, sync::Arc};
+
 use anyhow::Error;
 use casper_binary_port::{Command, CommandHeader};
 use casper_types::{
@@ -16,16 +18,12 @@ use casper_types::{
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{future::BoxFuture, FutureExt};
 pub use http_server::run as run_rpc_server;
-use hyper::{
-    server::{conn::AddrIncoming, Builder as ServerBuilder},
-    Server,
-};
+
 use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use std::{net::SocketAddr, process::ExitCode, sync::Arc};
-use tracing::{error, warn};
+use tracing::error;
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -39,14 +37,13 @@ pub async fn build_rpc_server<'a>(
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
-    let node_client: Arc<dyn NodeClient> = node_client;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     if main_server_config.enable_server {
         let future = run_rpc(main_server_config, node_client.clone())
             .map(|q| {
                 if let Err(e) = q {
-                    error!("Rpc server finished with error: {}", e);
+                    error!("Rpc server finished with error: {e}");
                 }
                 Ok(ExitCode::SUCCESS)
             })
@@ -56,10 +53,10 @@ pub async fn build_rpc_server<'a>(
     let speculative_server_config = config.speculative_exec_server;
     if let Some(config) = speculative_server_config {
         if config.enable_server {
-            let future = run_speculative_exec(config, node_client.clone())
+            let future = run_speculative_exec(config, node_client)
                 .map(|q| {
                     if let Err(e) = q {
-                        error!("Rpc speculative server finished with error: {}", e);
+                        error!("Rpc speculative server finished with error: {e}");
                     }
                     Ok(ExitCode::SUCCESS)
                 })
@@ -70,7 +67,7 @@ pub async fn build_rpc_server<'a>(
     let reconnect_loop = reconnect_loop
         .map(|q| {
             if let Err(e) = q {
-                error!("reconect_loop finished with error: {}", e);
+                error!("reconect_loop finished with error: {e}");
             }
             Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
         })
@@ -79,7 +76,7 @@ pub async fn build_rpc_server<'a>(
     let keepalive_loop = keepalive_loop
         .map(|q| {
             if let Err(e) = q {
-                error!("keepalive_loop finished with error: {}", e);
+                error!("keepalive_loop finished with error: {e}");
             }
             Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
         })
@@ -97,10 +94,13 @@ async fn retype_future_vec(
 async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
     run_rpc_server(
         node_client,
-        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
+        config.ip_address,
+        config.port,
+        config.default_limit(),
+        config.limits,
         config.qps_limit,
         config.max_body_bytes,
-        config.cors_origin.clone(),
+        config.cors_origin,
     )
     .await;
     Ok(())
@@ -112,20 +112,16 @@ async fn run_speculative_exec(
 ) -> anyhow::Result<()> {
     run_speculative_exec_server(
         node_client,
-        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
+        config.ip_address,
+        config.port,
+        config.default_limit(),
+        config.limits,
         config.qps_limit,
         config.max_body_bytes,
-        config.cors_origin.clone(),
+        config.cors_origin,
     )
     .await;
     Ok(())
-}
-
-fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrIncoming>> {
-    Server::try_bind(address).map_err(|error| {
-        warn!(%error, %address, "failed to start HTTP server");
-        error.into()
-    })
 }
 
 fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {

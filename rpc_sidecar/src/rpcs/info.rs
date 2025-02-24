@@ -604,7 +604,7 @@ fn version_string() -> String {
 
     let mut version = env!("CARGO_PKG_VERSION").to_string();
     if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
-        version = format!("{}-{}", version, git_sha);
+        version = format!("{version}-{git_sha}");
     } else {
         warn!(
             "vergen env var unavailable, casper-node build version will not include git short hash"
@@ -896,7 +896,7 @@ mod tests {
                             .expect("should deserialize transaction");
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(transaction),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),
@@ -930,7 +930,7 @@ mod tests {
                     );
                     Ok(BinaryResponseAndRequest::new(
                         BinaryResponse::from_value(resp),
-                        Bytes::from(vec![]),
+                        Bytes::from(Vec::new()),
                     ))
                 }
                 req => unimplemented!("unexpected request: {:?}", req),

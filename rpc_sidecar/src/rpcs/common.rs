@@ -109,19 +109,18 @@ pub async fn get_block_with_signatures(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
 ) -> Result<BlockWithSignatures, Error> {
-    match node_client
+    if let Some(block) = node_client
         .read_block_with_signatures(identifier)
         .await
         .map_err(|err| Error::NodeRequest("block with signatures", err))?
     {
-        Some(block) => Ok(block),
-        None => {
-            let available_range = node_client
-                .read_available_block_range()
-                .await
-                .map_err(|err| Error::NodeRequest("available block range", err))?;
-            Err(Error::NoBlockFound(identifier, available_range))
-        }
+        Ok(block)
+    } else {
+        let available_range = node_client
+            .read_available_block_range()
+            .await
+            .map_err(|err| Error::NodeRequest("available block range", err))?;
+        Err(Error::NoBlockFound(identifier, available_range))
     }
 }
 
@@ -129,38 +128,36 @@ pub async fn get_block_header(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
 ) -> Result<BlockHeader, Error> {
-    match node_client
+    if let Some(header) = node_client
         .read_block_header(identifier)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
     {
-        Some(header) => Ok(header),
-        None => {
-            let available_range = node_client
-                .read_available_block_range()
-                .await
-                .map_err(|err| Error::NodeRequest("available block range", err))?;
-            Err(Error::NoBlockFound(identifier, available_range))
-        }
+        Ok(header)
+    } else {
+        let available_range = node_client
+            .read_available_block_range()
+            .await
+            .map_err(|err| Error::NodeRequest("available block range", err))?;
+        Err(Error::NoBlockFound(identifier, available_range))
     }
 }
 
 pub async fn get_latest_switch_block_header(
     node_client: &dyn NodeClient,
 ) -> Result<BlockHeader, Error> {
-    match node_client
+    if let Some(header) = node_client
         .read_latest_switch_block_header()
         .await
         .map_err(|err| Error::NodeRequest("latest switch block header", err))?
     {
-        Some(header) => Ok(header),
-        None => {
-            let available_range = node_client
-                .read_available_block_range()
-                .await
-                .map_err(|err| Error::NodeRequest("available block range", err))?;
-            Err(Error::NoBlockFound(None, available_range))
-        }
+        Ok(header)
+    } else {
+        let available_range = node_client
+            .read_available_block_range()
+            .await
+            .map_err(|err| Error::NodeRequest("available block range", err))?;
+        Err(Error::NoBlockFound(None, available_range))
     }
 }
 

@@ -6,13 +6,15 @@
 #[cfg(test)]
 mod tests;
 
+use std::{convert::Infallible, hash::Hash};
+
 use bytes::Bytes;
-use http::{header::CONTENT_TYPE, HeaderMap, StatusCode};
+use http::{header::CONTENT_TYPE, StatusCode};
 use serde_json::{json, Map, Value};
 use tracing::{debug, trace, warn};
 use warp::{
     body,
-    filters::BoxedFilter,
+    filters::{self, BoxedFilter},
     reject::{self, Rejection},
     reply::{self, WithStatus},
     Filter,
@@ -20,7 +22,7 @@ use warp::{
 
 use crate::{
     error::{Error, ReservedErrorCode},
-    rejections::{BodyTooLarge, MissingContentTypeHeader, MissingId, UnsupportedMediaType},
+    rejections::{BodyTooLarge, MissingId},
     request::{ErrorOrRejection, Request},
     request_handlers::RequestHandlers,
     response::Response,
@@ -35,34 +37,53 @@ const CONTENT_TYPE_VALUE: &str = "application/json";
 ///   * setting the method to POST
 ///   * ensuring the "content-type" header exists and is set to "application/json"
 ///   * ensuring the body has at most `max_body_bytes` bytes
-pub fn base_filter<P: AsRef<str>>(path: P, max_body_bytes: u32) -> BoxedFilter<()> {
-    let path = path.as_ref().to_string();
+pub fn base_filter<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
+    path: P,
+    max_body_bytes: u64,
+) -> BoxedFilter<()> {
     warp::path::path(path)
         .and(warp::path::end())
-        .and(warp::filters::method::post())
+        .and(filters::method::post())
+        // .and(
+        //     filters::header::headers_cloned().and_then(|headers: HeaderMap| async move {
+        //         if let Some(value) = headers.get(CONTENT_TYPE) {
+        //             if value.as_bytes().to_ascii_lowercase() != CONTENT_TYPE_VALUE {
+        //                 trace!(content_type = ?value.to_str(), "invalid {CONTENT_TYPE}");
+        //                 return Err(reject::custom(UnsupportedMediaType));
+        //             }
+        //             Ok(())
+        //         } else {
+        //             trace!("missing {CONTENT_TYPE}");
+        //             Err(reject::custom(MissingContentTypeHeader))
+        //         }
+        //     }),
+        // )
+        // .untuple_one()
+        .and(filters::header::exact_ignore_case(
+            CONTENT_TYPE.as_str(),
+            CONTENT_TYPE_VALUE,
+        ))
+        // .and(
+        //     warp::header(X_REAL_IP)
+        //         .or(warp::header(X_FORWARDED_FOR))
+        //         .unify()
+        //         .or(warp::header(FORWARDED.as_str()))
+        //         .unify()
+        //         .or(warp::addr::remote().map(move |remote: Option<SocketAddr>| {
+        //             remote.map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |addr| addr.ip())
+        //         }))
+        //         .unify()
+        //         .and_then(move |ip_addr: IpAddr| async move {
+        //             warn!("ADDR {ip_addr}");
+        //             Ok::<_, Infallible>(())
+        //         })
+        //         .untuple_one(),
+        // )
         .and(
-            warp::filters::header::headers_cloned().and_then(|headers: HeaderMap| async move {
-                for (name, value) in headers.iter() {
-                    if name.as_str() == CONTENT_TYPE.as_str() {
-                        if value
-                            .as_bytes()
-                            .eq_ignore_ascii_case(CONTENT_TYPE_VALUE.as_bytes())
-                        {
-                            return Ok(());
-                        } else {
-                            trace!(content_type = ?value.to_str(), "invalid {}", CONTENT_TYPE);
-                            return Err(reject::custom(UnsupportedMediaType));
-                        }
-                    }
-                }
-                trace!("missing {}", CONTENT_TYPE);
-                Err(reject::custom(MissingContentTypeHeader))
+            body::content_length_limit(max_body_bytes).or_else(move |_rejection| async move {
+                Err(reject::custom(BodyTooLarge(max_body_bytes)))
             }),
         )
-        .untuple_one()
-        .and(body::content_length_limit(max_body_bytes as u64).or_else(
-            move |_rejection| async move { Err(reject::custom(BodyTooLarge(max_body_bytes))) },
-        ))
         .boxed()
 }
 
@@ -112,6 +133,7 @@ async fn handle_body(
 ///
 /// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
 /// respond with an error.
+#[must_use]
 pub fn main_filter(
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
@@ -131,70 +153,62 @@ pub fn main_filter(
 /// ```json
 /// { "message": <String> }
 /// ```
-pub async fn handle_rejection(error: Rejection) -> Result<WithStatus<reply::Json>, Rejection> {
+pub async fn handle_rejection(error: Rejection) -> Result<WithStatus<reply::Json>, Infallible> {
     let code;
     let message;
 
-    if let Some(rejection) = error.find::<UnsupportedMediaType>() {
-        trace!("{:?}", rejection);
-        message = rejection.to_string();
-        code = StatusCode::UNSUPPORTED_MEDIA_TYPE;
-    } else if let Some(rejection) = error.find::<MissingContentTypeHeader>() {
-        trace!("{:?}", rejection);
-        message = rejection.to_string();
-        code = StatusCode::BAD_REQUEST;
-    } else if let Some(rejection) = error.find::<MissingId>() {
-        trace!("{:?}", rejection);
+    if let Some(rejection) = error.find::<MissingId>() {
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::BAD_REQUEST;
     } else if let Some(rejection) = error.find::<BodyTooLarge>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::PAYLOAD_TOO_LARGE;
     } else if error.is_not_found() {
-        trace!("{:?}", error);
+        trace!("{error:?}");
         message = "Path not found".to_string();
         code = StatusCode::NOT_FOUND;
     } else if let Some(rejection) = error.find::<reject::MethodNotAllowed>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::METHOD_NOT_ALLOWED;
     } else if let Some(rejection) = error.find::<reject::InvalidHeader>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::BAD_REQUEST;
     } else if let Some(rejection) = error.find::<reject::MissingHeader>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::BAD_REQUEST;
     } else if let Some(rejection) = error.find::<reject::InvalidQuery>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::BAD_REQUEST;
     } else if let Some(rejection) = error.find::<reject::MissingCookie>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::BAD_REQUEST;
     } else if let Some(rejection) = error.find::<reject::LengthRequired>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::LENGTH_REQUIRED;
     } else if let Some(rejection) = error.find::<reject::PayloadTooLarge>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::PAYLOAD_TOO_LARGE;
     } else if let Some(rejection) = error.find::<reject::UnsupportedMediaType>() {
-        trace!("{:?}", rejection);
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::UNSUPPORTED_MEDIA_TYPE;
-    } else if let Some(rejection) = error.find::<warp::filters::cors::CorsForbidden>() {
-        trace!("{:?}", rejection);
+    } else if let Some(rejection) = error.find::<filters::cors::CorsForbidden>() {
+        trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::FORBIDDEN;
     } else {
         // We should handle all rejection types before this.
         warn!(?error, "unhandled warp rejection in json-rpc server");
-        message = format!("Internal server error: unhandled rejection: {:?}", error);
+        message = format!("Internal server error: unhandled rejection: {error:?}");
         code = StatusCode::INTERNAL_SERVER_ERROR;
     }
 

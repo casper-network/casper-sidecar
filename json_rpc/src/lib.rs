@@ -80,12 +80,18 @@
 
 mod error;
 pub mod filters;
-mod rejections;
+pub mod rejections;
 mod request;
 mod request_handlers;
 mod response;
 
+use std::{hash::Hash, num::NonZeroU32};
+
+use casper_types::TimeDiff;
+use datasize::DataSize;
+use governor::Quota;
 use http::{header::CONTENT_TYPE, Method};
+use serde::Deserialize;
 use warp::{filters::BoxedFilter, Filter, Reply};
 
 pub use error::{Error, ErrorCodeT, ReservedErrorCode};
@@ -95,12 +101,55 @@ pub use response::Response;
 
 const JSON_RPC_VERSION: &str = "2.0";
 
+/// Default value for limiter's number of requests.
+pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = NonZeroU32::MIN;
+/// Default value for limiter's period of time.
+pub const DEFAULT_LIMIT_PERIOD: TimeDiff = TimeDiff::from_seconds(1);
+
 /// Specifies the CORS origin
 pub enum CorsOrigin {
     /// Any (*) origin is allowed.
     Any,
     /// Only the specified origin is allowed.
     Specified(String),
+}
+
+/// Helper function for `DataSize` derive.
+pub fn nonzero_u32(value: &NonZeroU32) -> usize {
+    value.get().estimate_heap_size()
+}
+
+/// Specifies connection rate limiter parameters for a method (HTTP path).
+#[derive(Clone, DataSize, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigLimit {
+    /// Maximum number of request that the rate limiter will allow for a period of time (below).
+    #[data_size(with = nonzero_u32)]
+    pub requests: NonZeroU32,
+    /// Rate limiter's time period.
+    pub period: TimeDiff,
+}
+
+impl ConfigLimit {
+    /// Return connection limit as `Quota`.
+    #[must_use]
+    pub fn quota(&self) -> Quota {
+        let max_burst = self.requests;
+        if let Some(quota) = Quota::with_period(self.period.into()) {
+            quota.allow_burst(max_burst)
+        } else {
+            Quota::per_second(max_burst)
+        }
+    }
+}
+
+impl Default for ConfigLimit {
+    fn default() -> Self {
+        Self {
+            requests: DEFAULT_LIMIT_REQUESTS,
+            period: DEFAULT_LIMIT_PERIOD,
+        }
+    }
 }
 
 /// Constructs a set of warp filters suitable for use in a JSON-RPC server.
@@ -119,9 +168,9 @@ pub enum CorsOrigin {
 /// respond with an error.
 ///
 /// For further details, see the docs for the [`filters`] functions.
-pub fn route<P: AsRef<str>>(
+pub fn route<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
     path: P,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
 ) -> BoxedFilter<(impl Reply,)> {
@@ -153,9 +202,9 @@ pub fn route<P: AsRef<str>>(
 ///   * allows the method "POST"
 ///
 /// For further details, see the docs for the [`filters`] functions.
-pub fn route_with_cors<P: AsRef<str>>(
+pub fn route_with_cors<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
     path: P,
-    max_body_bytes: u32,
+    max_body_bytes: u64,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
     cors_header: &CorsOrigin,

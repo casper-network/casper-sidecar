@@ -48,6 +48,7 @@ pub trait ErrorCodeT:
     ///
     /// This should normally be left with the default return value of `false`.
     #[doc(hidden)]
+    #[must_use]
     fn is_reserved() -> bool {
         false
     }
@@ -70,6 +71,8 @@ pub enum ReservedErrorCode {
     InvalidParams = -32602,
     /// Internal JSON-RPC error.
     InternalError = -32603,
+    /// Too many requests.
+    TooManyRequests = -32604,
 }
 
 impl From<ReservedErrorCode> for (i64, &'static str) {
@@ -80,6 +83,7 @@ impl From<ReservedErrorCode> for (i64, &'static str) {
             ReservedErrorCode::MethodNotFound => (error_code as i64, "Method not found"),
             ReservedErrorCode::InvalidParams => (error_code as i64, "Invalid params"),
             ReservedErrorCode::InternalError => (error_code as i64, "Internal error"),
+            ReservedErrorCode::TooManyRequests => (error_code as i64, "Too many requests"),
         }
     }
 }
@@ -131,8 +135,7 @@ impl Error {
                 code,
                 message: Cow::Borrowed(message),
                 data: Some(Value::String(format!(
-                    "attempted to return reserved error code {}",
-                    code
+                    "attempted to return reserved error code {code}"
                 ))),
             };
         }
@@ -147,8 +150,7 @@ impl Error {
                     code,
                     message: Cow::Borrowed(message),
                     data: Some(Value::String(format!(
-                        "failed to json-encode additional info in json-rpc error: {}",
-                        error
+                        "failed to json-encode additional info in json-rpc error: {error}"
                     ))),
                 };
             }
@@ -162,6 +164,7 @@ impl Error {
     }
 
     /// Returns the code of the error.
+    #[must_use]
     pub fn code(&self) -> i64 {
         self.code
     }
