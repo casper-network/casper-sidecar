@@ -14,8 +14,8 @@ enable_server = true
 ip_address = '0.0.0.0'
 port = 7777
 
-# The global max rate of requests (per second) before they are limited.
-# Request will be delayed to the next 1 second bucket once limited.
+# The global maximum rate of HTTP requests (per second) before they are limited.
+# Request will be delayed to the next one second bucket once limited.
 qps_limit = 100
 
 # Maximum number of bytes to accept in a single request body.
@@ -28,6 +28,16 @@ max_body_bytes = 2_621_440
 # Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
 cors_origin = ''
 
+# Default limit for JSON-RPC requests: maximum requests permitted in a period of time (below).
+default_limit_requests = 100
+# Default period of time for the JSON-RPC request limit (above) in human-readable format.
+default_limit_period = "1s"
+
+# Limit for JSON-RPC method "get_status". See description for `default_limit_requests` and
+# `default_limit_period` above.
+[rpc_server.main_server.limits.info_get_status]
+requests = 200
+period = "1s"
 
 # ========================================================================
 # Configuration options for the speculative execution JSON-RPC HTTP server
@@ -48,8 +58,8 @@ enable_server = true
 ip_address = '0.0.0.0'
 port = 7778
 
-# The global max rate of requests (per second) before they are limited.
-# Request will be delayed to the next 1 second bucket once limited.
+# The global maximum rate of HTTP requests (per second) before they are limited.
+# Request will be delayed to the next one second bucket once limited.
 qps_limit = 1
 
 # Maximum number of bytes to accept in a single request body.
@@ -61,6 +71,17 @@ max_body_bytes = 2_621_440
 # If set to '*', any origin is allowed.
 # Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
 cors_origin = ''
+
+# Default limit for JSON-RPC requests: maximum requests permitted in a period of time (below).
+default_limit_requests = 10
+# Default period of time for the JSON-RPC request limit (above) in human-readable format.
+default_limit_period = "1s"
+
+# Limit for JSON-RPC method "get_status". See description for `default_limit_requests` and
+# `default_limit_period` above.
+[rpc_server.speculative_exec_server.limits.info_get_status]
+requests = 2
+period = "1s"
 
 # =========================================
 # Configuration options for the node client

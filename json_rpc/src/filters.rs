@@ -44,41 +44,10 @@ pub fn base_filter<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
     warp::path::path(path)
         .and(warp::path::end())
         .and(filters::method::post())
-        // .and(
-        //     filters::header::headers_cloned().and_then(|headers: HeaderMap| async move {
-        //         if let Some(value) = headers.get(CONTENT_TYPE) {
-        //             if value.as_bytes().to_ascii_lowercase() != CONTENT_TYPE_VALUE {
-        //                 trace!(content_type = ?value.to_str(), "invalid {CONTENT_TYPE}");
-        //                 return Err(reject::custom(UnsupportedMediaType));
-        //             }
-        //             Ok(())
-        //         } else {
-        //             trace!("missing {CONTENT_TYPE}");
-        //             Err(reject::custom(MissingContentTypeHeader))
-        //         }
-        //     }),
-        // )
-        // .untuple_one()
         .and(filters::header::exact_ignore_case(
             CONTENT_TYPE.as_str(),
             CONTENT_TYPE_VALUE,
         ))
-        // .and(
-        //     warp::header(X_REAL_IP)
-        //         .or(warp::header(X_FORWARDED_FOR))
-        //         .unify()
-        //         .or(warp::header(FORWARDED.as_str()))
-        //         .unify()
-        //         .or(warp::addr::remote().map(move |remote: Option<SocketAddr>| {
-        //             remote.map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |addr| addr.ip())
-        //         }))
-        //         .unify()
-        //         .and_then(move |ip_addr: IpAddr| async move {
-        //             warn!("ADDR {ip_addr}");
-        //             Ok::<_, Infallible>(())
-        //         })
-        //         .untuple_one(),
-        // )
         .and(
             body::content_length_limit(max_body_bytes).or_else(move |_rejection| async move {
                 Err(reject::custom(BodyTooLarge(max_body_bytes)))
