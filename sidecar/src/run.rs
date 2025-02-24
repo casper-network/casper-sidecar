@@ -56,7 +56,7 @@ async fn do_run(
 ) -> Result<ExitCode, ComponentError> {
     let mut component_futures = Vec::new();
     let max_startup_duration = Duration::from_secs(MAX_COMPONENT_STARTUP_TIMEOUT_SECS);
-    for component in components.iter() {
+    for component in &components {
         let component_name = component.name();
         let component_startup_res = timeout(
             max_startup_duration,

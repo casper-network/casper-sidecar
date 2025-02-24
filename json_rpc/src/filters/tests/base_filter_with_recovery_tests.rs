@@ -5,7 +5,7 @@ use super::ResponseBodyOnRejection;
 use crate::filters::{base_filter, handle_rejection, CONTENT_TYPE_VALUE};
 
 const PATH: &str = "rpc";
-const MAX_BODY_BYTES: u32 = 10;
+const MAX_BODY_BYTES: u64 = 10;
 
 fn base_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     base_filter(PATH, MAX_BODY_BYTES)
@@ -17,7 +17,7 @@ fn base_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
 
 fn valid_base_filter_request_builder() -> RequestBuilder {
     warp::test::request()
-        .path(&format!("/{}", PATH))
+        .path(&format!("/{PATH}"))
         .header("content-type", CONTENT_TYPE_VALUE)
         .method("POST")
         .body([0_u8; MAX_BODY_BYTES as usize])
@@ -106,7 +106,7 @@ async fn should_reject_missing_content_type_header() {
     let filter = base_filter_with_recovery();
 
     let response = warp::test::request()
-        .path(&format!("/{}", PATH))
+        .path(&format!("/{PATH}"))
         .method("POST")
         .body("")
         .filter(&filter)
@@ -118,7 +118,7 @@ async fn should_reject_missing_content_type_header() {
     let response_body = ResponseBodyOnRejection::from_response(response).await;
     assert_eq!(
         response_body.message,
-        "The request's content-type is not set"
+        "Missing request header \"content-type\""
     );
 }
 
@@ -134,11 +134,11 @@ async fn should_reject_invalid_content_type() {
             .unwrap()
             .into_response();
 
-        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let response_body = ResponseBodyOnRejection::from_response(response).await;
         assert_eq!(
             response_body.message,
-            "The request's content-type is not supported"
+            "Invalid request header \"content-type\""
         );
     }
 

@@ -1,16 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
 
-use hyper::server::{conn::AddrIncoming, Builder};
-
-use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
-
-use crate::{
-    rpcs::{
-        info::{GetPeers, GetReward, GetStatus, GetTransaction},
-        state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
-    },
-    NodeClient,
-};
+use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
 
 use super::rpcs::{
     account::{PutDeploy, PutTransaction},
@@ -26,65 +16,85 @@ use super::rpcs::{
     state_get_auction_info_v2::GetAuctionInfo as GetAuctionInfoV2,
     RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
 };
+use crate::{
+    rpcs::{
+        info::{GetPeers, GetReward, GetStatus, GetTransaction},
+        state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
+    },
+    NodeClient,
+};
 
 /// The URL path for all JSON-RPC requests.
-pub const RPC_API_PATH: &str = "rpc";
-
-pub const RPC_API_SERVER_NAME: &str = "JSON RPC";
+const RPC_API_PATH: &str = "rpc";
+const RPC_API_SERVER_NAME: &str = "JSON RPC";
 
 /// Run the JSON-RPC server.
 pub async fn run(
     node: Arc<dyn NodeClient>,
-    builder: Builder<AddrIncoming>,
-    qps_limit: u64,
-    max_body_bytes: u32,
+    ip_address: IpAddr,
+    port: u16,
+    default_limit: ConfigLimit,
+    mut limits: HashMap<String, ConfigLimit>,
+    qps_limit: NonZeroU32,
+    max_body_bytes: u64,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
-    PutDeploy::register_as_handler(node.clone(), &mut handlers);
-    PutTransaction::register_as_handler(node.clone(), &mut handlers);
-    GetBlock::register_as_handler(node.clone(), &mut handlers);
-    GetBlockTransfers::register_as_handler(node.clone(), &mut handlers);
-    GetStateRootHash::register_as_handler(node.clone(), &mut handlers);
-    GetItem::register_as_handler(node.clone(), &mut handlers);
-    QueryGlobalState::register_as_handler(node.clone(), &mut handlers);
-    GetBalance::register_as_handler(node.clone(), &mut handlers);
-    GetAccountInfo::register_as_handler(node.clone(), &mut handlers);
-    GetAddressableEntity::register_as_handler(node.clone(), &mut handlers);
-    GetPackage::register_as_handler(node.clone(), &mut handlers);
-    GetDeploy::register_as_handler(node.clone(), &mut handlers);
-    GetTransaction::register_as_handler(node.clone(), &mut handlers);
-    GetPeers::register_as_handler(node.clone(), &mut handlers);
-    GetStatus::register_as_handler(node.clone(), &mut handlers);
-    GetReward::register_as_handler(node.clone(), &mut handlers);
-    GetEraInfoBySwitchBlock::register_as_handler(node.clone(), &mut handlers);
-    GetEraSummary::register_as_handler(node.clone(), &mut handlers);
-    GetAuctionInfo::register_as_handler(node.clone(), &mut handlers);
-    GetAuctionInfoV2::register_as_handler(node.clone(), &mut handlers);
-    GetTrie::register_as_handler(node.clone(), &mut handlers);
-    GetValidatorChanges::register_as_handler(node.clone(), &mut handlers);
-    RpcDiscover::register_as_handler(node.clone(), &mut handlers);
-    GetDictionaryItem::register_as_handler(node.clone(), &mut handlers);
-    GetChainspec::register_as_handler(node.clone(), &mut handlers);
-    QueryBalance::register_as_handler(node.clone(), &mut handlers);
-    QueryBalanceDetails::register_as_handler(node, &mut handlers);
+
+    macro_rules! register {
+        ($rpc:ident) => {
+            let limit = limits.remove($rpc::METHOD).unwrap_or(default_limit.clone());
+            $rpc::register_as_handler(node.clone(), &mut handlers, limit);
+        };
+    }
+
+    register!(PutDeploy);
+    register!(PutTransaction);
+    register!(GetBlock);
+    register!(GetBlockTransfers);
+    register!(GetStateRootHash);
+    register!(GetItem);
+    register!(QueryGlobalState);
+    register!(GetBalance);
+    register!(GetAccountInfo);
+    register!(GetAddressableEntity);
+    register!(GetPackage);
+    register!(GetDeploy);
+    register!(GetTransaction);
+    register!(GetPeers);
+    register!(GetStatus);
+    register!(GetReward);
+    register!(GetEraInfoBySwitchBlock);
+    register!(GetEraSummary);
+    register!(GetAuctionInfo);
+    register!(GetAuctionInfoV2);
+    register!(GetTrie);
+    register!(GetValidatorChanges);
+    register!(RpcDiscover);
+    register!(GetDictionaryItem);
+    register!(GetChainspec);
+    register!(QueryBalance);
+    register!(QueryBalanceDetails);
+
     let handlers = handlers.build();
 
     match cors_origin.as_str() {
         "" => {
             super::rpcs::run(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
                 RPC_API_PATH,
                 RPC_API_SERVER_NAME,
             )
-            .await
+            .await;
         }
         "*" => {
             super::rpcs::run_with_cors(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
@@ -92,11 +102,12 @@ pub async fn run(
                 RPC_API_SERVER_NAME,
                 CorsOrigin::Any,
             )
-            .await
+            .await;
         }
         _ => {
             super::rpcs::run_with_cors(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
@@ -104,7 +115,7 @@ pub async fn run(
                 RPC_API_SERVER_NAME,
                 CorsOrigin::Specified(cors_origin),
             )
-            .await
+            .await;
         }
     }
 }

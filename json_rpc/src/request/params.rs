@@ -35,7 +35,7 @@ impl Params {
         };
 
         match params {
-            Value::Null => Ok(Params::Array(vec![])),
+            Value::Null => Ok(Params::Array(Vec::new())),
             Value::Bool(false) => err_invalid_request(
                 "If present, 'params' must be an Array or Object, but was 'false'",
             ),
@@ -54,50 +54,57 @@ impl Params {
     }
 
     /// Returns `true` if `self` is an Array, otherwise returns `false`.
+    #[must_use]
     pub fn is_array(&self) -> bool {
         self.as_array().is_some()
     }
 
     /// Returns a reference to the inner `Vec` if `self` is an Array, otherwise returns `None`.
+    #[must_use]
     pub fn as_array(&self) -> Option<&Vec<Value>> {
         match self {
             Params::Array(array) => Some(array),
-            _ => None,
+            Params::Object(_) => None,
         }
     }
 
     /// Returns a mutable reference to the inner `Vec` if `self` is an Array, otherwise returns
     /// `None`.
+    #[must_use]
     pub fn as_array_mut(&mut self) -> Option<&mut Vec<Value>> {
         match self {
             Params::Array(array) => Some(array),
-            _ => None,
+            Params::Object(_) => None,
         }
     }
 
     /// Returns `true` if `self` is an Object, otherwise returns `false`.
+    #[must_use]
     pub fn is_object(&self) -> bool {
         self.as_object().is_some()
     }
 
     /// Returns a reference to the inner `Map` if `self` is an Object, otherwise returns `None`.
+    #[must_use]
     pub fn as_object(&self) -> Option<&Map<String, Value>> {
         match self {
             Params::Object(map) => Some(map),
-            _ => None,
+            Params::Array(_) => None,
         }
     }
 
     /// Returns a mutable reference to the inner `Map` if `self` is an Object, otherwise returns
     /// `None`.
+    #[must_use]
     pub fn as_object_mut(&mut self) -> Option<&mut Map<String, Value>> {
         match self {
             Params::Object(map) => Some(map),
-            _ => None,
+            Params::Array(_) => None,
         }
     }
 
     /// Returns `true` if `self` is an empty Array or an empty Object, otherwise returns `false`.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         match self {
             Params::Array(array) => array.is_empty(),
@@ -115,7 +122,7 @@ impl Display for Params {
 /// The default value for `Params` is an empty Array.
 impl Default for Params {
     fn default() -> Self {
-        Params::Array(vec![])
+        Params::Array(Vec::new())
     }
 }
 
@@ -157,29 +164,29 @@ mod tests {
 
     #[test]
     fn should_fail_to_convert_params_from_false() {
-        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'")
+        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_true() {
-        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'")
+        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_number() {
-        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number")
+        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number");
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_string() {
-        should_fail_to_convert_invalid_params(Value::from("s"), "a String")
+        should_fail_to_convert_invalid_params(Value::from("s"), "a String");
     }
 
     #[test]
     fn should_convert_params_from_an_array() {
         let original_id = Value::from(1_i8);
 
-        let params = Params::try_from(&original_id, Value::Array(vec![])).unwrap();
+        let params = Params::try_from(&original_id, Value::Array(Vec::new())).unwrap();
         assert!(matches!(params, Params::Array(v) if v.is_empty()));
 
         let array = vec![Value::from(9_i16), Value::Bool(false)];

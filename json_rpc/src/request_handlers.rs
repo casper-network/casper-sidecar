@@ -1,6 +1,10 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Instant};
 
 use futures::FutureExt;
+use governor::{
+    clock::{Clock, DefaultClock},
+    DefaultDirectRateLimiter,
+};
 use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
@@ -10,6 +14,7 @@ use crate::{
     error::{Error, ReservedErrorCode},
     request::{Params, Request},
     response::Response,
+    ConfigLimit,
 };
 
 /// A boxed future of `Result<Value, Error>`; the return type of a request-handling closure.
@@ -22,7 +27,7 @@ type RequestHandler = Arc<dyn Fn(Option<Params>) -> HandleRequestFuture + Send +
 /// There needs to be a unique handler for each JSON-RPC request "method" to be handled.  Handlers
 /// are added via a [`RequestHandlersBuilder`].
 #[derive(Clone)]
-pub struct RequestHandlers(Arc<HashMap<&'static str, RequestHandler>>);
+pub struct RequestHandlers(Arc<HashMap<&'static str, (RequestHandler, DefaultDirectRateLimiter)>>);
 
 impl RequestHandlers {
     /// Finds the relevant handler for the given request's "method" field, and invokes it with the
@@ -36,33 +41,40 @@ impl RequestHandlers {
     pub(crate) async fn handle_request(&self, request: Request, request_size: usize) -> Response {
         let start = Instant::now();
         let request_method = request.method.as_str();
-        let handler = match self.0.get(request_method) {
-            Some(handler) => Arc::clone(handler),
-            None => {
-                let elapsed = start.elapsed();
-                observe_response_time("unknown-handler", "unknown-handler", elapsed);
-                debug!(requested_method = %request.method.as_str(), "failed to get handler");
-                let error = Error::new(
-                    ReservedErrorCode::MethodNotFound,
-                    format!(
-                        "'{}' is not a supported json-rpc method on this server",
-                        request.method.as_str()
-                    ),
-                );
-                return Response::new_failure(request.id, error);
-            }
+        let Some((handler, limiter)) = self.0.get(request_method) else {
+            let elapsed = start.elapsed();
+            observe_response_time("unknown-handler", "unknown-handler", elapsed);
+            debug!(requested_method = %request_method, "failed to get handler");
+            let error = Error::new(
+                ReservedErrorCode::MethodNotFound,
+                format!("'{request_method}' is not a supported json-rpc method on this server"),
+            );
+            return Response::new_failure(request.id, error);
         };
+        // Update metrics.
         inc_method_call(request_method);
         register_request_size(request_method, request_size as f64);
 
+        // Manage limits
+        if let Err(negative) = limiter.check() {
+            let wait_time = negative.wait_time_from(DefaultClock::default().now());
+            let error = Error::new(
+                ReservedErrorCode::TooManyRequests,
+                format!(
+                    "Too many requests; try again in {}s",
+                    wait_time.as_secs_f64()
+                ),
+            );
+            return Response::new_failure(request.id, error);
+        }
+
+        let elapsed = start.elapsed();
         match handler(request.params).await {
             Ok(result) => {
-                let elapsed = start.elapsed();
                 observe_response_time(request_method, "success", elapsed);
                 Response::new_success(request.id, result)
             }
             Err(error) => {
-                let elapsed = start.elapsed();
                 observe_response_time(request_method, &error.code().to_string(), elapsed);
                 Response::new_failure(request.id, error)
             }
@@ -75,10 +87,13 @@ impl RequestHandlers {
 // This builder exists so the internal `HashMap` can be populated before it is made immutable behind
 // the `Arc` in the `RequestHandlers`.
 #[derive(Default)]
-pub struct RequestHandlersBuilder(HashMap<&'static str, RequestHandler>);
+pub struct RequestHandlersBuilder(
+    HashMap<&'static str, (RequestHandler, DefaultDirectRateLimiter)>,
+);
 
 impl RequestHandlersBuilder {
     /// Returns a new builder.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -91,31 +106,45 @@ impl RequestHandlersBuilder {
     /// async fn handle_it(params: Option<Params>) -> Result<T, Error>
     /// ```
     /// where `T` implements `Serialize` and will be used as the JSON-RPC response's "result" field.
-    pub fn register_handler<Func, Fut, T>(&mut self, method: &'static str, handler: Arc<Func>)
-    where
+    pub fn register_handler<Func, Fut, T>(
+        &mut self,
+        method: &'static str,
+        handler: Func,
+        limit: &ConfigLimit,
+    ) where
         Func: Fn(Option<Params>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<T, Error>> + Send,
         T: Serialize + 'static,
     {
-        let handler = Arc::clone(&handler);
         // The provided handler returns a future with output of `Result<T, Error>`. We need to
         // convert that to a boxed future with output `Result<Value, Error>` to store it in a
         // homogenous collection.
+        let handler = Arc::new(handler);
         let wrapped_handler = move |maybe_params| {
             let handler = Arc::clone(&handler);
             async move {
-                let success = Arc::clone(&handler)(maybe_params).await?;
+                let success = handler(maybe_params).await?;
                 serde_json::to_value(success).map_err(|error| {
                     error!(%error, "failed to encode json-rpc response value");
                     Error::new(
                         ReservedErrorCode::InternalError,
-                        format!("failed to encode json-rpc response value: {}", error),
+                        format!("failed to encode json-rpc response value: {error}"),
                     )
                 })
             }
             .boxed()
         };
-        if self.0.insert(method, Arc::new(wrapped_handler)).is_some() {
+        if self
+            .0
+            .insert(
+                method,
+                (
+                    Arc::new(wrapped_handler),
+                    DefaultDirectRateLimiter::direct(limit.quota()),
+                ),
+            )
+            .is_some()
+        {
             error!(
                 method,
                 "already registered a handler for this json-rpc request method"
@@ -124,6 +153,7 @@ impl RequestHandlersBuilder {
     }
 
     /// Finalize building by converting `self` to a [`RequestHandlers`].
+    #[must_use]
     pub fn build(self) -> RequestHandlers {
         RequestHandlers(Arc::new(self.0))
     }
