@@ -54,7 +54,7 @@ impl RequestHandlers {
 
         // Manage limits
         if let Err(_negative) = limiter.check() {
-            let error = Error::new(ReservedErrorCode::RequestThrottled, "Too many requests");
+            let error = Error::new(ReservedErrorCode::RequestThrottled, "Request throttled");
             return Response::new_failure(request.id, error);
         }
 
