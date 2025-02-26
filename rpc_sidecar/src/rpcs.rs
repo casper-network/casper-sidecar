@@ -1,14 +1,6 @@
 //! The set of JSON-RPCs which the API server handles.
 
-use std::{
-    convert::TryFrom,
-    fmt,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    num::NonZeroU32,
-    str,
-    sync::Arc,
-    time::Duration,
-};
+use std::{convert::TryFrom, fmt, net::IpAddr, num::NonZeroU32, str, sync::Arc, time::Duration};
 
 pub mod account;
 pub mod chain;
@@ -28,10 +20,10 @@ mod types;
 use async_trait::async_trait;
 use governor::{
     clock::{Clock, DefaultClock},
-    DefaultKeyedRateLimiter, Quota,
+    DefaultDirectRateLimiter, Quota,
 };
 use http::{
-    header::{ACCEPT_ENCODING, FORWARDED, RETRY_AFTER},
+    header::{ACCEPT_ENCODING, RETRY_AFTER},
     StatusCode,
 };
 use schemars::JsonSchema;
@@ -286,9 +278,6 @@ pub(super) trait RpcWithOptionalParams {
     ) -> Result<Self::ResponseResult, RpcError>;
 }
 
-const X_FORWARDED_FOR: &str = "x-forwarded-for";
-const X_REAL_IP: &str = "x-real-ip";
-
 #[derive(Debug)]
 struct TooManyRequests(Duration);
 
@@ -318,22 +307,15 @@ async fn run_service(
     server_name: &'static str,
     qps_limit: NonZeroU32,
 ) {
-    let limiter = Arc::new(DefaultKeyedRateLimiter::keyed(Quota::per_second(qps_limit)));
+    let limiter = Arc::new(DefaultDirectRateLimiter::direct(Quota::per_second(
+        qps_limit,
+    )));
 
-    // Try to get client's IP address from headers, with fallback to connection IP address.
-    let host_ip = warp::header(X_REAL_IP)
-        .or(warp::header(X_FORWARDED_FOR))
-        .unify()
-        .or(warp::header(FORWARDED.as_str()))
-        .unify()
-        .or(warp::addr::remote().map(move |remote: Option<SocketAddr>| {
-            remote.map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |remote| remote.ip())
-        }))
-        .unify()
-        .and_then(move |ip_addr: IpAddr| {
+    let requrst_limit = warp::any()
+        .and_then(move || {
             let limiter = limiter.clone();
             async move {
-                if let Err(negative) = limiter.check_key(&ip_addr) {
+                if let Err(negative) = limiter.check() {
                     let wait_time = negative.wait_time_from(DefaultClock::default().now());
                     Err(warp::reject::custom(TooManyRequests(wait_time)))
                 } else {
@@ -351,7 +333,7 @@ async fn run_service(
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     let (address, server_with_shutdown) = warp::serve(
-        host_ip
+        requrst_limit
             .and(service_routes_gzip.or(service_routes.clone()))
             .recover(handle_rejection),
     )
