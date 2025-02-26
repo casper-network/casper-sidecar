@@ -149,7 +149,7 @@ pub async fn handle_rejection(error: Rejection) -> Result<WithStatus<reply::Json
     } else if let Some(rejection) = error.find::<reject::MissingHeader>() {
         trace!("{rejection:?}");
         message = rejection.to_string();
-        code = StatusCode::BAD_REQUEST;
+        code = StatusCode::UNSUPPORTED_MEDIA_TYPE;
     } else if let Some(rejection) = error.find::<reject::InvalidQuery>() {
         trace!("{rejection:?}");
         message = rejection.to_string();

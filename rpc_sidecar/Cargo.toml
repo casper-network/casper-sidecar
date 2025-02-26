@@ -11,18 +11,13 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/rpc_sidecard
 license = "Apache-2.0"
 
 [dependencies]
+casper-types = { workspace = true, features = ["datasize", "std-fs-io"] }
 anyhow = { workspace = true }
 async-trait = "0.1"
 base16 = "0.2"
 bincode = "1"
 bytes = "1.10"
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-casper-types = { workspace = true, features = [
-    "datasize",
-    "json-schema",
-    "std",
-    "std-fs-io",
-] }
 casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 derive-new = { workspace = true }
@@ -49,14 +44,12 @@ tracing = { workspace = true, default-features = true }
 warp = { workspace = true, features = ["compression"] }
 
 [dev-dependencies]
-assert-json-diff = "2"
 casper-types = { workspace = true, features = [
     "datasize",
-    "json-schema",
-    "std",
     "std-fs-io",
     "testing",
 ] }
+assert-json-diff = "2"
 casper-binary-port = { workspace = true, features = ["testing"] }
 pretty_assertions = "1"
 regex = "1"

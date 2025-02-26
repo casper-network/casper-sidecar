@@ -114,7 +114,7 @@ async fn should_reject_missing_content_type_header() {
         .unwrap()
         .into_response();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
     let response_body = ResponseBodyOnRejection::from_response(response).await;
     assert_eq!(
         response_body.message,

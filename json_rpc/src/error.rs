@@ -72,7 +72,7 @@ pub enum ReservedErrorCode {
     /// Internal JSON-RPC error.
     InternalError = -32603,
     /// Too many requests.
-    TooManyRequests = -32604,
+    RequestThrottled = -32604,
 }
 
 impl From<ReservedErrorCode> for (i64, &'static str) {
@@ -83,7 +83,7 @@ impl From<ReservedErrorCode> for (i64, &'static str) {
             ReservedErrorCode::MethodNotFound => (error_code as i64, "Method not found"),
             ReservedErrorCode::InvalidParams => (error_code as i64, "Invalid params"),
             ReservedErrorCode::InternalError => (error_code as i64, "Internal error"),
-            ReservedErrorCode::TooManyRequests => (error_code as i64, "Too many requests"),
+            ReservedErrorCode::RequestThrottled => (error_code as i64, "Too many requests"),
         }
     }
 }

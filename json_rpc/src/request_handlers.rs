@@ -1,10 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Instant};
 
 use futures::FutureExt;
-use governor::{
-    clock::{Clock, DefaultClock},
-    DefaultDirectRateLimiter,
-};
+use governor::DefaultDirectRateLimiter;
 use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
@@ -56,15 +53,8 @@ impl RequestHandlers {
         register_request_size(request_method, request_size as f64);
 
         // Manage limits
-        if let Err(negative) = limiter.check() {
-            let wait_time = negative.wait_time_from(DefaultClock::default().now());
-            let error = Error::new(
-                ReservedErrorCode::TooManyRequests,
-                format!(
-                    "Too many requests; try again in {}s",
-                    wait_time.as_secs_f64()
-                ),
-            );
+        if let Err(_negative) = limiter.check() {
+            let error = Error::new(ReservedErrorCode::RequestThrottled, "Too many requests");
             return Response::new_failure(request.id, error);
         }
 

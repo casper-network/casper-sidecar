@@ -14,7 +14,7 @@ async-stream = { workspace = true }
 async-trait = { workspace = true }
 bytes = "1.10"
 casper-event-types.workspace = true
-casper-types = { workspace = true, features = ["std"] }
+casper-types = { workspace = true }
 eventsource-stream = "0.2"
 futures = { workspace = true }
 futures-util = { workspace = true }
