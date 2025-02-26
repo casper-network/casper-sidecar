@@ -348,6 +348,7 @@ async fn run_service(
 }
 
 /// Start JSON RPC server with CORS enabled in a background.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_with_cors(
     ip_address: IpAddr,
     port: u16,

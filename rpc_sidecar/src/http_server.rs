@@ -29,6 +29,7 @@ const RPC_API_PATH: &str = "rpc";
 const RPC_API_SERVER_NAME: &str = "JSON RPC";
 
 /// Run the JSON-RPC server.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     node: Arc<dyn NodeClient>,
     ip_address: IpAddr,
