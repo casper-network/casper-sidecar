@@ -20,8 +20,8 @@ Typical usage of this library involves two steps:
 # Example
 
 ```rust
-use casper_json_rpc::{Error, Params, RequestHandlersBuilder};
-use std::{convert::Infallible, sync::Arc};
+use casper_json_rpc::{ConfigLimit, Error, Params, RequestHandlersBuilder};
+use std::{convert::Infallible};
 
 async fn get(params: Option<Params>) -> Result<String, Error> {
     // * parse params or return `ReservedErrorCode::InvalidParams` error
@@ -37,9 +37,10 @@ async fn put(params: Option<Params>, other_input: &str) -> Result<String, Error>
 async fn main() {
     // Register handlers for methods "get" and "put".
     let mut handlers = RequestHandlersBuilder::new();
-    handlers.register_handler("get", Arc::new(get));
+    let limit = ConfigLimit::default();
+    handlers.register_handler("get", get, &limit);
     let put_handler = move |params| async move { put(params, "other input").await };
-    handlers.register_handler("put", Arc::new(put_handler));
+    handlers.register_handler("put", put_handler, &limit);
     let handlers = handlers.build();
 
     // Get the new route.

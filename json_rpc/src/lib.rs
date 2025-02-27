@@ -12,8 +12,8 @@
 //! # Example
 //!
 //! ```no_run
-//! use casper_json_rpc::{Error, Params, RequestHandlersBuilder};
-//! use std::{convert::Infallible, sync::Arc};
+//! use casper_json_rpc::{ConfigLimit, Error, Params, RequestHandlersBuilder};
+//! use std::{convert::Infallible};
 //!
 //! # #[allow(unused)]
 //! async fn get(params: Option<Params>) -> Result<String, Error> {
@@ -31,9 +31,10 @@
 //! async fn main() {
 //!     // Register handlers for methods "get" and "put".
 //!     let mut handlers = RequestHandlersBuilder::new();
-//!     handlers.register_handler("get", Arc::new(get));
+//!     let limit = ConfigLimit::default();
+//!     handlers.register_handler("get", get, &limit);
 //!     let put_handler = move |params| async move { put(params, "other input").await };
-//!     handlers.register_handler("put", Arc::new(put_handler));
+//!     handlers.register_handler("put", put_handler, &limit);
 //!     let handlers = handlers.build();
 //!
 //!     // Get the new route.
@@ -102,7 +103,7 @@ pub use response::Response;
 const JSON_RPC_VERSION: &str = "2.0";
 
 /// Default value for limiter's number of requests.
-pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = NonZeroU32::MIN;
+pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
 /// Default value for limiter's period of time.
 pub const DEFAULT_LIMIT_PERIOD: TimeDiff = TimeDiff::from_seconds(1);
 
@@ -134,11 +135,10 @@ impl ConfigLimit {
     /// Return connection limit as `Quota`.
     #[must_use]
     pub fn quota(&self) -> Quota {
-        let max_burst = self.requests;
         if let Some(quota) = Quota::with_period(self.period.into()) {
-            quota.allow_burst(max_burst)
+            quota.allow_burst(self.requests)
         } else {
-            Quota::per_second(max_burst)
+            Quota::per_second(self.requests)
         }
     }
 }
