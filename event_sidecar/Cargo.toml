@@ -25,7 +25,7 @@ anyhow = { workspace = true }
 async-trait = "0.1.56"
 bytes = "1.2.0"
 casper-event-listener = { path = "../listener", version = "1.0.0" }
-casper-event-types.workspace = true
+casper-event-types = { workspace = true }
 casper-types = { workspace = true }
 derive-new = { workspace = true }
 eventsource-stream = "0.2.3"

@@ -1,14 +1,21 @@
-use crate::types::config::AdminApiServerConfig;
-use crate::utils::{resolve_address, root_filter, Unexpected};
 use anyhow::Error;
 use hyper::Server;
 use metrics::metrics_summary;
-use std::{net::TcpListener, process::ExitCode, time::Duration};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
+    process::ExitCode,
+    time::Duration,
+};
 use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
 use tracing::info;
 use warp::{Filter, Rejection, Reply};
 
-const BIND_ALL_INTERFACES: &str = "0.0.0.0";
+use crate::{
+    types::config::AdminApiServerConfig,
+    utils::{root_filter, Unexpected},
+};
+
+const BIND_ALL_INTERFACES: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 struct AdminServer {
     port: u16,
     max_concurrent_requests: u32,
@@ -18,9 +25,8 @@ struct AdminServer {
 impl AdminServer {
     pub async fn start(&self) -> Result<(), Error> {
         let api = root_filter().or(metrics_filter());
-        let address = format!("{}:{}", BIND_ALL_INTERFACES, self.port);
-        let socket_address = resolve_address(&address)?;
-        let listener = TcpListener::bind(socket_address)?;
+        let address = SocketAddr::new(BIND_ALL_INTERFACES, self.port);
+        let listener = TcpListener::bind(address)?;
 
         let warp_service = warp::service(api);
         let tower_service = ServiceBuilder::new()
@@ -77,7 +83,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn given_config_should_start_admin_server() {
         let port = pick_unused_port().unwrap();
-        let request_url = format!("http://localhost:{}/metrics", port);
+        let request_url = format!("http://localhost:{port}/metrics");
         let admin_config = AdminApiServerConfig {
             enable_server: true,
             port,
