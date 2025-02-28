@@ -1919,7 +1919,10 @@
             "$ref": "#/components/schemas/NamedKeys"
           },
           "entry_points": {
-            "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntryPoint"
+            }
           },
           "protocol_version": {
             "$ref": "#/components/schemas/ProtocolVersion"
@@ -1929,31 +1932,6 @@
       "ContractWasmHash": {
         "description": "The hash address of the contract wasm",
         "type": "string"
-      },
-      "Array_of_NamedEntryPoint": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/NamedEntryPoint"
-        }
-      },
-      "NamedEntryPoint": {
-        "type": "object",
-        "required": [
-          "entry_point",
-          "name"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "entry_point": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/EntryPoint"
-              }
-            ]
-          }
-        }
       },
       "EntryPoint": {
         "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
@@ -3607,14 +3585,14 @@
             ],
             "properties": {
               "V1CasperVm": {
-                "$ref": "#/components/schemas/EntryPoint2"
+                "$ref": "#/components/schemas/EntityEntryPoint"
               }
             },
             "additionalProperties": false
           }
         ]
       },
-      "EntryPoint2": {
+      "EntityEntryPoint": {
         "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
         "type": "object",
         "required": [

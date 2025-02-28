@@ -40,9 +40,9 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntryPoint, EntryPointValue,
-    EraId, GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey, SecretKey,
-    StoredValue, URef, U512,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
+    EntryPointValue, EraId, GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey,
+    SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -108,7 +108,7 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
                 .collect::<BTreeMap<_, _>>()
                 .into(),
             entry_points: vec![EntryPointValue::new_v1_entry_point_value(
-                EntryPoint::default_with_name("entry_point"),
+                EntityEntryPoint::default_with_name("entry_point"),
             )],
             bytecode: None,
         },
@@ -1961,7 +1961,7 @@ mod tests {
                 .into();
         let entry_point_count = rng.gen_range(0..10);
         let entry_points = iter::repeat_with(|| {
-            EntryPointValue::new_v1_entry_point_value(EntryPoint::default_with_name(
+            EntryPointValue::new_v1_entry_point_value(EntityEntryPoint::default_with_name(
                 rng.random_string(1..10),
             ))
         })

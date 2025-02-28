@@ -47,7 +47,7 @@ pub fn random_execution_result(rng: &mut TestRng) -> ExecutionResult {
         }
         1 => {
             let result_v2 = ExecutionResultV2::random(rng);
-            ExecutionResult::V2(result_v2)
+            ExecutionResult::V2(Box::new(result_v2))
         }
         _ => panic!("Unexpected value"),
     }
