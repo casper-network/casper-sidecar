@@ -1,10 +1,8 @@
+#[cfg(any(feature = "testing", test))]
+use std::convert::TryInto;
+use std::{convert::TryFrom, net::IpAddr, num::ParseIntError, string::ToString};
+
 use serde::Deserialize;
-use std::{
-    convert::{TryFrom, TryInto},
-    net::IpAddr,
-    num::ParseIntError,
-    string::ToString,
-};
 
 use crate::database::{
     database_errors::DatabaseConfigError,
@@ -194,21 +192,23 @@ impl Default for StorageConfigSerdeTarget {
         }
     }
 }
+
+#[cfg(any(feature = "testing", test))]
 impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
     type Error = DatabaseConfigError;
 
     fn try_from(value: StorageConfigSerdeTarget) -> Result<Self, Self::Error> {
-        let mut storage_cofnig = Self {
+        let mut storage_config = Self {
             storage_folder: value.storage_folder,
             ..Default::default()
         };
         if let Some(config) = value.sqlite_config {
-            storage_cofnig.sqlite_config = Some(config);
+            storage_config.sqlite_config = Some(config);
         } else if let Some(config) = value.postgresql_config {
             let postgresql_config: PostgresqlConfig = config.try_into()?;
-            storage_cofnig.postgresql_config = Some(postgresql_config);
+            storage_config.postgresql_config = Some(postgresql_config);
         };
-        Ok(storage_cofnig)
+        Ok(storage_config)
     }
 }
 
