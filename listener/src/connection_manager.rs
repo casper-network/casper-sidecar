@@ -404,7 +404,7 @@ pub mod tests {
             example_block_added_2_0_0(BLOCK_HASH_1, 1u64),
             example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
-        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let connector = Box::new(MockSseConnection::build_with_data(&data));
         let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
@@ -423,7 +423,7 @@ pub mod tests {
             example_block_added_2_0_0(BLOCK_HASH_1, 1u64),
             example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
-        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let connector = Box::new(MockSseConnection::build_with_data(&data));
         let (mut connection_manager, data_tx, event_ids) =
             build_manager(connector, "test".to_string());
         let events_join = tokio::spawn(async move { poll_events(data_tx).await });
@@ -442,7 +442,7 @@ pub mod tests {
             "XYZ".to_string(),
             example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
         ];
-        let connector = Box::new(MockSseConnection::build_with_data(data));
+        let connector = Box::new(MockSseConnection::build_with_data(&data));
         let (mut connection_manager, data_tx, _event_ids) =
             build_manager(connector, "test".to_string());
         let events_join = tokio::spawn(async move { poll_events(data_tx).await });
@@ -526,7 +526,7 @@ pub mod tests {
                 Duration::from_secs(10),
                 Ok(()),
                 sender,
-                msg.map(|s| s.to_string()),
+                msg.map(ToString::to_string),
             )
         }
     }

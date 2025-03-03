@@ -1625,7 +1625,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     &Default::default(),
-                    &vec![BidKind::Unified(legacy_bid.into())]
+                    &[BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
@@ -1801,7 +1801,7 @@ mod tests {
                     *block.state_root_hash(),
                     block.height(),
                     &Default::default(),
-                    &vec![BidKind::Unified(legacy_bid.into())]
+                    &[BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );

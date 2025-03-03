@@ -192,11 +192,11 @@ pub mod tests {
     }
 
     impl MockSseConnection {
-        pub fn build_with_data(input_data: Vec<String>) -> Self {
+        pub fn build_with_data(input_data: &[String]) -> Self {
             let mut data = Vec::new();
             for (i, raw) in input_data.iter().enumerate() {
                 let event = Event {
-                    event: "".to_string(),
+                    event: String::new(),
                     data: raw.clone(),
                     id: i.to_string(),
                     retry: None,
@@ -312,16 +312,14 @@ pub mod tests {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            bind_address: Url::parse(
-                format!("http://localhost:{}/notifications", sse_port).as_str(),
-            )
-            .unwrap(),
+            bind_address: Url::parse(&format!("http://localhost:{sse_port}/notifications"))
+                .unwrap(),
             sleep_between_keepalive_checks: Duration::from_secs(20),
             no_message_timeout: Duration::from_secs(20),
         };
 
         let data = fetch_data(&mut connection).await;
-        assert_eq!(data, vec!["msg 1", "msg 2", "msg 3"])
+        assert_eq!(data, vec!["msg 1", "msg 2", "msg 3"]);
     }
 
     #[tokio::test]
@@ -331,10 +329,8 @@ pub mod tests {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            bind_address: Url::parse(
-                format!("http://localhost:{}/notifications", sse_port).as_str(),
-            )
-            .unwrap(),
+            bind_address: Url::parse(&format!("http://localhost:{sse_port}/notifications"))
+                .unwrap(),
             sleep_between_keepalive_checks: Duration::from_secs(20),
             no_message_timeout: Duration::from_secs(20),
         };
@@ -350,10 +346,8 @@ pub mod tests {
             max_attempts: 5,
             delay_between_attempts: Duration::from_secs(2),
             connection_timeout: Duration::from_secs(10),
-            bind_address: Url::parse(
-                format!("http://localhost:{}/notifications", sse_port).as_str(),
-            )
-            .unwrap(),
+            bind_address: Url::parse(&format!("http://localhost:{sse_port}/notifications"))
+                .unwrap(),
             sleep_between_keepalive_checks: Duration::from_secs(1),
             no_message_timeout: Duration::from_secs(5),
         };
@@ -381,7 +375,7 @@ pub mod tests {
         };
 
         let data = fetch_data(&mut connection).await;
-        assert_eq!(data, vec!["data 1", "data 2"])
+        assert_eq!(data, vec!["data 1", "data 2"]);
     }
 
     async fn fetch_data_with_timeout(

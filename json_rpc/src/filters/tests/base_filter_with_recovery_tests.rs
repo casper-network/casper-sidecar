@@ -66,7 +66,7 @@ async fn should_reject_invalid_path() {
     test_with_invalid_path("/not_the_right_path").await;
 
     // A path which extends the server's
-    test_with_invalid_path(&format!("/{0}/{0}", PATH)).await;
+    test_with_invalid_path(&format!("/{PATH}/{PATH}")).await;
 }
 
 #[tokio::test]

@@ -206,12 +206,12 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
-                id: Value::Null,
-                error,
-            }) => error,
-            _ => panic!("should be error"),
+        let Err(ErrorOrRejection::Error {
+            id: Value::Null,
+            error,
+        }) = Request::new(request, false)
+        else {
+            panic!("should be error");
         };
         assert_eq!(
             error,
@@ -233,12 +233,12 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
-                id: Value::Null,
-                error,
-            }) => error,
-            _ => panic!("should be error"),
+        let Err(ErrorOrRejection::Error {
+            id: Value::Null,
+            error,
+        }) = Request::new(request, false)
+        else {
+            panic!("should be error");
         };
         assert_eq!(
             error,

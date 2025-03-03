@@ -93,7 +93,7 @@ async fn given_sidecar_when_only_node_shuts_down_then_shut_down() {
     assert_eq!(
         shutdown_err.to_string(),
         "Connected node(s) are unavailable"
-    )
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -842,7 +842,7 @@ pub fn fetch_data_from_endpoint_with_panic_flag(
     let local_endpoint = endpoint.to_owned();
     let (sender, receiver) = mpsc::channel(100);
     let join = tokio::spawn(async move {
-        let main_event_stream_url = format!("http://127.0.0.1:{}{}", port, local_endpoint);
+        let main_event_stream_url = format!("http://127.0.0.1:{port}{local_endpoint}");
         let maybe_main_event_stream = try_connect_to_single_stream(&main_event_stream_url).await;
         if let Some(main_event_stream) = maybe_main_event_stream {
             poll_events(main_event_stream, sender).await

@@ -77,7 +77,7 @@ mod tests {
         let block_body = block_v2.body();
         assert_eq!(block_body.all_transactions().collect::<Vec<_>>().len(), 6);
         let translated = under_test.translate(block_body);
-        assert_eq!(translated, vec![standard_deploy_hash,])
+        assert_eq!(translated, vec![standard_deploy_hash,]);
     }
 
     #[test]
@@ -106,6 +106,6 @@ mod tests {
         let block_body = block_v2.body();
         assert_eq!(block_body.all_transactions().collect::<Vec<_>>().len(), 6);
         let translated = under_test.translate(block_body);
-        assert_eq!(translated, vec![mint_deploy_hash,])
+        assert_eq!(translated, vec![mint_deploy_hash,]);
     }
 }

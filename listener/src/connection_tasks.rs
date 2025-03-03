@@ -121,7 +121,7 @@ mod tests {
         for result in results {
             let outcome = result.unwrap();
             assert!(outcome.elapsed >= Duration::from_millis(MAX_DELAY_MS));
-            assert!(outcome.success)
+            assert!(outcome.success);
         }
     }
 
@@ -149,7 +149,7 @@ mod tests {
             } else {
                 assert!(outcome.elapsed >= Duration::from_millis(MAX_DELAY_MS));
             }
-            assert!(!outcome.success)
+            assert!(!outcome.success);
         }
     }
 }

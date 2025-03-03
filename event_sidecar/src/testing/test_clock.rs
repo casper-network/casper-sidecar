@@ -52,7 +52,7 @@ impl TestClock {
 
     /// `FakeClock` compatible interface.
     pub fn advance_time(&mut self, ms: u64) {
-        self.advance(Duration::from_millis(ms))
+        self.advance(Duration::from_millis(ms));
     }
 }
 

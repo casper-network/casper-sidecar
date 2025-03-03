@@ -1001,7 +1001,7 @@ mod tests {
                 let mut received_event_str = received_event.to_string().trim().to_string();
 
                 if let Some(id) = deduplicated_event.id {
-                    assert!(received_event_str.ends_with(format!("\nid:{}", id).as_str()));
+                    assert!(received_event_str.ends_with(&format!("\nid:{id}")));
                 } else {
                     assert!(!ENDS_WITH_ID_REGEX.is_match(received_event_str.as_str()));
                 };
@@ -1030,27 +1030,27 @@ mod tests {
 
     #[tokio::test]
     async fn should_filter_duplicate_main_events() {
-        should_filter_duplicate_events(SSE_API_MAIN_PATH, true).await
+        should_filter_duplicate_events(SSE_API_MAIN_PATH, true).await;
     }
     /// This test checks that deploy-accepted events from the initial stream which are duplicated in
     /// the ongoing stream are filtered out.
     #[tokio::test]
     async fn should_filter_duplicate_deploys_events() {
-        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH, true).await
+        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH, true).await;
     }
 
     /// This test checks that signature events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
     async fn should_filter_duplicate_signature_events() {
-        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH, true).await
+        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH, true).await;
     }
 
     /// This test checks that main events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
     async fn should_filter_duplicate_firehose_events() {
-        should_filter_duplicate_events(SSE_API_ROOT_PATH, false).await
+        should_filter_duplicate_events(SSE_API_ROOT_PATH, false).await;
     }
 
     // Returns `count` random SSE events.  The events will have sequential IDs starting from `start_id`, and if the path filter

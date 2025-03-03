@@ -251,7 +251,7 @@ impl TestFixture {
     /// The server runs until `TestFixture::stop_server()` is called, or the `TestFixture` is
     /// dropped.
     #[allow(clippy::too_many_lines)]
-    async fn run_server(&mut self, server_behavior: ServerBehavior) -> SocketAddr {
+    fn run_server(&mut self, server_behavior: ServerBehavior) -> SocketAddr {
         if self.server_join_handle.is_some() {
             panic!("one `TestFixture` can only run one server at a time");
         }
@@ -321,9 +321,8 @@ impl TestFixture {
     /// Should be called in every test where a server has been started, since this will ensure
     /// failed tests won't hang indefinitely.
     async fn stop_server(&mut self) {
-        let join_handle = match self.server_join_handle.take() {
-            Some(join_handle) => join_handle,
-            None => return,
+        let Some(join_handle) = self.server_join_handle.take() else {
+            return;
         };
         self.server_stopper.stop();
         time::timeout(MAX_TEST_TIME, join_handle)
@@ -342,9 +341,9 @@ impl TestFixture {
         // buffer wrapped and `from` represents an event from after the wrap.
         let threshold = Id::MAX - EVENT_COUNT;
         let from = if self.first_event_id >= threshold && from < threshold {
-            from as u128 + Id::MAX as u128 + 1
+            u128::from(from) + u128::from(Id::MAX) + 1
         } else {
-            from as u128
+            u128::from(from)
         };
 
         let api_version_event = ReceivedEvent {
@@ -510,9 +509,9 @@ async fn subscribe_no_sync(
     final_event_id: Id,
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
-    debug!("{} about to connect via {}", client_id, url);
+    debug!("{client_id} about to connect via {url}");
     let response = reqwest::get(url).await?;
-    debug!("{} has connected", client_id);
+    debug!("{client_id} has connected");
     handle_response(response, final_event_id, client_id).await
 }
 
@@ -523,7 +522,7 @@ async fn handle_response(
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     if response.status() == StatusCode::SERVICE_UNAVAILABLE {
-        debug!("{} rejected by server: too many clients", client_id);
+        debug!("{client_id} rejected by server: too many clients");
         assert_eq!(
             response.text().await.unwrap(),
             "server has reached limit of subscribers"
@@ -532,7 +531,7 @@ async fn handle_response(
     }
 
     let stream = response.bytes_stream();
-    let final_id_line = format!("id:{}", final_event_id);
+    let final_id_line = format!("id:{final_event_id}");
     let keepalive = ":";
 
     let response_text = fetch_text(
@@ -544,7 +543,7 @@ async fn handle_response(
     )
     .await?;
 
-    Ok(parse_response(response_text, client_id))
+    Ok(parse_response(&response_text, client_id))
 }
 
 async fn fetch_text(
@@ -603,7 +602,7 @@ async fn fetch_text(
 ///   * empty line
 ///     then finally, repeated keepalive lines until the server is shut down.
 #[allow(clippy::too_many_lines)]
-fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> {
+fn parse_response(response_text: &str, client_id: &str) -> Vec<ReceivedEvent> {
     let mut received_events = Vec::new();
     let mut line_itr = response_text.lines();
     let mut first_line = true;
@@ -613,7 +612,7 @@ fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> 
             None => {
                 if first_line {
                     // In legacy endpoints the first line is a comment containing deprecation notice. When we remove the legacy endpoints we can remove this check.
-                    if data_line.trim() == format!(":{}", LEGACY_ENDPOINT_NOTICE) {
+                    if data_line.trim() == format!(":{LEGACY_ENDPOINT_NOTICE}") {
                         continue;
                     }
                     first_line = false;
@@ -668,7 +667,7 @@ async fn should_serve_events_with_no_query(path: &str, is_legacy_endpoint: bool)
 
     let mut server_behavior = ServerBehavior::new();
     let barrier = server_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url = url(server_address, path, None);
     let (expected_events, final_id) = fixture.all_filtered_events(path);
@@ -678,8 +677,8 @@ async fn should_serve_events_with_no_query(path: &str, is_legacy_endpoint: bool)
     fixture.stop_server().await;
     compare_received_events_for_legacy_endpoints(
         is_legacy_endpoint,
-        expected_events,
-        received_events,
+        &expected_events,
+        &received_events,
     );
 }
 
@@ -710,8 +709,8 @@ fn adjust_final_id(
 /// So to compare we need to apply the translation logic to input 2.x events.
 fn compare_received_events_for_legacy_endpoints(
     is_legacy_endpoint: bool,
-    expected_events: Vec<ReceivedEvent>,
-    received_events: Vec<ReceivedEvent>,
+    expected_events: &[ReceivedEvent],
+    received_events: &[ReceivedEvent],
 ) {
     if is_legacy_endpoint {
         let expected_legacy_events: Vec<LegacySseData> = expected_events
@@ -766,7 +765,7 @@ async fn should_serve_events_with_query(path: &str, is_legacy_endpoint: bool) {
 
     let mut server_behavior = ServerBehavior::new();
     let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url = url(server_address, path, Some(start_from_event_id));
     let (expected_events, final_id) = fixture.filtered_events(path, start_from_event_id);
@@ -777,8 +776,8 @@ async fn should_serve_events_with_query(path: &str, is_legacy_endpoint: bool) {
 
     compare_received_events_for_legacy_endpoints(
         is_legacy_endpoint,
-        expected_events,
-        received_events,
+        &expected_events,
+        &received_events,
     );
 }
 
@@ -817,7 +816,7 @@ async fn should_serve_remaining_events_with_query(path: &str, is_legacy_endpoint
 
     let mut server_behavior = ServerBehavior::new();
     let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url = url(server_address, path, Some(start_from_event_id));
     let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
@@ -829,8 +828,8 @@ async fn should_serve_remaining_events_with_query(path: &str, is_legacy_endpoint
 
     compare_received_events_for_legacy_endpoints(
         is_legacy_endpoint,
-        expected_events,
-        received_events,
+        &expected_events,
+        &received_events,
     );
 }
 
@@ -866,7 +865,7 @@ async fn should_serve_events_with_query_for_future_event(path: &str, is_legacy_e
 
     let mut server_behavior = ServerBehavior::new();
     let barrier = server_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url = url(server_address, path, Some(25));
     let (expected_events, final_id) = fixture.all_filtered_events(path);
@@ -877,8 +876,8 @@ async fn should_serve_events_with_query_for_future_event(path: &str, is_legacy_e
 
     compare_received_events_for_legacy_endpoints(
         is_legacy_endpoint,
-        expected_events,
-        received_events,
+        &expected_events,
+        &received_events,
     );
 }
 
@@ -912,15 +911,16 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     // Start the server, waiting for three clients to connect.
     let mut server_behavior = ServerBehavior::new();
     let barrier1 = server_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url1 = url(server_address, ROOT_PATH, None);
 
     // Run the three clients, and stop the server after a short delay.
-    let (received_events1, _) = join!(subscribe(&url1, barrier1, EVENT_COUNT, "client 1"), async {
-        time::sleep(DELAY_BETWEEN_EVENTS * EVENT_COUNT / 2).await;
-        fixture.stop_server().await
-    });
+    let (received_events1, ()) =
+        join!(subscribe(&url1, barrier1, EVENT_COUNT, "client 1"), async {
+            time::sleep(DELAY_BETWEEN_EVENTS * EVENT_COUNT / 2).await;
+            fixture.stop_server().await;
+        });
 
     // Ensure all clients' streams terminated without error.
     let received_events1 = received_events1.unwrap();
@@ -945,7 +945,7 @@ async fn lagging_clients_should_be_disconnected() {
     // been disconnected for lagging.
     let mut server_behavior = ServerBehavior::new_for_lagging_test();
     let barrier_events = server_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url_events = url(server_address, ROOT_PATH, None);
 
@@ -974,17 +974,17 @@ async fn should_handle_bad_url_path() {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
 
-    let server_address = fixture.run_server(ServerBehavior::new()).await;
+    let server_address = fixture.run_server(ServerBehavior::new());
 
     #[rustfmt::skip]
     let urls = [
-        format!("http://{}", server_address),
-        format!("http://{}?{}=0", server_address, QUERY_FIELD),
-        format!("http://{}/bad", server_address),
-        format!("http://{}/bad?{}=0", server_address, QUERY_FIELD),
-        format!("http://{}/{}?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
-        format!("http://{}/{}/bad", server_address, ROOT_PATH),
-        format!("http://{}/{}/bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
+        format!("http://{server_address}"),
+        format!("http://{server_address}?{QUERY_FIELD}=0"),
+        format!("http://{server_address}/bad"),
+        format!("http://{server_address}/bad?{QUERY_FIELD}=0"),
+        format!("http://{server_address}/{QUERY_FIELD}?{ROOT_PATH}=0"),
+        format!("http://{server_address}/{ROOT_PATH}/bad", ),
+        format!("http://{server_address}/{QUERY_FIELD}/bad?{ROOT_PATH}=0"),
     ];
 
     let expected_body = "invalid path: expected '/events/main', '/events/deploys' or '/events/sigs or '/events/sidecar'";
@@ -1005,12 +1005,12 @@ async fn should_handle_bad_url_path() {
 async fn start_query_url_test() -> (TestFixture, SocketAddr) {
     let mut rng = TestRng::new();
     let mut fixture = TestFixture::new(&mut rng);
-    let server_address = fixture.run_server(ServerBehavior::new()).await;
+    let server_address = fixture.run_server(ServerBehavior::new());
     (fixture, server_address)
 }
 
 fn build_urls(server_address: SocketAddr) -> String {
-    format!("http://{}/{}", server_address, ROOT_PATH)
+    format!("http://{server_address}/{ROOT_PATH}")
 }
 /// Checks that clients using the correct <IP:Port/path> but wrong query get a helpful error
 /// response.
@@ -1019,16 +1019,13 @@ async fn should_handle_bad_url_query() {
     let (mut fixture, server_address) = start_query_url_test().await;
     let events_url = build_urls(server_address);
     let urls = [
-        format!("{}?not-a-kv-pair", events_url),
-        format!("{}?start_fro=0", events_url),
-        format!("{}?{}=not-integer", events_url, QUERY_FIELD),
-        format!("{}?{}='0'", events_url, QUERY_FIELD),
-        format!("{}?{}=0&extra=1", events_url, QUERY_FIELD),
+        format!("{events_url}?not-a-kv-pair"),
+        format!("{events_url}?start_fro=0"),
+        format!("{events_url}?{QUERY_FIELD}=not-integer"),
+        format!("{events_url}?{QUERY_FIELD}='0'"),
+        format!("{events_url}?{QUERY_FIELD}=0&extra=1"),
     ];
-    let expected_body = format!(
-        "invalid query: expected single field '{}=<EVENT ID>'",
-        QUERY_FIELD
-    );
+    let expected_body = format!("invalid query: expected single field '{QUERY_FIELD}=<EVENT ID>'");
     for url in &urls {
         let response = reqwest::get(url).await.unwrap();
         assert_eq!(
@@ -1061,8 +1058,8 @@ async fn subscribe_for_comment(
         .await
         .unwrap();
     let stream = response.bytes_stream();
-    let final_id_line = format!("id:{}", final_event_id); // This theoretically is not optimal since we don't need to read all the events from the test,
-                                                          // but it's not easy to determine what id is the first one in the stream for legacy tests.
+    let final_id_line = format!("id:{final_event_id}"); // This theoretically is not optimal since we don't need to read all the events from the test,
+                                                        // but it's not easy to determine what id is the first one in the stream for legacy tests.
     let keepalive = ":";
     fetch_text(
         Box::pin(stream),
@@ -1080,7 +1077,7 @@ async fn should_get_comment(path: &str) {
     let mut fixture = TestFixture::new(&mut rng);
     let mut server_behavior = ServerBehavior::new();
     let barrier = server_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     // Consume these and stop the server.
     let url = url(server_address, path, None);
@@ -1088,7 +1085,7 @@ async fn should_get_comment(path: &str) {
     let (_expected_events, final_id) = adjust_final_id(true, expected_events, final_id);
     let text = subscribe_for_comment(&url, barrier, final_id, "client 1").await;
     fixture.stop_server().await;
-    let expected_start = format!(":{}", LEGACY_ENDPOINT_NOTICE);
+    let expected_start = format!(":{LEGACY_ENDPOINT_NOTICE}");
     assert!(text.as_str().starts_with(expected_start.as_str()));
 }
 
@@ -1102,7 +1099,7 @@ async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
         // Run the first server to emit the 100 events.
         let mut server_behavior = ServerBehavior::new();
         let barrier = server_behavior.add_client_sync_before_event(0);
-        let server_address = fixture.run_server(server_behavior).await;
+        let server_address = fixture.run_server(server_behavior);
 
         // Consume these and stop the server.
         let url = url(server_address, path, None);
@@ -1122,7 +1119,7 @@ async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
         // event being the `Shutdown`).
         let mut server_behavior = ServerBehavior::new();
         let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT + 1);
-        let server_address = fixture.run_server(server_behavior).await;
+        let server_address = fixture.run_server(server_behavior);
 
         // Check the test fixture has set the server's first event ID to at least
         // `first_run_final_id`.
@@ -1143,8 +1140,8 @@ async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
             .all(|event| event.id.unwrap() >= first_run_final_id));
         compare_received_events_for_legacy_endpoints(
             is_legacy_endpoint,
-            expected_events,
-            received_events,
+            &expected_events,
+            &received_events,
         );
     }
 }
@@ -1199,7 +1196,7 @@ async fn should_handle_wrapping_past_max_event_id(path: &str) {
     let barrier1 = server_behavior.add_client_sync_before_event(start_index);
     let barrier2 = server_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
     let barrier3 = server_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
     assert_eq!(fixture.first_event_id, start_index);
 
     // The first client doesn't need a query string, but the second will request to start from an ID
@@ -1241,7 +1238,7 @@ async fn should_limit_concurrent_subscribers() {
     server_behavior.set_max_concurrent_subscribers(1);
     let barrier1 = server_behavior.add_client_sync_before_event(0);
     let barrier5 = server_behavior.add_client_sync_before_event(1);
-    let server_address = fixture.run_server(server_behavior).await;
+    let server_address = fixture.run_server(server_behavior);
 
     let url_root = url(server_address, ROOT_PATH, None);
 

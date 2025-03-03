@@ -63,7 +63,7 @@ async fn block_root_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}", BLOCK);
+    let request_path = format!("/{BLOCK}");
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -85,7 +85,7 @@ async fn block_by_hash_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", BLOCK, identifiers.block_added_hash);
+    let request_path = format!("/{BLOCK}/{}", identifiers.block_added_hash);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -114,7 +114,7 @@ async fn block_by_height_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", BLOCK, identifiers.block_added_height);
+    let request_path = format!("/{BLOCK}/{}", identifiers.block_added_height);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -144,7 +144,7 @@ async fn transaction_by_hash_should_return_valid_data() {
     let api = filters::combined_filters(database);
 
     let (transaction_hash, transaction_type) = identifiers.transaction_accepted_info;
-    let request_path = format!("/{}/{}/{}", TRANSACTION, transaction_type, transaction_hash);
+    let request_path = format!("/{TRANSACTION}/{transaction_type}/{transaction_hash}");
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -169,10 +169,7 @@ async fn transaction_accepted_by_hash_should_return_valid_data() {
     let api = filters::combined_filters(database);
 
     let (transaction_hash, transaction_type) = identifiers.transaction_accepted_info;
-    let request_path = format!(
-        "/{}/{}/{}/{}",
-        TRANSACTION, ACCEPTED, transaction_type, transaction_hash
-    );
+    let request_path = format!("/{TRANSACTION}/{ACCEPTED}/{transaction_type}/{transaction_hash}");
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -201,10 +198,7 @@ async fn transaction_processed_by_hash_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
     let (transaction_hash, transaction_type) = identifiers.transaction_processed_info;
-    let request_path = format!(
-        "/{}/{}/{}/{}",
-        TRANSACTION, PROCESSED, transaction_type, transaction_hash
-    );
+    let request_path = format!("/{TRANSACTION}/{PROCESSED}/{transaction_type}/{transaction_hash}");
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -233,10 +227,7 @@ async fn transaction_expired_by_hash_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
     let (transaction_hash, transaction_type) = identifiers.transaction_expired_info;
-    let request_path = format!(
-        "/{}/{}/{}/{}",
-        TRANSACTION, EXPIRED, transaction_type, transaction_hash
-    );
+    let request_path = format!("/{TRANSACTION}/{EXPIRED}/{transaction_type}/{transaction_hash}");
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -265,7 +256,7 @@ async fn step_by_era_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", STEP, identifiers.step_era_id);
+    let request_path = format!("/{STEP}/{}", identifiers.step_era_id);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -291,7 +282,7 @@ async fn faults_by_public_key_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", FAULTS, identifiers.fault_public_key);
+    let request_path = format!("/{FAULTS}/{}", identifiers.fault_public_key);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -321,7 +312,7 @@ async fn faults_by_era_should_return_valid_data() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}/{}", FAULTS, identifiers.fault_era_id);
+    let request_path = format!("/{FAULTS}/{}", identifiers.fault_era_id);
 
     let response = request().path(&request_path).reply(&api).await;
 
@@ -371,120 +362,120 @@ async fn finality_signatures_by_block_should_return_valid_data() {
 
 #[tokio::test]
 async fn block_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", BLOCK, VALID_HASH);
+    let request_path = format!("/{BLOCK}/{VALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn block_by_height_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", BLOCK, 0);
+    let request_path = format!("/{BLOCK}/0");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn transaction_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/deploy/{}", TRANSACTION, VALID_HASH);
+    let request_path = format!("/{TRANSACTION}/deploy/{VALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn transaction_accepted_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/version1/{}", TRANSACTION, ACCEPTED, VALID_HASH);
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    let request_path = format!("/{TRANSACTION}/{ACCEPTED}/version1/{VALID_HASH}");
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn transaction_processed_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/deploy/{}", TRANSACTION, PROCESSED, VALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{PROCESSED}/deploy/{VALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn transaction_expired_by_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}/deploy/{}", TRANSACTION, EXPIRED, VALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{EXPIRED}/deploy/{VALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn faults_by_public_key_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", FAULTS, VALID_PUBLIC_KEY);
+    let request_path = format!("/{FAULTS}/{VALID_PUBLIC_KEY}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn faults_by_era_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", FAULTS, VALID_ERA);
+    let request_path = format!("/{FAULTS}/{VALID_ERA}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn finality_signature_by_block_hash_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", SIGNATURES, VALID_HASH);
+    let request_path = format!("/{SIGNATURES}/{VALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn step_by_era_of_not_stored_should_return_404() {
-    let request_path = format!("/{}/{}", STEP, VALID_ERA);
+    let request_path = format!("/{STEP}/{VALID_ERA}");
 
-    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await
+    should_respond_to_path_with(request_path, StatusCode::NOT_FOUND).await;
 }
 
 #[tokio::test]
 async fn block_by_invalid_hash_should_return_400() {
-    let request_path = format!("/{}/{}", BLOCK, INVALID_HASH);
+    let request_path = format!("/{BLOCK}/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn transaction_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}", TRANSACTION, INVALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn transaction_accepted_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/deploy/{}", TRANSACTION, ACCEPTED, INVALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{ACCEPTED}/deploy/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn transaction_processed_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/deploy/{}", TRANSACTION, PROCESSED, INVALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{PROCESSED}/deploy/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn transaction_expired_by_hash_of_invalid_should_return_400() {
-    let request_path = format!("/{}/{}/deploy/{}", TRANSACTION, EXPIRED, INVALID_HASH);
+    let request_path = format!("/{TRANSACTION}/{EXPIRED}/deploy/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn faults_by_invalid_public_key_should_return_400() {
-    let request_path = format!("/{}/{}", FAULTS, INVALID_PUBLIC_KEY);
+    let request_path = format!("/{FAULTS}/{INVALID_PUBLIC_KEY}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
 async fn finality_signature_by_invalid_block_hash_should_return_400() {
-    let request_path = format!("/{}/{}", SIGNATURES, INVALID_HASH);
+    let request_path = format!("/{SIGNATURES}/{INVALID_HASH}");
 
-    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await
+    should_respond_to_path_with(request_path, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
@@ -493,7 +484,7 @@ async fn should_have_correct_content_type() {
 
     let api = filters::combined_filters(database);
 
-    let request_path = format!("/{}", BLOCK);
+    let request_path = format!("/{BLOCK}");
 
     let response = request().path(&request_path).reply(&api).await;
 

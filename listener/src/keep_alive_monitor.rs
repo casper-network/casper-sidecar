@@ -128,8 +128,8 @@ mod tests {
         monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {},
-            _ = sleep(Duration::from_secs(10)) => {
+            () = cancellation_token.cancelled() => {},
+            () = sleep(Duration::from_secs(10)) => {
                 unreachable!()
             },
         }
@@ -145,10 +145,10 @@ mod tests {
         monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
                 unreachable!()
             },
-            _ = sleep(Duration::from_secs(15)) => {
+            () = sleep(Duration::from_secs(15)) => {
             },
         }
     }
@@ -163,9 +163,9 @@ mod tests {
         monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
             },
-            _ = sleep(Duration::from_secs(15)) => {
+            () = sleep(Duration::from_secs(15)) => {
                 unreachable!()
             },
         }

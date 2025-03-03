@@ -115,7 +115,7 @@ pub(crate) mod tests {
         let sse_server = SimpleSseServer {
             routes: paths_and_data,
         };
-        let (shutdown_tx, after_shutdown_rx) = sse_server.serve(port).await;
+        let (shutdown_tx, after_shutdown_rx) = sse_server.serve(port);
         let urls: Vec<String> = vec![
             format!("http://127.0.0.1:{}/events/main", port),
             format!("http://127.0.0.1:{}/events", port),

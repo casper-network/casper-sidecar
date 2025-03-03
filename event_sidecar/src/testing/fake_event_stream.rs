@@ -643,7 +643,7 @@ pub async fn wait_for_build_version_server_to_be_up(port: u16) {
                 max_attempts
             );
         }
-        let res = reqwest::get(format!("http://127.0.0.1:{}/status", port)).await;
+        let res = reqwest::get(format!("http://127.0.0.1:{port}/status")).await;
         match res {
             Err(_) => {}
             Ok(response) => {

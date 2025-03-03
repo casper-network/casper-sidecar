@@ -252,6 +252,9 @@ mod tests {
 
     use super::*;
     use crate::config::SidecarConfig;
+    use casper_event_sidecar::{
+        AdminApiServerConfig, RestApiServerConfig, SseEventServerConfig, StorageConfig,
+    };
     use casper_rpc_sidecar::{
         testing::{get_port, start_mock_binary_port_responding_with_stored_value},
         NodeClientConfig, RpcServerConfig, SpeculativeExecConfig,
@@ -421,10 +424,10 @@ mod tests {
         };
         rpc_server.speculative_exec_server = Some(speculative_config);
         SidecarConfig {
-            storage: Some(Default::default()),
-            admin_api_server: Some(Default::default()),
-            rest_api_server: Some(Default::default()),
-            sse_server: Some(Default::default()),
+            storage: Some(StorageConfig::default()),
+            admin_api_server: Some(AdminApiServerConfig::default()),
+            rest_api_server: Some(RestApiServerConfig::default()),
+            sse_server: Some(SseEventServerConfig::default()),
             rpc_server: Some(rpc_server),
             ..Default::default()
         }

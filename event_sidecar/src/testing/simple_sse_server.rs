@@ -2,13 +2,12 @@
 pub(crate) mod tests {
     use async_stream::stream;
     use futures::Stream;
-    use std::collections::HashMap;
-    use std::convert::Infallible;
-    use std::iter::FromIterator;
-    use std::sync::Arc;
-    use tokio::sync::broadcast::{self};
-    use tokio::sync::mpsc::{channel, Receiver, Sender};
-    use tokio::sync::Mutex;
+    use std::{collections::HashMap, convert::Infallible, sync::Arc};
+    use tokio::sync::{
+        broadcast,
+        mpsc::{channel, Receiver, Sender},
+        Mutex,
+    };
     use warp::filters::BoxedFilter;
     use warp::{path, sse::Event, Filter, Rejection, Reply};
 
@@ -31,7 +30,7 @@ pub(crate) mod tests {
     type ShutdownCallbacks = Arc<Mutex<Vec<broadcast::Sender<Option<(Option<String>, String)>>>>>;
 
     impl SimpleSseServer {
-        pub async fn serve(&self, port: u16) -> (Sender<()>, Receiver<()>) {
+        pub fn serve(&self, port: u16) -> (Sender<()>, Receiver<()>) {
             let (shutdown_tx, mut shutdown_rx) = channel(10);
             let (after_shutdown_tx, after_shutdown_rx) = channel(10);
             let shutdown_broadcasts: Arc<Mutex<Vec<BroadcastSender>>> =
@@ -68,7 +67,10 @@ pub(crate) mod tests {
             &self,
             shutdown_broadcasts: ShutdownCallbacks,
         ) -> Vec<BoxedFilter<(Box<dyn Reply>,)>> {
-            let routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = Vec::from_iter(self.routes.iter())
+            let routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = self
+                .routes
+                .iter()
+                .collect::<Vec<_>>()
                 .into_iter()
                 .map(|(key, value)| {
                     let base_filter = key
@@ -92,7 +94,6 @@ pub(crate) mod tests {
                                 guard.push(sender.clone());
                                 drop(guard);
                                 do_handle(data, sender.clone(), query)
-                                    .await
                             },
                         )
                         .boxed()
@@ -121,7 +122,7 @@ pub(crate) mod tests {
         }
     }
 
-    async fn do_handle(
+    fn do_handle(
         mut cache_and_data: CacheAndData,
         sender: BroadcastSender,
         query: HashMap<String, String>,
@@ -148,9 +149,9 @@ pub(crate) mod tests {
             effective_data.append(filtered.as_mut());
         }
         effective_data.append(cache_and_data.data.as_mut());
-        effective_data.into_iter().for_each(|el| {
+        for el in effective_data.into_iter() {
             sender.send(Some(el)).unwrap();
-        });
+        }
         Ok(Box::new(reply) as Box<dyn Reply>)
     }
 

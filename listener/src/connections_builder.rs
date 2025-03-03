@@ -151,6 +151,7 @@ pub mod tests {
     }
 
     impl MockConnectionsBuilder {
+        #[must_use]
         pub fn one_fails_second_is_ok() -> Self {
             let (tx, rx) = channel(100);
             let results = vec![
@@ -159,12 +160,15 @@ pub mod tests {
             ];
             Self::builder_based_on_result(rx, results)
         }
+
+        #[must_use]
         pub fn one_ok() -> Self {
             let (tx, rx) = channel(100);
             let results = vec![response_with_all_connections_ok("1", &tx)];
             Self::builder_based_on_result(rx, results)
         }
 
+        #[must_use]
         pub fn ok_after_two_fails() -> Self {
             let (tx, rx) = channel(100);
             let results = vec![
@@ -175,12 +179,14 @@ pub mod tests {
             Self::builder_based_on_result(rx, results)
         }
 
+        #[must_use]
         pub fn connection_fails() -> Self {
             let (_, rx) = channel(100);
             let results = vec![Err(Error::msg("Connection failed"))];
             Self::builder_based_on_result(rx, results)
         }
 
+        #[must_use]
         pub fn one_fails_immediatly() -> Self {
             let (tx, rx) = channel(100);
             let results = vec![response_with_failing_events("1", &tx)];
@@ -189,7 +195,7 @@ pub mod tests {
 
         pub async fn get_received_data(&self) -> HashSet<String> {
             let data = self.data_pushed_from_connections.lock().await;
-            HashSet::from_iter(data.iter().cloned())
+            data.iter().cloned().collect::<HashSet<_>>()
         }
 
         pub async fn get_recorded_protocol_version(&self) -> Option<ProtocolVersion> {
@@ -225,7 +231,7 @@ pub mod tests {
         msg_postfix: &str,
         tx: &Sender<String>,
     ) -> Result<HashMap<Filter, Box<dyn ConnectionManager>>, Error> {
-        let events_msg = format!("events-{}", msg_postfix);
+        let events_msg = format!("events-{msg_postfix}");
         let events: Box<dyn ConnectionManager> = Box::new(MockConnectionManager::ok_long(
             tx.clone(),
             Some(events_msg.as_str()),
