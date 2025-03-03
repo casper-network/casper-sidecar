@@ -1,5 +1,4 @@
 #![deny(clippy::complexity)]
-#![deny(clippy::cognitive_complexity)]
 #![deny(clippy::too_many_lines)]
 
 extern crate core;
@@ -16,7 +15,7 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
-use std::{collections::HashMap, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::Path, process::ExitCode, sync::Arc, time::Duration};
 
 use crate::types::config::LegacySseApiTag;
 use crate::{
@@ -86,8 +85,7 @@ pub async fn run(
         config
             .emulate_legacy_sse_apis
             .as_ref()
-            .map(|v| v.contains(&LegacySseApiTag::V1))
-            .unwrap_or(false),
+            .is_some_and(|v| v.contains(&LegacySseApiTag::V1)),
     );
     info!(address = %config.event_stream_server.port, "started {} server", "SSE");
     tokio::try_join!(
@@ -114,7 +112,7 @@ fn start_event_broadcasting(
                 Some(buffer_length),
                 Some(max_concurrent_subscribers),
             ),
-            PathBuf::from(index_storage_folder),
+            Path::new(&index_storage_folder),
             enable_legacy_filters,
         )
         .context("Error starting EventStreamServer")?;
@@ -231,7 +229,7 @@ pub async fn run_rest_server(
         Database::SqliteDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
         Database::PostgreSqlDatabaseWrapper(db) => start_rest_server(rest_server_config, db).await,
     }
-    .map(|_| ExitCode::SUCCESS)
+    .map(|()| ExitCode::SUCCESS)
 }
 
 fn build_event_listeners(
@@ -495,7 +493,7 @@ async fn start_multi_threaded_events_consumer<
 
     while let Some(sse_event) = inbound_sse_data_receiver.recv().await {
         if let Some(tx) = senders_map.get(&sse_event.inbound_filter) {
-            tx.send(sse_event).await.unwrap()
+            tx.send(sse_event).await.unwrap();
         } else {
             error!(
                 "Failed to find an sse handler queue for inbound filter {}",

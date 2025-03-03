@@ -116,6 +116,7 @@ pub enum CorsOrigin {
 }
 
 /// Helper function for `DataSize` derive.
+#[must_use]
 pub fn nonzero_u32(value: &NonZeroU32) -> usize {
     value.get().estimate_heap_size()
 }

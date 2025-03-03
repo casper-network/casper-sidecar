@@ -118,11 +118,11 @@ pub mod tests {
         }
 
         pub fn set_sse_port(&mut self, port: u16) {
-            self.sse_port = port
+            self.sse_port = port;
         }
 
         pub fn set_rest_port(&mut self, port: u16) {
-            self.rest_port = port
+            self.rest_port = port;
         }
 
         fn new(

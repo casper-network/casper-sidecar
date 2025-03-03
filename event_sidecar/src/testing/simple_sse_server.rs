@@ -58,7 +58,7 @@ pub(crate) mod tests {
             tokio::spawn(async move {
                 let result = server_thread.await;
                 if result.is_err() {
-                    println!("simple_sse_server: {:?}", result);
+                    println!("simple_sse_server: {result:?}");
                 }
             });
             (shutdown_tx, after_shutdown_rx)

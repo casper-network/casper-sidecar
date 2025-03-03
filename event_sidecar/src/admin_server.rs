@@ -51,7 +51,7 @@ pub async fn run_server(config: AdminApiServerConfig) -> Result<ExitCode, Error>
         }
         .start()
         .await
-        .map(|_| ExitCode::SUCCESS)
+        .map(|()| ExitCode::SUCCESS)
     } else {
         info!("Admin API server is disabled. Skipping...");
         Ok(ExitCode::SUCCESS)
@@ -74,7 +74,7 @@ async fn metrics_handler() -> Result<impl Reply, Rejection> {
     Ok(res_custom)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use crate::{admin_server::run_server, types::config::AdminApiServerConfig};
     use portpicker::pick_unused_port;

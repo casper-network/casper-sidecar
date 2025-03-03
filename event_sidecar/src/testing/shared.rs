@@ -46,6 +46,6 @@ impl Display for EventType {
             EventType::Step => "Step",
             EventType::Shutdown => "Shutdown",
         };
-        write!(f, "{}", string)
+        write!(f, "{string}")
     }
 }

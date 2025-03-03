@@ -38,14 +38,14 @@ where
             if let Some(err_msg) = &result.error_message {
                 Some(ExecutionResultV1::Failure {
                     effect,
-                    transfers: vec![],
+                    transfers: Vec::new(),
                     cost: result.cost,
                     error_message: err_msg.to_string(),
                 })
             } else {
                 Some(ExecutionResultV1::Success {
                     effect,
-                    transfers: vec![],
+                    transfers: Vec::new(),
                     cost: result.cost,
                 })
             }
@@ -78,7 +78,7 @@ impl ExecutionEffectsTranslator for DefaultExecutionEffectsTranslator {
         }
         Some(ExecutionEffect {
             // Operations will be empty since we can't translate them (no V2 entity has a corresponding entity in V1).
-            operations: vec![],
+            operations: Vec::new(),
             transforms,
         })
     }
@@ -93,15 +93,15 @@ fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
         TransformKindV2::AddUInt128(v) => Some(TransformKindV1::AddUInt128(*v)),
         TransformKindV2::AddUInt256(v) => Some(TransformKindV1::AddUInt256(*v)),
         TransformKindV2::AddUInt512(v) => Some(TransformKindV1::AddUInt512(*v)),
-        TransformKindV2::AddKeys(keys) => handle_named_keys(keys),
+        TransformKindV2::AddKeys(keys) => Some(handle_named_keys(keys)),
         TransformKindV2::Prune(key) => Some(TransformKindV1::Prune(*key)),
         TransformKindV2::Failure(err) => Some(TransformKindV1::Failure(err.to_string())),
     };
     maybe_transform_kind
 }
 
-fn handle_named_keys(keys: &NamedKeys) -> Option<TransformKindV1> {
-    let mut named_keys = vec![];
+fn handle_named_keys(keys: &NamedKeys) -> TransformKindV1 {
+    let mut named_keys = Vec::new();
     for (name, key) in keys.iter() {
         let named_key = NamedKey {
             name: name.to_string(),
@@ -109,7 +109,7 @@ fn handle_named_keys(keys: &NamedKeys) -> Option<TransformKindV1> {
         };
         named_keys.push(named_key);
     }
-    Some(TransformKindV1::AddKeys(named_keys))
+    TransformKindV1::AddKeys(named_keys)
 }
 
 fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKindV1> {

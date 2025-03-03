@@ -36,48 +36,43 @@ http = "0.2.1"
 hyper = "0.14.4"
 itertools = { workspace = true }
 metrics = { workspace = true }
-pin-project = "1.1.5"
-rand = "0.8.3"
-regex = "1.6.0"
-reqwest = "0.12.5"
-schemars = "0.8.21"
-sea-query = "0.30"
+pin-project = "1.1"
+rand = { workspace = true }
+regex = "1.6"
+reqwest = "0.12"
+schemars = "0.8"
+sea-query = "0.32"
 serde = { workspace = true, default-features = true, features = [
     "derive",
     "rc",
 ] }
 serde_json = "1.0"
-sqlx = { version = "0.7", features = [
+sqlx = { version = "0.8", features = [
     "runtime-tokio-native-tls",
     "sqlite",
     "postgres",
 ] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-stream = { version = "0.1.4", features = ["sync"] }
-tower = { version = "0.4.13", features = [
-    "buffer",
-    "limit",
-    "make",
-    "timeout",
-] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower = { version = "0.4", features = ["buffer", "limit", "make", "timeout"] }
 tracing = { workspace = true, default-features = true }
 utoipa = { version = "4", features = ["rc_schema"] }
 utoipa-swagger-ui = { version = "6" }
 warp = { workspace = true, features = ["compression"] }
-wheelbuf = "0.2.0"
+wheelbuf = "0.2"
 
 [dev-dependencies]
 async-stream = { workspace = true }
 casper-event-types = { workspace = true, features = ["sse-data-testing"] }
 casper-types = { workspace = true, features = ["testing"] }
-colored = "2.0.0"
+colored = "2.0"
 futures-util = { workspace = true }
 once_cell = { workspace = true }
-pg-embed = { git = "https://github.com/zajko/pg-embed", branch = "bump_dependencies" }
-portpicker = "0.1.1"
+pg-embed = { git = "https://github.com/faokunega/pg-embed", tag = "v0.9.0" }
+portpicker = "0.1"
 pretty_assertions = "1"
-reqwest = { version = "0.12.5", features = ["stream"] }
-tabled = { version = "0.10.0", features = ["derive", "color"] }
+reqwest = { version = "0.12", features = ["stream"] }
+tabled = { version = "0.10", features = ["derive", "color"] }
 tempfile = "3"
-tokio-util = "0.7.8"
+tokio-util = "0.6"

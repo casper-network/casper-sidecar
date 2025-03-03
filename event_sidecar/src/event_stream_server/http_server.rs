@@ -39,7 +39,7 @@ pub(super) async fn run(
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
     let server_joiner = task::spawn(server_with_shutdown);
-    let mut buffer = build_buffer(config);
+    let mut buffer = build_buffer(&config);
 
     // Start handling received messages from the two channels; info on new client subscribers and
     // incoming events announced by node components.
@@ -49,11 +49,11 @@ pub(super) async fn run(
             select! {
                 maybe_new_subscriber = new_subscriber_info_receiver.recv() => {
                     if let Some(subscriber) = maybe_new_subscriber {
-                        register_new_subscriber(subscriber, &buffer, latest_protocol_version).await;
+                        register_new_subscriber(&subscriber, &buffer, latest_protocol_version).await;
                     }
                 }
                 maybe_data = data_receiver.recv() => {
-                    if handle_incoming_data(maybe_data, &mut latest_protocol_version, &mut buffer, &broadcaster).await.is_err() {
+                    if handle_incoming_data(maybe_data, &mut latest_protocol_version, &mut buffer, &broadcaster).is_err() {
                         break;
                     }
                 }
@@ -69,7 +69,7 @@ pub(super) async fn run(
 }
 
 fn build_buffer(
-    config: Config,
+    config: &Config,
 ) -> WheelBuf<Vec<(ProtocolVersion, ServerSentEvent)>, (ProtocolVersion, ServerSentEvent)> {
     let zero_version = ProtocolVersion::from_parts(0, 0, 0);
     WheelBuf::new(vec![
@@ -81,7 +81,7 @@ fn build_buffer(
     ])
 }
 
-async fn send_api_version_from_global_state(
+fn send_api_version_from_global_state(
     protocol_version: ProtocolVersion,
     subscriber: &NewSubscriberInfo,
 ) -> Result<(), SendError<ServerSentEvent>> {
@@ -90,22 +90,18 @@ async fn send_api_version_from_global_state(
         .send(ServerSentEvent::initial_event(protocol_version))
 }
 
-async fn send_legacy_comment(
-    subscriber: &NewSubscriberInfo,
-) -> Result<(), SendError<ServerSentEvent>> {
+fn send_legacy_comment(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::legacy_comment_event())
 }
-async fn send_sidecar_version(
-    subscriber: &NewSubscriberInfo,
-) -> Result<(), SendError<ServerSentEvent>> {
+fn send_sidecar_version(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::sidecar_version_event(*SIDECAR_VERSION))
 }
 
-async fn handle_incoming_data(
+fn handle_incoming_data(
     maybe_data: Option<InboundData>,
     latest_protocol_version: &mut Option<ProtocolVersion>,
     buffer: &mut WheelBuf<
@@ -114,50 +110,47 @@ async fn handle_incoming_data(
     >,
     broadcaster: &broadcast::Sender<BroadcastChannelMessage>,
 ) -> Result<(), ()> {
-    match maybe_data {
-        Some((maybe_event_index, data, inbound_filter)) => {
-            // Buffer the data and broadcast it to subscribed clients.
-            trace!("Event stream server received {:?}", data);
-            let event = ServerSentEvent {
-                id: maybe_event_index,
-                comment: None,
-                data: Some(data.clone()),
-                inbound_filter,
-            };
-            match data {
-                SseData::ApiVersion(v) => *latest_protocol_version = Some(v),
-                _ => match latest_protocol_version {
-                    None => {
-                        error!("Trying to buffer data without an api version observed beforehand");
-                    }
-                    Some(v) => {
-                        buffer.push((*v, event.clone()));
-                    }
-                },
-            };
-            let message = BroadcastChannelMessage::ServerSentEvent(event);
-            // This can validly fail if there are no connected clients, so don't log
-            // the error.
-            let _ = broadcaster.send(message);
-            Ok(())
-        }
-        None => {
-            // The data sender has been dropped - exit the loop.
-            info!("shutting down HTTP server");
-            Err(())
-        }
+    if let Some((maybe_event_index, data, inbound_filter)) = maybe_data {
+        // Buffer the data and broadcast it to subscribed clients.
+        trace!("Event stream server received {data:?}");
+        let event = ServerSentEvent {
+            id: maybe_event_index,
+            comment: None,
+            data: Some(data.clone()),
+            inbound_filter,
+        };
+        match data {
+            SseData::ApiVersion(v) => *latest_protocol_version = Some(v),
+            _ => match latest_protocol_version {
+                None => {
+                    error!("Trying to buffer data without an api version observed beforehand");
+                }
+                Some(v) => {
+                    buffer.push((*v, event.clone()));
+                }
+            },
+        };
+        let message = BroadcastChannelMessage::ServerSentEvent(event);
+        // This can validly fail if there are no connected clients, so don't log
+        // the error.
+        let _ = broadcaster.send(message);
+        Ok(())
+    } else {
+        // The data sender has been dropped - exit the loop.
+        info!("shutting down HTTP server");
+        Err(())
     }
 }
 
 async fn register_new_subscriber(
-    subscriber: NewSubscriberInfo,
+    subscriber: &NewSubscriberInfo,
     buffer: &WheelBuf<Vec<(ProtocolVersion, ServerSentEvent)>, (ProtocolVersion, ServerSentEvent)>,
     latest_protocol_version: Option<ProtocolVersion>,
 ) {
     if subscriber.enable_legacy_filters {
-        let _ = send_legacy_comment(&subscriber).await;
+        let _ = send_legacy_comment(subscriber);
     }
-    let _ = send_sidecar_version(&subscriber).await;
+    let _ = send_sidecar_version(subscriber);
     let mut observed_events = false;
     // If the client supplied a "start_from" index, provide the buffered events.
     // If they requested more than is buffered, just provide the whole buffer.
@@ -171,14 +164,10 @@ async fn register_new_subscriber(
         // the wrapping transition.
         let mut observed_protocol_version: Option<ProtocolVersion> = None;
         let buffer_size = buffer.capacity() as Id;
-        let in_wraparound_zone = buffer
-            .iter()
-            .next()
-            .map(|event| {
-                let id = event.1.id.unwrap();
-                id > Id::MAX - buffer_size || id < buffer_size
-            })
-            .unwrap_or_default();
+        let in_wraparound_zone = buffer.iter().next().is_some_and(|event| {
+            let id = event.1.id.unwrap();
+            id > Id::MAX - buffer_size || id < buffer_size
+        });
         for tuple in buffer.iter().skip_while(|tuple| {
             if in_wraparound_zone {
                 tuple.1.id.unwrap().wrapping_add(buffer_size)
@@ -203,19 +192,19 @@ async fn register_new_subscriber(
             observed_events = true;
         }
     }
-    send_api_version_if_necessary(observed_events, latest_protocol_version, subscriber).await;
+    send_api_version_if_necessary(observed_events, latest_protocol_version, subscriber);
 }
 
-async fn send_api_version_if_necessary(
+fn send_api_version_if_necessary(
     observed_events: bool,
     latest_protocol_version: Option<ProtocolVersion>,
-    subscriber: NewSubscriberInfo,
+    subscriber: &NewSubscriberInfo,
 ) {
     if !observed_events {
         match latest_protocol_version {
             None => {}
             Some(v) => {
-                let _ = send_api_version_from_global_state(v, &subscriber).await;
+                let _ = send_api_version_from_global_state(v, subscriber);
             }
         }
     }

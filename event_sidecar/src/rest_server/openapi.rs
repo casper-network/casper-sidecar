@@ -13,7 +13,7 @@ use casper_types::{
     execution::{execution_result_v1::ExecutionEffect, ExecutionResult},
     Block, BlockHash, FinalitySignature, RuntimeArgs, Transaction,
 };
-use http::Uri;
+use http::{header::CONTENT_TYPE, Uri};
 use schemars::{schema::SchemaObject, schema_for, visit::Visitor};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -74,7 +74,7 @@ fn extend_open_api_with_schemars_schemas(
     for (name, schema) in names_and_schemas {
         let (execution_result, additional_components) = force_produce_utoipa_schemas(schema);
         components.schemas.insert(name, execution_result);
-        for (key, value) in additional_components.into_iter() {
+        for (key, value) in additional_components {
             components.schemas.insert(key, value);
         }
     }
@@ -122,24 +122,18 @@ fn force_produce_utoipa_schemas(
     };
     visitor.visit_root_schema(&mut root_schema);
 
-    let schema_wrapper = RefOr::from(rebuild_schema_object(
-        "RootSchema".to_string(),
-        root_schema.schema,
-    ));
+    let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", root_schema.schema));
     let mut rebuilt_schema_objects = HashMap::new();
-    for (key, value) in root_schema.definitions.into_iter() {
+    for (key, value) in root_schema.definitions {
         rebuilt_schema_objects.insert(
             key.clone(),
-            RefOr::from(rebuild_schema_object(key, value.into_object())),
+            RefOr::from(rebuild_schema_object(&key, value.into_object())),
         );
     }
     (schema_wrapper, rebuilt_schema_objects)
 }
 
-fn rebuild_schema_object(
-    key: String,
-    schemars_schema_obj: SchemaObject,
-) -> utoipa::openapi::Schema {
+fn rebuild_schema_object(key: &str, schemars_schema_obj: SchemaObject) -> utoipa::openapi::Schema {
     let schema_str = serde_json::to_string(&schemars_schema_obj).unwrap();
     match serde_json::from_str::<utoipa::openapi::Schema>(&schema_str) {
         Ok(x) => x,
@@ -169,7 +163,7 @@ async fn serve_swagger(
             if let Some(file) = file {
                 Ok(Box::new(
                     Response::builder()
-                        .header("Content-Type", file.content_type)
+                        .header(CONTENT_TYPE, file.content_type)
                         .body(file.bytes),
                 ))
             } else {

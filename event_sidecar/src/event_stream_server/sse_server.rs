@@ -213,7 +213,7 @@ pub(super) struct NewSubscriberInfo {
 }
 
 /// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
-async fn filter_map_server_sent_event(
+fn filter_map_server_sent_event(
     event: &ServerSentEvent,
     stream_filter: &Endpoint,
     event_filter: &[EventFilter],
@@ -224,10 +224,7 @@ async fn filter_map_server_sent_event(
     }
 
     if let Some(data) = event.data.as_ref() {
-        let id = match determine_id(event, data) {
-            Some(id) => id,
-            None => return None,
-        };
+        let id = determine_id(event, data)?;
         match data {
             &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
                 event_to_warp_event(event, data, is_legacy_filter, None)
@@ -243,7 +240,7 @@ async fn filter_map_server_sent_event(
             }
             &SseData::Shutdown => {
                 if should_send_shutdown(event, stream_filter) {
-                    build_event_for_outbound(event, data, id)
+                    Some(build_event_for_outbound(event, data, id))
                 } else {
                     None
                 }
@@ -264,18 +261,12 @@ fn should_skip_event(
     if !event
         .data
         .as_ref()
-        .map(|d| d.should_include(event_filter))
-        .unwrap_or(true)
+        .is_none_or(|d| d.should_include(event_filter))
     {
         return true;
     }
 
-    if !event
-        .comment
-        .as_ref()
-        .map(|_| is_legacy_filter)
-        .unwrap_or(true)
-    {
+    if !event.comment.as_ref().is_none_or(|_| is_legacy_filter) {
         return true;
     }
     false
@@ -283,31 +274,27 @@ fn should_skip_event(
 
 fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bool {
     match (&event.inbound_filter, stream_filter) {
-        (None, Endpoint::Sidecar) => true,
-        (Some(_), _) => true,
+        (Some(_), _) | (None, Endpoint::Sidecar) => true,
         (None, _) => false,
     }
 }
 
 fn determine_id(event: &ServerSentEvent, data: &SseData) -> Option<String> {
-    match event.id {
-        Some(id) => {
-            if matches!(data, &SseData::ApiVersion { .. }) {
-                error!("ApiVersion should have no event ID");
-                return None;
-            }
-            Some(id.to_string())
+    if let Some(id) = event.id {
+        if matches!(data, &SseData::ApiVersion { .. }) {
+            error!("ApiVersion should have no event ID");
+            return None;
         }
-        None => {
-            if !matches!(
-                data,
-                &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. }
-            ) {
-                error!("only ApiVersion and SidecarVersion may have no event ID");
-                return None;
-            }
-            Some(String::new())
+        Some(id.to_string())
+    } else {
+        if !matches!(
+            data,
+            &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. }
+        ) {
+            error!("only ApiVersion and SidecarVersion may have no event ID");
+            return None;
         }
+        Some(String::new())
     }
 }
 
@@ -319,15 +306,15 @@ fn build_event_for_outbound(
     event: &ServerSentEvent,
     data: &SseData,
     id: String,
-) -> Option<Result<WarpServerSentEvent, RecvError>> {
+) -> Result<WarpServerSentEvent, RecvError> {
     let json_value = serde_json::to_value(data).unwrap();
-    Some(Ok(WarpServerSentEvent::default()
+    Ok(WarpServerSentEvent::default()
         .json_data(&json_value)
         .unwrap_or_else(|error| {
             warn!(%error, ?event, "failed to jsonify sse event");
             WarpServerSentEvent::default()
         })
-        .id(id)))
+        .id(id))
 }
 
 pub(super) fn path_to_filter(
@@ -408,8 +395,7 @@ fn create_404(enable_legacy_filters: bool) -> Response {
 /// string.
 fn create_422() -> Response {
     let mut response = Response::new(Body::from(format!(
-        "invalid query: expected single field '{}=<EVENT ID>'\n",
-        QUERY_FIELD
+        "invalid query: expected single field '{QUERY_FIELD}=<EVENT ID>'\n"
     )));
     *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
     response
@@ -485,14 +471,13 @@ fn parse_url_props(
     enable_legacy_filters: bool,
 ) -> Result<UrlProps, http::Response<Body>> {
     let path_param = maybe_path_param.unwrap_or_else(|| SSE_API_ROOT_PATH.to_string());
-    let (event_filter, is_legacy_filter) =
-        match get_filter(path_param.as_str(), enable_legacy_filters) {
-            Some((filter, is_legacy_filter)) => (filter, is_legacy_filter),
-            None => return Err(create_404(enable_legacy_filters)),
-        };
-    let stream_filter = match path_to_filter(path_param.as_str(), enable_legacy_filters) {
-        Some(filter) => filter,
-        None => return Err(create_404(enable_legacy_filters)),
+    let Some((event_filter, is_legacy_filter)) =
+        get_filter(path_param.as_str(), enable_legacy_filters)
+    else {
+        return Err(create_404(enable_legacy_filters));
+    };
+    let Some(stream_filter) = path_to_filter(path_param.as_str(), enable_legacy_filters) else {
+        return Err(create_404(enable_legacy_filters));
     };
     let start_from = parse_query(query)?;
     Ok((event_filter, stream_filter, start_from, is_legacy_filter))
@@ -602,7 +587,7 @@ fn stream_to_client(
                         handle_sse_event(event, cloned_initial_ids)
                     }
                     Ok(BroadcastChannelMessage::Shutdown) => Some(Err(RecvError::Closed)),
-                    Err(BroadcastStreamRecvError::Lagged(amount)) => handle_lagged(amount),
+                    Err(BroadcastStreamRecvError::Lagged(amount)) => Some(handle_lagged(amount)),
                 }
             }
         })
@@ -654,8 +639,7 @@ fn build_combined_events_stream(
                             stream_filter,
                             event_filter,
                             is_legacy_filter,
-                        )
-                        .await;
+                        );
                         #[cfg(feature = "additional-metrics")]
                         if fitlered_data.is_some() {
                             let _ = sender.clone().send(()).await;
@@ -669,12 +653,9 @@ fn build_combined_events_stream(
         })
 }
 
-fn handle_lagged(amount: u64) -> Option<Result<ServerSentEvent, RecvError>> {
-    info!(
-        "client lagged by {} events - dropping event stream connection to client",
-        amount
-    );
-    Some(Err(RecvError::Lagged(amount)))
+fn handle_lagged(amount: u64) -> Result<ServerSentEvent, RecvError> {
+    info!("client lagged by {amount} events - dropping event stream connection to client");
+    Err(RecvError::Lagged(amount))
 }
 
 fn handle_sse_event(
@@ -704,22 +685,18 @@ mod tests {
     // stream.
     const NUM_ONGOING_EVENTS: usize = 20;
 
-    async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
+    fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &Endpoint::Events, filter, false)
-                .await
-                .is_none(),
+            filter_map_server_sent_event(event, &Endpoint::Events, filter, false).is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
         );
     }
 
-    async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
+    fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, &Endpoint::Events, filter, false)
-                .await
-                .is_some(),
+            filter_map_server_sent_event(event, &Endpoint::Events, filter, false).is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter
@@ -797,62 +774,62 @@ mod tests {
             inbound_filter: None,
         };
 
-        should_not_filter_out(&api_version, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&block_added, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&transaction_accepted, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&transaction_processed, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&transaction_expired, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&fault, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&step, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &EVENTS_FILTER).await;
-        should_not_filter_out(&api_version, &EVENTS_FILTER[..]).await;
-        should_not_filter_out(&finality_signature, &EVENTS_FILTER[..]).await;
-        should_filter_out(&sidecar_api_version, &EVENTS_FILTER[..]).await;
+        should_not_filter_out(&api_version, &EVENTS_FILTER[..]);
+        should_not_filter_out(&block_added, &EVENTS_FILTER[..]);
+        should_not_filter_out(&transaction_accepted, &EVENTS_FILTER[..]);
+        should_not_filter_out(&transaction_processed, &EVENTS_FILTER[..]);
+        should_not_filter_out(&transaction_expired, &EVENTS_FILTER[..]);
+        should_not_filter_out(&fault, &EVENTS_FILTER[..]);
+        should_not_filter_out(&step, &EVENTS_FILTER[..]);
+        should_not_filter_out(&shutdown, &EVENTS_FILTER);
+        should_not_filter_out(&api_version, &EVENTS_FILTER[..]);
+        should_not_filter_out(&finality_signature, &EVENTS_FILTER[..]);
+        should_filter_out(&sidecar_api_version, &EVENTS_FILTER[..]);
 
-        should_filter_out(&api_version, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&block_added, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&transaction_accepted, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&transaction_processed, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&transaction_expired, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&fault, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&step, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&api_version, &SIDECAR_FILTER[..]).await;
-        should_filter_out(&finality_signature, &SIDECAR_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &SIDECAR_FILTER).await;
-        should_not_filter_out(&sidecar_api_version, &SIDECAR_FILTER[..]).await;
+        should_filter_out(&api_version, &SIDECAR_FILTER[..]);
+        should_filter_out(&block_added, &SIDECAR_FILTER[..]);
+        should_filter_out(&transaction_accepted, &SIDECAR_FILTER[..]);
+        should_filter_out(&transaction_processed, &SIDECAR_FILTER[..]);
+        should_filter_out(&transaction_expired, &SIDECAR_FILTER[..]);
+        should_filter_out(&fault, &SIDECAR_FILTER[..]);
+        should_filter_out(&step, &SIDECAR_FILTER[..]);
+        should_filter_out(&api_version, &SIDECAR_FILTER[..]);
+        should_filter_out(&finality_signature, &SIDECAR_FILTER[..]);
+        should_not_filter_out(&shutdown, &SIDECAR_FILTER);
+        should_not_filter_out(&sidecar_api_version, &SIDECAR_FILTER[..]);
 
-        should_not_filter_out(&api_version, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&block_added, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&transaction_processed, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&transaction_expired, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&fault, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&step, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &MAIN_FILTER).await;
+        should_not_filter_out(&api_version, &MAIN_FILTER[..]);
+        should_not_filter_out(&block_added, &MAIN_FILTER[..]);
+        should_not_filter_out(&transaction_processed, &MAIN_FILTER[..]);
+        should_not_filter_out(&transaction_expired, &MAIN_FILTER[..]);
+        should_not_filter_out(&fault, &MAIN_FILTER[..]);
+        should_not_filter_out(&step, &MAIN_FILTER[..]);
+        should_not_filter_out(&shutdown, &MAIN_FILTER);
 
-        should_filter_out(&transaction_accepted, &MAIN_FILTER[..]).await;
-        should_filter_out(&finality_signature, &MAIN_FILTER[..]).await;
+        should_filter_out(&transaction_accepted, &MAIN_FILTER[..]);
+        should_filter_out(&finality_signature, &MAIN_FILTER[..]);
 
-        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&transaction_accepted, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]).await;
+        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]);
+        should_not_filter_out(&transaction_accepted, &DEPLOYS_FILTER[..]);
+        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]);
 
-        should_filter_out(&block_added, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&transaction_processed, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&transaction_expired, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&fault, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&step, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&block_added, &DEPLOYS_FILTER[..]);
+        should_filter_out(&transaction_processed, &DEPLOYS_FILTER[..]);
+        should_filter_out(&transaction_expired, &DEPLOYS_FILTER[..]);
+        should_filter_out(&fault, &DEPLOYS_FILTER[..]);
+        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]);
+        should_filter_out(&step, &DEPLOYS_FILTER[..]);
 
-        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]).await;
+        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]);
+        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]);
+        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]);
 
-        should_filter_out(&block_added, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&transaction_accepted, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&transaction_processed, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&transaction_expired, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&fault, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&step, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&block_added, &SIGNATURES_FILTER[..]);
+        should_filter_out(&transaction_accepted, &SIGNATURES_FILTER[..]);
+        should_filter_out(&transaction_processed, &SIGNATURES_FILTER[..]);
+        should_filter_out(&transaction_expired, &SIGNATURES_FILTER[..]);
+        should_filter_out(&fault, &SIGNATURES_FILTER[..]);
+        should_filter_out(&step, &SIGNATURES_FILTER[..]);
     }
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
@@ -927,15 +904,15 @@ mod tests {
             &DEPLOYS_FILTER[..],
             &SIGNATURES_FILTER[..],
         ] {
-            should_filter_out(&malformed_api_version, filter).await;
-            should_filter_out(&malformed_block_added, filter).await;
-            should_filter_out(&malformed_transaction_accepted, filter).await;
-            should_filter_out(&malformed_transaction_processed, filter).await;
-            should_filter_out(&malformed_transaction_expired, filter).await;
-            should_filter_out(&malformed_fault, filter).await;
-            should_filter_out(&malformed_finality_signature, filter).await;
-            should_filter_out(&malformed_step, filter).await;
-            should_filter_out(&malformed_shutdown, filter).await;
+            should_filter_out(&malformed_api_version, filter);
+            should_filter_out(&malformed_block_added, filter);
+            should_filter_out(&malformed_transaction_accepted, filter);
+            should_filter_out(&malformed_transaction_processed, filter);
+            should_filter_out(&malformed_transaction_expired, filter);
+            should_filter_out(&malformed_fault, filter);
+            should_filter_out(&malformed_finality_signature, filter);
+            should_filter_out(&malformed_step, filter);
+            should_filter_out(&malformed_shutdown, filter);
         }
     }
 

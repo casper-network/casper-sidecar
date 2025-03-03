@@ -29,7 +29,7 @@ pub struct Config {
 impl Config {
     /// Creates an instance for `EventStreamServer`.
     pub fn new(port: u16, buffer_length: Option<u32>, max_subscribers: Option<u32>) -> Self {
-        let address = format!("{}:{}", DEFAULT_ADDRESS, port);
+        let address = format!("{DEFAULT_ADDRESS}:{port}");
 
         Config {
             address,

@@ -191,7 +191,7 @@ impl Display for EventType {
             EventType::Step => "Step",
             EventType::Shutdown => "Shutdown",
         };
-        write!(f, "{}", string)
+        write!(f, "{string}")
     }
 }
 
@@ -312,7 +312,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     tokio::spawn(async move {
         let res = node_event_listener.stream_aggregated_events().await;
         if let Err(error) = res {
-            println!("Node listener Error: {}", error)
+            println!("Node listener Error: {error}");
         }
     });
 
@@ -339,7 +339,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     tokio::spawn(async move {
         let res = sidecar_event_listener.stream_aggregated_events().await;
         if let Err(error) = res {
-            println!("Sidecar listener Error: {}", error)
+            println!("Sidecar listener Error: {error}");
         }
     });
 
@@ -375,7 +375,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
 
     let results_table = build_table_from_results(results, duration);
 
-    println!("{}", results_table);
+    println!("{results_table}");
 
     check_latencies_are_acceptable(average_latencies, acceptable_latency);
 }
@@ -396,7 +396,7 @@ async fn live_performance_check(
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let source_url = format!("{}:{}", ip_address, port_for_connection);
+    let source_url = format!("{ip_address}:{port_for_connection}");
     let source_event_listener = EventListener::new(source_url, 0, 0, false).await.unwrap();
     let source_event_receiver = source_event_listener
         .consume_combine_streams()
@@ -480,7 +480,7 @@ fn check_latencies_are_acceptable(
             "Latency of {} events exceeded acceptable value. Acceptable value {} [s]",
             event_type,
             acceptable_latency.as_secs_f64(),
-        )
+        );
     }
 }
 
@@ -565,7 +565,6 @@ fn build_table_from_results(results: Vec<Results>, duration: Duration) -> String
                 .with(format!("\nTest Duration {}", display_duration(duration))),
         )
         .with(Style::rounded())
-        .with(Style::correct_spans())
         .to_string()
 }
 

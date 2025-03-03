@@ -130,10 +130,10 @@ pub fn inc_disconnect() {
     DISCONNECT_EVENTS.inc();
 }
 
-pub fn register_request_size(method: &str, payload_size: f64) {
+pub fn register_request_size(method: &str, payload_size: usize) {
     ENDPOINT_REQUEST_BYTES
         .with_label_values(&[method])
-        .observe(payload_size);
+        .observe(payload_size as f64);
 }
 
 pub fn register_timeout(timer_name: &str) {

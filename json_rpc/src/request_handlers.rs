@@ -50,7 +50,7 @@ impl RequestHandlers {
         };
         // Update metrics.
         inc_method_call(request_method);
-        register_request_size(request_method, request_size as f64);
+        register_request_size(request_method, request_size);
 
         // Manage limits
         if let Err(_negative) = limiter.check() {

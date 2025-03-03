@@ -29,7 +29,7 @@ impl Visitor for SchemaTransformationVisitor {
             object_schema
                 .extensions
                 .insert("type".to_string(), json!("value"));
-            *schema = object_schema.into()
+            *schema = object_schema.into();
         }
         schemars::visit::visit_schema(self, schema);
     }
@@ -37,7 +37,7 @@ impl Visitor for SchemaTransformationVisitor {
     fn visit_schema_object(&mut self, schema: &mut SchemaObject) {
         rename_refs(schema);
         replace_null_and_multi_type(schema);
-        if let ControlFlow::Break(_) = self.handle_skip_additional_properties(schema) {
+        if let ControlFlow::Break(()) = self.handle_skip_additional_properties(schema) {
             return;
         }
         visit_schema_object(self, schema);
@@ -62,14 +62,14 @@ fn replace_null_and_multi_type(schema: &mut SchemaObject) {
                 //OpenApi schemas don't support multiple types definitions, we need to change it to a collection of "anyOf"
                 let mut new_schema = SchemaObject::default();
                 let mut subschema_validation = SubschemaValidation::default();
-                let mut vals: Vec<schemars::schema::Schema> = vec![];
-                for t in types.iter() {
+                let mut vals: Vec<schemars::schema::Schema> = Vec::new();
+                for t in &types {
                     let mut single_type_schema = schema.clone();
                     if *t == InstanceType::Null {
                         force_schema_into_opean_api_nullable(&mut single_type_schema);
                     } else {
                         single_type_schema.instance_type =
-                            Some(schemars::schema::SingleOrVec::Single(Box::new(*t)))
+                            Some(schemars::schema::SingleOrVec::Single(Box::new(*t)));
                     }
                     vals.push(schemars::schema::Schema::Object(single_type_schema));
                 }

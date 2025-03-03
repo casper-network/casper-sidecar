@@ -43,6 +43,7 @@ pub struct SseEvent {
 }
 
 impl SseEvent {
+    #[must_use]
     pub fn new(
         id: u32,
         data: SseData,

@@ -74,7 +74,7 @@ impl SqliteDatabase {
         match maybe_version {
             None => res,
             Some(version) => match res {
-                Ok(_) => {
+                Ok(()) => {
                     let insert_version_stmt = tables::migration::create_insert_stmt(version, true)?
                         .to_string(SqliteQueryBuilder);
                     db_connection.execute(insert_version_stmt.as_str()).await?;

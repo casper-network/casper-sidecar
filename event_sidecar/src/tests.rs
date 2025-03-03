@@ -41,7 +41,7 @@ fn path_abstraction_for_metrics_should_handle_endpoints() {
 }
 
 fn test_single_nested_path(part: &str) {
-    let expected_output = &format!("/{}/(...)", part);
+    let expected_output = &format!("/{part}/(...)");
     expect_output(part, expected_output);
     expect_output(&format!("/{part}"), expected_output);
     expect_output(&format!("/{part}/"), expected_output);

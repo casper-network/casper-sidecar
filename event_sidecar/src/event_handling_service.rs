@@ -80,10 +80,7 @@ async fn handle_database_save_result<T>(
                 .send((sse_data, Some(inbound_filter)))
                 .await
             {
-                debug!(
-                    "Error when sending to outbound_sse_data_sender. Error: {}",
-                    error
-                );
+                debug!("Error when sending to outbound_sse_data_sender. Error: {error}");
             }
         }
         Err(DatabaseWriteError::UniqueConstraint(uc_err)) => {
@@ -94,8 +91,8 @@ async fn handle_database_save_result<T>(
             trace!(?uc_err);
         }
         Err(other_err) => {
-            count_error(format!("db_save_error_{}", entity_name).as_str());
-            warn!(?other_err, "Unexpected error saving {}", entity_identifier);
+            count_error(format!("db_save_error_{entity_name}").as_str());
+            warn!(?other_err, "Unexpected error saving {entity_identifier}");
         }
     }
 }

@@ -124,7 +124,7 @@ impl TransactionAccepted {
 
     #[cfg(test)]
     pub fn transaction_hash(&self) -> TransactionHash {
-        self.transaction.hash().to_owned()
+        self.transaction.hash()
     }
 
     pub fn hex_encoded_hash(&self) -> String {
@@ -275,7 +275,7 @@ impl Fault {
 
 impl Display for Fault {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self)
+        write!(f, "{self:#?}")
     }
 }
 

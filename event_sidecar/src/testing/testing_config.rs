@@ -80,7 +80,7 @@ impl TestingConfig {
     /// Specify where test storage (database, sse cache) should be located.
     /// By default it is set to `/target/test_storage` however it is recommended to overwrite this with a `TempDir` path for testing purposes.
     pub(crate) fn set_storage_folder(&mut self, path: String) {
-        self.storage_config.set_storage_folder(path.clone());
+        self.storage_config.set_storage_folder(path);
     }
 
     pub(crate) fn get_storage_folder(&self) -> String {
@@ -153,7 +153,7 @@ impl TestingConfig {
 
     /// Dynamically allocates free ports for:
     /// - REST Server
-    /// - Event Stream Server  
+    /// - Event Stream Server
     ///
     /// Updates the ports in the config accordingly.
     pub(crate) fn allocate_available_ports(&mut self) {

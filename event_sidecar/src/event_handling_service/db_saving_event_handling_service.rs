@@ -311,15 +311,12 @@ where
                     .send((SseData::Shutdown, Some(sse_event.inbound_filter)))
                     .await
                 {
-                    debug!(
-                        "Error when sending to outbound_sse_data_sender. Error: {}",
-                        error
-                    );
+                    debug!("Error when sending to outbound_sse_data_sender. Error: {error}");
                 }
             }
             Err(other_err) => {
                 count_error("db_save_error_shutdown");
-                warn!(?other_err, "Unexpected error saving Shutdown")
+                warn!(?other_err, "Unexpected error saving Shutdown");
             }
         }
     }

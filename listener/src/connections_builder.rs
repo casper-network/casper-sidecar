@@ -50,15 +50,13 @@ impl ConnectionsBuilder for DefaultConnectionsBuilder {
 
         for filter in filters {
             let start_from_event_id = guard.get(&filter).copied().or(Some(0));
-            let connection = self
-                .build_connection(
-                    maybe_tasks.clone(),
-                    start_from_event_id,
-                    filter.clone(),
-                    last_seen_event_id_sender.clone(),
-                    node_metadata.network_name.clone(),
-                )
-                .await?;
+            let connection = self.build_connection(
+                maybe_tasks.clone(),
+                start_from_event_id,
+                filter.clone(),
+                last_seen_event_id_sender.clone(),
+                node_metadata.network_name.clone(),
+            )?;
             connections.insert(filter, connection);
         }
         drop(guard);
@@ -67,7 +65,7 @@ impl ConnectionsBuilder for DefaultConnectionsBuilder {
 }
 
 impl DefaultConnectionsBuilder {
-    async fn build_connection(
+    fn build_connection(
         &self,
         maybe_tasks: Option<ConnectionTasks>,
         start_from_event_id: Option<u32>,
@@ -144,7 +142,7 @@ pub mod tests {
     impl Default for MockConnectionsBuilder {
         fn default() -> Self {
             Self {
-                data_pushed_from_connections: Arc::new(Mutex::new(vec![])),
+                data_pushed_from_connections: Arc::new(Mutex::new(Vec::new())),
                 result: Mutex::new(vec![Ok(HashMap::new())]),
                 maybe_protocol_version: Mutex::new(None),
                 maybe_network_name: Mutex::new(None),
@@ -205,7 +203,7 @@ pub mod tests {
         }
 
         fn builder_based_on_result(mut rx: Receiver<String>, results: ResultsStoredInMock) -> Self {
-            let data_pushed_from_connections = Arc::new(Mutex::new(vec![]));
+            let data_pushed_from_connections = Arc::new(Mutex::new(Vec::new()));
             let data_pushed_from_connections_clone = data_pushed_from_connections.clone();
             tokio::spawn(async move {
                 while let Some(x) = rx.recv().await {

@@ -40,7 +40,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let validator_public_key = PublicKey::from(&validator_secret_key);
 
-    let mut bids = vec![];
+    let mut bids = Vec::new();
     let validator_bid = ValidatorBid::unlocked(
         validator_public_key.clone(),
         URef::new([250; 32], AccessRights::READ_ADD_WRITE),
@@ -64,8 +64,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
     bids.push(BidKind::Delegator(Box::new(delegator_bid)));
 
     let height: u64 = 10;
-    let era_validators = ERA_VALIDATORS.clone();
-    AuctionState::new(state_root_hash, height, era_validators, bids)
+    AuctionState::new(state_root_hash, height, &ERA_VALIDATORS, bids)
 });
 
 /// Result for "state_get_auction_info" RPC response.
@@ -111,7 +110,11 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
         let (registry_value, _) = node_client
-            .query_global_state(Some(state_identifier), Key::SystemEntityRegistry, vec![])
+            .query_global_state(
+                Some(state_identifier),
+                Key::SystemEntityRegistry,
+                Vec::new(),
+            )
             .await
             .map_err(|err| Error::NodeRequest("system contract registry", err))?
             .ok_or(Error::GlobalStateEntryNotFound)?
@@ -153,7 +156,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
-            validators,
+            &validators,
             bids,
         );
 
@@ -198,13 +201,13 @@ impl AuctionState {
     pub fn new(
         state_root_hash: Digest,
         block_height: u64,
-        era_validators: EraValidators,
+        era_validators: &EraValidators,
         bids: Vec<BidKind>,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
-        for (era_id, validator_weights) in era_validators.iter() {
+        for (era_id, validator_weights) in era_validators {
             let mut json_validator_weights: Vec<JsonValidatorWeight> = Vec::new();
-            for (public_key, weight) in validator_weights.iter() {
+            for (public_key, weight) in validator_weights {
                 json_validator_weights.push(JsonValidatorWeight::new(public_key.clone(), *weight));
             }
             json_era_validators.push(JsonEraValidators::new(*era_id, json_validator_weights));
@@ -326,7 +329,7 @@ mod tests {
                 auction_state: AuctionState::new(
                     *block_header.state_root_hash(),
                     block_header.height(),
-                    expected_validators,
+                    &expected_validators,
                     bids
                 ),
             }
@@ -399,7 +402,7 @@ mod tests {
                 auction_state: AuctionState::new(
                     *block_header.state_root_hash(),
                     block_header.height(),
-                    expected_validators,
+                    &expected_validators,
                     bid_kinds
                 ),
             }
@@ -469,7 +472,7 @@ mod tests {
                 auction_state: AuctionState::new(
                     *block_header.state_root_hash(),
                     block_header.height(),
-                    expected_validators,
+                    &expected_validators,
                     bid_kinds
                 ),
             }

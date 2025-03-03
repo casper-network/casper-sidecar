@@ -15,7 +15,7 @@ async fn should_have_version_none_if_no_migrations_applied() {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
         .expect("Error opening database in memory");
 
-    let apply_res = MigrationManager::apply_migrations(sqlite_db.clone(), vec![]).await;
+    let apply_res = MigrationManager::apply_migrations(sqlite_db.clone(), Vec::new()).await;
 
     assert!(apply_res.is_ok());
     let version_res = sqlite_db.get_newest_migration_version().await;

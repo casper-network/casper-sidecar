@@ -23,14 +23,14 @@ pub(super) enum EventListenerStatus {
 impl EventListenerStatus {
     pub(super) fn log_status(&self, node_address: &str, sse_port: u16) {
         let status = match self {
-            EventListenerStatus::Preparing => 0,
-            EventListenerStatus::Connecting => 1,
-            EventListenerStatus::Connected => 2,
-            EventListenerStatus::Reconnecting => 3,
-            EventListenerStatus::ReconnectionsExhausted => -1,
-            EventListenerStatus::IncompatibleVersion => -2,
-        } as f64;
-        let node_label = format!("{}:{}", node_address, sse_port);
+            EventListenerStatus::Preparing => 0.0,
+            EventListenerStatus::Connecting => 1.0,
+            EventListenerStatus::Connected => 2.0,
+            EventListenerStatus::Reconnecting => 3.0,
+            EventListenerStatus::ReconnectionsExhausted => -1.0,
+            EventListenerStatus::IncompatibleVersion => -2.0,
+        };
+        let node_label = format!("{node_address}:{sse_port}");
         store_node_status(node_label.as_str(), status);
     }
 }

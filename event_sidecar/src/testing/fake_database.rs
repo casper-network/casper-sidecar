@@ -231,7 +231,7 @@ impl DatabaseWriter for FakeDatabase {
 
         let hash = transaction_accepted.hex_encoded_hash();
         // This is suffixed to allow storage of each transaction state event without overwriting.
-        let identifier = format!("{}-accepted", hash);
+        let identifier = format!("{hash}-accepted");
         let stringified_event =
             serde_json::to_string(&transaction_accepted).expect("Error serialising event data");
 
@@ -253,7 +253,7 @@ impl DatabaseWriter for FakeDatabase {
 
         let hash = transaction_processed.hex_encoded_hash();
         // This is suffixed to allow storage of each transaction state event without overwriting.
-        let identifier = format!("{}-processed", hash);
+        let identifier = format!("{hash}-processed");
         let stringified_event =
             serde_json::to_string(&transaction_processed).expect("Error serialising event data");
 
@@ -275,7 +275,7 @@ impl DatabaseWriter for FakeDatabase {
 
         let hash = transaction_expired.hex_encoded_hash();
         // This is suffixed to allow storage of each transaction state event without overwriting.
-        let identifier = format!("{}-expired", hash);
+        let identifier = format!("{hash}-expired");
         let stringified_event =
             serde_json::to_string(&transaction_expired).expect("Error serialising event data");
 
@@ -362,7 +362,7 @@ impl DatabaseWriter for FakeDatabase {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs();
-        let event_key = format!("{}-{}", event_source_address, unix_timestamp);
+        let event_key = format!("{event_source_address}-{unix_timestamp}");
         let stringified_event = serde_json::to_string("{}").expect("Error serialising event data");
 
         data.insert(event_key, stringified_event);
@@ -435,9 +435,9 @@ impl DatabaseReader for FakeDatabase {
     ) -> Result<TransactionAggregate, DatabaseReadError> {
         let data = self.data.lock().expect("Error acquiring lock on data");
 
-        let accepted_key = format!("{}-accepted", hash);
-        let processed_key = format!("{}-processed", hash);
-        let expired_key = format!("{}-expired", hash);
+        let accepted_key = format!("{hash}-accepted");
+        let processed_key = format!("{hash}-processed");
+        let expired_key = format!("{hash}-expired");
 
         return if let Some(accepted) = data.get(&accepted_key) {
             let transaction_accepted = serde_json::from_str::<TransactionAccepted>(accepted)
@@ -501,7 +501,7 @@ impl DatabaseReader for FakeDatabase {
         _transaction_type: &TransactionTypeId,
         hash: &str,
     ) -> Result<SseEnvelope<TransactionAccepted>, DatabaseReadError> {
-        let identifier = format!("{}-accepted", hash);
+        let identifier = format!("{hash}-accepted");
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -523,7 +523,7 @@ impl DatabaseReader for FakeDatabase {
         _transaction_type: &TransactionTypeId,
         hash: &str,
     ) -> Result<SseEnvelope<TransactionProcessed>, DatabaseReadError> {
-        let identifier = format!("{}-processed", hash);
+        let identifier = format!("{hash}-processed");
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 
@@ -545,7 +545,7 @@ impl DatabaseReader for FakeDatabase {
         _transaction_type: &TransactionTypeId,
         hash: &str,
     ) -> Result<SseEnvelope<TransactionExpired>, DatabaseReadError> {
-        let identifier = format!("{}-expired", hash);
+        let identifier = format!("{hash}-expired");
 
         let data = self.data.lock().expect("Error acquiring lock on data");
 

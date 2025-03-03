@@ -3,7 +3,11 @@
 mod auction_state;
 
 pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeight, ERA_VALIDATORS};
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str,
+    sync::Arc,
+};
 
 use crate::node_client::{EntityResponse, PackageResponse};
 use async_trait::async_trait;
@@ -41,8 +45,8 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntryPointValue, EraId, GlobalStateIdentifier, Key, KeyTag, Package, PackageHash, PublicKey,
-    SecretKey, StoredValue, URef, U512,
+    EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
+    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -121,10 +125,10 @@ static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResul
     api_version: DOCS_EXAMPLE_API_VERSION,
     package: PackageWithBackwardCompat::Package(
         Package::new(
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
+            EntityVersions::default(),
+            BTreeSet::default(),
+            Groups::default(),
+            PackageStatus::default(),
         )
         .clone(),
     ),
@@ -428,8 +432,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
-            validators,
-            bids,
+            &validators,
+            &bids,
         );
 
         Ok(Self::ResponseResult {
@@ -460,7 +464,7 @@ pub(crate) async fn fetch_bid_kinds(
             .map(|value| value.into_bid_kind().ok_or(Error::InvalidAuctionState))
             .collect()
     };
-    res.map_err(|e| e.into())
+    res.map_err(Into::into)
 }
 
 /// Identifier of an account.
@@ -1620,8 +1624,8 @@ mod tests {
                 auction_state: AuctionState::new(
                     *block.state_root_hash(),
                     block.height(),
-                    Default::default(),
-                    vec![BidKind::Unified(legacy_bid.into())]
+                    &Default::default(),
+                    &vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );
@@ -1796,8 +1800,8 @@ mod tests {
                 auction_state: AuctionState::new(
                     *block.state_root_hash(),
                     block.height(),
-                    Default::default(),
-                    vec![BidKind::Unified(legacy_bid.into())]
+                    &Default::default(),
+                    &vec![BidKind::Unified(legacy_bid.into())]
                 ),
             }
         );

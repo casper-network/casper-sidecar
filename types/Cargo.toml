@@ -13,7 +13,7 @@ casper-types = { workspace = true }
 mockall = "0.13"
 once_cell = { workspace = true }
 pretty_assertions = "1.4"
-rand = { version = "0.8", optional = true }
+rand = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true, features = [
     "derive",
     "rc",
@@ -30,4 +30,4 @@ additional-metrics = []
 
 [dev-dependencies]
 casper-types = { workspace = true, features = ["testing"] }
-rand = "0.8"
+rand = { workspace = true }
