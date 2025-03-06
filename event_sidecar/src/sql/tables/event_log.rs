@@ -127,14 +127,14 @@ mod tests {
 
     #[test]
     fn should_prepare_create_stmt_for_sqlite() {
-        let expected_sql = "CREATE TABLE IF NOT EXISTS \"event_log\" ( \"event_log_id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"event_type_id\" tinyint NOT NULL, \"event_source_address\" varchar NOT NULL, \"event_id\" bigint NOT NULL, \"event_key\" varchar NOT NULL, \"inserted_timestamp\" timestamp_text NOT NULL DEFAULT CURRENT_TIMESTAMP, \"emitted_timestamp\" timestamp_text NOT NULL DEFAULT CURRENT_TIMESTAMP, \"api_version\" varchar NOT NULL, \"network_name\" varchar NOT NULL, CONSTRAINT \"UDX_event_log\" UNIQUE (\"event_source_address\", \"event_id\", \"event_type_id\", \"event_key\"), FOREIGN KEY (\"event_type_id\") REFERENCES \"event_type\" (\"event_type_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
+        let expected_sql = r#"CREATE TABLE IF NOT EXISTS "event_log" ( "event_log_id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "event_type_id" tinyint NOT NULL, "event_source_address" varchar NOT NULL, "event_id" bigint NOT NULL, "event_key" varchar NOT NULL, "inserted_timestamp" timestamp_text NOT NULL DEFAULT CURRENT_TIMESTAMP, "emitted_timestamp" timestamp_text NOT NULL DEFAULT CURRENT_TIMESTAMP, "api_version" varchar NOT NULL, "network_name" varchar NOT NULL, CONSTRAINT "UDX_event_log" UNIQUE ("event_source_address", "event_id", "event_type_id", "event_key"), FOREIGN KEY ("event_type_id") REFERENCES "event_type" ("event_type_id") ON DELETE RESTRICT ON UPDATE RESTRICT )"#;
         let stmt = create_table_stmt().to_string(SqliteQueryBuilder);
         assert_eq!(stmt.to_string(), expected_sql);
     }
 
     #[test]
     fn should_prepare_create_stmt_for_postgres() {
-        let expected_sql = "CREATE TABLE IF NOT EXISTS \"event_log\" ( \"event_log_id\" bigserial NOT NULL PRIMARY KEY, \"event_type_id\" smallint NOT NULL, \"event_source_address\" varchar NOT NULL, \"event_id\" bigint NOT NULL, \"event_key\" varchar NOT NULL, \"inserted_timestamp\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \"emitted_timestamp\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \"api_version\" varchar NOT NULL, \"network_name\" varchar NOT NULL, CONSTRAINT \"UDX_event_log\" UNIQUE (\"event_source_address\", \"event_id\", \"event_type_id\", \"event_key\"), CONSTRAINT \"FK_event_type_id\" FOREIGN KEY (\"event_type_id\") REFERENCES \"event_type\" (\"event_type_id\") ON DELETE RESTRICT ON UPDATE RESTRICT )";
+        let expected_sql = r#"CREATE TABLE IF NOT EXISTS "event_log" ( "event_log_id" bigserial NOT NULL PRIMARY KEY, "event_type_id" smallint NOT NULL, "event_source_address" varchar NOT NULL, "event_id" bigint NOT NULL, "event_key" varchar NOT NULL, "inserted_timestamp" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "emitted_timestamp" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "api_version" varchar NOT NULL, "network_name" varchar NOT NULL, CONSTRAINT "UDX_event_log" UNIQUE ("event_source_address", "event_id", "event_type_id", "event_key"), CONSTRAINT "FK_event_type_id" FOREIGN KEY ("event_type_id") REFERENCES "event_type" ("event_type_id") ON DELETE RESTRICT ON UPDATE RESTRICT )"#;
         let stmt = create_table_stmt().to_string(PostgresQueryBuilder);
         assert_eq!(stmt.to_string(), expected_sql,);
     }
