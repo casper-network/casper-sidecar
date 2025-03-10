@@ -45,7 +45,7 @@ pub struct Config {
     /// Default value for limiter's period of time.
     pub default_limit_period: TimeDiff,
     /// Limits; key is RPC method name.
-    pub limits: HashMap<String, ConfigLimit>,
+    pub limits: Option<HashMap<String, ConfigLimit>>,
 }
 
 impl Config {
@@ -61,7 +61,7 @@ impl Config {
             cors_origin: DEFAULT_CORS_ORIGIN,
             default_limit_requests: DEFAULT_LIMIT_REQUESTS,
             default_limit_period: DEFAULT_LIMIT_PERIOD,
-            limits: HashMap::new(),
+            limits: None,
         }
     }
 

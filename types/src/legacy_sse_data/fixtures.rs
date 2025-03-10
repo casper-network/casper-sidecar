@@ -856,7 +856,7 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
         },
         "messages": [
             {
-                "hash_addr": "7da5cc7bb0035d5e2a05014c4ac8e23ec2b198988da9401411040efddb0108ef",
+                "entity_addr": "entity-contract-8d878886b9c95d8a598ef71ccb6a68a54e2f806058faf0b9ea28a4bc7df4eeb3",
                 "entity_hash": "entity-system-fbd35eaf71f295b3bf35a295e705f629bbea28cefedfc109eda1205fb3650bad",
                 "message": {
                     "String": "cs5rHI2Il75nRJ7GLs7BQM5CilvzMqu0dgFuj57FkqEs3431LJ1qfsZActb05hzR"

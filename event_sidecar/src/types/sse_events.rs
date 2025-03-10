@@ -331,7 +331,7 @@ impl FinalitySignature {
 pub struct Step {
     #[schema(value_type = u64)]
     pub era_id: EraId,
-    #[schema(value_type = ExecutionEffect)]
+    #[schema(value_type = Effects)]
     //This technically is not amorphic, but this field is potentially > 30MB of size. By not parsing it we make the process of intaking these messages much quicker and less memory consuming
     execution_effect: Box<RawValue>,
 }

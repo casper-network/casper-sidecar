@@ -8,13 +8,13 @@ on:
       - "feat-*"
       - "rc-*"
     paths-ignore:
-      - '**.md'
+      - "**.md"
 
   pull_request:
     branches:
       - "dev"
     paths-ignore:
-      - '**.md'
+      - "**.md"
 
 env:
   CARGO_TERM_COLOR: always
@@ -45,8 +45,9 @@ jobs:
         # Hope to get to here:
         # run: cargo audit --deny warnings
         # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
-        # RUSTSEC-2024-0363 - issue in sqlx 0.8.0, no fix available yet
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2024-0363
+        # RUSTSEC-2025-0014 - we need to remove humantime from casper-types
+        # RUSTSEC-2024-0370 - we need to bump utoipa dependencies and align code with that
+        run: cargo audit --deny warnings --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2025-0014 --ignore RUSTSEC-2024-0370
 
       - name: test
         run: cargo test

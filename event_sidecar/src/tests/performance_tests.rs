@@ -4,7 +4,8 @@ use crate::{
     tests::integration_tests::fetch_data_from_endpoint,
     types::database::DatabaseReader,
     utils::tests::{
-        build_postgres_based_test_config, unpack_test_config_and_run, wait_for_n_messages,
+        build_postgres_based_test_config, display_duration, unpack_test_config_and_run,
+        wait_for_n_messages,
     },
 };
 use crate::{
@@ -16,12 +17,10 @@ use crate::{
         },
         testing_config::prepare_config,
     },
-    utils::tests::display_duration,
 };
 use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface, SseEvent};
 use casper_event_types::sse_data::SseData;
 use casper_types::{testing::TestRng, AsymmetricType};
-use colored::Colorize;
 use derive_new::new;
 use std::{
     collections::HashMap,
@@ -30,7 +29,10 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use tabled::{object::Cell, Alignment, ModifyObject, Span, Style, TableIteratorExt, Tabled};
+use tabled::{
+    settings::{Panel, Style},
+    Table, Tabled,
+};
 use tempfile::tempdir;
 use tokio::{
     sync::mpsc::{self, Receiver},
@@ -244,7 +246,7 @@ impl TimestampedEvent {
 struct Results {
     #[tabled(rename = "Event Type")]
     event_type: EventType,
-    #[tabled(rename = "Avg. Latency (ms)", display_with = "highlight_slow_latency")]
+    #[tabled(rename = "Avg. Latency (ms)", display = "highlight_slow_latency")]
     average_latency: u128,
     #[tabled(rename = "Total Received")]
     total_received: u16,
@@ -255,7 +257,7 @@ fn highlight_slow_latency(latency: &u128) -> String {
     if millis < ACCEPTABLE_LATENCY.as_millis() {
         millis.to_string()
     } else {
-        millis.to_string().red().to_string()
+        format!("!!{}!!", millis)
     }
 }
 
@@ -549,22 +551,12 @@ fn calculate_average_latencies(
 }
 
 fn build_table_from_results(results: Vec<Results>, duration: Duration) -> String {
-    let total_rows = results.len();
-
-    let horizontal_span = |row, col, span| {
-        Cell(row, col)
-            .modify()
-            .with(Alignment::center())
-            .with(Span::column(span))
-    };
-
-    results
-        .table()
-        .with(
-            horizontal_span(total_rows, 0, 3)
-                .with(format!("\nTest Duration {}", display_duration(duration))),
-        )
+    Table::new(results)
         .with(Style::rounded())
+        .with(Panel::footer(format!(
+            "\nTest Duration {}",
+            display_duration(duration)
+        )))
         .to_string()
 }
 

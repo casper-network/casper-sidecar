@@ -12,7 +12,7 @@ repository = "https://github.com/casper-network/casper-sidecar/"
 
 [dependencies]
 once_cell = { workspace = true }
-prometheus = { version = "0.13.3", features = ["process"] }
+prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
 
 [features]
 additional-metrics = []

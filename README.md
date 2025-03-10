@@ -26,7 +26,6 @@
   - [Prerequisites](#prerequisites)
   - [Running the Sidecar](#running-the-sidecar)
   - [Testing the Sidecar](#testing-the-sidecar)
-- [Swagger Documentation](#swagger-documentation)
 - [OpenAPI Specification](#openapi-specification)
 - [Troubleshooting Tips](#troubleshooting-tips)
   - [Checking liveness](#checking-liveness)
@@ -126,7 +125,7 @@ Enabling and configuring the SSE Server of the Sidecar is optional.
 
 ### The REST API server
 
-The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. You can discover the specific endpoints of the REST API using [OpenAPI](#openapi-specification) and [Swagger](#swagger-documentation). The [usage instructions](USAGE.md) provide more details.
+The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. You can discover the specific endpoints of the REST API using [OpenAPI](#openapi-specification). The [usage instructions](USAGE.md) provide more details.
 
 ```mermaid
    graph LR;
@@ -536,10 +535,6 @@ The Sidecar application can be tested against live Casper nodes or a local [NCTL
 
 The configuration shown [here](./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml) will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would while connected to a live node, displaying events as they occur in the local NCTL network.
 
-## Swagger Documentation
-
-Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
-
 ## OpenAPI Specification
 
 An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
@@ -618,7 +613,7 @@ Ensuring enough space in the database is essential for the Sidecar to consume ev
 
 ### Inspecting the REST API
 
-The easiest way to inspect the Sidecar’s REST API is with [Swagger](#swagger-documentation).
+The easiest way to inspect the Sidecar’s REST API is by analyzing the [Open API specification](# openapi-specification).
 
 ### Limiting concurrent requests
 

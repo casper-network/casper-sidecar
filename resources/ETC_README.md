@@ -98,10 +98,6 @@ storage_path = "/var/lib/casper-sidecar"
 
 The DB setup is described [here](../README#database-connectivity-setup).
 
-## Swagger Documentation
-
-If the Sidecar is running locally, access the Swagger documentation at `http://localhost:18888/swagger-ui/`.
-
 ## OpenAPI Specification
 
 An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`.

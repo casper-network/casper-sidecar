@@ -10,23 +10,17 @@ use crate::{
 };
 use casper_types::{
     contract_messages::Messages,
-    execution::{execution_result_v1::ExecutionEffect, ExecutionResult},
+    execution::{execution_result_v1::ExecutionEffect, Effects, ExecutionResult},
     Block, BlockHash, FinalitySignature, RuntimeArgs, Transaction,
 };
-use http::{header::CONTENT_TYPE, Uri};
 use schemars::{schema::SchemaObject, schema_for, visit::Visitor};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use utoipa::{
     openapi::{Components, Contact, RefOr, Schema},
     Modify, OpenApi,
 };
-use utoipa_swagger_ui::Config;
-use warp::{
-    hyper::{Response, StatusCode},
-    path::{FullPath, Tail},
-    Filter, Rejection, Reply,
-};
+use warp::Filter;
 
 use self::schema_transformation_visitor::SchemaTransformationVisitor;
 
@@ -95,23 +89,17 @@ pub fn build_open_api_filters(
                 schema_for!(FinalitySignature),
             ),
             ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),
+            ("Effects".to_string(), schema_for!(Effects)),
             ("Transaction".to_string(), schema_for!(Transaction)),
             ("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
             ("Messages".to_string(), schema_for!(Messages)),
         ],
     );
     doc.components = Some(components);
-    let api_doc = warp::path("api-doc.json")
+
+    warp::path("api-doc.json")
         .and(warp::get())
-        .map(move || warp::reply::json(&doc));
-    let config = Arc::new(Config::from("/api-doc.json"));
-    let swagger_ui = warp::path("swagger-ui")
-        .and(warp::get())
-        .and(warp::path::full())
-        .and(warp::path::tail())
-        .and(warp::any().map(move || config.clone()))
-        .and_then(serve_swagger);
-    api_doc.or(swagger_ui)
+        .map(move || warp::reply::json(&doc))
 }
 
 fn force_produce_utoipa_schemas(
@@ -143,38 +131,6 @@ fn rebuild_schema_object(key: &str, schemars_schema_obj: SchemaObject) -> utoipa
                 key, e, schema_str
             );
         }
-    }
-}
-
-async fn serve_swagger(
-    full_path: FullPath,
-    tail: Tail,
-    config: Arc<Config<'static>>,
-) -> Result<Box<dyn Reply + 'static>, Rejection> {
-    if full_path.as_str() == "/swagger-ui" {
-        return Ok(Box::new(warp::redirect::found(Uri::from_static(
-            "/swagger-ui/",
-        ))));
-    }
-
-    let path = tail.as_str();
-    match utoipa_swagger_ui::serve(path, config) {
-        Ok(file) => {
-            if let Some(file) = file {
-                Ok(Box::new(
-                    Response::builder()
-                        .header(CONTENT_TYPE, file.content_type)
-                        .body(file.bytes),
-                ))
-            } else {
-                Ok(Box::new(StatusCode::NOT_FOUND))
-            }
-        }
-        Err(error) => Ok(Box::new(
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(error.to_string()),
-        )),
     }
 }
 

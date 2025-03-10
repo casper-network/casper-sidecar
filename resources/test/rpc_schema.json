@@ -6513,7 +6513,7 @@
       "EntityVersionAndHash": {
         "type": "object",
         "required": [
-          "addressable_entity_hash",
+          "entity_addr",
           "entity_version_key"
         ],
         "properties": {
@@ -6524,10 +6524,10 @@
               }
             ]
           },
-          "addressable_entity_hash": {
+          "entity_addr": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/AddressableEntityHash"
+                "$ref": "#/components/schemas/EntityAddr"
               }
             ]
           }
@@ -6555,9 +6555,22 @@
           }
         }
       },
-      "AddressableEntityHash": {
-        "description": "The hex-encoded address of the addressable entity.",
-        "type": "string"
+      "EntityAddr": {
+        "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
+        "anyOf": [
+          {
+            "description": "The address for a system entity account or contract.",
+            "type": "string"
+          },
+          {
+            "description": "The address of an entity that corresponds to an Account.",
+            "type": "string"
+          },
+          {
+            "description": "The address of an entity that corresponds to a Userland smart contract.",
+            "type": "string"
+          }
+        ]
       },
       "PackageStatus": {
         "description": "A enum to determine the lock status of the package.",
@@ -6997,23 +7010,6 @@
               }
             },
             "additionalProperties": false
-          }
-        ]
-      },
-      "EntityAddr": {
-        "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-        "anyOf": [
-          {
-            "description": "The address for a system entity account or contract.",
-            "type": "string"
-          },
-          {
-            "description": "The address of an entity that corresponds to an Account.",
-            "type": "string"
-          },
-          {
-            "description": "The address of an entity that corresponds to a Userland smart contract.",
-            "type": "string"
           }
         ]
       },
