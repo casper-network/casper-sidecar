@@ -257,7 +257,7 @@ fn highlight_slow_latency(latency: &u128) -> String {
     if millis < ACCEPTABLE_LATENCY.as_millis() {
         millis.to_string()
     } else {
-        format!("!!{}!!", millis)
+        format!("!!{millis}!!")
     }
 }
 
