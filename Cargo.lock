@@ -409,7 +409,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=dev#ac5a4a08381347298f23555c37247d51592b106d"
+source = "git+https://github.com/casper-network/casper-node.git?branch=release-2.0.0-rc8#1d362cd8260b1b862f8d63ab1bd9de2f09da69f2"
 dependencies = [
  "bincode",
  "bytes",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-listener"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-sidecar"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-types"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "casper-types",
  "mockall",
@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "casper-rpc-sidecar"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "assert-json-diff",
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "casper-sidecar"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "5.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=dev#ac5a4a08381347298f23555c37247d51592b106d"
+source = "git+https://github.com/casper-network/casper-node.git?branch=release-2.0.0-rc8#1d362cd8260b1b862f8d63ab1bd9de2f09da69f2"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -2810,7 +2810,7 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "once_cell",
  "prometheus",

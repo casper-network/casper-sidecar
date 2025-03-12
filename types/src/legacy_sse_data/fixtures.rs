@@ -392,9 +392,7 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
           ]
         },
         "entry_point": "AddBid",
-        "scheduling": {
-          "FutureEra": 195120
-        },
+        "scheduling": "Standard",
         "target": "Native"
     }
   },

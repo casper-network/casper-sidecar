@@ -1,6 +1,6 @@
 [package]
 name = "casper-sidecar"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
 edition = "2021"
 description = "Base module that spins up casper sidecar"

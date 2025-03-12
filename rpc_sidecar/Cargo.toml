@@ -1,6 +1,6 @@
 [package]
 name = "casper-rpc-sidecar"
-version = "1.0.0"
+version = "1.0.2"
 authors = ["Jacek Malec <jacek@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain RPC sidecard"

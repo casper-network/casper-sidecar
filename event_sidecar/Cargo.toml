@@ -4,7 +4,7 @@ authors = [
     "George Williamson <george@casperlabs.io>",
     "Jakub Zajkowski <jakub@casperlabs.io>",
 ]
-version = "1.0.0"
+version = "1.0.2"
 edition = "2018"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
@@ -24,7 +24,7 @@ testing = []
 anyhow = { workspace = true }
 async-trait = "0.1.56"
 bytes = "1.2.0"
-casper-event-listener = { path = "../listener", version = "1.0.0" }
+casper-event-listener = { workspace = true }
 casper-event-types = { workspace = true }
 casper-types = { workspace = true }
 derive-new = { workspace = true }
