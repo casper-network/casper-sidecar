@@ -845,6 +845,8 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
                 "initiator": {
                     "PublicKey": "0203d98e2ec694b981cebd7cf35ac531d8717e86dc35912f2536b8807ad550621147"
                 },
+                "current_price": 1,
+                "refund": "100",
                 "error_message": "Error message 18290057561582514745",
                 "limit": "11209375253254652626",
                 "consumed": "10059559442643035623",

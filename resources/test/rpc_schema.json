@@ -377,9 +377,11 @@
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     },
                     "error_message": null,
+                    "current_price": 2,
                     "limit": "123456",
                     "consumed": "100000",
                     "cost": "246912",
+                    "refund": "146912",
                     "transfers": [
                       {
                         "Version2": {
@@ -570,9 +572,11 @@
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     },
                     "error_message": null,
+                    "current_price": 2,
                     "limit": "123456",
                     "consumed": "100000",
                     "cost": "246912",
+                    "refund": "146912",
                     "transfers": [
                       {
                         "Version2": {
@@ -5238,9 +5242,11 @@
         "required": [
           "consumed",
           "cost",
+          "current_price",
           "effects",
           "initiator",
           "limit",
+          "refund",
           "size_estimate",
           "transfers"
         ],
@@ -5260,8 +5266,14 @@
               "null"
             ]
           },
+          "current_price": {
+            "description": "The current gas price. I.e. how many motes are charged for each unit of computation.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
           "limit": {
-            "description": "What was the maximum allowed gas limit for this transaction?.",
+            "description": "The maximum allowed gas limit for this transaction",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Gas"
@@ -5278,6 +5290,14 @@
           },
           "cost": {
             "description": "How much was paid for this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "refund": {
+            "description": "How much unconsumed gas was refunded (if any)?",
             "allOf": [
               {
                 "$ref": "#/components/schemas/U512"
@@ -6474,7 +6494,7 @@
             "description": "All versions (enabled & disabled).",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Array_of_EntityVersionAndHash"
+                "$ref": "#/components/schemas/Array_of_EntityVersionAndEntityAddr"
               }
             ]
           },
@@ -6504,13 +6524,13 @@
           }
         }
       },
-      "Array_of_EntityVersionAndHash": {
+      "Array_of_EntityVersionAndEntityAddr": {
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/EntityVersionAndHash"
+          "$ref": "#/components/schemas/EntityVersionAndEntityAddr"
         }
       },
-      "EntityVersionAndHash": {
+      "EntityVersionAndEntityAddr": {
         "type": "object",
         "required": [
           "entity_addr",
