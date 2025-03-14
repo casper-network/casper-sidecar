@@ -22,7 +22,6 @@ casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 derive-new = { workspace = true }
 futures = { workspace = true }
-governor = { workspace = true }
 http = "0.2"
 hyper = "0.14"
 metrics = { workspace = true }
@@ -40,6 +39,7 @@ serde-map-to-array = "1.1"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.6", features = ["codec"] }
+tower = { version = "0.4.6", features = ["limit"] }
 tracing = { workspace = true, default-features = true }
 warp = { workspace = true, features = ["compression"] }
 

@@ -7,7 +7,7 @@ mod speculative_exec_server;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
-use std::{process::ExitCode, sync::Arc};
+use std::{net::SocketAddr, process::ExitCode, sync::Arc};
 
 use anyhow::Error;
 use casper_binary_port::{Command, CommandHeader};
@@ -19,11 +19,15 @@ pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{future::BoxFuture, FutureExt};
 pub use http_server::run as run_rpc_server;
 
+use hyper::{
+    server::{conn::AddrIncoming, Builder as ServerBuilder},
+    Server,
+};
 use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
-use tracing::error;
+use tracing::{error, warn};
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -94,10 +98,7 @@ async fn retype_future_vec(
 async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
     run_rpc_server(
         node_client,
-        config.ip_address,
-        config.port,
-        config.default_limit(),
-        config.limits.unwrap_or_default(),
+        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin,
@@ -112,16 +113,20 @@ async fn run_speculative_exec(
 ) -> anyhow::Result<()> {
     run_speculative_exec_server(
         node_client,
-        config.ip_address,
-        config.port,
-        config.default_limit(),
-        config.limits.unwrap_or_default(),
+        start_listening(&SocketAddr::new(config.ip_address, config.port))?,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin,
     )
     .await;
     Ok(())
+}
+
+fn start_listening(address: &SocketAddr) -> anyhow::Result<ServerBuilder<AddrIncoming>> {
+    Server::try_bind(address).map_err(|error| {
+        warn!(%error, %address, "failed to start HTTP server");
+        error.into()
+    })
 }
 
 fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {

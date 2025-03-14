@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use casper_json_rpc::{ConfigLimit, Error, Params, RequestHandlersBuilder};
+//! use casper_json_rpc::{Error, Params, RequestHandlersBuilder};
 //! use std::{convert::Infallible};
 //!
 //! # #[allow(unused)]
@@ -31,10 +31,9 @@
 //! async fn main() {
 //!     // Register handlers for methods "get" and "put".
 //!     let mut handlers = RequestHandlersBuilder::new();
-//!     let limit = ConfigLimit::default();
-//!     handlers.register_handler("get", get, &limit);
+//!     handlers.register_handler("get", get);
 //!     let put_handler = move |params| async move { put(params, "other input").await };
-//!     handlers.register_handler("put", put_handler, &limit);
+//!     handlers.register_handler("put", put_handler);
 //!     let handlers = handlers.build();
 //!
 //!     // Get the new route.
@@ -86,13 +85,8 @@ mod request;
 mod request_handlers;
 mod response;
 
-use std::{hash::Hash, num::NonZeroU32};
-
-use casper_types::TimeDiff;
-use datasize::DataSize;
-use governor::Quota;
 use http::{header::CONTENT_TYPE, Method};
-use serde::Deserialize;
+use std::hash::Hash;
 use warp::{filters::BoxedFilter, Filter, Reply};
 
 pub use error::{Error, ErrorCodeT, ReservedErrorCode};
@@ -102,55 +96,12 @@ pub use response::Response;
 
 const JSON_RPC_VERSION: &str = "2.0";
 
-/// Default value for limiter's number of requests.
-pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
-/// Default value for limiter's period of time.
-pub const DEFAULT_LIMIT_PERIOD: TimeDiff = TimeDiff::from_seconds(1);
-
 /// Specifies the CORS origin
 pub enum CorsOrigin {
     /// Any (*) origin is allowed.
     Any,
     /// Only the specified origin is allowed.
     Specified(String),
-}
-
-/// Helper function for `DataSize` derive.
-#[must_use]
-pub fn nonzero_u32(value: &NonZeroU32) -> usize {
-    value.get().estimate_heap_size()
-}
-
-/// Specifies connection rate limiter parameters for a method (HTTP path).
-#[derive(Clone, DataSize, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConfigLimit {
-    /// Maximum number of request that the rate limiter will allow for a period of time (below).
-    #[data_size(with = nonzero_u32)]
-    pub requests: NonZeroU32,
-    /// Rate limiter's time period.
-    pub period: TimeDiff,
-}
-
-impl ConfigLimit {
-    /// Return connection limit as `Quota`.
-    #[must_use]
-    pub fn quota(&self) -> Quota {
-        if let Some(quota) = Quota::with_period(self.period.into()) {
-            quota.allow_burst(self.requests)
-        } else {
-            Quota::per_second(self.requests)
-        }
-    }
-}
-
-impl Default for ConfigLimit {
-    fn default() -> Self {
-        Self {
-            requests: DEFAULT_LIMIT_REQUESTS,
-            period: DEFAULT_LIMIT_PERIOD,
-        }
-    }
 }
 
 /// Constructs a set of warp filters suitable for use in a JSON-RPC server.

@@ -13,14 +13,14 @@ The `casper-json-rpc` library described here can be used as the framework for a 
 
 Typical usage of this library involves two steps:
 
-* Construct a set of request handlers using a
-[`RequestHandlersBuilder`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.RequestHandlersBuilder.html).
-* Call [`casper_json_rpc::route`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/fn.route.html) to construct a boxed warp filter ready to be passed to [`warp::service`](https://docs.rs/warp/latest/warp/fn.service.html).
+- Construct a set of request handlers using a
+  [`RequestHandlersBuilder`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.RequestHandlersBuilder.html).
+- Call [`casper_json_rpc::route`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/fn.route.html) to construct a boxed warp filter ready to be passed to [`warp::service`](https://docs.rs/warp/latest/warp/fn.service.html).
 
 # Example
 
 ```rust
-use casper_json_rpc::{ConfigLimit, Error, Params, RequestHandlersBuilder};
+use casper_json_rpc::{Error, Params, RequestHandlersBuilder};
 use std::{convert::Infallible};
 
 async fn get(params: Option<Params>) -> Result<String, Error> {
@@ -37,10 +37,9 @@ async fn put(params: Option<Params>, other_input: &str) -> Result<String, Error>
 async fn main() {
     // Register handlers for methods "get" and "put".
     let mut handlers = RequestHandlersBuilder::new();
-    let limit = ConfigLimit::default();
-    handlers.register_handler("get", get, &limit);
+    handlers.register_handler("get", get);
     let put_handler = move |params| async move { put(params, "other input").await };
-    handlers.register_handler("put", put_handler, &limit);
+    handlers.register_handler("put", put_handler);
     let handlers = handlers.build();
 
     // Get the new route.
@@ -76,13 +75,13 @@ Here is a sample response:
 # Errors
 
 To return a JSON-RPC response indicating an error, use
-[`Error::new`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.Error.html#method.new).  Most error
-conditions that require returning a reserved error are already handled in the provided warp filters.  The only
+[`Error::new`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/struct.Error.html#method.new). Most error
+conditions that require returning a reserved error are already handled in the provided warp filters. The only
 exception is
 [`ReservedErrorCode::InvalidParams`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/enum.ReservedErrorCode.html#variant.InvalidParams), which should be returned by any RPC handler that deems the provided `params: Option<Params>` to be invalid for any
 reason.
 
-Generally, a set of custom error codes should be provided.  These should all implement
+Generally, a set of custom error codes should be provided. These should all implement
 [`ErrorCodeT`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/trait.ErrorCodeT.html).
 
 ## Example custom error code
