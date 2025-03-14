@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-listener"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-sidecar"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-types"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "casper-types",
  "mockall",
@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "casper-rpc-sidecar"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "assert-json-diff",
@@ -577,7 +577,7 @@ dependencies = [
 
 [[package]]
 name = "casper-sidecar"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2766,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "once_cell",
  "prometheus",
