@@ -37,7 +37,7 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
         era_id: EraId::from(42),
         stored_value: StoredValue::EraInfo(era_info),
         state_root_hash: *BlockV2::example().state_root_hash(),
-        merkle_proof: MERKLE_PROOF.clone(),
+        merkle_proof: MERKLE_PROOF.into(),
     }
 });
 
