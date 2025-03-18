@@ -1,6 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Instant};
 
 use futures::FutureExt;
+use governor::DefaultDirectRateLimiter;
 use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
@@ -10,6 +11,7 @@ use crate::{
     error::{Error, ReservedErrorCode},
     request::{Params, Request},
     response::Response,
+    ConfigLimit,
 };
 
 /// A boxed future of `Result<Value, Error>`; the return type of a request-handling closure.
@@ -22,7 +24,8 @@ type RequestHandler = Arc<dyn Fn(Option<Params>) -> HandleRequestFuture + Send +
 /// There needs to be a unique handler for each JSON-RPC request "method" to be handled.  Handlers
 /// are added via a [`RequestHandlersBuilder`].
 #[derive(Clone)]
-pub struct RequestHandlers(Arc<HashMap<&'static str, RequestHandler>>);
+pub struct RequestHandlers(Arc<HashMap<&'static str, (RequestHandler, DefaultDirectRateLimiter)>>);
+
 impl RequestHandlers {
     /// Finds the relevant handler for the given request's "method" field, and invokes it with the
     /// given "params" value.
@@ -35,7 +38,7 @@ impl RequestHandlers {
     pub(crate) async fn handle_request(&self, request: Request, request_size: usize) -> Response {
         let start = Instant::now();
         let request_method = request.method.as_str();
-        let Some(handler) = self.0.get(request_method) else {
+        let Some((handler, limiter)) = self.0.get(request_method) else {
             let elapsed = start.elapsed();
             observe_response_time("unknown-handler", "unknown-handler", elapsed);
             debug!(requested_method = %request_method, "failed to get handler");
@@ -48,6 +51,12 @@ impl RequestHandlers {
         // Update metrics.
         inc_method_call(request_method);
         register_request_size(request_method, request_size);
+
+        // Manage limits
+        if let Err(_negative) = limiter.check() {
+            let error = Error::new(ReservedErrorCode::RequestThrottled, "Request throttled");
+            return Response::new_failure(request.id, error);
+        }
 
         let elapsed = start.elapsed();
         match handler(request.params).await {
@@ -68,7 +77,9 @@ impl RequestHandlers {
 // This builder exists so the internal `HashMap` can be populated before it is made immutable behind
 // the `Arc` in the `RequestHandlers`.
 #[derive(Default)]
-pub struct RequestHandlersBuilder(HashMap<&'static str, RequestHandler>);
+pub struct RequestHandlersBuilder(
+    HashMap<&'static str, (RequestHandler, DefaultDirectRateLimiter)>,
+);
 
 impl RequestHandlersBuilder {
     /// Returns a new builder.
@@ -85,8 +96,12 @@ impl RequestHandlersBuilder {
     /// async fn handle_it(params: Option<Params>) -> Result<T, Error>
     /// ```
     /// where `T` implements `Serialize` and will be used as the JSON-RPC response's "result" field.
-    pub fn register_handler<Func, Fut, T>(&mut self, method: &'static str, handler: Func)
-    where
+    pub fn register_handler<Func, Fut, T>(
+        &mut self,
+        method: &'static str,
+        handler: Func,
+        limit: &ConfigLimit,
+    ) where
         Func: Fn(Option<Params>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<T, Error>> + Send,
         T: Serialize + 'static,
@@ -109,7 +124,17 @@ impl RequestHandlersBuilder {
             }
             .boxed()
         };
-        if self.0.insert(method, Arc::new(wrapped_handler)).is_some() {
+        if self
+            .0
+            .insert(
+                method,
+                (
+                    Arc::new(wrapped_handler),
+                    DefaultDirectRateLimiter::direct(limit.quota()),
+                ),
+            )
+            .is_some()
+        {
             error!(
                 method,
                 "already registered a handler for this json-rpc request method"

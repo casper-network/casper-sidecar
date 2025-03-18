@@ -27,6 +27,10 @@ datasize = "0.2"
 derive-new = "0.7"
 futures = "0"
 futures-util = "0.3"
+governor = { version = "0.8", default-features = false, features = [
+    "dashmap",
+    "std",
+] }
 itertools = "0.14"
 jsonschema = "0.28"
 metrics = { path = "./metrics", version = "1.0.3" }
