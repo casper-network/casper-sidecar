@@ -1,14 +1,17 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Instant};
 
 use futures::FutureExt;
-use governor::DefaultDirectRateLimiter;
+use governor::{
+    clock::{Clock, DefaultClock},
+    DefaultDirectRateLimiter,
+};
 use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error};
 
 use crate::{
-    error::{Error, ReservedErrorCode},
+    error::{Error, ReservedErrorCode, RpcErrorCode},
     request::{Params, Request},
     response::Response,
     ConfigLimit,
@@ -53,8 +56,12 @@ impl RequestHandlers {
         register_request_size(request_method, request_size);
 
         // Manage limits
-        if let Err(_negative) = limiter.check() {
-            let error = Error::new(ReservedErrorCode::RequestThrottled, "Request throttled");
+        if let Err(negative) = limiter.check() {
+            let wait_time = negative.wait_time_from(DefaultClock::default().now());
+            let error = Error::new(
+                RpcErrorCode::RequestThrottled,
+                format!("retry-after {:.4}s", wait_time.as_secs_f32()),
+            );
             return Response::new_failure(request.id, error);
         }
 
