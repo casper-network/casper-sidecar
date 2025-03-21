@@ -4,24 +4,24 @@ use async_trait::async_trait;
 use casper_binary_port::{BinaryResponseAndRequest, Command, InformationRequest};
 use casper_event_types::SidecarEvent;
 use casper_types::{BlockIdentifier, BlockWithSignatures};
-use once_cell::sync::Lazy;
 use std::{sync::Arc, time::Duration};
 use tokio::{
-    sync::{broadcast::Receiver, Mutex},
+    sync::{broadcast::Receiver, RwLock},
     time::timeout,
 };
 use tracing::info;
 
-static CACHE_FETCH_TIMEOUT: Lazy<Duration> = Lazy::new(|| Duration::from_millis(5));
+const CACHE_FETCH_TIMEOUT: Duration = Duration::from_millis(5);
 
 pub struct CachingNodeClient<T: NodeClient + Send + Sync> {
     inner_client: Arc<T>,
-    block_with_signatures_cache: Arc<Mutex<Option<BlockWithSignatures>>>,
+    block_with_signatures_cache: Arc<RwLock<Option<BlockWithSignatures>>>,
 }
 
 impl<T: NodeClient + Send + Sync> CachingNodeClient<T> {
     pub(crate) fn new(inner_client: Arc<T>) -> Self {
-        let block_with_signatures_cache = Arc::new(Mutex::new(None));
+        let block_with_signatures_cache: Arc<RwLock<Option<BlockWithSignatures>>> =
+            Arc::new(RwLock::new(None));
         Self {
             inner_client,
             block_with_signatures_cache,
@@ -29,12 +29,7 @@ impl<T: NodeClient + Send + Sync> CachingNodeClient<T> {
     }
 
     async fn get_block_from_cache(&self) -> Option<BlockWithSignatures> {
-        match timeout(
-            *CACHE_FETCH_TIMEOUT,
-            self.block_with_signatures_cache.lock(),
-        )
-        .await
-        {
+        match timeout(CACHE_FETCH_TIMEOUT, self.block_with_signatures_cache.read()).await {
             Ok(maybe_block) => maybe_block.clone(),
             Err(_) => None,
         }
@@ -42,7 +37,7 @@ impl<T: NodeClient + Send + Sync> CachingNodeClient<T> {
 
     #[cfg(test)]
     async fn inner_cached_block(&self) -> Option<BlockWithSignatures> {
-        let guard = self.block_with_signatures_cache.lock().await;
+        let guard = self.block_with_signatures_cache.read().await;
         (*guard).clone()
     }
 }
@@ -77,7 +72,7 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
         match sidecar_event_receiver.recv().await {
             Ok(msg) => match msg {
                 SidecarEvent::BlockAdded { height, .. } => {
-                    let guard = client.block_with_signatures_cache.lock().await;
+                    let guard = client.block_with_signatures_cache.read().await;
                     if let Some(block) = guard.as_ref() {
                         let known_height = block.block().height();
                         if height <= known_height {
@@ -94,7 +89,7 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
                         .read_block_with_signatures(block_identifier)
                         .await;
 
-                    let mut guard = client.block_with_signatures_cache.lock().await;
+                    let mut guard = client.block_with_signatures_cache.write().await;
                     match res {
                         Ok(Some(block)) => {
                             let height = block.block().height();
@@ -121,12 +116,12 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
             },
             Err(x) => match x {
                 tokio::sync::broadcast::error::RecvError::Closed => {
-                    let mut guard = client.block_with_signatures_cache.lock().await;
+                    let mut guard = client.block_with_signatures_cache.write().await;
                     *guard = None;
                     anyhow::bail!("In cache_update_loop: internal broadcast mechanism of sidecar events failed.");
                 }
                 tokio::sync::broadcast::error::RecvError::Lagged(_) => {
-                    let mut guard = client.block_with_signatures_cache.lock().await;
+                    let mut guard = client.block_with_signatures_cache.write().await;
                     *guard = None;
                     info!("lag detected in cache_update_loop ")
                 }

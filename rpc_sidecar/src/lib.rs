@@ -49,7 +49,7 @@ pub async fn build_rpc_server<'a>(
             cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
                 .map(|q| {
                     if let Err(e) = q {
-                        error!("reconect_loop finished with error: {}", e);
+                        error!("cache_update_loop finished with error: {e}");
                     }
                     Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
                 })

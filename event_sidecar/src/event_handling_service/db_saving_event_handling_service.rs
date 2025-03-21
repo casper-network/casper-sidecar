@@ -78,11 +78,10 @@ where
             .await;
         if res.is_ok() {
             if let Some(sender) = self.sidecar_event_sender.as_ref() {
-                if let Err(e) = sender.send(SidecarEvent::BlockAdded { block_hash, height }) {
-                    warn!(
-                    "Error while handling internal SidecarEvent::BlockAdded event propagation: {}",
-                    e);
-                }
+                // `send` will return error if there is no receiving party. But we treat this
+                // Sender as an event bus, so having no receiver is normal and we should muffle
+                // the error since there's really nothing to do in that case
+                let _ = sender.send(SidecarEvent::BlockAdded { block_hash, height });
             }
         }
         handle_database_save_result(
