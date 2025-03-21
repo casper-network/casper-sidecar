@@ -3,8 +3,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
+use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
     system::auction::{
