@@ -267,7 +267,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_pre_condor_auction_info_with_addressable_entity_off() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
         let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
         let block_header = TestBlockV1Builder::new()
             .build_versioned(rng)
@@ -339,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_condor_auction_info_with_addressable_entity_off() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
         let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
         let block_header = TestBlockV1Builder::new()
             .protocol_version(SUPPORTED_PROTOCOL_VERSION)
@@ -412,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_condor_auction_info_with_addressable_entity_on() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
         let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
         let block_header = TestBlockV1Builder::new()
             .protocol_version(SUPPORTED_PROTOCOL_VERSION)

@@ -7,13 +7,14 @@ use crate::{
 };
 use async_trait::async_trait;
 use casper_event_listener::SseEvent;
-use casper_event_types::{sse_data::SseData, Filter};
+use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
 use casper_types::{
     Block, BlockHash, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
 };
 use derive_new::new;
 use hex_fmt::HexFmt;
 use metrics::sse::observe_contract_messages;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, info, warn};
 
@@ -24,6 +25,7 @@ pub struct DbSavingEventHandlingService<Db: DatabaseReader + DatabaseWriter + Cl
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
     database: Db,
     enable_event_logging: bool,
+    sidecar_event_sender: Option<BroadcastSender<SidecarEvent>>,
 }
 
 #[async_trait]
@@ -63,6 +65,7 @@ where
         let api_version = sse_event.api_version;
         let network_name = sse_event.network_name;
         let filter = sse_event.inbound_filter;
+        let height = block.height();
         let res = self
             .database
             .save_block_added(
@@ -73,6 +76,15 @@ where
                 network_name,
             )
             .await;
+        if res.is_ok() {
+            if let Some(sender) = self.sidecar_event_sender.as_ref() {
+                if let Err(e) = sender.send(SidecarEvent::BlockAdded { block_hash, height }) {
+                    warn!(
+                    "Error while handling internal SidecarEvent::BlockAdded event propagation: {}",
+                    e);
+                }
+            }
+        }
         handle_database_save_result(
             "BlockAdded",
             HexFmt(block_hash.inner()).to_string().as_str(),

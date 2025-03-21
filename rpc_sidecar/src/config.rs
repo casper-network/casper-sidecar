@@ -24,6 +24,8 @@ const DEFAULT_QPS_LIMIT: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100) };
 const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: String = String::new();
+/// Default enable block prefetch
+const DEFAULT_ENABLE_BLOCK_PREFETCH: bool = false;
 
 #[derive(Error, Debug)]
 pub enum FieldParseError {
@@ -69,6 +71,10 @@ pub struct RpcConfig {
     pub default_limit_period: TimeDiff,
     /// Limits; key is RPC method name.
     pub limits: Option<HashMap<String, ConfigLimit>>,
+    /// If set to true, sidecar will prefetch and cache in-memory the latest block info for `chain_get_block`. The node
+    /// reacts to the sses observance of `BlockAdded` sse event. If sse is not set-up, setting this flag to "true" will have no effect.
+    #[serde(default = "default_enable_block_prefetch")]
+    pub enable_block_prefetch: bool,
 }
 
 impl RpcConfig {
@@ -85,6 +91,7 @@ impl RpcConfig {
             default_limit_requests: DEFAULT_LIMIT_REQUESTS,
             default_limit_period: DEFAULT_LIMIT_PERIOD,
             limits: None,
+            enable_block_prefetch: DEFAULT_ENABLE_BLOCK_PREFETCH,
         }
     }
 
@@ -228,4 +235,8 @@ pub struct ExponentialBackoffConfig {
     pub coefficient: u64,
     /// Maximum number of connection attempts.
     pub max_attempts: u32,
+}
+
+fn default_enable_block_prefetch() -> bool {
+    false
 }

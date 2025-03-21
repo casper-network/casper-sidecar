@@ -10,7 +10,7 @@ pub mod sse_data;
 #[cfg(any(feature = "sse-data-testing", test))]
 mod testing;
 
-use casper_types::ProtocolVersion;
+use casper_types::{BlockHash, ProtocolVersion};
 pub use filter::Filter;
 use std::str::FromStr;
 
@@ -21,3 +21,8 @@ pub static SIDECAR_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     let patch: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap();
     ProtocolVersion::from_parts(major, minor, patch)
 });
+
+#[derive(Debug, Clone)]
+pub enum SidecarEvent {
+    BlockAdded { block_hash: BlockHash, height: u64 },
+}

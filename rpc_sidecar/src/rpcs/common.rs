@@ -107,10 +107,10 @@ impl ContractWasmWithProof {
 
 pub async fn get_block_with_signatures(
     node_client: &dyn NodeClient,
-    identifier: Option<BlockIdentifier>,
+    maybe_identifier: Option<BlockIdentifier>,
 ) -> Result<BlockWithSignatures, Error> {
     if let Some(block) = node_client
-        .read_block_with_signatures(identifier)
+        .read_block_with_signatures(maybe_identifier)
         .await
         .map_err(|err| Error::NodeRequest("block with signatures", err))?
     {
@@ -120,7 +120,7 @@ pub async fn get_block_with_signatures(
             .read_available_block_range()
             .await
             .map_err(|err| Error::NodeRequest("available block range", err))?;
-        Err(Error::NoBlockFound(identifier, available_range))
+        Err(Error::NoBlockFound(maybe_identifier, available_range))
     }
 }
 

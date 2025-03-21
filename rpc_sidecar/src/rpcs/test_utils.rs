@@ -9,7 +9,8 @@ use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr::ToBytes,
     system::auction::{Bid, BidKind, EraInfo, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
-    AddressableEntityHash, BlockHeader, CLValue, GlobalStateIdentifier, Key, KeyTag, StoredValue,
+    AddressableEntityHash, BlockHeader, BlockWithSignatures, CLValue, GlobalStateIdentifier, Key,
+    KeyTag, StoredValue,
 };
 use tokio::sync::Mutex;
 
@@ -27,7 +28,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_era_info_req_res(
-        &mut self,
+        &self,
         era_info: EraInfo,
         state_identifier: Option<GlobalStateIdentifier>,
     ) {
@@ -45,7 +46,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_block_header_req_res(
-        &mut self,
+        &self,
         block_header: BlockHeader,
         information_request: InformationRequest,
     ) {
@@ -58,7 +59,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_bid_kinds_fetch_res(
-        &mut self,
+        &self,
         bid_kinds: Vec<BidKind>,
         state_identifier: Option<GlobalStateIdentifier>,
     ) {
@@ -75,7 +76,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_bids_fetch_res(
-        &mut self,
+        &self,
         bids: Vec<Bid>,
         state_identifier: Option<GlobalStateIdentifier>,
     ) {
@@ -95,7 +96,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_system_registry(
-        &mut self,
+        &self,
         state_identifier: Option<GlobalStateIdentifier>,
         registry: BTreeMap<String, AddressableEntityHash>,
     ) {
@@ -114,7 +115,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_seigniorage_snapshot_under_addressable_entity(
-        &mut self,
+        &self,
         state_identifier: Option<GlobalStateIdentifier>,
         auction_hash: AddressableEntityHash,
         maybe_seigniorage_snapshot: Option<StoredValue>,
@@ -134,7 +135,7 @@ impl BinaryPortMock {
     }
 
     pub async fn add_seigniorage_snapshot_under_key_hash(
-        &mut self,
+        &self,
         state_identifier: Option<GlobalStateIdentifier>,
         auction_hash: AddressableEntityHash,
         maybe_seigniorage_snapshot: Option<StoredValue>,
@@ -153,11 +154,28 @@ impl BinaryPortMock {
         self.when_then(Command::Get(req), res).await;
     }
 
+    pub async fn add_block_with_signatures(
+        &self,
+        block_with_signatures: BlockWithSignatures,
+        information_request: InformationRequest,
+    ) {
+        let get_request = information_request
+            .try_into()
+            .expect("should create request");
+        let req = Command::Get(get_request);
+        let res = BinaryResponse::from_option(Some(block_with_signatures));
+        self.when_then(req, res).await;
+    }
+
     pub async fn when_then(&self, when: Command, then: BinaryResponse) {
         let payload = when.to_bytes().unwrap();
         let response_and_request = BinaryResponseAndRequest::new(then, payload.into());
         let mut guard = self.request_responses.lock().await;
         guard.push((when, response_and_request));
+    }
+    pub async fn verify_no_lingering(&self) {
+        let guard = self.request_responses.lock().await;
+        assert!(guard.is_empty());
     }
 }
 

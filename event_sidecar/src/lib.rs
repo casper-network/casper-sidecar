@@ -28,7 +28,7 @@ use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{sse_data::SseData, Filter};
+use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
 use casper_types::ProtocolVersion;
 use event_handling_service::{
     DbSavingEventHandlingService, EventHandlingService, NoDbEventHandlingService,
@@ -36,6 +36,7 @@ use event_handling_service::{
 use futures::future::join_all;
 use tokio::sync::Mutex;
 use tokio::{
+    sync::broadcast::Sender as BroadcastSender,
     sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
     task::JoinHandle,
     time::sleep,
@@ -61,6 +62,7 @@ pub async fn run(
     index_storage_folder: String,
     maybe_database: Option<Database>,
     maybe_network_name: Option<String>,
+    sidecar_event_sender: Option<BroadcastSender<SidecarEvent>>,
 ) -> Result<ExitCode, Error> {
     validate_config(&config)?;
     let (event_listeners, sse_data_receivers) = build_event_listeners(&config, maybe_network_name)?;
@@ -76,6 +78,7 @@ pub async fn run(
         sse_data_receivers,
         maybe_database,
         outbound_sse_data_sender.clone(),
+        sidecar_event_sender,
     );
 
     let event_broadcasting_handle = start_event_broadcasting(
@@ -129,6 +132,7 @@ fn start_sse_processors(
     sse_data_receivers: Vec<Receiver<SseEvent>>,
     maybe_database: Option<Database>,
     outbound_sse_data_sender: Sender<(SseData, Option<Filter>)>,
+    sidecar_event_sender: Option<BroadcastSender<SidecarEvent>>,
 ) -> JoinHandle<Result<(), Error>> {
     tokio::spawn(async move {
         let mut join_handles = Vec::with_capacity(event_listeners.len());
@@ -152,6 +156,7 @@ fn start_sse_processors(
                 &outbound_sse_data_sender,
                 connection_config,
                 &api_version_manager,
+                sidecar_event_sender.clone(),
             );
             join_handles.push(join_handle);
         }
@@ -172,12 +177,14 @@ fn start_sse_processors(
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn spawn_sse_processor(
     maybe_database: Option<Database>,
     sse_data_receiver: Receiver<SseEvent>,
     outbound_sse_data_sender: &Sender<(SseData, Option<Filter>)>,
     connection_config: Connection,
     api_version_manager: &std::sync::Arc<tokio::sync::Mutex<ApiVersionManager>>,
+    sidecar_event_sender: Option<BroadcastSender<SidecarEvent>>,
 ) -> JoinHandle<Result<(), Error>> {
     match maybe_database {
         Some(Database::SqliteDatabaseWrapper(db)) => {
@@ -185,6 +192,7 @@ fn spawn_sse_processor(
                 outbound_sse_data_sender.clone(),
                 db,
                 connection_config.enable_logging,
+                sidecar_event_sender,
             );
             tokio::spawn(sse_processor(
                 sse_data_receiver,
@@ -198,6 +206,7 @@ fn spawn_sse_processor(
                 outbound_sse_data_sender.clone(),
                 db,
                 connection_config.enable_logging,
+                sidecar_event_sender,
             );
             tokio::spawn(sse_processor(
                 sse_data_receiver,
@@ -210,6 +219,7 @@ fn spawn_sse_processor(
             let event_handling_service = NoDbEventHandlingService::new(
                 outbound_sse_data_sender.clone(),
                 connection_config.enable_logging,
+                sidecar_event_sender,
             );
             tokio::spawn(sse_processor(
                 sse_data_receiver,

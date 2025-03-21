@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use casper_event_sidecar::{
     run as run_sse_sidecar, run_admin_server, run_rest_server, LazyDatabaseWrapper,
 };
+use casper_event_types::SidecarEvent;
 use casper_rpc_sidecar::build_rpc_server;
 use derive_new::new;
 use futures::{future::BoxFuture, FutureExt};
@@ -10,6 +11,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     process::ExitCode,
 };
+use tokio::sync::broadcast::Sender;
 use tracing::info;
 
 use crate::config::SidecarConfig;
@@ -81,6 +83,7 @@ pub trait Component {
 #[derive(new)]
 pub struct SseServerComponent {
     maybe_database: Option<LazyDatabaseWrapper>,
+    sidecar_event_sender: Option<Sender<SidecarEvent>>,
 }
 
 #[async_trait]
@@ -113,6 +116,7 @@ impl Component for SseServerComponent {
                     storage_config.storage_folder.clone(),
                     maybe_database,
                     config.network_name.clone(),
+                    self.sidecar_event_sender.clone(),
                 )
                 .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
@@ -196,7 +200,9 @@ impl Component for AdminApiComponent {
 }
 
 #[derive(new)]
-pub struct RpcApiComponent;
+pub struct RpcApiComponent {
+    sidecar_event_sender: Sender<SidecarEvent>,
+}
 
 #[async_trait]
 impl Component for RpcApiComponent {
@@ -221,8 +227,12 @@ impl Component for RpcApiComponent {
             if !is_speculative_exec_defined {
                 info!("Speculative RPC API server is disabled. Only main RPC API will be running.");
             }
-            let res =
-                build_rpc_server(rpc_server_config.clone(), config.network_name.clone()).await;
+            let res = build_rpc_server(
+                rpc_server_config.clone(),
+                config.network_name.clone(),
+                self.sidecar_event_sender.clone(),
+            )
+            .await;
             match res {
                 Ok(None) => Ok(None),
                 Ok(Some(fut)) => {
@@ -259,10 +269,11 @@ mod tests {
         testing::{get_port, start_mock_binary_port_responding_with_stored_value},
         NodeClientConfig, RpcServerConfig, SpeculativeExecConfig,
     };
+    use tokio::sync::broadcast;
 
     #[tokio::test]
     async fn given_sse_server_component_when_no_db_but_config_defined_should_return_some() {
-        let component = SseServerComponent::new(None);
+        let component = SseServerComponent::new(None, None);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -271,7 +282,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_but_no_config_should_return_none() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
         let mut config = all_components_all_disabled();
         config.sse_server = None;
         let res = component.prepare_component_task(&config).await;
@@ -281,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_config_disabled_should_return_none() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -290,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_and_config_should_return_some() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()));
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -364,7 +375,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_rpc_api_server_component_when_config_disabled_should_return_none() {
-        let component = RpcApiComponent::new();
+        let (rx, _) = broadcast::channel(1);
+        let component = RpcApiComponent::new(rx);
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -373,6 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_rpc_api_server_component_when_config_should_return_some() {
+        let (rx, _) = broadcast::channel(1);
         let port = get_port();
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle = start_mock_binary_port_responding_with_stored_value(
@@ -382,7 +395,7 @@ mod tests {
             Arc::clone(&shutdown),
         )
         .await;
-        let component = RpcApiComponent::new();
+        let component = RpcApiComponent::new(rx);
         let mut config = all_components_all_enabled();
         config.rpc_server.as_mut().unwrap().node_client =
             NodeClientConfig::new_with_port_and_retries(port, 1);
@@ -408,7 +421,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_rpc_api_server_component_when_no_config_should_return_none() {
-        let component = RpcApiComponent::new();
+        let (rx, _) = broadcast::channel(1);
+        let component = RpcApiComponent::new(rx);
         let mut config = all_components_all_disabled();
         config.rpc_server = None;
         let res = component.prepare_component_task(&config).await;

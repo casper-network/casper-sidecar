@@ -1,4 +1,4 @@
-use crate::{config::ExponentialBackoffConfig, encode_request, NodeClientConfig};
+use crate::{config::ExponentialBackoffConfig, encode_request, parse_response, NodeClientConfig};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use casper_binary_port::{
@@ -793,7 +793,7 @@ pub enum Error {
 }
 
 impl Error {
-    fn from_error_code(code: u16) -> Self {
+    pub(crate) fn from_error_code(code: u16) -> Self {
         match ErrorCode::try_from(code) {
             Ok(ErrorCode::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(ErrorCode::RootNotFound) => Self::UnknownStateRootHash,
@@ -1031,12 +1031,15 @@ impl FramedNodeClient {
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::time::sleep(keepalive_timeout).await;
-            client
+            let _ = client
                 .send_request(Command::Get(GetRequest::Information {
                     info_type_tag: InformationRequestTag::ProtocolVersion.into(),
                     key: Vec::new(),
                 }))
-                .await?;
+                .await; // We ignore failure from send_request because
+                        // keepalive should continue trying indefinitely.
+                        // Other mechanisms of the FramedNodeClient are
+                        // responsible for shutting down sidecar on retry exhaustion
         }
     }
 
@@ -1310,27 +1313,6 @@ fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), anyhow::Erro
         Err(error) => {
             anyhow::bail!("Malformed CommandHeader definition: {}", error);
         }
-    }
-}
-
-fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
-where
-    A: FromBytes + PayloadEntity,
-{
-    if resp.is_not_found() {
-        return Ok(None);
-    }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    match resp.returned_data_type_tag() {
-        Some(found) if found == u8::from(A::RESPONSE_TYPE) => {
-            bytesrepr::deserialize_from_slice(resp.payload())
-                .map(Some)
-                .map_err(|err| Error::Deserialization(err.to_string()))
-        }
-        Some(other) => Err(Error::UnexpectedVariantReceived(other)),
-        _ => Ok(None),
     }
 }
 

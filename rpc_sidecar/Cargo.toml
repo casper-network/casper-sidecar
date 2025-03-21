@@ -11,6 +11,7 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/rpc_sidecard
 license = "Apache-2.0"
 
 [dependencies]
+casper-event-types.workspace = true
 casper-types = { workspace = true, features = ["datasize", "std-fs-io"] }
 anyhow = { workspace = true }
 async-trait = "0.1"

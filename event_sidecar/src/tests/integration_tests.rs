@@ -8,7 +8,10 @@ use futures_util::StreamExt;
 use reqwest::StatusCode;
 use std::{fmt::Debug, time::Duration};
 use tempfile::{tempdir, TempDir};
-use tokio::{sync::mpsc, time::sleep};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time::sleep,
+};
 
 use crate::{
     database::{sqlite_database::SqliteDatabase, types::SseEnvelope},
@@ -36,6 +39,7 @@ use crate::{
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_not_allow_zero_max_attempts() {
+    let (tx, _) = broadcast::channel(160);
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
 
     let mut testing_config = prepare_config(&temp_storage_dir, true, None);
@@ -52,6 +56,7 @@ async fn should_not_allow_zero_max_attempts() {
         storage_folder,
         Some(Database::SqliteDatabaseWrapper(sqlite_database)),
         None,
+        Some(tx),
     )
     .await
     .expect_err("Sidecar should return an Err on shutdown");

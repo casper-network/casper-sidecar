@@ -605,7 +605,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_block_era_info_by_switch_block() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
 
         let block_header = TestBlockV1Builder::new()
             .switch_block(true)
@@ -649,7 +649,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_block_era_info_by_switch_block_with_block_id() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
 
         let block_header = TestBlockV1Builder::new()
             .switch_block(true)
@@ -698,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn should_read_none_block_era_info_by_switch_block_for_non_switch() {
         let rng = &mut TestRng::new();
-        let mut binary_port_mock = BinaryPortMock::new();
+        let binary_port_mock = BinaryPortMock::new();
 
         let block_header = TestBlockV1Builder::new()
             .switch_block(false)

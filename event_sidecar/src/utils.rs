@@ -164,7 +164,10 @@ pub mod tests {
     };
     use std::{path::PathBuf, process::ExitCode, time::Duration};
     use tempfile::{tempdir, TempDir};
-    use tokio::{sync::mpsc::Receiver, time::timeout};
+    use tokio::{
+        sync::{broadcast, mpsc::Receiver},
+        time::timeout,
+    };
 
     pub(crate) fn display_duration(duration: Duration) -> String {
         // less than a second
@@ -447,6 +450,7 @@ pub mod tests {
         testing_config: TestingConfig,
         spin_up_rest_api: bool,
     ) -> Result<ExitCode, AnyhowError> {
+        let (tx, _) = broadcast::channel(160);
         let has_db_configured = testing_config.has_db_configured();
         let sse_config = testing_config.inner();
         let storage_config = testing_config.storage_config;
@@ -477,6 +481,7 @@ pub mod tests {
             storage_folder,
             maybe_database,
             testing_config.network_name,
+            Some(tx),
         )
         .await
     }

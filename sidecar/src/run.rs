@@ -5,6 +5,7 @@ use casper_event_sidecar::LazyDatabaseWrapper;
 use std::{process::ExitCode, time::Duration};
 use tokio::{
     signal::unix::{signal, SignalKind},
+    sync::broadcast,
     time::timeout,
 };
 use tracing::{error, info};
@@ -12,6 +13,7 @@ use tracing::{error, info};
 const MAX_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 30;
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
+    let (tx, _) = broadcast::channel(16);
     let maybe_database = config
         .storage
         .as_ref()
@@ -22,9 +24,9 @@ pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     components.push(Box::new(admin_api_component));
     let rest_api_component = RestApiComponent::new(maybe_database.clone());
     components.push(Box::new(rest_api_component));
-    let sse_server_component = SseServerComponent::new(maybe_database);
+    let sse_server_component = SseServerComponent::new(maybe_database, Some(tx.clone()));
     components.push(Box::new(sse_server_component));
-    let rpc_api_component = RpcApiComponent::new();
+    let rpc_api_component = RpcApiComponent::new(tx);
     components.push(Box::new(rpc_api_component));
 
     // setup signal handler futures to wait for interrupts

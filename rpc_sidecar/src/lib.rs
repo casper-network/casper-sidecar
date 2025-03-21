@@ -1,3 +1,4 @@
+mod caching_node_client;
 mod config;
 mod http_server;
 mod node_client;
@@ -10,19 +11,21 @@ pub mod testing;
 use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Error;
-use casper_binary_port::{Command, CommandHeader};
+use caching_node_client::{cache_update_loop, CachingNodeClient};
+use casper_binary_port::{BinaryResponse, Command, CommandHeader, PayloadEntity};
+use casper_event_types::SidecarEvent;
 use casper_types::{
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
 };
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{future::BoxFuture, FutureExt};
 pub use http_server::run as run_rpc_server;
-
 use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
+use tokio::sync::broadcast::Sender;
 use tracing::error;
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
@@ -34,11 +37,28 @@ pub type MaybeRpcServerReturn<'a> = Result<Option<BoxFuture<'a, Result<ExitCode,
 pub async fn build_rpc_server<'a>(
     config: RpcServerConfig,
     maybe_network_name: Option<String>,
+    sidecar_event_sender: Sender<SidecarEvent>,
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
+    let node_client: Arc<dyn NodeClient> = if main_server_config.enable_block_prefetch {
+        let caching_client = Arc::new(CachingNodeClient::new(node_client));
+        let cache_loop =
+            cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
+                .map(|q| {
+                    if let Err(e) = q {
+                        error!("reconect_loop finished with error: {}", e);
+                    }
+                    Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+                })
+                .boxed();
+        futures.push(cache_loop);
+        caching_client
+    } else {
+        node_client
+    };
     if main_server_config.enable_server {
         let future = run_rpc(main_server_config, node_client.clone())
             .map(|q| {
@@ -130,6 +150,27 @@ fn encode_request(req: &Command, id: u16) -> Result<Vec<u8>, bytesrepr::Error> {
     header.write_bytes(&mut bytes)?;
     req.write_bytes(&mut bytes)?;
     Ok(bytes)
+}
+
+fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, ClientError>
+where
+    A: FromBytes + PayloadEntity,
+{
+    if resp.is_not_found() {
+        return Ok(None);
+    }
+    if !resp.is_success() {
+        return Err(ClientError::from_error_code(resp.error_code()));
+    }
+    match resp.returned_data_type_tag() {
+        Some(found) if found == u8::from(A::RESPONSE_TYPE) => {
+            bytesrepr::deserialize_from_slice(resp.payload())
+                .map(Some)
+                .map_err(|err| ClientError::Deserialization(err.to_string()))
+        }
+        Some(other) => Err(ClientError::UnexpectedVariantReceived(other)),
+        _ => Ok(None),
+    }
 }
 
 #[cfg(test)]

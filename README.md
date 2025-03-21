@@ -224,6 +224,7 @@ max_attempts = 30
 ```
 
 - `main_server.enable_server` - The RPC API server will be enabled if set to true.
+- `main_server.enable_block_prefetch` - optional (default `false`). If set to `true` the [prefetching blocks feature](#prefetching-blocks-feature) will be enabled
 - `main_server.address` - Address under which the main RPC API server will be available.
 - `main_server.qps_limit` - The maximum number of requests per second.
 - `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
@@ -244,6 +245,11 @@ max_attempts = 30
 - `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
 - `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
 - `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
+
+#### Prefetching blocks feature
+
+The RPC server can be configured to prefetch highest block. To enable this feature set `rpc_server.main_server.enable_block_prefetch` to `true`. If this flag is set to true, the RPC server will observe `BlockAdded` events from the [sse feed](#SSE-server-setup). If a new `BlockAdded` event will be observed, and it's height is higher than any of the heights observed uptill this point in time - the RPC server will fetch the blocks data from binary port in the node. The obtained data will be cached in memory. If someone calls sidecars `chain_get_block` json RPC API requests without params (effectively asking for "newest" block) - the cached data will be served.
+This feature is based both on the RPC and SSE sides of sidecar. If enabled, it will not verify that the SSE feed is operational, enabled or even defined. There will be no error of warning notice if `enable_block_prefetch` is `true` but SSE is not turned on. This mechanism will react to observed `BlockAdded` events, but it won't obstruct the RPCs function if no `BlockAdded` events will be ever observed.
 
 ### SSE server setup
 
