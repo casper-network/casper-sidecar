@@ -60,7 +60,7 @@ impl RequestHandlers {
             let wait_time = negative.wait_time_from(DefaultClock::default().now());
             let error = Error::new(
                 RpcErrorCode::RequestThrottled,
-                format!("retry-after {:.4}", wait_time.as_secs_f32()),
+                format!("retry-after {:.4}s", wait_time.as_secs_f32()),
             );
             return Response::new_failure(request.id, error);
         }

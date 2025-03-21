@@ -289,10 +289,12 @@ async fn handle_rejection(error: Rejection) -> Result<impl Reply, Rejection> {
             reply::json(&json!({ "message": "Too many requests" })),
             StatusCode::TOO_MANY_REQUESTS,
         );
+        // Retry-After returns decimal integer indicating the seconds to delay after the response
+        // is received. Add one second to the wait time to round up and be on the safe side.
         Ok(reply::with_header(
             response,
             RETRY_AFTER,
-            rejection.0.as_secs().to_string(),
+            (rejection.0.as_secs() + 1).to_string(),
         ))
     } else {
         Err(error)
