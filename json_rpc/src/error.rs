@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, hash::Hash};
+use std::{borrow::Cow, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,7 +58,7 @@ pub trait ErrorCodeT:
 ///
 /// See [the JSON-RPC Specification](https://www.jsonrpc.org/specification#error_object) for further
 /// details.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 #[repr(i64)]
 pub enum ReservedErrorCode {
     /// Invalid JSON was received by the server.
@@ -71,8 +71,6 @@ pub enum ReservedErrorCode {
     InvalidParams = -32602,
     /// Internal JSON-RPC error.
     InternalError = -32603,
-    /// Request throttled.
-    RequestThrottled = -32604,
 }
 
 impl From<ReservedErrorCode> for (i64, &'static str) {
@@ -83,7 +81,6 @@ impl From<ReservedErrorCode> for (i64, &'static str) {
             ReservedErrorCode::MethodNotFound => (error_code as i64, "Method not found"),
             ReservedErrorCode::InvalidParams => (error_code as i64, "Invalid params"),
             ReservedErrorCode::InternalError => (error_code as i64, "Internal error"),
-            ReservedErrorCode::RequestThrottled => (error_code as i64, "Request throttled"),
         }
     }
 }
@@ -91,6 +88,23 @@ impl From<ReservedErrorCode> for (i64, &'static str) {
 impl ErrorCodeT for ReservedErrorCode {
     fn is_reserved() -> bool {
         true
+    }
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+#[repr(i64)]
+pub enum RpcErrorCode {
+    /// Request throttled.
+    RequestThrottled = 429,
+}
+
+impl ErrorCodeT for RpcErrorCode {}
+
+impl From<RpcErrorCode> for (i64, &'static str) {
+    fn from(error_code: RpcErrorCode) -> Self {
+        match error_code {
+            RpcErrorCode::RequestThrottled => (error_code as i64, "Request throttled"),
+        }
     }
 }
 
@@ -126,7 +140,7 @@ impl Error {
     /// [`ReservedErrorCode::InternalError`] with the "data" field being a String providing more
     /// info on the underlying error.
     pub fn new<C: ErrorCodeT, T: Serialize>(error_code: C, additional_info: T) -> Self {
-        let (code, message): (i64, &'static str) = error_code.into();
+        let (mut code, mut message): (i64, &'static str) = error_code.into();
 
         if !C::is_reserved() && (-32768..=-32100).contains(&code) {
             warn!(%code, "provided json-rpc error code is reserved; returning internal error");
@@ -145,14 +159,10 @@ impl Error {
             Ok(value) => Some(value),
             Err(error) => {
                 error!(%error, "failed to json-encode additional info in json-rpc error");
-                let (code, message) = ReservedErrorCode::InternalError.into();
-                return Error {
-                    code,
-                    message: Cow::Borrowed(message),
-                    data: Some(Value::String(format!(
-                        "failed to json-encode additional info in json-rpc error: {error}"
-                    ))),
-                };
+                (code, message) = ReservedErrorCode::InternalError.into();
+                Some(Value::String(format!(
+                    "failed to json-encode additional info in json-rpc error: {error}"
+                )))
             }
         };
 

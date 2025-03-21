@@ -15,6 +15,7 @@ bytes = "1.10"
 casper-types = { workspace = true, features = ["datasize"] }
 datasize = { workspace = true }
 futures = { workspace = true }
+governor = { workspace = true }
 http = "0.2"
 itertools = { workspace = true }
 metrics = { workspace = true }

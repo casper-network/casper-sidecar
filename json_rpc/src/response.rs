@@ -84,7 +84,7 @@ impl Response {
         match &self {
             Response::Success { result, .. } => serde_json::from_value(result.clone())
                 .map_err(|error| {
-                    error!("failed to parse: {}", error);
+                    error!("failed to parse: {error}");
                 })
                 .ok(),
             Response::Failure { .. } => None,

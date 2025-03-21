@@ -5,6 +5,8 @@ port = 11102
 qps_limit = 100
 max_body_bytes = 2621440
 cors_origin = ""
+default_limit_requests = 100
+default_limit_period = "1s"
 
 [rpc_server.speculative_exec_server]
 enable_server = true
@@ -13,6 +15,8 @@ port = 25102
 qps_limit = 1
 max_body_bytes = 2621440
 cors_origin = ""
+default_limit_requests = 1
+default_limit_period = "1s"
 
 [rpc_server.node_client]
 ip_address = "0.0.0.0"

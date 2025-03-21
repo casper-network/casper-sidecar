@@ -9,7 +9,7 @@ use warp::{filters::BoxedFilter, Filter, Reply};
 use super::ResponseBodyOnRejection;
 use crate::{
     filters::{handle_rejection, main_filter},
-    Error, Params, RequestHandlersBuilder, ReservedErrorCode, Response,
+    ConfigLimit, Error, Params, RequestHandlersBuilder, ReservedErrorCode, Response,
 };
 
 const GET_GOOD_THING: &str = "get good thing";
@@ -49,8 +49,8 @@ async fn from_http_response(response: http::Response<hyper::Body>) -> Response {
 
 fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     let mut handlers = RequestHandlersBuilder::new();
-    handlers.register_handler(GET_GOOD_THING, get_good_thing);
-    handlers.register_handler(GET_BAD_THING, get_bad_thing);
+    handlers.register_handler(GET_GOOD_THING, get_good_thing, &ConfigLimit::default());
+    handlers.register_handler(GET_BAD_THING, get_bad_thing, &ConfigLimit::default());
     let handlers = handlers.build();
 
     main_filter(handlers, false)

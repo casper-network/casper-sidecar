@@ -1,7 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
 
-use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
-use hyper::server::{conn::AddrIncoming, Builder};
+use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
 
 use super::rpcs::{
     account::{PutDeploy, PutTransaction},
@@ -33,8 +32,11 @@ const RPC_API_SERVER_NAME: &str = "JSON RPC";
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     node: Arc<dyn NodeClient>,
-    builder: Builder<AddrIncoming>,
-    qps_limit: u64,
+    ip_address: IpAddr,
+    port: u16,
+    default_limit: ConfigLimit,
+    mut limits: HashMap<String, ConfigLimit>,
+    qps_limit: NonZeroU32,
     max_body_bytes: u64,
     cors_origin: String,
 ) {
@@ -42,7 +44,8 @@ pub async fn run(
 
     macro_rules! register {
         ($rpc:ident) => {
-            $rpc::register_as_handler(node.clone(), &mut handlers);
+            let limit = limits.remove($rpc::METHOD).unwrap_or(default_limit.clone());
+            $rpc::register_as_handler(node.clone(), &mut handlers, limit);
         };
     }
 
@@ -79,7 +82,8 @@ pub async fn run(
     match cors_origin.as_str() {
         "" => {
             super::rpcs::run(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
@@ -90,7 +94,8 @@ pub async fn run(
         }
         "*" => {
             super::rpcs::run_with_cors(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
@@ -102,7 +107,8 @@ pub async fn run(
         }
         _ => {
             super::rpcs::run_with_cors(
-                builder,
+                ip_address,
+                port,
                 handlers,
                 qps_limit,
                 max_body_bytes,
