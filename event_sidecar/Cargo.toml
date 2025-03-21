@@ -4,7 +4,7 @@ authors = [
     "George Williamson <george@casperlabs.io>",
     "Jakub Zajkowski <jakub@casperlabs.io>",
 ]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2018"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
