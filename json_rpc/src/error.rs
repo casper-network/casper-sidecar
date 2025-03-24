@@ -91,6 +91,7 @@ impl ErrorCodeT for ReservedErrorCode {
     }
 }
 
+/// Custom RPC error codes.
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 #[repr(i64)]
 pub enum RpcErrorCode {

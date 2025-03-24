@@ -95,7 +95,7 @@ use http::{header::CONTENT_TYPE, Method};
 use serde::Deserialize;
 use warp::{filters::BoxedFilter, Filter, Reply};
 
-pub use error::{Error, ErrorCodeT, ReservedErrorCode};
+pub use error::{Error, ErrorCodeT, ReservedErrorCode, RpcErrorCode};
 pub use request::Params;
 pub use request_handlers::{RequestHandlers, RequestHandlersBuilder};
 pub use response::Response;

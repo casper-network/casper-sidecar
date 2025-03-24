@@ -459,9 +459,8 @@ mod tests {
     }
 
     mod rpc_with_params {
-        use crate::rpcs::info::{GetDeploy, GetDeployParams, GetDeployResult};
-
         use super::*;
+        use crate::rpcs::info::{GetDeploy, GetDeployParams, GetDeployResult};
 
         fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
             let mut handlers = RequestHandlersBuilder::new();
@@ -527,10 +526,10 @@ mod tests {
     }
 
     mod rpc_without_params {
-
-        use crate::rpcs::info::{GetPeers, GetPeersResult};
+        use casper_json_rpc::{RpcErrorCode, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
 
         use super::*;
+        use crate::rpcs::info::{GetPeers, GetPeersResult};
 
         fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
             let mut handlers = RequestHandlersBuilder::new();
@@ -577,6 +576,28 @@ mod tests {
                     "'params' field should be an empty Array '[]', an empty Object '{}' or absent"
                 )
             );
+        }
+
+        #[tokio::test]
+        async fn reach_rate_limit() {
+            let filter = main_filter_with_recovery();
+
+            for _ in 0..DEFAULT_LIMIT_REQUESTS.into() {
+                let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+                assert!(rpc_response.is_success());
+            }
+
+            let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+            assert_eq!(
+                rpc_response.error().unwrap().code(),
+                RpcErrorCode::RequestThrottled as i64
+            );
+
+            // Wait for the limit period to expire.
+            tokio::time::sleep(DEFAULT_LIMIT_PERIOD.into()).await;
+
+            let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+            assert!(rpc_response.is_success());
         }
     }
 
