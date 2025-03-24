@@ -238,5 +238,5 @@ pub struct ExponentialBackoffConfig {
 }
 
 fn default_enable_block_prefetch() -> bool {
-    false
+    DEFAULT_ENABLE_BLOCK_PREFETCH
 }

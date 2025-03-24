@@ -20,8 +20,7 @@ pub struct CachingNodeClient<T: NodeClient + Send + Sync> {
 
 impl<T: NodeClient + Send + Sync> CachingNodeClient<T> {
     pub(crate) fn new(inner_client: Arc<T>) -> Self {
-        let block_with_signatures_cache: Arc<RwLock<Option<BlockWithSignatures>>> =
-            Arc::new(RwLock::new(None));
+        let block_with_signatures_cache = Arc::new(RwLock::new(None));
         Self {
             inner_client,
             block_with_signatures_cache,
