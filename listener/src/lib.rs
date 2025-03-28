@@ -259,7 +259,6 @@ impl EventListener {
                 if let Some(network_name) = &self.node.network_name {
                     if *network_name != node_metadata.network_name {
                         let msg = format!("Network name {network_name} does't match name {} configured for node connection", node_metadata.network_name);
-                        error!("{msg}");
                         return GetNodeMetadataResult::Error(Error::msg(msg));
                     }
                 }

@@ -72,6 +72,11 @@ impl Display for ComponentError {
 #[async_trait]
 pub trait Component {
     fn name(&self) -> String;
+    /// A component can self-declare that it needs more time to set up to bypass the default mechanism we use to interrupt
+    /// stale components.
+    fn sets_up_long(&self) -> bool {
+        false
+    }
     /// Returns a future that represents the task of the running component.
     /// If the return value is Ok(None) it means that the component is disabled (or not configured at all) and should not run.
     async fn prepare_component_task(
@@ -206,6 +211,9 @@ pub struct RpcApiComponent {
 
 #[async_trait]
 impl Component for RpcApiComponent {
+    fn sets_up_long(&self) -> bool {
+        true
+    }
     async fn prepare_component_task(
         &self,
         config: &SidecarConfig,

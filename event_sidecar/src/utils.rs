@@ -89,6 +89,14 @@ pub(crate) enum ListeningError {
         /// The failure reason.
         error: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// Failed to listen.
+    #[error("failed to initialize listener {address}: {error}")]
+    FailedInitialization {
+        /// The address attempted to listen on.
+        address: String,
+        /// The failure reason.
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 /// Handle the case where no filter URL was specified after the root address (HOST:PORT).

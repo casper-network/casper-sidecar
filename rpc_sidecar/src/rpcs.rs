@@ -30,7 +30,7 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
-use tracing::info;
+use tracing::{debug, info};
 use warp::{
     filters::BoxedFilter,
     reject::{Reject, Rejection},
@@ -112,7 +112,14 @@ pub(super) trait RpcWithParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, params).await
+                let res = Self::do_handle_request(node_client, params).await;
+                match &res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    }
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -173,7 +180,14 @@ pub(super) trait RpcWithoutParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(node_client).await
+                let res = Self::do_handle_request(node_client).await;
+                match &res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    }
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -255,7 +269,14 @@ pub(super) trait RpcWithOptionalParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, params).await
+                let res = Self::do_handle_request(node_client, params).await;
+                match &res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    }
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);

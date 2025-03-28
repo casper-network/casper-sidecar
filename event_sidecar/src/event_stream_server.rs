@@ -69,7 +69,11 @@ impl EventStreamServer {
         enable_legacy_filters: bool,
     ) -> Result<Self, ListeningError> {
         let required_address = resolve_address_and_retype(&config.address)?;
-        let event_indexer = EventIndexer::new(storage_path);
+        let event_indexer =
+            EventIndexer::new(storage_path).map_err(|e| ListeningError::FailedInitialization {
+                address: config.address.clone(),
+                error: Box::new(e),
+            })?;
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.

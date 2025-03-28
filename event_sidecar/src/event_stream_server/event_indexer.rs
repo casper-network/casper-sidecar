@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 const CACHE_FILENAME: &str = "sse_index";
 
@@ -17,10 +17,8 @@ pub(super) struct EventIndexer {
 
 impl EventIndexer {
     #![allow(clippy::cognitive_complexity)]
-    pub(super) fn new(storage_path: &Path) -> Self {
-        fs::create_dir_all(storage_path).unwrap_or_else(|err| {
-            error!("Failed to create directory for sse cache: {err}");
-        });
+    pub(super) fn new(storage_path: &Path) -> Result<Self, std::io::Error> {
+        fs::create_dir_all(storage_path)?;
         let persistent_cache = storage_path.join(CACHE_FILENAME);
         let mut bytes = EventIndex::default().to_le_bytes();
         match fs::read(&persistent_cache) {
@@ -50,10 +48,10 @@ impl EventIndexer {
             }
         }
         let index = EventIndex::from_le_bytes(bytes);
-        EventIndexer {
+        Ok(EventIndexer {
             index,
             persistent_cache,
-        }
+        })
     }
 
     pub(super) fn next_index(&mut self) -> EventIndex {
@@ -98,7 +96,7 @@ mod tests {
 
         // This represents a single session where five events are produced before the session ends.
         let init_and_increment_by_five = |expected_first_index: EventIndex| {
-            let mut event_indexer = EventIndexer::new(tempdir.path());
+            let mut event_indexer = EventIndexer::new(tempdir.path()).unwrap();
             for i in 0..5 {
                 assert_eq!(event_indexer.next_index(), expected_first_index + i);
             }
@@ -119,7 +117,7 @@ mod tests {
     fn should_wrap() {
         let tempdir = tempfile::tempdir().unwrap();
 
-        let mut event_indexer = EventIndexer::new(tempdir.path());
+        let mut event_indexer = EventIndexer::new(tempdir.path()).unwrap();
         event_indexer.index = EventIndex::MAX;
 
         assert_eq!(event_indexer.next_index(), EventIndex::MAX);
@@ -132,7 +130,7 @@ mod tests {
 
         // Create a folder with the same name as the cache file to cause reading to fail.
         fs::create_dir(tempdir.path().join(CACHE_FILENAME)).unwrap();
-        let mut event_indexer = EventIndexer::new(tempdir.path());
+        let mut event_indexer = EventIndexer::new(tempdir.path()).unwrap();
         assert_eq!(event_indexer.next_index(), 0);
     }
 
@@ -149,7 +147,7 @@ mod tests {
             )
             .unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path());
+            let mut event_indexer = EventIndexer::new(tempdir.path()).unwrap();
             assert_eq!(event_indexer.next_index(), 0);
         }
 
@@ -164,7 +162,7 @@ mod tests {
                 .collect();
             fs::write(tempdir.path().join(CACHE_FILENAME), bytes).unwrap();
 
-            let mut event_indexer = EventIndexer::new(tempdir.path());
+            let mut event_indexer = EventIndexer::new(tempdir.path()).unwrap();
             assert_eq!(event_indexer.next_index(), 0);
         }
     }

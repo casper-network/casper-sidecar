@@ -10,7 +10,8 @@ use tokio::{
 };
 use tracing::{error, info};
 
-const MAX_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 30;
+const DEFAULT_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 30;
+const LONG_COMPONENT_STARTUP_TIMEOUT_SECS: u64 = 24 * 3600; //1 day
 
 pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
     let (tx, _) = broadcast::channel(16);
@@ -57,19 +58,21 @@ async fn do_run(
     components: Vec<Box<dyn Component>>,
 ) -> Result<ExitCode, ComponentError> {
     let mut component_futures = Vec::new();
-    let max_startup_duration = Duration::from_secs(MAX_COMPONENT_STARTUP_TIMEOUT_SECS);
+    let max_startup_duration = Duration::from_secs(DEFAULT_COMPONENT_STARTUP_TIMEOUT_SECS);
     for component in &components {
+        let startup_duration = if component.sets_up_long() {
+            Duration::from_secs(LONG_COMPONENT_STARTUP_TIMEOUT_SECS)
+        } else {
+            max_startup_duration
+        };
         let component_name = component.name();
-        let component_startup_res = timeout(
-            max_startup_duration,
-            component.prepare_component_task(&config),
-        )
-        .await;
+        let component_startup_res =
+            timeout(startup_duration, component.prepare_component_task(&config)).await;
         if component_startup_res.is_err() {
             return Err(ComponentError::Initialization {
                 component_name: component_name.clone(),
                 internal_error: anyhow!(
-                    "Failed to start component {component_name} in {MAX_COMPONENT_STARTUP_TIMEOUT_SECS} [s]"
+                    "Failed to start component {component_name} in {DEFAULT_COMPONENT_STARTUP_TIMEOUT_SECS} [s]"
                 ),
             });
         }
