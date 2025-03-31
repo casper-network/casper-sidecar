@@ -70,7 +70,7 @@ impl EventStreamServer {
     ) -> Result<Self, ListeningError> {
         let required_address = resolve_address_and_retype(&config.address)?;
         let event_indexer =
-            EventIndexer::new(storage_path).map_err(|e| ListeningError::FailedInitialization {
+            EventIndexer::new(storage_path).map_err(|e| ListeningError::Initializing {
                 address: config.address.clone(),
                 error: Box::new(e),
             })?;

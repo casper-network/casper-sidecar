@@ -181,11 +181,8 @@ pub(super) trait RpcWithoutParams {
             async move {
                 Self::check_no_params(maybe_params)?;
                 let res = Self::do_handle_request(node_client).await;
-                match &res {
-                    Ok(_) => {}
-                    Err(err) => {
-                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
-                    }
+                if let Err(err) = &res {
+                    debug!(error=?err, method=Self::METHOD, "Error when handling request.")
                 }
                 res
             }

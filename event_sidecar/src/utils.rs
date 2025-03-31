@@ -89,9 +89,9 @@ pub(crate) enum ListeningError {
         /// The failure reason.
         error: Box<dyn std::error::Error + Send + Sync>,
     },
-    /// Failed to listen.
+    // Failed to initialize
     #[error("failed to initialize listener {address}: {error}")]
-    FailedInitialization {
+    Initializing {
         /// The address attempted to listen on.
         address: String,
         /// The failure reason.
