@@ -58,12 +58,11 @@ async fn do_run(
     components: Vec<Box<dyn Component>>,
 ) -> Result<ExitCode, ComponentError> {
     let mut component_futures = Vec::new();
-    let default_startup_duration = DEFAULT_COMPONENT_STARTUP_TIMEOUT;
     for component in &components {
         let startup_duration = if component.sets_up_long() {
             LONG_COMPONENT_STARTUP_TIMEOUT
         } else {
-            default_startup_duration
+            DEFAULT_COMPONENT_STARTUP_TIMEOUT
         };
         let component_name = component.name();
         let component_startup_res =
