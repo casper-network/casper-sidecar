@@ -1,6 +1,6 @@
 [package]
 name = "casper-rpc-sidecar"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["Jacek Malec <jacek@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain RPC sidecard"
@@ -59,10 +59,9 @@ tokio = { workspace = true, features = ["test-util"] }
 jsonschema = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8.3", default-features = false, features = [
-    "git",
-    "gitoxide",
-] }
+anyhow = { workspace = true }
+vergen = { version = "9", features = ["build", "cargo", "rustc"]}
+vergen-gitcl = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
 
 [features]
 testing = ["casper-types/testing", "casper-binary-port/testing"]

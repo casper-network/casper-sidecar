@@ -612,9 +612,9 @@ fn version_string() -> String {
     }
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
-    if env!("SIDECAR_BUILD_PROFILE") != "release" {
+    if env!("VERGEN_CARGO_OPT_LEVEL") != "release" {
         version += "@";
-        let profile = env!("SIDECAR_BUILD_PROFILE").to_uppercase();
+        let profile = env!("VERGEN_CARGO_OPT_LEVEL").to_uppercase();
         version.push_str(&profile);
     }
 

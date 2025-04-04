@@ -1,6 +1,6 @@
 [package]
 name = "casper-event-types"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2021"
 description = "Types for casper-event-listener library"
 license-file = "../LICENSE"

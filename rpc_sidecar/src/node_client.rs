@@ -525,7 +525,7 @@ pub enum InvalidTransactionOrDeploy {
     #[error("invalid transaction runtime")]
     InvalidTransactionRuntime,
     #[error("couldn't associate a transaction lane with the transaction")]
-    InvalidTransactionNoWasmLaneMatches,
+    InvalidTransactionNoLaneMatches,
     #[error("entry point must be 'call'")]
     InvalidTransactionEntryPointMustBeCall,
     #[error("One of the payloads field cannot be deserialized")]
@@ -544,10 +544,6 @@ pub enum InvalidTransactionOrDeploy {
     InvalidDeployGasLimitNotSupported,
     #[error("Invalid runtime for Transaction::Deploy")]
     InvalidDeployInvalidRuntime,
-    #[error(
-        "Cannot execute wasm-based Transaction::Deploy due to no wasm lanes defined in chainspec"
-    )]
-    InvalidDeployChainspecHasNoWasmLanesDefined,
     #[error("Transaction::Deploy exceeds lane gas limit")]
     InvalidDeployExceededWasmLaneGasLimit,
     #[error("Invalid payment amount for Transaction::Deploy")]
@@ -671,9 +667,7 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             }
             ErrorCode::ExpectedNamedArguments => Self::ExpectedNamedArguments,
             ErrorCode::InvalidTransactionRuntime => Self::InvalidTransactionRuntime,
-            ErrorCode::InvalidTransactionNoWasmLaneMatches => {
-                Self::InvalidTransactionNoWasmLaneMatches
-            }
+            ErrorCode::InvalidTransactionNoLaneMatches => Self::InvalidTransactionNoLaneMatches,
             ErrorCode::InvalidTransactionEntryPointMustBeCall => {
                 Self::InvalidTransactionEntryPointMustBeCall
             }
@@ -693,9 +687,6 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::PricingModeNotSupported => Self::PricingModeNotSupported,
             ErrorCode::InvalidDeployGasLimitNotSupported => Self::InvalidDeployGasLimitNotSupported,
             ErrorCode::InvalidDeployInvalidRuntime => Self::InvalidDeployInvalidRuntime,
-            ErrorCode::InvalidDeployChainspecHasNoWasmLanesDefined => {
-                Self::InvalidDeployChainspecHasNoWasmLanesDefined
-            }
             ErrorCode::InvalidDeployExceededWasmLaneGasLimit => {
                 Self::InvalidDeployExceededWasmLaneGasLimit
             }
@@ -790,6 +781,8 @@ pub enum Error {
     ReceivedV1Transaction,
     #[error("connection to node lost")]
     ConnectionLost,
+    #[error("transaction has malformed binary representation")]
+    TransactionHasMalformedBinaryRepresentation,
 }
 
 impl Error {
@@ -874,7 +867,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionOrDeployUnspecified
                 | ErrorCode::ExpectedNamedArguments
                 | ErrorCode::InvalidTransactionRuntime
-                | ErrorCode::InvalidTransactionNoWasmLaneMatches
+                | ErrorCode::InvalidTransactionNoLaneMatches
                 | ErrorCode::InvalidTransactionEntryPointMustBeCall
                 | ErrorCode::InvalidTransactionCannotDeserializeField
                 | ErrorCode::InvalidTransactionCannotCalculateFieldsHash
@@ -884,7 +877,6 @@ impl Error {
                 | ErrorCode::PricingModeNotSupported
                 | ErrorCode::InvalidDeployGasLimitNotSupported
                 | ErrorCode::InvalidDeployInvalidRuntime
-                | ErrorCode::InvalidDeployChainspecHasNoWasmLanesDefined
                 | ErrorCode::InvalidDeployExceededWasmLaneGasLimit
                 | ErrorCode::InvalidDeployInvalidPaymentAmount
                 | ErrorCode::InvalidTransactionInsufficientBurnAmount
@@ -911,6 +903,9 @@ impl Error {
             Ok(ErrorCode::NoCompleteBlocks) => Self::NoCompleteBlocks,
             Ok(ErrorCode::GasPriceToleranceTooLow) => Self::GasPriceToleranceTooLow,
             Ok(ErrorCode::ReceivedV1Transaction) => Self::ReceivedV1Transaction,
+            Ok(ErrorCode::TransactionHasMalformedBinaryRepresentation) => {
+                Self::TransactionHasMalformedBinaryRepresentation
+            }
             Ok(ErrorCode::NoError) => {
                 //This code shouldn't be passed in an error scenario
                 Self::UnexpectedNodeError {
@@ -1708,10 +1703,8 @@ mod tests {
             Error::InvalidTransaction(InvalidTransactionOrDeploy::InvalidTransactionRuntime)
         ));
         assert!(matches!(
-            Error::from_error_code(ErrorCode::InvalidTransactionNoWasmLaneMatches as u16),
-            Error::InvalidTransaction(
-                InvalidTransactionOrDeploy::InvalidTransactionNoWasmLaneMatches
-            )
+            Error::from_error_code(ErrorCode::InvalidTransactionNoLaneMatches as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::InvalidTransactionNoLaneMatches)
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionEntryPointMustBeCall as u16),
