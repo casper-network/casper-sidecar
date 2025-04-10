@@ -235,6 +235,7 @@ async fn should_respond_to_rest_query() {
         node_port_for_rest_connection,
         event_stream_server_port,
     ) = build_test_config();
+
     let sidecar_rest_server_port = testing_config.rest_api_server_config.port;
     let mut node_mock = MockNodeBuilder::build_example_2_0_0_node(
         node_port_for_sse_connection,

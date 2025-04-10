@@ -481,9 +481,7 @@ pub mod tests {
             let rest_api_server_config = testing_config.rest_api_server_config;
             let database_for_rest_api = maybe_database.clone().unwrap();
             tokio::spawn(async move {
-                run_rest_server(rest_api_server_config, database_for_rest_api)
-                    .await
-                    .map_err(|e| panic!("{}", format!("XXX REST SERVER RUN FAILURE!: {e}")))
+                run_rest_server(rest_api_server_config, database_for_rest_api).await
             });
         }
         run(

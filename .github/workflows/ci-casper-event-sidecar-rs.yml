@@ -23,7 +23,7 @@ jobs:
   build_and_test:
     strategy:
       matrix:
-        os: [ubuntu-20.04, ubuntu-22.04]
+        os: [ubuntu-22.04]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -50,7 +50,7 @@ jobs:
         run: cargo audit --deny warnings --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2025-0014 --ignore RUSTSEC-2024-0370
 
       - name: test
-        run: cargo test -- --nocapture
+        run: cargo test
 
       - name: install cargo packaging tools
         run: |
