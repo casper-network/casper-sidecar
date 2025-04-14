@@ -116,7 +116,7 @@ pub(super) trait RpcWithParams {
                 match &res {
                     Ok(_) => {}
                     Err(err) => {
-                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.");
                     }
                 }
                 res
@@ -182,7 +182,7 @@ pub(super) trait RpcWithoutParams {
                 Self::check_no_params(maybe_params)?;
                 let res = Self::do_handle_request(node_client).await;
                 if let Err(err) = &res {
-                    debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    debug!(error=?err, method=Self::METHOD, "Error when handling request.");
                 }
                 res
             }
@@ -270,7 +270,7 @@ pub(super) trait RpcWithOptionalParams {
                 match &res {
                     Ok(_) => {}
                     Err(err) => {
-                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.");
                     }
                 }
                 res

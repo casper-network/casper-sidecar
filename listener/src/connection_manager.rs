@@ -157,13 +157,13 @@ impl DefaultConnectionManager {
             Ok(stream) => {
                 if let Some(tasks) = &self.maybe_tasks {
                     tasks.register_success();
-                };
+                }
                 stream
             }
             Err(error) => {
                 if let Some(tasks) = &self.maybe_tasks {
                     tasks.register_failure();
-                };
+                }
                 return Err(error);
             }
         };

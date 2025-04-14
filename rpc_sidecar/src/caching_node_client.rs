@@ -122,7 +122,7 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
                 tokio::sync::broadcast::error::RecvError::Lagged(_) => {
                     let mut guard = client.block_with_signatures_cache.write().await;
                     *guard = None;
-                    info!("lag detected in cache_update_loop ")
+                    info!("lag detected in cache_update_loop");
                 }
             },
         }

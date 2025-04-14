@@ -1055,7 +1055,7 @@ impl FramedNodeClient {
             Error::RequestFailed("timeout".to_owned())
         })? {
             return Err(Error::RequestFailed(err.to_string()));
-        };
+        }
 
         for _ in 0..MAX_MISMATCHED_ID_RETRIES {
             let Ok(maybe_response) = tokio::time::timeout(
@@ -1146,7 +1146,7 @@ impl FramedNodeClient {
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                     wait = (wait * backoff_config.coefficient).min(backoff_config.max_delay_ms);
                 }
-            };
+            }
         }
     }
 

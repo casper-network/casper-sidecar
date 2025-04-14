@@ -47,7 +47,7 @@ pub fn metrics_summary() -> Result<String, MetricCollectionError> {
         return Err(MetricCollectionError::new(format!(
             "could not encode custom metrics: {e}"
         )));
-    };
+    }
     let mut res = match String::from_utf8(buffer.clone()) {
         Ok(v) => v,
         Err(e) => {
@@ -63,7 +63,7 @@ pub fn metrics_summary() -> Result<String, MetricCollectionError> {
         return Err(MetricCollectionError::new(format!(
             "error when encoding default prometheus metrics: {e}"
         )));
-    };
+    }
     let res_custom = match String::from_utf8(buffer.clone()) {
         Ok(v) => v,
         Err(e) => {
