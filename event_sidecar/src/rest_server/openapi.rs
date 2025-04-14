@@ -18,11 +18,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::{
     openapi::{Components, Contact, RefOr, Schema},
-    Modify, OpenApi,
+    Modify, OpenApi, ToSchema,
 };
 use warp::Filter;
 
 use self::schema_transformation_visitor::SchemaTransformationVisitor;
+
+#[allow(dead_code)]
+#[derive(ToSchema)]
+#[schema(value_type = Object)]
+struct FinalitySignatureWithSchema(FinalitySignature);
 
 #[derive(OpenApi)]
 #[openapi(
@@ -42,7 +47,7 @@ use self::schema_transformation_visitor::SchemaTransformationVisitor;
 
         ),
         components(
-            schemas(EnvelopeHeader, BlockAddedEnveloped, TransactionAcceptedEnveloped, TransactionExpiredEnveloped, TransactionProcessedEnveloped, FaultEnveloped, FinalitySignatureEnveloped, StepEnveloped, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
+            schemas(EnvelopeHeader, SseEnvelope<BlockAdded>, SseEnvelope<TransactionAccepted>, SseEnvelope<TransactionExpired>, SseEnvelope<TransactionProcessed>, SseEnvelope<Fault>, SseEnvelope<FinalitySignatureWithSchema>, SseEnvelope<Step>, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
         ),
         tags(
             (name = "event-sidecar", description = "Event-sidecar rest API")
@@ -110,20 +115,20 @@ fn force_produce_utoipa_schemas(
     };
     visitor.visit_root_schema(&mut root_schema);
 
-    let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", root_schema.schema));
+    let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", &root_schema.schema));
     let mut rebuilt_schema_objects = HashMap::new();
     for (key, value) in root_schema.definitions {
         rebuilt_schema_objects.insert(
             key.clone(),
-            RefOr::from(rebuild_schema_object(&key, value.into_object())),
+            RefOr::from(rebuild_schema_object(&key, &value.into_object())),
         );
     }
     (schema_wrapper, rebuilt_schema_objects)
 }
 
-fn rebuild_schema_object(key: &str, schemars_schema_obj: SchemaObject) -> utoipa::openapi::Schema {
+fn rebuild_schema_object(key: &str, schemars_schema_obj: &SchemaObject) -> Schema {
     let schema_str = serde_json::to_string(&schemars_schema_obj).unwrap();
-    match serde_json::from_str::<utoipa::openapi::Schema>(&schema_str) {
+    match serde_json::from_str::<Schema>(&schema_str) {
         Ok(x) => x,
         Err(e) => {
             panic!(

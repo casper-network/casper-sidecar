@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{
-    BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
-    TransactionProcessed,
-};
-
 /// This struct holds flags that steer DDL generation for specific databases.
 pub struct DDLConfiguration {
     /// Postgresql doesn't support unsigned integers, so for some fields we need to be mindful of the fact that in postgres we might need to use a bigger type to accomodate scope of field
@@ -21,15 +16,6 @@ pub struct EnvelopeHeader {
 
 /// Wrapper envelope for SSE events. It contains the event in `payload` field and some metadata in `header` field.
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-#[aliases(
-    BlockAddedEnveloped = SseEnvelope<BlockAdded>,
-    TransactionAcceptedEnveloped = SseEnvelope<TransactionAccepted>,
-    TransactionExpiredEnveloped = SseEnvelope<TransactionExpired>,
-    TransactionProcessedEnveloped = SseEnvelope<TransactionProcessed>,
-    FaultEnveloped = SseEnvelope<Fault>,
-    FinalitySignatureEnveloped = SseEnvelope<FinalitySignature>,
-    StepEnveloped = SseEnvelope<Step>,
-)]
 pub struct SseEnvelope<T> {
     header: EnvelopeHeader,
     payload: T,

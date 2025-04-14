@@ -31,7 +31,10 @@ impl AdminServer {
         let warp_service = warp::service(api);
         let tower_service = ServiceBuilder::new()
             .concurrency_limit(self.max_concurrent_requests as usize)
-            .rate_limit(self.max_requests_per_second as u64, Duration::from_secs(1))
+            .rate_limit(
+                u64::from(self.max_requests_per_second),
+                Duration::from_secs(1),
+            )
             .service(warp_service);
         info!(address = %address, "started Admin API server");
         Server::from_tcp(listener)?

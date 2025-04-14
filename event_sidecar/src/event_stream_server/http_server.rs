@@ -129,7 +129,7 @@ fn handle_incoming_data(
                     buffer.push((*v, event.clone()));
                 }
             },
-        };
+        }
         let message = BroadcastChannelMessage::ServerSentEvent(event);
         // This can validly fail if there are no connected clients, so don't log
         // the error.

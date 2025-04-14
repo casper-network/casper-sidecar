@@ -58,7 +58,7 @@ tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower = { version = "0.4", features = ["buffer", "limit", "make", "timeout"] }
 tracing = { workspace = true, default-features = true }
-utoipa = { version = "4", features = ["rc_schema"] }
+utoipa = { version = "5", features = ["rc_schema"] }
 warp = { workspace = true, features = ["compression"] }
 wheelbuf = "0.2"
 

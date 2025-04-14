@@ -472,9 +472,9 @@ pub enum DatabaseReadError {
 #[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
 pub struct TransactionAggregate {
     pub(crate) transaction_hash: String,
-    #[schema(value_type = TransactionAcceptedEnveloped)]
+    #[schema(value_type = SseEnvelope<TransactionAccepted>)]
     pub(crate) transaction_accepted: Option<SseEnvelope<TransactionAccepted>>,
-    #[schema(value_type = TransactionProcessedEnveloped)]
+    #[schema(value_type = SseEnvelope<TransactionProcessed>)]
     pub(crate) transaction_processed: Option<SseEnvelope<TransactionProcessed>>,
     pub(crate) transaction_expired: bool,
 }

@@ -2,7 +2,14 @@ use super::{
     errors::handle_rejection, handlers, openapi::build_open_api_filters, status::status_filters,
 };
 use crate::{
-    types::database::{DatabaseReader, TransactionTypeId},
+    database::types::SseEnvelope,
+    types::{
+        database::{DatabaseReader, TransactionAggregate, TransactionTypeId},
+        sse_events::{
+            BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
+            TransactionProcessed,
+        },
+    },
     utils::{root_filter, InvalidPath},
 };
 use std::{convert::Infallible, str::FromStr};
@@ -95,7 +102,7 @@ fn transaction_filters<Db: DatabaseReader + Clone + Send + Sync>(
     get,
     path = "/block",
     responses(
-        (status = 200, description = "latest stored block", body = BlockAddedEnveloped)
+        (status = 200, description = "latest stored block", body = SseEnvelope<BlockAdded>)
     )
 )]
 pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
@@ -119,7 +126,7 @@ pub fn latest_block<Db: DatabaseReader + Clone + Send + Sync>(
         ("block_hash" = String, Path, description = "Base64 encoded block hash of requested block")
     ),
     responses(
-        (status = 200, description = "fetch latest stored block", body = BlockAddedEnveloped)
+        (status = 200, description = "fetch latest stored block", body = SseEnvelope<BlockAdded>)
     )
 )]
 fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
@@ -143,7 +150,7 @@ fn block_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("height" = u32, Path, description = "Height of the requested block")
     ),
     responses(
-        (status = 200, description = "fetch latest stored block", body = BlockAddedEnveloped)
+        (status = 200, description = "fetch latest stored block", body = SseEnvelope<BlockAdded>)
     )
 )]
 fn block_by_height<Db: DatabaseReader + Clone + Send + Sync>(
@@ -192,7 +199,7 @@ fn transaction_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction accepted")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionAcceptedEnveloped)
+        (status = 200, description = "fetch stored transaction", body = SseEnvelope<TransactionAccepted>)
     )
 )]
 fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
@@ -211,7 +218,7 @@ fn transaction_accepted_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction expired")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionExpiredEnveloped)
+        (status = 200, description = "fetch stored transaction", body = SseEnvelope<TransactionExpired>)
     )
 )]
 /// Returns information about a transaction that expired given its transaction hash.
@@ -235,7 +242,7 @@ fn transaction_expired_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("transaction_hash" = String, Path, description = "Base64 encoded transaction hash of requested transaction processed")
     ),
     responses(
-        (status = 200, description = "fetch stored transaction", body = TransactionProcessedEnveloped)
+        (status = 200, description = "fetch stored transaction", body = SseEnvelope<TransactionProcessed>)
     )
 )]
 /// Returns information about a transaction that was processed given its transaction hash.
@@ -259,7 +266,7 @@ fn transaction_processed_by_hash<Db: DatabaseReader + Clone + Send + Sync>(
         ("public_key" = String, Path, description = "Base64 encoded validator's public key")
     ),
     responses(
-        (status = 200, description = "faults associated with a validator's public key", body = [FaultEnveloped])
+        (status = 200, description = "faults associated with a validator's public key", body = [SseEnvelope<Fault>])
     )
 )]
 /// Returns the faults associated with a validator's public key.
@@ -283,7 +290,7 @@ fn faults_by_public_key<Db: DatabaseReader + Clone + Send + Sync>(
         ("era" = String, Path, description = "Era identifier")
     ),
     responses(
-        (status = 200, description = "faults associated with an era ", body = [FaultEnveloped])
+        (status = 200, description = "faults associated with an era ", body = [SseEnvelope<Fault>])
     )
 )]
 /// Returns the faults associated with an era given a valid era identifier.
@@ -307,7 +314,7 @@ fn faults_by_era<Db: DatabaseReader + Clone + Send + Sync>(
         ("block_hash" = String, Path, description = "Base64 encoded block hash of requested block")
     ),
     responses(
-        (status = 200, description = "finality signatures in a block", body = [FinalitySignatureEnveloped])
+        (status = 200, description = "finality signatures in a block", body = [SseEnvelope<FinalitySignature>])
     )
 )]
 /// Returns the finality signatures in a block given its block hash.
@@ -331,7 +338,7 @@ fn finality_signatures_by_block<Db: DatabaseReader + Clone + Send + Sync>(
         ("era_id" = String, Path, description = "Era id")
     ),
     responses(
-        (status = 200, description = "step event emitted at the end of an era", body = StepEnveloped)
+        (status = 200, description = "step event emitted at the end of an era", body = SseEnvelope<Step>)
     )
 )]
 /// Returns the step event emitted at the end of an era, given a valid era identifier.

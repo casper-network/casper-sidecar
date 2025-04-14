@@ -37,7 +37,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
     let tower_service = ServiceBuilder::new()
         .concurrency_limit(config.max_concurrent_requests as usize)
         .rate_limit(
-            config.max_requests_per_second as u64,
+            u64::from(config.max_requests_per_second),
             Duration::from_secs(1),
         )
         .layer(MetricsLayer::new(path_abstraction_for_metrics))

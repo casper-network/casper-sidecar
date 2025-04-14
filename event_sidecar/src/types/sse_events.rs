@@ -7,7 +7,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{
-    execution::{execution_result_v1::ExecutionResultV1, Effects, ExecutionResultV2},
+    execution::{execution_result_v1::ExecutionResultV1, ExecutionResultV2},
     testing::TestRng,
     TestBlockBuilder, TestBlockV1Builder,
 };
@@ -34,7 +34,9 @@ pub struct ApiVersion(ProtocolVersion);
 /// The given block has been added to the linear chain and stored locally.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct BlockAdded {
+    #[schema(value_type = Object)]
     block_hash: BlockHash,
+    #[schema(value_type = Object)]
     block: Box<Block>,
 }
 
@@ -88,6 +90,7 @@ impl BlockAdded {
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct TransactionAccepted {
     // It's an Arc to not create multiple copies of the same transaction for multiple subscribers.
+    #[schema(value_type = Object)]
     transaction: Arc<Transaction>,
 }
 
@@ -139,15 +142,19 @@ impl TransactionAccepted {
 /// The given transaction has been executed, committed and forms part of the given block.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct TransactionProcessed {
+    #[schema(value_type = Object)]
     transaction_hash: Box<TransactionHash>,
-    #[schema(value_type = String)]
+    #[schema(value_type = Object)]
     initiator_addr: Box<InitiatorAddr>,
-    #[schema(value_type = String)]
+    #[schema(value_type = u64)]
     timestamp: Timestamp,
-    #[schema(value_type = String)]
+    #[schema(value_type = u64)]
     ttl: TimeDiff,
+    #[schema(value_type = Object)]
     block_hash: Box<BlockHash>,
+    #[schema(value_type = Object)]
     execution_result: Box<ExecutionResult>,
+    #[schema(value_type = Object)]
     messages: Messages,
 }
 
@@ -209,6 +216,7 @@ impl TransactionProcessed {
 /// The given transaction has expired.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct TransactionExpired {
+    #[schema(value_type = Object)]
     transaction_hash: TransactionHash,
 }
 
@@ -280,7 +288,8 @@ impl Display for Fault {
 }
 
 /// New finality signature received.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
+#[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
+#[schema(value_type = Object)]
 pub struct FinalitySignature(Box<FinSig>);
 
 impl From<FinalitySignature> for FinSig {
@@ -331,14 +340,17 @@ impl FinalitySignature {
 pub struct Step {
     #[schema(value_type = u64)]
     pub era_id: EraId,
-    #[schema(value_type = Effects)]
-    //This technically is not amorphic, but this field is potentially > 30MB of size. By not parsing it we make the process of intaking these messages much quicker and less memory consuming
+    #[schema(value_type = Object)]
+    // This technically is not amorphic, but this field is potentially > 30MB of size. By not
+    // parsing it we make the process of intaking these messages much quicker and less memory
+    // consuming.
     execution_effect: Box<RawValue>,
 }
 
 impl Step {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        use casper_types::execution::Effects;
         use serde_json::value::to_raw_value;
 
         let execution_effect = Effects::random(rng);
