@@ -48,10 +48,10 @@ impl SidecarConfig {
         }
         //Check if both storages are defined and enabled
         if !is_storage_enabled && is_rest_api_server_enabled {
-            bail!("Can't run Rest api server without storage defined")
+            bail!("Can't run REST API server without storage defined")
         }
         if !is_sse_storing_events && is_rest_api_server_enabled {
-            bail!("Can't run Rest api server with SSE events persistence disabled")
+            bail!("Can't run REST API server with SSE events persistence disabled")
         }
         let is_postgres_enabled = self.is_postgres_enabled();
         let is_sqlite_enabled = self.is_sqlite_enabled();
@@ -212,7 +212,7 @@ mod tests {
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
         assert!(error_message
-            .contains("Can't run Rest api server with SSE events persistence disabled"));
+            .contains("Can't run REST API server with SSE events persistence disabled"));
     }
 
     #[test]
@@ -247,7 +247,7 @@ mod tests {
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
         assert!(error_message
-            .contains("Can't run Rest api server with SSE events persistence disabled"));
+            .contains("Can't run REST API server with SSE events persistence disabled"));
     }
 
     #[test]
