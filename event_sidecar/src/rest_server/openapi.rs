@@ -16,7 +16,6 @@ use casper_types::{
 use schemars::{
     schema::{RootSchema, SchemaObject},
     schema_for,
-    visit::Visitor,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,8 +24,6 @@ use utoipa::{
     Modify, OpenApi, ToSchema,
 };
 use warp::{Filter, Rejection, Reply};
-
-use self::schema_transformation_visitor::SchemaTransformationVisitor;
 
 #[allow(dead_code)]
 #[derive(ToSchema)]
@@ -47,14 +44,12 @@ struct FinalitySignatureWithSchema(FinalitySignature);
             crate::rest_server::filters::faults_by_era,
             crate::rest_server::filters::finality_signatures_by_block,
             crate::rest_server::filters::step_by_era,
-
-
         ),
         components(
             schemas(EnvelopeHeader, SseEnvelope<BlockAdded>, SseEnvelope<TransactionAccepted>, SseEnvelope<TransactionExpired>, SseEnvelope<TransactionProcessed>, SseEnvelope<Fault>, SseEnvelope<FinalitySignatureWithSchema>, SseEnvelope<Step>, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
         ),
         tags(
-            (name = "event-sidecar", description = "Event-sidecar rest API")
+            (name = "event-sidecar", description = "Event-sidecar REST API")
         )
     )]
 struct ApiDoc;
@@ -110,13 +105,8 @@ pub fn build_open_api_filters() -> impl Filter<Extract = (impl Reply,), Error = 
 }
 
 fn force_produce_utoipa_schemas(
-    mut root_schema: RootSchema,
+    root_schema: RootSchema,
 ) -> (RefOr<Schema>, HashMap<String, RefOr<Schema>>) {
-    let mut visitor = SchemaTransformationVisitor {
-        skip_additional_properties: true,
-    };
-    visitor.visit_root_schema(&mut root_schema);
-
     let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", &root_schema.schema));
     let mut rebuilt_schema_objects = HashMap::new();
     for (key, value) in root_schema.definitions {

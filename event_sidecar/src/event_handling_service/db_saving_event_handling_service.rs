@@ -57,8 +57,8 @@ where
     ) {
         if self.enable_event_logging {
             let hex_block_hash = HexFmt(block_hash.inner());
-            info!("Block Added: {:18}", hex_block_hash);
-            debug!("Block Added: {}", hex_block_hash);
+            info!("Block Added: {hex_block_hash:18}");
+            debug!("Block Added: {hex_block_hash}");
         }
         let id = sse_event.id;
         let source = sse_event.source.to_string();

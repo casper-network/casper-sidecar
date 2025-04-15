@@ -34,7 +34,7 @@ pub struct ApiVersion(ProtocolVersion);
 /// The given block has been added to the linear chain and stored locally.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct BlockAdded {
-    #[schema(value_type = Object)]
+    #[schema(value_type = [u8; BlockHash::LENGTH])]
     block_hash: BlockHash,
     #[schema(value_type = Object)]
     block: Box<Block>,
@@ -90,7 +90,7 @@ impl BlockAdded {
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct TransactionAccepted {
     // It's an Arc to not create multiple copies of the same transaction for multiple subscribers.
-    #[schema(value_type = Object)]
+    #[schema(value_type = String)]
     transaction: Arc<Transaction>,
 }
 
@@ -144,15 +144,15 @@ impl TransactionAccepted {
 pub struct TransactionProcessed {
     #[schema(value_type = Object)]
     transaction_hash: Box<TransactionHash>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = String)]
     initiator_addr: Box<InitiatorAddr>,
     #[schema(value_type = u64)]
     timestamp: Timestamp,
     #[schema(value_type = u64)]
     ttl: TimeDiff,
-    #[schema(value_type = Object)]
+    #[schema(value_type = [u8; BlockHash::LENGTH])]
     block_hash: Box<BlockHash>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = String)]
     execution_result: Box<ExecutionResult>,
     #[schema(value_type = Object)]
     messages: Messages,
@@ -266,7 +266,7 @@ pub struct Fault {
     /// "Hex-encoded cryptographic public key, including the algorithm tag prefix."
     #[schema(value_type = String)]
     pub public_key: PublicKey,
-    #[schema(value_type = String)]
+    #[schema(value_type = u64)]
     pub timestamp: Timestamp,
 }
 
@@ -340,7 +340,7 @@ impl FinalitySignature {
 pub struct Step {
     #[schema(value_type = u64)]
     pub era_id: EraId,
-    #[schema(value_type = Object)]
+    #[schema(value_type = String)]
     // This technically is not amorphic, but this field is potentially > 30MB of size. By not
     // parsing it we make the process of intaking these messages much quicker and less memory
     // consuming.
