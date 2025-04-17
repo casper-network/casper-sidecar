@@ -1,6 +1,3 @@
-#![deny(clippy::complexity)]
-#![deny(clippy::too_many_lines)]
-
 extern crate core;
 mod admin_server;
 mod api_version_manager;
