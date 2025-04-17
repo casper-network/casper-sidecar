@@ -28,7 +28,7 @@ use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
+use casper_event_types::{Filter, SidecarEvent, sse_data::SseData};
 use casper_types::ProtocolVersion;
 use event_handling_service::{
     DbSavingEventHandlingService, EventHandlingService, NoDbEventHandlingService,
@@ -37,7 +37,7 @@ use futures::future::join_all;
 use tokio::sync::Mutex;
 use tokio::{
     sync::broadcast::Sender as BroadcastSender,
-    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel as mpsc_channel},
     task::JoinHandle,
     time::sleep,
 };
@@ -304,7 +304,7 @@ fn validate_config(config: &SseEventServerConfig) -> Result<(), Error> {
         .any(|connection| connection.max_attempts < 1)
     {
         return Err(Error::msg(
-            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection",
         ));
     }
     Ok(())
@@ -329,7 +329,9 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
 ) {
     match &sse_event.data {
         SseData::SidecarVersion(_) => {
-            error!("Received SseData::SidecarVersion on inbound SSE from the node which should never happen");
+            error!(
+                "Received SseData::SidecarVersion on inbound SSE from the node which should never happen"
+            );
             //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
             //to the outbound
         }

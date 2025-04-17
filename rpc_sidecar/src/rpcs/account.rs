@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use casper_types::{Deploy, DeployHash, Transaction, TransactionHash};
 
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, ClientError, Error, NodeClient, RpcError, RpcWithParams, CURRENT_API_VERSION,
+    ApiVersion, CURRENT_API_VERSION, ClientError, Error, NodeClient, RpcError, RpcWithParams,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {

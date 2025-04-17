@@ -20,18 +20,18 @@ use super::testing;
 #[cfg(feature = "sse-data-testing")]
 use casper_types::ChainNameDigest;
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResult, Block, BlockHash, EraId,
-    FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash,
+    Block, BlockHash, EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash, contract_messages::Messages,
+    execution::ExecutionResult,
 };
 #[cfg(feature = "sse-data-testing")]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
+use casper_types::{TestBlockBuilder, execution::ExecutionResultV2, testing::TestRng};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 #[cfg(feature = "sse-data-testing")]
 use serde_json::value::to_raw_value;
-use serde_json::value::RawValue;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -146,8 +146,8 @@ impl SseData {
     pub fn random_api_version(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(2..10),
-            rng.gen::<u8>() as u32,
-            rng.gen::<u8>() as u32,
+            rng.r#gen::<u8>() as u32,
+            rng.r#gen::<u8>() as u32,
         );
         SseData::ApiVersion(protocol_version)
     }
@@ -202,7 +202,7 @@ impl SseData {
     /// Returns a random `SseData::Fault`.
     pub fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
-            era_id: EraId::new(rng.gen()),
+            era_id: EraId::new(rng.r#gen()),
             public_key: PublicKey::random(rng),
             timestamp: Timestamp::random(rng),
         }
@@ -211,7 +211,7 @@ impl SseData {
     /// Returns a random `SseData::FinalitySignature`.
     pub fn random_finality_signature(rng: &mut TestRng) -> Self {
         let block_hash = BlockHash::random(rng);
-        let block_height = rng.gen::<u64>();
+        let block_height = rng.r#gen::<u64>();
         let era_id = EraId::random(rng);
         let chain_name_digest = ChainNameDigest::random(rng);
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
@@ -228,7 +228,7 @@ impl SseData {
         let execution_effects = ExecutionResultV2::random(rng);
 
         SseData::Step {
-            era_id: EraId::new(rng.gen()),
+            era_id: EraId::new(rng.r#gen()),
             execution_effects: to_raw_value(&execution_effects).unwrap(),
         }
     }
@@ -237,8 +237,8 @@ impl SseData {
     pub fn random_sidecar_version(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(2..10),
-            rng.gen::<u8>() as u32,
-            rng.gen::<u8>() as u32,
+            rng.r#gen::<u8>() as u32,
+            rng.r#gen::<u8>() as u32,
         );
         SseData::SidecarVersion(protocol_version)
     }
@@ -276,7 +276,9 @@ pub mod test_support {
 
     #[must_use]
     pub fn example_finality_signature_2_0_0(hash: &str) -> String {
-        let raw_block_added = format!("{{\"FinalitySignature\":{{\"V2\":{{\"block_hash\":\"{hash}\",\"block_height\":123026,\"era_id\":279,\"chain_name_hash\":\"f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301\",\"signature\":\"01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d\",\"public_key\":\"0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf\"}}}}}}");
+        let raw_block_added = format!(
+            "{{\"FinalitySignature\":{{\"V2\":{{\"block_hash\":\"{hash}\",\"block_height\":123026,\"era_id\":279,\"chain_name_hash\":\"f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301\",\"signature\":\"01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d\",\"public_key\":\"0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf\"}}}}}}"
+        );
         super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
         raw_block_added
     }

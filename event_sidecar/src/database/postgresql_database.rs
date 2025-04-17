@@ -5,8 +5,8 @@ mod writer;
 use anyhow::Error;
 use sea_query::PostgresQueryBuilder;
 use sqlx::{
-    postgres::{PgConnectOptions, PgPool, PgPoolOptions},
     ConnectOptions, Executor, Postgres, Transaction,
+    postgres::{PgConnectOptions, PgPool, PgPoolOptions},
 };
 
 use crate::{

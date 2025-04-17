@@ -14,7 +14,7 @@ use std::{
 
 use anyhow::Error;
 use hyper::Server;
-use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use tower::{ServiceBuilder, buffer::Buffer, make::Shared};
 use tracing::info;
 use warp::Filter;
 

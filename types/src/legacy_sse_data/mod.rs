@@ -1,15 +1,15 @@
 use self::{
-    translate_block_added::{build_default_block_added_translator, BlockAddedTranslator},
+    translate_block_added::{BlockAddedTranslator, build_default_block_added_translator},
     translate_execution_result::{
-        build_default_execution_result_translator, ExecutionResultV2Translator,
+        ExecutionResultV2Translator, build_default_execution_result_translator,
     },
 };
 use crate::sse_data::SseData;
 use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV1},
     BlockHash, Deploy, DeployHash, EraId, FinalitySignature, FinalitySignatureV1,
     FinalitySignatureV2, InitiatorAddr, ProtocolVersion, PublicKey, Signature, TimeDiff, Timestamp,
     Transaction, TransactionHash,
+    execution::{ExecutionResult, ExecutionResultV1},
 };
 use serde::{Deserialize, Serialize};
 

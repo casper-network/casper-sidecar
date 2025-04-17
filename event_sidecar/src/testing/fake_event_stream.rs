@@ -11,7 +11,7 @@ use std::{
 };
 use tempfile::TempDir;
 use tokio::{
-    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel as mpsc_channel},
     time::Instant,
 };
 
@@ -19,9 +19,9 @@ use crate::{
     event_stream_server::{Config as EssConfig, EventStreamServer},
     utils::tests::display_duration,
 };
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
-use casper_types::{testing::TestRng, ProtocolVersion, Transaction};
-use warp::{path::end, Filter};
+use casper_event_types::{Filter as SseFilter, sse_data::SseData};
+use casper_types::{ProtocolVersion, Transaction, testing::TestRng};
+use warp::{Filter, path::end};
 
 const TIME_BETWEEN_BLOCKS: Duration = Duration::from_secs(30);
 const BLOCKS_IN_ERA: u64 = 4;

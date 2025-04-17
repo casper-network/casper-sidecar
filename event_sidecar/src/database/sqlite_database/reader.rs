@@ -2,7 +2,7 @@ use crate::database_reader_implementation;
 
 use super::SqliteDatabase;
 use sea_query::SqliteQueryBuilder;
-use sqlx::{sqlite::SqliteRow, SqlitePool};
+use sqlx::{SqlitePool, sqlite::SqliteRow};
 
 async fn fetch_optional_with_error_check(
     connection: &SqlitePool,

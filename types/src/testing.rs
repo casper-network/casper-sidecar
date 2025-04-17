@@ -3,10 +3,10 @@
 //! Contains various parts and components to aid writing tests and simulations using the
 //! `casper-node` library.
 
-#[cfg(feature = "sse-data-testing")]
-use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp, Transaction};
 #[cfg(test)]
 use casper_types::{BlockHash, Digest, PublicKey};
+#[cfg(feature = "sse-data-testing")]
+use casper_types::{Deploy, TimeDiff, Timestamp, Transaction, testing::TestRng};
 #[cfg(feature = "sse-data-testing")]
 use rand::Rng;
 #[cfg(test)]
@@ -20,9 +20,9 @@ pub fn create_test_transaction(
     now: Timestamp,
     test_rng: &mut TestRng,
 ) -> Transaction {
-    use casper_types::{TransactionV1, MINT_LANE_ID};
+    use casper_types::{MINT_LANE_ID, TransactionV1};
 
-    if test_rng.gen() {
+    if test_rng.r#gen() {
         Transaction::Deploy(Deploy::random_with_timestamp_and_ttl(
             test_rng,
             now - created_ago,

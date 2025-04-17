@@ -2,7 +2,7 @@
 name = "casper-sidecar"
 version = "1.0.4"
 authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
-edition = "2021"
+edition = "2024"
 description = "Base module that spins up casper sidecar"
 readme = "README.md"
 homepage = "https://casperlabs.io"
@@ -40,7 +40,7 @@ casper-event-sidecar = { workspace = true, features = ["testing"] }
 casper-rpc-sidecar = { workspace = true, features = ["testing"] }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.5"
+tikv-jemallocator = "0.6"
 
 [package.metadata.deb]
 revision = "0"

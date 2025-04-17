@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index,
-    InsertStatement, Query, SelectStatement, Table, TableCreateStatement,
+    ColumnDef, Expr, ForeignKey, ForeignKeyAction, Iden, Index, InsertStatement, Query,
+    SelectStatement, Table, TableCreateStatement, error::Result as SqResult,
 };
 
 use super::event_log::EventLog;

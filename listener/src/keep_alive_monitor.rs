@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{
-    mpsc::{channel, Receiver, Sender},
     Mutex,
+    mpsc::{Receiver, Sender, channel},
 };
 use tokio_util::sync::CancellationToken;
 

@@ -1,4 +1,4 @@
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{BTreeMap, btree_map::Entry};
 
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
+    Digest, EraId, PublicKey, U512,
     system::auction::{
         Bid, BidKind, DelegatorBid, DelegatorKind, EraValidators, Staking, ValidatorBid,
     },
-    Digest, EraId, PublicKey, U512,
 };
 
 use crate::rpcs::docs::DocExample;
@@ -30,7 +30,7 @@ pub(crate) static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
 });
 
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
-    use casper_types::{system::auction::DelegationRate, AccessRights, SecretKey, URef};
+    use casper_types::{AccessRights, SecretKey, URef, system::auction::DelegationRate};
     use num_traits::Zero;
 
     let state_root_hash = Digest::from([11; Digest::LENGTH]);

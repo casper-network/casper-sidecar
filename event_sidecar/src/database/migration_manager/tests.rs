@@ -97,8 +97,8 @@ async fn should_apply_migrations() {
 }
 
 #[tokio::test]
-async fn given_ok_and_failing_migrations_first_should_be_applied_second_only_stored_in_migrations_table(
-) {
+async fn given_ok_and_failing_migrations_first_should_be_applied_second_only_stored_in_migrations_table()
+ {
     let sqlite_db = SqliteDatabase::new_in_memory_no_migrations(MAX_CONNECTIONS)
         .expect("Error opening database in memory");
 

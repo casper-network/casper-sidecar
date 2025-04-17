@@ -2,7 +2,7 @@
 name = "metrics"
 authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
 version = "1.0.4"
-edition = "2021"
+edition = "2024"
 readme = "README.md"
 description = "Lib aggregating metrics for casper-sidecar"
 license-file = "../LICENSE"
@@ -12,7 +12,9 @@ repository = "https://github.com/casper-network/casper-sidecar/"
 
 [dependencies]
 once_cell = { workspace = true }
-prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
+prometheus = { version = "0.14", default-features = false, features = [
+    "process",
+] }
 
 [features]
 additional-metrics = []

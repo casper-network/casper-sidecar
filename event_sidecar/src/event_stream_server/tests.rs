@@ -2,15 +2,14 @@ use self::sse_server::LEGACY_ENDPOINT_NOTICE;
 
 use super::*;
 use casper_event_types::legacy_sse_data::LegacySseData;
-use casper_types::{testing::TestRng, ProtocolVersion};
-use futures::{join, Stream, StreamExt};
+use casper_types::{ProtocolVersion, testing::TestRng};
+use futures::{Stream, StreamExt, join};
 use pretty_assertions::assert_eq;
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use sse_server::{
-    Id, TransactionAccepted, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
-    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
-    SSE_API_SIGNATURES_PATH as SIGS_PATH,
+    Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH, SSE_API_MAIN_PATH as MAIN_PATH,
+    SSE_API_ROOT_PATH as ROOT_PATH, SSE_API_SIGNATURES_PATH as SIGS_PATH, TransactionAccepted,
 };
 use std::{
     collections::HashMap,
@@ -19,8 +18,8 @@ use std::{
     pin::Pin,
     str,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -217,9 +216,11 @@ impl TestFixture {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, transaction) = SseData::random_transaction_accepted(rng);
-                    assert!(transactions
-                        .insert(transaction.hash(), transaction)
-                        .is_none());
+                    assert!(
+                        transactions
+                            .insert(transaction.hash(), transaction)
+                            .is_none()
+                    );
                     event
                 }
                 2 => SseData::random_transaction_processed(rng),
@@ -1059,7 +1060,7 @@ async fn subscribe_for_comment(
         .unwrap();
     let stream = response.bytes_stream();
     let final_id_line = format!("id:{final_event_id}"); // This theoretically is not optimal since we don't need to read all the events from the test,
-                                                        // but it's not easy to determine what id is the first one in the stream for legacy tests.
+    // but it's not easy to determine what id is the first one in the stream for legacy tests.
     let keepalive = ":";
     fetch_text(
         Box::pin(stream),
@@ -1134,10 +1135,12 @@ async fn should_persist_event_ids(path: &str, is_legacy_endpoint: bool) {
             .await
             .unwrap();
         fixture.stop_server().await;
-        assert!(received_events
-            .iter()
-            .skip(1)
-            .all(|event| event.id.unwrap() >= first_run_final_id));
+        assert!(
+            received_events
+                .iter()
+                .skip(1)
+                .all(|event| event.id.unwrap() >= first_run_final_id)
+        );
         compare_received_events_for_legacy_endpoints(
             is_legacy_endpoint,
             &expected_events,

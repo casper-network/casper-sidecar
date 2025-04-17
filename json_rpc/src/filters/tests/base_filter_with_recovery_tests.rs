@@ -1,8 +1,8 @@
 use http::StatusCode;
-use warp::{filters::BoxedFilter, reply, test::RequestBuilder, Filter, Reply};
+use warp::{Filter, Reply, filters::BoxedFilter, reply, test::RequestBuilder};
 
 use super::ResponseBodyOnRejection;
-use crate::filters::{base_filter, handle_rejection, CONTENT_TYPE_VALUE};
+use crate::filters::{CONTENT_TYPE_VALUE, base_filter, handle_rejection};
 
 const PATH: &str = "rpc";
 const MAX_BODY_BYTES: u64 = 10;

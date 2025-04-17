@@ -69,7 +69,7 @@ pub fn metrics_summary() -> Result<String, MetricCollectionError> {
         Err(e) => {
             return Err(MetricCollectionError::new(format!(
                 "default and custom metrics have a non-utf8 character: {e}"
-            )))
+            )));
         }
     };
     buffer.clear();

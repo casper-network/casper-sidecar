@@ -5,7 +5,7 @@ use crate::{
         sse_events::*,
     },
 };
-use casper_types::{testing::TestRng, AsymmetricType, EraId};
+use casper_types::{AsymmetricType, EraId, testing::TestRng};
 use rand::Rng;
 use sea_query::{Query, SelectStatement};
 
@@ -383,11 +383,11 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
     db: DB,
 ) {
     let mut test_rng = TestRng::new();
-    let event_id = test_rng.gen::<u32>();
+    let event_id = test_rng.r#gen::<u32>();
     let block_added = BlockAdded::random(&mut test_rng);
 
-    assert!(db
-        .save_block_added(
+    assert!(
+        db.save_block_added(
             block_added.clone(),
             event_id,
             "127.0.0.1".to_string(),
@@ -395,7 +395,8 @@ pub async fn should_disallow_duplicate_event_id_from_source<DB: DatabaseReader +
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
     let res = db
         .save_block_added(
             block_added,
@@ -418,8 +419,8 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
     let mut test_rng = TestRng::new();
     let block_added = BlockAdded::random(&mut test_rng);
 
-    assert!(db
-        .save_block_added(
+    assert!(
+        db.save_block_added(
             block_added.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -427,7 +428,8 @@ pub async fn should_disallow_insert_of_existing_block_added<DB: DatabaseReader +
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_block_added(
@@ -456,8 +458,8 @@ pub async fn should_disallow_insert_of_existing_transaction_accepted<
     let mut test_rng = TestRng::new();
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
 
-    assert!(db
-        .save_transaction_accepted(
+    assert!(
+        db.save_transaction_accepted(
             transaction_accepted.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -465,7 +467,8 @@ pub async fn should_disallow_insert_of_existing_transaction_accepted<
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_transaction_accepted(
@@ -494,8 +497,8 @@ pub async fn should_disallow_insert_of_existing_transaction_expired<
     let mut test_rng = TestRng::new();
     let transaction_expired = TransactionExpired::random(&mut test_rng, None);
 
-    assert!(db
-        .save_transaction_expired(
+    assert!(
+        db.save_transaction_expired(
             transaction_expired.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -503,7 +506,8 @@ pub async fn should_disallow_insert_of_existing_transaction_expired<
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_transaction_expired(
@@ -532,8 +536,8 @@ pub async fn should_disallow_insert_of_existing_transaction_processed<
     let mut test_rng = TestRng::new();
     let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
 
-    assert!(db
-        .save_transaction_processed(
+    assert!(
+        db.save_transaction_processed(
             transaction_processed.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -541,7 +545,8 @@ pub async fn should_disallow_insert_of_existing_transaction_processed<
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_transaction_processed(
@@ -566,8 +571,8 @@ pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + Datab
     let mut test_rng = TestRng::new();
     let fault = Fault::random(&mut test_rng);
 
-    assert!(db
-        .save_fault(
+    assert!(
+        db.save_fault(
             fault.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -575,7 +580,8 @@ pub async fn should_disallow_insert_of_existing_fault<DB: DatabaseReader + Datab
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_fault(
@@ -604,8 +610,8 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
     let mut test_rng = TestRng::new();
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
-    assert!(db
-        .save_finality_signature(
+    assert!(
+        db.save_finality_signature(
             finality_signature.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -613,7 +619,8 @@ pub async fn should_disallow_insert_of_existing_finality_signature<
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_finality_signature(
@@ -638,8 +645,8 @@ pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + Databa
     let mut test_rng = TestRng::new();
     let step = Step::random(&mut test_rng);
 
-    assert!(db
-        .save_step(
+    assert!(
+        db.save_step(
             step.clone(),
             1,
             "127.0.0.1".to_string(),
@@ -647,7 +654,8 @@ pub async fn should_disallow_insert_of_existing_step<DB: DatabaseReader + Databa
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     let db_err = db
         .save_step(
@@ -680,8 +688,8 @@ pub async fn get_number_of_events_should_return_1_when_event_stored<
     let mut test_rng = TestRng::new();
     let fault = Fault::random(&mut test_rng);
 
-    assert!(db
-        .save_fault(
+    assert!(
+        db.save_fault(
             fault,
             1,
             "127.0.0.1".to_string(),
@@ -689,7 +697,8 @@ pub async fn get_number_of_events_should_return_1_when_event_stored<
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
     assert_eq!(db.get_number_of_events().await.unwrap(), 1);
 }
 

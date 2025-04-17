@@ -14,10 +14,10 @@ use std::{
 use thiserror::Error;
 #[cfg(feature = "additional-metrics")]
 use tokio::sync::{
-    mpsc::{channel, Sender},
     Mutex,
+    mpsc::{Sender, channel},
 };
-use warp::{reject, Filter};
+use warp::{Filter, reject};
 
 #[derive(Debug)]
 pub struct Unexpected(pub(super) anyhow::Error);
@@ -156,22 +156,22 @@ pub fn start_metrics_thread(module_name: String) -> Sender<()> {
 #[cfg(test)]
 pub mod tests {
     use crate::{
+        Database,
         database::{postgresql_database::PostgreSqlDatabase, sqlite_database::SqliteDatabase},
         run, run_rest_server,
         testing::{
             mock_node::tests::MockNode,
-            testing_config::{get_port, prepare_config, TestingConfig},
+            testing_config::{TestingConfig, get_port, prepare_config},
         },
-        Database,
     };
     use anyhow::Error as AnyhowError;
     use pg_embed::{
         pg_enums::PgAuthMethod,
-        pg_fetch::{PgFetchSettings, PG_V17},
+        pg_fetch::{PG_V17, PgFetchSettings},
         postgres::{PgEmbed, PgSettings},
     };
     use std::{path::PathBuf, process::ExitCode, time::Duration};
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
     use tokio::{
         sync::{broadcast, mpsc::Receiver},
         time::timeout,

@@ -4,14 +4,14 @@ use super::endpoint::Endpoint;
 #[cfg(feature = "additional-metrics")]
 use crate::utils::start_metrics_thread;
 use casper_event_types::{
+    Filter as SseFilter,
     legacy_sse_data::LegacySseData,
     sse_data::{EventFilter, SseData},
-    Filter as SseFilter,
 };
 use casper_types::ProtocolVersion;
 #[cfg(test)]
 use casper_types::Transaction;
-use futures::{future, Stream, StreamExt};
+use futures::{Stream, StreamExt, future};
 use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
@@ -33,16 +33,16 @@ use tokio::sync::{
     mpsc::{self, UnboundedSender},
 };
 use tokio_stream::wrappers::{
-    errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
+    BroadcastStream, UnboundedReceiverStream, errors::BroadcastStreamRecvError,
 };
 use tracing::{debug, error, info, warn};
 use warp::{
+    Filter, Reply,
     filters::BoxedFilter,
     path,
     reject::Rejection,
     reply::Response,
     sse::{self, Event as WarpServerSentEvent},
-    Filter, Reply,
 };
 
 /// The URL root path.
@@ -674,7 +674,7 @@ fn handle_sse_event(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_types::{testing::TestRng, TransactionHash};
+    use casper_types::{TransactionHash, testing::TestRng};
     use rand::Rng;
     use std::iter;
     #[cfg(feature = "additional-metrics")]
@@ -717,14 +717,14 @@ mod tests {
             inbound_filter: None,
         };
         let block_added = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_block_added(&mut rng)),
             inbound_filter: None,
         };
         let (sse_data, transaction) = SseData::random_transaction_accepted(&mut rng);
         let transaction_accepted = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(sse_data),
             inbound_filter: None,
@@ -732,43 +732,43 @@ mod tests {
         let mut transactions = HashMap::new();
         let _ = transactions.insert(transaction.hash(), transaction);
         let transaction_processed = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_transaction_processed(&mut rng)),
             inbound_filter: None,
         };
         let transaction_expired = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_transaction_expired(&mut rng)),
             inbound_filter: None,
         };
         let fault = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_fault(&mut rng)),
             inbound_filter: None,
         };
         let finality_signature = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_finality_signature(&mut rng)),
             inbound_filter: None,
         };
         let step = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_step(&mut rng)),
             inbound_filter: None,
         };
         let shutdown = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::Shutdown),
             inbound_filter: Some(SseFilter::Events),
         };
         let sidecar_api_version = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_sidecar_version(&mut rng)),
             inbound_filter: None,
@@ -840,7 +840,7 @@ mod tests {
         let mut rng = TestRng::new();
 
         let malformed_api_version = ServerSentEvent {
-            id: Some(rng.gen()),
+            id: Some(rng.r#gen()),
             comment: None,
             data: Some(SseData::random_api_version(&mut rng)),
             inbound_filter: None,
@@ -1069,9 +1069,11 @@ mod tests {
                     SSE_API_MAIN_PATH => make_legacy_compliant_random_block(rng),
                     SSE_API_DEPLOYS_PATH => {
                         let (event, transaction) = make_legacy_compliant_random_transaction(rng);
-                        assert!(transactions
-                            .insert(transaction.hash(), transaction)
-                            .is_none());
+                        assert!(
+                            transactions
+                                .insert(transaction.hash(), transaction)
+                                .is_none()
+                        );
                         event
                     }
                     SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
@@ -1082,9 +1084,11 @@ mod tests {
                             1 => {
                                 let (event, transaction) =
                                     SseData::random_transaction_accepted(rng);
-                                assert!(transactions
-                                    .insert(transaction.hash(), transaction)
-                                    .is_none());
+                                assert!(
+                                    transactions
+                                        .insert(transaction.hash(), transaction)
+                                        .is_none()
+                                );
                                 event
                             }
                             2 => SseData::random_finality_signature(rng),

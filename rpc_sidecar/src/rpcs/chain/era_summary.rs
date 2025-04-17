@@ -3,8 +3,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
     AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, StoredValue, U512,
+    system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
 };
 
 use crate::rpcs::common::MERKLE_PROOF;

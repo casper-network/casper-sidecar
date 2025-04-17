@@ -1,13 +1,13 @@
 use crate::{
+    BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
+    TransactionProcessed,
     event_handling_service::count_error,
     transaction_hash_to_identifier,
     types::database::{DatabaseReader, DatabaseWriteError, DatabaseWriter},
-    BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
-    TransactionProcessed,
 };
 use async_trait::async_trait;
 use casper_event_listener::SseEvent;
-use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
+use casper_event_types::{Filter, SidecarEvent, sse_data::SseData};
 use casper_types::{
     Block, BlockHash, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
 };
@@ -18,7 +18,7 @@ use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, info, warn};
 
-use super::{handle_database_save_result, EventHandlingService};
+use super::{EventHandlingService, handle_database_save_result};
 
 #[derive(new, Clone)]
 pub struct DbSavingEventHandlingService<Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync> {

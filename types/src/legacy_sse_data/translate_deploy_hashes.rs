@@ -1,4 +1,4 @@
-use casper_types::{BlockBodyV2, DeployHash, TransactionHash, MINT_LANE_ID};
+use casper_types::{BlockBodyV2, DeployHash, MINT_LANE_ID, TransactionHash};
 use mockall::automock;
 
 #[automock]
@@ -45,7 +45,7 @@ impl DeployHashTranslator for TransferDeployHashesTranslator {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{testing::TestRng, EraId};
+    use casper_types::{EraId, testing::TestRng};
 
     use crate::legacy_sse_data::fixtures::*;
 

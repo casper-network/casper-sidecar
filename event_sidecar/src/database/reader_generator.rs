@@ -11,7 +11,7 @@ macro_rules! database_reader_implementation {
         use sqlx::{Executor, Row};
         use $crate::{
             database::{
-                errors::{wrap_query_error, DbError},
+                errors::{DbError, wrap_query_error},
                 types::SseEnvelope,
             },
             sql::tables,

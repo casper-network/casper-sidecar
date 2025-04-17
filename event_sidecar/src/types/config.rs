@@ -7,9 +7,9 @@ use serde::Deserialize;
 use crate::database::{
     database_errors::DatabaseConfigError,
     env_vars::{
-        get_connection_information_from_env, DATABASE_HOST_ENV_VAR_KEY,
-        DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, DATABASE_NAME_ENV_VAR_KEY,
+        DATABASE_HOST_ENV_VAR_KEY, DATABASE_MAX_CONNECTIONS_ENV_VAR_KEY, DATABASE_NAME_ENV_VAR_KEY,
         DATABASE_PASSWORD_ENV_VAR_KEY, DATABASE_PORT_ENV_VAR_KEY, DATABASE_USERNAME_ENV_VAR_KEY,
+        get_connection_information_from_env,
     },
 };
 
@@ -80,6 +80,7 @@ pub struct Connection {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[cfg_attr(not(any(feature = "testing", test)), derive(Default))]
 pub struct StorageConfig {
     pub storage_folder: String,
     pub sqlite_config: Option<SqliteConfig>,
@@ -198,7 +199,6 @@ impl Default for StorageConfigSerdeTarget {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
 impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
     type Error = DatabaseConfigError;
 

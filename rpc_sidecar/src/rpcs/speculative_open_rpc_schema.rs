@@ -2,8 +2,8 @@ use once_cell::sync::Lazy;
 
 use super::{
     docs::{
-        OpenRpcInfoField, OpenRpcSchema, OpenRpcServerEntry, CONTACT, DOCS_EXAMPLE_API_VERSION,
-        LICENSE, OPEN_RPC_VERSION,
+        CONTACT, DOCS_EXAMPLE_API_VERSION, LICENSE, OPEN_RPC_VERSION, OpenRpcInfoField,
+        OpenRpcSchema, OpenRpcServerEntry,
     },
     speculative_exec::{SpeculativeExec, SpeculativeExecTxn},
 };

@@ -1,15 +1,15 @@
 use http::StatusCode;
 use serde::{
-    ser::{Error as _, Serializer},
     Deserialize, Serialize,
+    ser::{Error as _, Serializer},
 };
 use serde_json::Value;
-use warp::{filters::BoxedFilter, Filter, Reply};
+use warp::{Filter, Reply, filters::BoxedFilter};
 
 use super::ResponseBodyOnRejection;
 use crate::{
-    filters::{handle_rejection, main_filter},
     ConfigLimit, Error, Params, RequestHandlersBuilder, ReservedErrorCode, Response,
+    filters::{handle_rejection, main_filter},
 };
 
 const GET_GOOD_THING: &str = "get good thing";

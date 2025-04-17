@@ -179,8 +179,8 @@ async fn should_save_block_added_with_correct_event_type_id() {
 
     let block_added = BlockAdded::random(&mut test_rng);
 
-    assert!(db
-        .save_block_added(
+    assert!(
+        db.save_block_added(
             block_added,
             1,
             "127.0.0.1".to_string(),
@@ -188,7 +188,8 @@ async fn should_save_block_added_with_correct_event_type_id() {
             "network-1".to_string()
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -208,8 +209,8 @@ async fn should_save_transaction_accepted_with_correct_event_type_id() {
 
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
 
-    assert!(db
-        .save_transaction_accepted(
+    assert!(
+        db.save_transaction_accepted(
             transaction_accepted,
             1,
             "127.0.0.1".to_string(),
@@ -217,7 +218,8 @@ async fn should_save_transaction_accepted_with_correct_event_type_id() {
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -237,8 +239,8 @@ async fn should_save_transaction_processed_with_correct_event_type_id() {
 
     let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
 
-    assert!(db
-        .save_transaction_processed(
+    assert!(
+        db.save_transaction_processed(
             transaction_processed,
             1,
             "127.0.0.1".to_string(),
@@ -246,7 +248,8 @@ async fn should_save_transaction_processed_with_correct_event_type_id() {
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -266,8 +269,8 @@ async fn should_save_transaction_expired_with_correct_event_type_id() {
 
     let transaction_expired = TransactionExpired::random(&mut test_rng, None);
 
-    assert!(db
-        .save_transaction_expired(
+    assert!(
+        db.save_transaction_expired(
             transaction_expired,
             1,
             "127.0.0.1".to_string(),
@@ -275,7 +278,8 @@ async fn should_save_transaction_expired_with_correct_event_type_id() {
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -295,8 +299,8 @@ async fn should_save_fault_with_correct_event_type_id() {
 
     let fault = Fault::random(&mut test_rng);
 
-    assert!(db
-        .save_fault(
+    assert!(
+        db.save_fault(
             fault,
             1,
             "127.0.0.1".to_string(),
@@ -304,7 +308,8 @@ async fn should_save_fault_with_correct_event_type_id() {
             "network-1".to_string()
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -324,8 +329,8 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
 
     let finality_signature = FinalitySignature::random(&mut test_rng);
 
-    assert!(db
-        .save_finality_signature(
+    assert!(
+        db.save_finality_signature(
             finality_signature,
             1,
             "127.0.0.1".to_string(),
@@ -333,7 +338,8 @@ async fn should_save_finality_signature_with_correct_event_type_id() {
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -353,8 +359,8 @@ async fn should_save_step_with_correct_event_type_id() {
 
     let step = Step::random(&mut test_rng);
 
-    assert!(db
-        .save_step(
+    assert!(
+        db.save_step(
             step,
             1,
             "127.0.0.1".to_string(),
@@ -362,7 +368,8 @@ async fn should_save_step_with_correct_event_type_id() {
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,
@@ -377,15 +384,16 @@ async fn should_save_step_with_correct_event_type_id() {
 #[tokio::test]
 async fn should_save_and_retrieve_a_shutdown() {
     let db = build_database().await;
-    assert!(db
-        .save_shutdown(
+    assert!(
+        db.save_shutdown(
             15,
             "xyz".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
         )
         .await
-        .is_ok());
+        .is_ok()
+    );
 
     verify_event_log_entry(
         db,

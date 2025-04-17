@@ -2,7 +2,7 @@ use casper_event_types::SIDECAR_VERSION;
 use casper_types::ProtocolVersion;
 use http::StatusCode;
 use serde::Serialize;
-use warp::{reject::Rejection, reply::Reply, Filter};
+use warp::{Filter, reject::Rejection, reply::Reply};
 
 #[derive(Clone, Debug, Serialize)]
 struct SidecarStatus {

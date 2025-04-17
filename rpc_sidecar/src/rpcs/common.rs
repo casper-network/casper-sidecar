@@ -6,16 +6,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    bytesrepr::ToBytes, contracts::ContractPackage, global_state::TrieMerkleProof, Account,
-    AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier, BlockWithSignatures,
-    ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue, GlobalStateIdentifier, Key,
-    NamedKeys, Package, StoredValue,
+    Account, AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier,
+    BlockWithSignatures, ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue,
+    GlobalStateIdentifier, Key, NamedKeys, Package, StoredValue, bytesrepr::ToBytes,
+    contracts::ContractPackage, global_state::TrieMerkleProof,
 };
 
 use crate::NodeClient;
 
-pub(super) static MERKLE_PROOF: &str =
-    "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
+pub(super) static MERKLE_PROOF: &str = "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
     55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3\
     f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a\
     7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41d\

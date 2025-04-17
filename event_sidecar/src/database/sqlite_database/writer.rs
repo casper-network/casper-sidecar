@@ -3,7 +3,7 @@ use crate::database::types::DDLConfiguration;
 use sea_query::SqliteQueryBuilder;
 #[cfg(test)]
 use sqlx::sqlite::SqliteRow;
-use sqlx::{sqlite::SqliteQueryResult, Sqlite};
+use sqlx::{Sqlite, sqlite::SqliteQueryResult};
 
 database_writer_implementation!(
     SqliteDatabase,

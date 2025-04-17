@@ -11,15 +11,15 @@ pub mod testing;
 use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Error;
-use caching_node_client::{cache_update_loop, CachingNodeClient};
+use caching_node_client::{CachingNodeClient, cache_update_loop};
 use casper_binary_port::{BinaryResponse, Command, CommandHeader, PayloadEntity};
 use casper_event_types::SidecarEvent;
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
+    bytesrepr::{self, FromBytes, ToBytes},
 };
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
-use futures::{future::BoxFuture, FutureExt};
+use futures::{FutureExt, future::BoxFuture};
 pub use http_server::run as run_rpc_server;
 use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
@@ -178,7 +178,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
+    use assert_json_diff::{CompareMode, Config, assert_json_eq, assert_json_matches_no_panic};
     use regex::Regex;
     use serde_json::Value;
 

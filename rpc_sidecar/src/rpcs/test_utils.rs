@@ -6,11 +6,11 @@ use casper_binary_port::{
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
 };
 use casper_types::{
+    AddressableEntityHash, BlockHeader, BlockWithSignatures, CLValue, GlobalStateIdentifier, Key,
+    KeyTag, StoredValue,
     addressable_entity::EntityKindTag,
     bytesrepr::ToBytes,
     system::auction::{Bid, BidKind, EraInfo, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
-    AddressableEntityHash, BlockHeader, BlockWithSignatures, CLValue, GlobalStateIdentifier, Key,
-    KeyTag, StoredValue,
 };
 use tokio::sync::Mutex;
 

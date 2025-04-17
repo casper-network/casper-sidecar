@@ -2,8 +2,8 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc, time::Insta
 
 use futures::FutureExt;
 use governor::{
-    clock::{Clock, DefaultClock},
     DefaultDirectRateLimiter,
+    clock::{Clock, DefaultClock},
 };
 use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
 use serde::Serialize;
@@ -11,10 +11,10 @@ use serde_json::Value;
 use tracing::{debug, error};
 
 use crate::{
+    ConfigLimit,
     error::{Error, ReservedErrorCode, RpcErrorCode},
     request::{Params, Request},
     response::Response,
-    ConfigLimit,
 };
 
 /// A boxed future of `Result<Value, Error>`; the return type of a request-handling closure.

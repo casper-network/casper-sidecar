@@ -12,6 +12,7 @@ use tokio::sync::OnceCell;
 use utoipa::ToSchema;
 
 use crate::{
+    StorageConfig,
     database::{
         postgresql_database::PostgreSqlDatabase,
         sqlite_database::SqliteDatabase,
@@ -22,7 +23,6 @@ use crate::{
         BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
         TransactionProcessed,
     },
-    StorageConfig,
 };
 
 pub enum TransactionTypeId {

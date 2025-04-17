@@ -4,7 +4,7 @@ pub mod tests {
 
     use crate::testing::fake_event_stream::setup_mock_build_version_server_with_version;
     use crate::testing::raw_sse_events_utils::tests::{
-        example_data_2_0_1, simple_sse_server, sse_server_example_data, EventsWithIds,
+        EventsWithIds, example_data_2_0_1, simple_sse_server, sse_server_example_data,
     };
     use crate::testing::testing_config::get_port;
     use futures::join;

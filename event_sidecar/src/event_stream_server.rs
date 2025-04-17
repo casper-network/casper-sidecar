@@ -27,8 +27,8 @@ mod http_server;
 mod sse_server;
 #[cfg(test)]
 mod tests;
-use crate::utils::{resolve_address, ListeningError};
-use casper_event_types::{sse_data::SseData, Filter as SseFilter};
+use crate::utils::{ListeningError, resolve_address};
+use casper_event_types::{Filter as SseFilter, sse_data::SseData};
 pub use config::Config;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;

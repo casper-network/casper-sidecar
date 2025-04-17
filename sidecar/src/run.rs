@@ -1,10 +1,10 @@
 use crate::component::*;
 use crate::config::SidecarConfig;
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use casper_event_sidecar::LazyDatabaseWrapper;
 use std::{process::ExitCode, time::Duration};
 use tokio::{
-    signal::unix::{signal, SignalKind},
+    signal::unix::{SignalKind, signal},
     sync::broadcast,
     time::timeout,
 };

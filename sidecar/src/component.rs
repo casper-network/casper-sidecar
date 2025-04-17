@@ -1,12 +1,12 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use casper_event_sidecar::{
-    run as run_sse_sidecar, run_admin_server, run_rest_server, LazyDatabaseWrapper,
+    LazyDatabaseWrapper, run as run_sse_sidecar, run_admin_server, run_rest_server,
 };
 use casper_event_types::SidecarEvent;
 use casper_rpc_sidecar::build_rpc_server;
 use derive_new::new;
-use futures::{future::BoxFuture, FutureExt};
+use futures::{FutureExt, future::BoxFuture};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     process::ExitCode,
@@ -274,8 +274,8 @@ mod tests {
         AdminApiServerConfig, RestApiServerConfig, SseEventServerConfig, StorageConfig,
     };
     use casper_rpc_sidecar::{
-        testing::{get_port, start_mock_binary_port_responding_with_stored_value},
         NodeClientConfig, RpcServerConfig, SpeculativeExecConfig,
+        testing::{get_port, start_mock_binary_port_responding_with_stored_value},
     };
     use tokio::sync::broadcast;
 

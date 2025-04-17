@@ -5,8 +5,8 @@ use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
 use crate::{
     node_client::NodeClient,
     rpcs::{
-        speculative_exec::{SpeculativeExec, SpeculativeExecTxn, SpeculativeRpcDiscover},
         RpcWithParams, RpcWithoutParams,
+        speculative_exec::{SpeculativeExec, SpeculativeExecTxn, SpeculativeRpcDiscover},
     },
 };
 

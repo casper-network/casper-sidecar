@@ -1,4 +1,4 @@
-use casper_event_types::{sse_data::SseData, Filter};
+use casper_event_types::{Filter, sse_data::SseData};
 use reqwest::Url;
 use std::{
     fmt::{Display, Formatter},

@@ -19,23 +19,23 @@ mod types;
 
 use async_trait::async_trait;
 use governor::{
-    clock::{Clock, DefaultClock},
     DefaultDirectRateLimiter, Quota,
+    clock::{Clock, DefaultClock},
 };
 use http::{
-    header::{ACCEPT_ENCODING, RETRY_AFTER},
     StatusCode,
+    header::{ACCEPT_ENCODING, RETRY_AFTER},
 };
 use schemars::JsonSchema;
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as SerdeError};
+use serde_json::{Value, json};
 use tokio::sync::oneshot;
 use tracing::{debug, info};
 use warp::{
+    Filter,
     filters::BoxedFilter,
     reject::{Reject, Rejection},
     reply::{self, Reply},
-    Filter,
 };
 
 use casper_json_rpc::{
@@ -90,7 +90,7 @@ pub(super) trait RpcWithParams {
                 return Err(RpcError::new(
                     ReservedErrorCode::InvalidParams,
                     "Missing 'params' field",
-                ))
+                ));
             }
         };
         serde_json::from_value::<Self::RequestParams>(params).map_err(|error| {
@@ -384,7 +384,7 @@ pub(super) async fn run_with_cors(
         max_body_bytes,
         handlers,
         ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
-        &cors_header,
+        cors_header,
     );
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;
 }
@@ -444,9 +444,9 @@ impl fmt::Display for ApiVersion {
 mod tests {
     use std::fmt::Write;
 
-    use warp::{filters::BoxedFilter, Filter, Reply};
+    use warp::{Filter, Reply, filters::BoxedFilter};
 
-    use casper_json_rpc::{filters, Response};
+    use casper_json_rpc::{Response, filters};
     use casper_types::DeployHash;
 
     use super::*;
@@ -544,7 +544,7 @@ mod tests {
     }
 
     mod rpc_without_params {
-        use casper_json_rpc::{RpcErrorCode, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
+        use casper_json_rpc::{DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS, RpcErrorCode};
 
         use super::*;
         use crate::rpcs::info::{GetPeers, GetPeersResult};

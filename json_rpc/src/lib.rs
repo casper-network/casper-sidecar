@@ -91,9 +91,9 @@ use std::{hash::Hash, num::NonZeroU32, time::Duration};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use governor::Quota;
-use http::{header::CONTENT_TYPE, Method};
+use http::{Method, header::CONTENT_TYPE};
 use serde::Deserialize;
-use warp::{filters::BoxedFilter, Filter, Reply};
+use warp::{Filter, Reply, filters::BoxedFilter};
 
 pub use error::{Error, ErrorCodeT, ReservedErrorCode, RpcErrorCode};
 pub use request::Params;
@@ -211,7 +211,7 @@ pub fn route_with_cors<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
     max_body_bytes: u64,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
-    cors_header: &CorsOrigin,
+    cors_header: CorsOrigin,
 ) -> BoxedFilter<(impl Reply,)> {
     filters::base_filter(path, max_body_bytes)
         .and(filters::main_filter(handlers, allow_unknown_fields))

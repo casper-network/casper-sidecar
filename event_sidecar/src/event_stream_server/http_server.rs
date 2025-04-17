@@ -3,9 +3,9 @@ use super::{
     event_indexer::EventIndex,
     sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
 };
-use casper_event_types::{sse_data::SseData, Filter, SIDECAR_VERSION};
+use casper_event_types::{Filter, SIDECAR_VERSION, sse_data::SseData};
 use casper_types::ProtocolVersion;
-use futures::{future, Future, FutureExt};
+use futures::{Future, FutureExt, future};
 use tokio::{
     select,
     sync::{

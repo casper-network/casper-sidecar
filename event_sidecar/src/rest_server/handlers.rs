@@ -8,7 +8,7 @@ use anyhow::Error;
 use http::Response;
 use hyper::Body;
 use serde::Serialize;
-use warp::{http::StatusCode, Rejection, Reply};
+use warp::{Rejection, Reply, http::StatusCode};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,

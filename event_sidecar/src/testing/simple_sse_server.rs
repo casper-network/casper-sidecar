@@ -4,12 +4,11 @@ pub(crate) mod tests {
     use futures::Stream;
     use std::{collections::HashMap, convert::Infallible, sync::Arc};
     use tokio::sync::{
-        broadcast,
-        mpsc::{channel, Receiver, Sender},
-        Mutex,
+        Mutex, broadcast,
+        mpsc::{Receiver, Sender, channel},
     };
     use warp::filters::BoxedFilter;
-    use warp::{path, sse::Event, Filter, Rejection, Reply};
+    use warp::{Filter, Rejection, Reply, path, sse::Event};
 
     use crate::testing::raw_sse_events_utils::tests::EventsWithIds;
 

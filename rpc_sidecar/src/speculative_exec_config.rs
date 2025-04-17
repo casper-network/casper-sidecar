@@ -4,7 +4,7 @@ use std::{
     num::NonZeroU32,
 };
 
-use casper_json_rpc::{nonzero_u32, ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
+use casper_json_rpc::{ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS, nonzero_u32};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;

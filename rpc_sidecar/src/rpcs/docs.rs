@@ -6,14 +6,16 @@ use async_trait::async_trait;
 use derive_new::new;
 use once_cell::sync::Lazy;
 use schemars::{
-    gen::{SchemaGenerator, SchemaSettings},
-    schema::Schema,
     JsonSchema, Map, MapEntry,
+    r#gen::{SchemaGenerator, SchemaSettings},
+    schema::Schema,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
+    ApiVersion, CURRENT_API_VERSION, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
+    RpcWithoutParams,
     account::{PutDeploy, PutTransaction},
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
@@ -27,8 +29,6 @@ use super::{
         GetItem, GetPackage, QueryBalance, QueryBalanceDetails, QueryGlobalState,
     },
     state_get_auction_info_v2::GetAuctionInfo as GetAuctionInfoV2,
-    ApiVersion, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
-    CURRENT_API_VERSION,
 };
 
 pub(crate) const DOCS_EXAMPLE_API_VERSION: ApiVersion = CURRENT_API_VERSION;
@@ -490,7 +490,7 @@ mod doc_example_impls {
     #[allow(deprecated)]
     use casper_types::AuctionState;
     use casper_types::{
-        account::Account, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey, Timestamp, Transaction,
+        Deploy, EraEndV1, EraEndV2, EraReport, PublicKey, Timestamp, Transaction, account::Account,
     };
 
     use super::DocExample;

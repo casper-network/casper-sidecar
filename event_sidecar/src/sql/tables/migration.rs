@@ -1,8 +1,8 @@
 #[cfg(test)]
 use sea_query::SqliteQueryBuilder;
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Iden, Index, InsertStatement, Order, Query,
-    SelectStatement, Table, TableCreateStatement,
+    ColumnDef, Iden, Index, InsertStatement, Order, Query, SelectStatement, Table,
+    TableCreateStatement, error::Result as SqResult,
 };
 #[derive(Iden)]
 enum Migration {

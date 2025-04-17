@@ -10,17 +10,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    global_state::TrieMerkleProof, BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest,
-    GlobalStateIdentifier, JsonBlockWithSignatures, Key, StoredValue, Transfer,
+    BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier, Digest, GlobalStateIdentifier,
+    JsonBlockWithSignatures, Key, StoredValue, Transfer, global_state::TrieMerkleProof,
 };
 
 use super::{
-    common,
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, CURRENT_API_VERSION,
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams, common,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
-pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
+pub use era_summary::EraSummary;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
@@ -402,17 +401,17 @@ async fn get_era_summary_by_block(
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{rpcs::test_utils::BinaryPortMock, ClientError};
+    use crate::{ClientError, rpcs::test_utils::BinaryPortMock};
     use casper_binary_port::{
         BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, GlobalStateEntityQualifier,
         GlobalStateQueryResult, InformationRequest, InformationRequestTag, RecordId,
     };
     use casper_types::{
+        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, BlockWithSignatures,
+        ChainNameDigest, PublicKey, TestBlockBuilder, TestBlockV1Builder, U512,
         bytesrepr::Bytes,
         system::auction::{DelegatorKind, EraInfo, SeigniorageAllocation},
         testing::TestRng,
-        AsymmetricType, Block, BlockSignaturesV1, BlockSignaturesV2, BlockWithSignatures,
-        ChainNameDigest, PublicKey, TestBlockBuilder, TestBlockV1Builder, U512,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;

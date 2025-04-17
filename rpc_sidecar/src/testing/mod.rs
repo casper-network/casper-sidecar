@@ -5,8 +5,8 @@ use casper_binary_port::{
     GetRequest, GlobalStateQueryResult,
 };
 use casper_types::{
-    bytesrepr::{Bytes, ToBytes},
     CLValue, StoredValue,
+    bytesrepr::{Bytes, ToBytes},
 };
 use futures::{SinkExt, StreamExt};
 use tokio::{

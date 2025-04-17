@@ -1,13 +1,13 @@
-use super::{structs, LegacySseData};
+use super::{LegacySseData, structs};
 use crate::{
     sse_data::SseData,
     testing::{parse_block_hash, parse_digest, parse_public_key},
 };
 use casper_types::{
-    system::auction::ValidatorWeights, testing::TestRng, BlockHash, BlockV2, Deploy, DeployHash,
-    Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
-    SingleBlockRewardedSignatures, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
-    TransactionV1, TransactionV1Hash, U512,
+    BlockHash, BlockV2, Deploy, DeployHash, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, TestBlockBuilder, TimeDiff, Timestamp,
+    Transaction, TransactionV1, TransactionV1Hash, U512, system::auction::ValidatorWeights,
+    testing::TestRng,
 };
 use rand::Rng;
 use std::{

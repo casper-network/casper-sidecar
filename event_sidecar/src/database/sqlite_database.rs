@@ -14,8 +14,8 @@ use sea_query::SqliteQueryBuilder;
 #[cfg(any(feature = "testing", test))]
 use sqlx::Row;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
     ConnectOptions, Executor, Sqlite, Transaction,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
 };
 use std::{
     fs,

@@ -9,7 +9,7 @@ use http::StatusCode;
 use hyper::body::HttpBody;
 use serde::{Deserialize, Serialize};
 use tracing::error;
-use warp::{reject, Rejection, Reply};
+use warp::{Rejection, Reply, reject};
 
 #[derive(Deserialize, Serialize)]
 struct ApiError {

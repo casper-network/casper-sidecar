@@ -1,10 +1,10 @@
 use crate::{
-    event_handling_service::handle_database_save_result, transaction_hash_to_identifier, Fault,
-    FinalitySignature, Step, TransactionAccepted, TransactionProcessed,
+    Fault, FinalitySignature, Step, TransactionAccepted, TransactionProcessed,
+    event_handling_service::handle_database_save_result, transaction_hash_to_identifier,
 };
 use async_trait::async_trait;
 use casper_event_listener::SseEvent;
-use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
+use casper_event_types::{Filter, SidecarEvent, sse_data::SseData};
 use casper_types::{
     Block, BlockHash, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
 };

@@ -1,5 +1,5 @@
 use crate::{
-    connection_manager::{non_recoverable_error, recoverable_error, ConnectionManagerError},
+    connection_manager::{ConnectionManagerError, non_recoverable_error, recoverable_error},
     keep_alive_monitor::KeepAliveMonitor,
 };
 use anyhow::Error;
@@ -49,7 +49,7 @@ impl SseConnection {
         &mut self,
         url: Url,
     ) -> Result<
-        Pin<Box<EventStream<impl Stream<Item = Result<Bytes, SseDataStreamingError>>>>>,
+        Pin<Box<EventStream<impl Stream<Item = Result<Bytes, SseDataStreamingError>> + use<>>>>,
         ConnectionManagerError,
     > {
         debug!("Connecting to node...\t{}", url);
@@ -69,7 +69,7 @@ impl SseConnection {
     fn build_byte_stream(
         &mut self,
         sse_response: reqwest::Response,
-    ) -> impl Stream<Item = Result<Bytes, SseDataStreamingError>> {
+    ) -> impl Stream<Item = Result<Bytes, SseDataStreamingError>> + use<> {
         let monitor =
             KeepAliveMonitor::new(self.sleep_between_keepalive_checks, self.no_message_timeout);
         monitor.start();
@@ -125,7 +125,7 @@ impl StreamConnector for SseConnection {
                     return Ok(event_stream);
                 }
                 Err(ConnectionManagerError::NonRecoverableError { error }) => {
-                    return Err(ConnectionManagerError::NonRecoverableError { error })
+                    return Err(ConnectionManagerError::NonRecoverableError { error });
                 }
                 Err(err) => last_error = Some(err),
             }
@@ -171,7 +171,7 @@ pub mod tests {
     use async_stream::stream;
     use async_trait::async_trait;
     use eventsource_stream::{Event, Eventsource};
-    use futures_util::{stream::iter, Stream};
+    use futures_util::{Stream, stream::iter};
     use std::{
         convert::Infallible,
         pin::Pin,
@@ -181,7 +181,7 @@ pub mod tests {
     use tokio::time::{sleep, timeout};
     use tokio_stream::StreamExt;
     use url::Url;
-    use warp::{sse::Event as SseEvent, Filter};
+    use warp::{Filter, sse::Event as SseEvent};
 
     use super::{EventResult, SseDataStreamingError};
 

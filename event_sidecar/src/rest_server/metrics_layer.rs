@@ -1,5 +1,5 @@
 use derive_new::new;
-use futures::{ready, Future};
+use futures::{Future, ready};
 use http::{Request, Response};
 use hyper::Body;
 use metrics::rest_api::{dec_connected_clients, inc_connected_clients, observe_response_time};

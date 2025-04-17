@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use async_trait::async_trait;
 use casper_types::ProtocolVersion;
 use metrics::observe_error;

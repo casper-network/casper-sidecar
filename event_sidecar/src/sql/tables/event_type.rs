@@ -1,6 +1,6 @@
 use sea_query::{
-    error::Result as SqResult, ColumnDef, Iden, InsertStatement, OnConflict, Query, Table,
-    TableCreateStatement,
+    ColumnDef, Iden, InsertStatement, OnConflict, Query, Table, TableCreateStatement,
+    error::Result as SqResult,
 };
 
 #[allow(clippy::enum_variant_names)]

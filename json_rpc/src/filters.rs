@@ -9,15 +9,14 @@ mod tests;
 use std::{convert::Infallible, hash::Hash};
 
 use bytes::Bytes;
-use http::{header::CONTENT_TYPE, StatusCode};
-use serde_json::{json, Map, Value};
+use http::{StatusCode, header::CONTENT_TYPE};
+use serde_json::{Map, Value, json};
 use tracing::{debug, trace, warn};
 use warp::{
-    body,
+    Filter, body,
     filters::{self, BoxedFilter},
     reject::{self, Rejection},
     reply::{self, WithStatus},
-    Filter,
 };
 
 use crate::{

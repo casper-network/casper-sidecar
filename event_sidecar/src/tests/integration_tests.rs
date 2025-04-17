@@ -7,7 +7,7 @@ use futures::Stream;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
 use std::{fmt::Debug, time::Duration};
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
@@ -19,11 +19,11 @@ use crate::{
     testing::{
         mock_node::tests::{MockNode, MockNodeBuilder},
         raw_sse_events_utils::tests::{
-            random_n_block_added, sse_server_example_2_0_0_data,
+            EventsWithIds, random_n_block_added, sse_server_example_2_0_0_data,
             sse_server_example_2_0_0_data_second, sse_server_example_2_0_0_data_third,
-            sse_server_shutdown_2_0_0_data, sse_server_sigs_2_0_0_data, EventsWithIds,
+            sse_server_shutdown_2_0_0_data, sse_server_sigs_2_0_0_data,
         },
-        testing_config::{prepare_config, TestingConfig},
+        testing_config::{TestingConfig, prepare_config},
     },
     types::{
         database::{Database, DatabaseWriter},
@@ -564,10 +564,12 @@ async fn should_produce_shutdown_to_sidecar_endpoint() {
 
     let events_received = tokio::join!(join_handle).0.unwrap();
     assert_eq!(events_received.len(), 2);
-    assert!(events_received
-        .first()
-        .unwrap()
-        .contains("\"SidecarVersion\""));
+    assert!(
+        events_received
+            .first()
+            .unwrap()
+            .contains("\"SidecarVersion\"")
+    );
     assert!(events_received.get(1).unwrap().contains("\"Shutdown\""));
 }
 

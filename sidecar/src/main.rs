@@ -16,8 +16,8 @@ use std::{
 use tikv_jemallocator::Jemalloc;
 use tracing::{field::Field, info};
 use tracing_subscriber::{
-    fmt::{format, format::Writer},
     EnvFilter,
+    fmt::{format, format::Writer},
 };
 
 const MAX_THREAD_COUNT: usize = 512;

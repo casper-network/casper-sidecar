@@ -10,7 +10,7 @@ use crate::{
             TransactionProcessed,
         },
     },
-    utils::{root_filter, InvalidPath},
+    utils::{InvalidPath, root_filter},
 };
 use std::{convert::Infallible, str::FromStr};
 use warp::{Filter, Rejection, Reply};

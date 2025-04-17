@@ -11,20 +11,20 @@ use serde::{Deserialize, Serialize};
 
 use super::common;
 use super::state::{
-    era_validators_from_snapshot, fetch_bid_kinds, GetAuctionInfoParams, JsonEraValidators,
-    JsonValidatorWeight,
+    GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeight, era_validators_from_snapshot,
+    fetch_bid_kinds,
 };
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, CURRENT_API_VERSION,
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 use casper_types::{
+    AddressableEntityHash, Digest, GlobalStateIdentifier, Key, PublicKey, U512,
     addressable_entity::EntityKindTag,
     system::{
-        auction::{BidKind, DelegatorBid, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         AUCTION,
+        auction::{BidKind, DelegatorBid, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
     },
-    AddressableEntityHash, Digest, GlobalStateIdentifier, Key, PublicKey, U512,
 };
 
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
@@ -32,7 +32,7 @@ static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuc
     auction_state: AuctionState::doc_example().clone(),
 });
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
-    use casper_types::{system::auction::DelegationRate, AccessRights, SecretKey, URef};
+    use casper_types::{AccessRights, SecretKey, URef, system::auction::DelegationRate};
     use num_traits::Zero;
 
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
@@ -242,24 +242,24 @@ impl DocExample for AuctionState {
 #[cfg(test)]
 mod tests {
     use crate::{
+        SUPPORTED_PROTOCOL_VERSION,
         rpcs::{
+            CURRENT_API_VERSION, RpcWithOptionalParams,
             state_get_auction_info_v2::{AuctionState, GetAuctionInfo, GetAuctionInfoResult},
             test_utils::BinaryPortMock,
-            RpcWithOptionalParams, CURRENT_API_VERSION,
         },
-        SUPPORTED_PROTOCOL_VERSION,
     };
     use casper_binary_port::InformationRequest;
     use casper_types::{
+        AddressableEntityHash, CLValue, EraId, PublicKey, StoredValue, TestBlockV1Builder, U512,
         system::{
+            AUCTION,
             auction::{
                 Bid, BidKind, DelegatorKind, SeigniorageRecipientV1, SeigniorageRecipientV2,
                 SeigniorageRecipientsV1, SeigniorageRecipientsV2, ValidatorBid,
             },
-            AUCTION,
         },
         testing::TestRng,
-        AddressableEntityHash, CLValue, EraId, PublicKey, StoredValue, TestBlockV1Builder, U512,
     };
     use rand::Rng;
     use std::{collections::BTreeMap, sync::Arc};
@@ -268,7 +268,7 @@ mod tests {
     async fn should_read_pre_condor_auction_info_with_addressable_entity_off() {
         let rng = &mut TestRng::new();
         let binary_port_mock = BinaryPortMock::new();
-        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
+        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.r#gen());
         let block_header = TestBlockV1Builder::new()
             .build_versioned(rng)
             .clone_header();
@@ -285,7 +285,7 @@ mod tests {
         let v1_recipients: BTreeMap<EraId, SeigniorageRecipientsV1> =
             BTreeMap::from([(EraId::new(100), recipients_1)]);
         let stored_value = StoredValue::CLValue(CLValue::from_t(v1_recipients.clone()).unwrap());
-        let bid_1 = Bid::empty(PublicKey::random(rng), rng.gen());
+        let bid_1 = Bid::empty(PublicKey::random(rng), rng.r#gen());
         let bids = vec![bid_1];
         let state_identifier = Some(casper_types::GlobalStateIdentifier::BlockHeight(
             block_header.height(),
@@ -340,7 +340,7 @@ mod tests {
     async fn should_read_condor_auction_info_with_addressable_entity_off() {
         let rng = &mut TestRng::new();
         let binary_port_mock = BinaryPortMock::new();
-        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
+        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.r#gen());
         let block_header = TestBlockV1Builder::new()
             .protocol_version(SUPPORTED_PROTOCOL_VERSION)
             .build_versioned(rng)
@@ -365,7 +365,7 @@ mod tests {
         let state_identifier = Some(casper_types::GlobalStateIdentifier::BlockHeight(
             block_header.height(),
         ));
-        let validator_bid = ValidatorBid::empty(PublicKey::random(rng), rng.gen());
+        let validator_bid = ValidatorBid::empty(PublicKey::random(rng), rng.r#gen());
         let bid_kind_1 = BidKind::Validator(Box::new(validator_bid));
         let bid_kinds = vec![bid_kind_1];
         binary_port_mock
@@ -413,7 +413,7 @@ mod tests {
     async fn should_read_condor_auction_info_with_addressable_entity_on() {
         let rng = &mut TestRng::new();
         let binary_port_mock = BinaryPortMock::new();
-        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.gen());
+        let auction_hash: AddressableEntityHash = AddressableEntityHash::new(rng.r#gen());
         let block_header = TestBlockV1Builder::new()
             .protocol_version(SUPPORTED_PROTOCOL_VERSION)
             .build_versioned(rng)
@@ -438,7 +438,7 @@ mod tests {
         let state_identifier = Some(casper_types::GlobalStateIdentifier::BlockHeight(
             block_header.height(),
         ));
-        let validator_bid = ValidatorBid::empty(PublicKey::random(rng), rng.gen());
+        let validator_bid = ValidatorBid::empty(PublicKey::random(rng), rng.r#gen());
         let bid_kind_1 = BidKind::Validator(Box::new(validator_bid));
         let bid_kinds = vec![bid_kind_1];
         binary_port_mock

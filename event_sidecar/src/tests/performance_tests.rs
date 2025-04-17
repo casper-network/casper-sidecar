@@ -12,15 +12,15 @@ use crate::{
     event_stream_server::Config as EssConfig,
     testing::{
         fake_event_stream::{
-            setup_mock_build_version_server, spin_up_fake_event_stream, GenericScenarioSettings,
-            Scenario,
+            GenericScenarioSettings, Scenario, setup_mock_build_version_server,
+            spin_up_fake_event_stream,
         },
         testing_config::prepare_config,
     },
 };
 use casper_event_listener::{EventListenerBuilder, NodeConnectionInterface, SseEvent};
 use casper_event_types::sse_data::SseData;
-use casper_types::{testing::TestRng, AsymmetricType};
+use casper_types::{AsymmetricType, testing::TestRng};
 use derive_new::new;
 use std::{
     collections::HashMap,
@@ -30,14 +30,14 @@ use std::{
     time::Duration,
 };
 use tabled::{
-    settings::{Panel, Style},
     Table, Tabled,
+    settings::{Panel, Style},
 };
 use tempfile::tempdir;
 use tokio::{
     sync::mpsc::{self, Receiver},
     task::JoinHandle,
-    time::{sleep, Instant},
+    time::{Instant, sleep},
 };
 use tokio_util::sync::CancellationToken;
 

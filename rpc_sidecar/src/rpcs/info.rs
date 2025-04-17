@@ -9,16 +9,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockIdentifier,
     BlockSynchronizerStatus, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo,
     NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorChange, U512,
+    TransactionHash, U512, ValidatorChange,
+    execution::{ExecutionResult, ExecutionResultV2},
 };
 
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -625,15 +625,15 @@ fn version_string() -> String {
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{rpcs::ErrorCode, ClientError};
+    use crate::{ClientError, rpcs::ErrorCode};
     use casper_binary_port::{
         BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, InformationRequest,
         InformationRequestTag, RewardResponse, TransactionWithExecutionInfo,
     };
     use casper_types::{
+        BlockHash, TransactionV1,
         bytesrepr::{Bytes, FromBytes, ToBytes},
         testing::TestRng,
-        BlockHash, TransactionV1,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -652,10 +652,12 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value
-            .get("execution_info")
-            .expect("should have execution_info")
-            .is_null());
+        assert!(
+            json_value
+                .get("execution_info")
+                .expect("should have execution_info")
+                .is_null()
+        );
     }
 
     #[tokio::test]
@@ -670,10 +672,12 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value
-            .get("execution_info")
-            .expect("should have execution_info")
-            .is_null());
+        assert!(
+            json_value
+                .get("execution_info")
+                .expect("should have execution_info")
+                .is_null()
+        );
     }
 
     #[tokio::test]
@@ -682,10 +686,10 @@ mod tests {
         let transaction = Transaction::from(TransactionV1::random(rng));
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -719,10 +723,10 @@ mod tests {
         let deploy = Deploy::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -756,10 +760,10 @@ mod tests {
         let deploy = Deploy::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -793,10 +797,10 @@ mod tests {
         let transaction = TransactionV1::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let err = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -823,7 +827,7 @@ mod tests {
         let reward_amount = U512::from(rng.gen_range(0..1000));
         let era_id = EraId::new(rng.gen_range(0..1000));
         let validator = PublicKey::random(rng);
-        let delegator = rng.gen::<bool>().then(|| PublicKey::random(rng));
+        let delegator = rng.r#gen::<bool>().then(|| PublicKey::random(rng));
         let delegation_rate = rng.gen_range(0..100);
         let switch_block_hash = BlockHash::random(rng);
 

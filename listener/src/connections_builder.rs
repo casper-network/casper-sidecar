@@ -3,14 +3,14 @@ use async_trait::async_trait;
 use casper_event_types::Filter;
 use casper_types::ProtocolVersion;
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::{Mutex, mpsc::Sender};
 use url::Url;
 
 use crate::{
+    FilterWithEventId, SseEvent,
     connection_manager::{ConnectionManager, DefaultConnectionManagerBuilder},
     connection_tasks::ConnectionTasks,
     version_fetcher::NodeMetadata,
-    FilterWithEventId, SseEvent,
 };
 
 #[async_trait]
@@ -113,9 +113,9 @@ pub struct ConnectionConfig {
 pub mod tests {
     use super::ConnectionsBuilder;
     use crate::{
-        connection_manager::{tests::MockConnectionManager, ConnectionManager},
-        version_fetcher::NodeMetadata,
         FilterWithEventId,
+        connection_manager::{ConnectionManager, tests::MockConnectionManager},
+        version_fetcher::NodeMetadata,
     };
     use anyhow::Error;
     use async_trait::async_trait;
@@ -126,8 +126,8 @@ pub mod tests {
         sync::Arc,
     };
     use tokio::sync::{
-        mpsc::{channel, Receiver, Sender},
         Mutex,
+        mpsc::{Receiver, Sender, channel},
     };
 
     pub type ResultsStoredInMock = Vec<Result<HashMap<Filter, Box<dyn ConnectionManager>>, Error>>;

@@ -3,7 +3,7 @@ use crate::{database::types::DDLConfiguration, database_writer_implementation};
 use sea_query::PostgresQueryBuilder;
 #[cfg(test)]
 use sqlx::postgres::PgRow;
-use sqlx::{postgres::PgQueryResult, Postgres};
+use sqlx::{Postgres, postgres::PgQueryResult};
 database_writer_implementation!(
     PostgreSqlDatabase,
     Postgres,

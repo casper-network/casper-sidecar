@@ -1,6 +1,6 @@
 use casper_types::{
-    contract_messages::Messages, execution::Effects, BlockHash, Digest, EraId, Gas, PublicKey,
-    Timestamp, Transfer,
+    BlockHash, Digest, EraId, Gas, PublicKey, Timestamp, Transfer, contract_messages::Messages,
+    execution::Effects,
 };
 use schemars::JsonSchema;
 

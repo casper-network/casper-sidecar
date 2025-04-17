@@ -96,7 +96,9 @@ where
 }
 
 fn error_migration_without_version() -> Error {
-    Error::msg("Found a migration without version set! Migration passed to #migrate should all have versions!")
+    Error::msg(
+        "Found a migration without version set! Migration passed to #migrate should all have versions!",
+    )
 }
 
 fn error_when_executing_initial_migration(err: DatabaseWriteError) -> Error {

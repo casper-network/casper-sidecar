@@ -1,8 +1,8 @@
 use crate::node_client::{Error as NodeClientError, InvalidTransactionOrDeploy};
 use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
 use casper_types::{
-    bytesrepr, AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash,
-    URefFromStrError,
+    AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash, URefFromStrError,
+    bytesrepr,
 };
 
 use super::{ErrorCode, ErrorData};

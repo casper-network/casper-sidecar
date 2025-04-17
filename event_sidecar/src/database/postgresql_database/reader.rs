@@ -1,7 +1,7 @@
 use super::PostgreSqlDatabase;
 use crate::database_reader_implementation;
 use sea_query::PostgresQueryBuilder;
-use sqlx::{postgres::PgRow, PgPool};
+use sqlx::{PgPool, postgres::PgRow};
 
 async fn fetch_optional_with_error_check(
     connection: &PgPool,

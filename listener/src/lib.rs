@@ -18,15 +18,15 @@ use connections_builder::{ConnectionsBuilder, DefaultConnectionsBuilder};
 use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
-        mpsc::{self, Sender},
         Mutex,
+        mpsc::{self, Sender},
     },
     time::sleep,
 };
 use tracing::{debug, error, info, warn};
 pub use types::{NodeConnectionInterface, SseEvent};
 use url::Url;
-use version_fetcher::{for_status_endpoint, MetadataFetchError, NodeMetadata, NodeMetadataFetcher};
+use version_fetcher::{MetadataFetchError, NodeMetadata, NodeMetadataFetcher, for_status_endpoint};
 
 const MAX_CONNECTION_ATTEMPTS_REACHED: &str = "Max connection attempts reached";
 
@@ -220,8 +220,7 @@ impl EventListener {
                         ConnectionManagerError::NonRecoverableError { error } => {
                             error!(
                                 "Restarting event listener {}:{} because of NonRecoverableError: {error}",
-                                self.node.ip_address,
-                                self.node.sse_port,
+                                self.node.ip_address, self.node.sse_port,
                             );
                             log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
                             return ConnectOutcome::ConnectionLost;
@@ -258,7 +257,10 @@ impl EventListener {
                 // check if reveived network name matches optional configuration
                 if let Some(network_name) = &self.node.network_name {
                     if *network_name != node_metadata.network_name {
-                        let msg = format!("Network name {network_name} does't match name {} configured for node connection", node_metadata.network_name);
+                        let msg = format!(
+                            "Network name {network_name} does't match name {} configured for node connection",
+                            node_metadata.network_name
+                        );
                         return GetNodeMetadataResult::Error(Error::msg(msg));
                     }
                 }
@@ -345,9 +347,9 @@ fn warn_connection_lost(listener: &EventListener, current_attempt: usize) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        connections_builder::tests::MockConnectionsBuilder,
-        version_fetcher::{tests::MockVersionFetcher, MetadataFetchError, NodeMetadata},
         EventListener, NodeConnectionInterface,
+        connections_builder::tests::MockConnectionsBuilder,
+        version_fetcher::{MetadataFetchError, NodeMetadata, tests::MockVersionFetcher},
     };
     use anyhow::Error;
     use casper_types::ProtocolVersion;

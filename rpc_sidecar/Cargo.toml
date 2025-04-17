@@ -2,7 +2,7 @@
 name = "casper-rpc-sidecar"
 version = "1.0.4"
 authors = ["Jacek Malec <jacek@casperlabs.io>"]
-edition = "2018"
+edition = "2024"
 description = "The Casper blockchain RPC sidecard"
 documentation = "https://docs.rs/casper-rpc-sidecar"
 readme = "README.md"
@@ -60,7 +60,7 @@ jsonschema = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
-vergen = { version = "9", features = ["build", "cargo", "rustc"]}
+vergen = { version = "9", features = ["build", "cargo", "rustc"] }
 vergen-gitcl = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
 
 [features]

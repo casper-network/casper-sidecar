@@ -1,13 +1,13 @@
 use casper_types::{
-    execution::{
-        execution_result_v1::{ExecutionEffect, NamedKey, TransformKindV1, TransformV1},
-        Effects, ExecutionResultV1, ExecutionResultV2, TransformKindV2, TransformV2,
-    },
     NamedKeys, StoredValue,
+    execution::{
+        Effects, ExecutionResultV1, ExecutionResultV2, TransformKindV2, TransformV2,
+        execution_result_v1::{ExecutionEffect, NamedKey, TransformKindV1, TransformV1},
+    },
 };
 
-pub fn build_default_execution_result_translator(
-) -> DefaultExecutionResultV2Translator<DefaultExecutionEffectsTranslator> {
+pub fn build_default_execution_result_translator()
+-> DefaultExecutionResultV2Translator<DefaultExecutionEffectsTranslator> {
     DefaultExecutionResultV2Translator {
         effects_translator: DefaultExecutionEffectsTranslator,
     }
@@ -157,18 +157,18 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
 #[cfg(test)]
 mod tests {
     use super::{
-        maybe_tanslate_stored_value, DefaultExecutionEffectsTranslator, ExecutionEffectsTranslator,
+        DefaultExecutionEffectsTranslator, ExecutionEffectsTranslator, maybe_tanslate_stored_value,
     };
     use casper_types::{
+        AccessRights, Account, CLValue, Groups, Key, NamedKeys, StoredValue, URef,
         account::{AccountHash, ActionThresholds, AssociatedKeys, Weight},
         contract_messages::MessageChecksum,
         contracts::{ContractPackage, ContractPackageStatus, ContractVersions, DisabledVersions},
         execution::{
-            execution_result_v1::{NamedKey, TransformKindV1, TransformV1},
             Effects, TransformKindV2, TransformV2,
+            execution_result_v1::{NamedKey, TransformKindV1, TransformV1},
         },
         testing::TestRng,
-        AccessRights, Account, CLValue, Groups, Key, NamedKeys, StoredValue, URef,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -200,9 +200,9 @@ mod tests {
     fn default_execution_effects_translator_should_translate_effects_v2() {
         let mut rng = TestRng::new();
         let under_test = DefaultExecutionEffectsTranslator {};
-        let key_1: Key = rng.gen();
-        let key_2: Key = rng.gen();
-        let key_3: Key = rng.gen();
+        let key_1: Key = rng.r#gen();
+        let key_2: Key = rng.r#gen();
+        let key_3: Key = rng.r#gen();
         let effects = build_example_effects(key_1, key_2, key_3);
 
         let maybe_translated = under_test.translate(&effects);
@@ -217,16 +217,16 @@ mod tests {
     }
 
     #[test]
-    fn default_execution_effects_translator_should_empty_transforms_if_something_was_not_translatable(
-    ) {
+    fn default_execution_effects_translator_should_empty_transforms_if_something_was_not_translatable()
+     {
         let mut rng = TestRng::new();
         let under_test = DefaultExecutionEffectsTranslator {};
-        let key_1: Key = rng.gen();
-        let key_2: Key = rng.gen();
-        let key_3: Key = rng.gen();
+        let key_1: Key = rng.r#gen();
+        let key_2: Key = rng.r#gen();
+        let key_3: Key = rng.r#gen();
         let mut effects = build_example_effects(key_1, key_2, key_3);
         effects.push(TransformV2::new(
-            Key::Account(rng.gen()),
+            Key::Account(rng.r#gen()),
             TransformKindV2::Write(StoredValue::Message(MessageChecksum([1; 32]))),
         ));
 

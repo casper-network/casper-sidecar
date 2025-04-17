@@ -7,7 +7,7 @@ use crate::types::{
     sse_events::*,
 };
 use async_trait::async_trait;
-use casper_types::{testing::TestRng, AsymmetricType, FinalitySignature as FinSig};
+use casper_types::{AsymmetricType, FinalitySignature as FinSig, testing::TestRng};
 use rand::Rng;
 use std::{
     collections::HashMap,
@@ -85,7 +85,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_step(
             step,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -101,7 +101,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_finality_signature(
             finality_signature,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -117,7 +117,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_fault(
             fault,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -133,7 +133,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_transaction_expired(
             transaction_expired,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -149,7 +149,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_transaction_processed(
             transaction_processed,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -165,7 +165,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_transaction_accepted(
             transaction_accepted,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),
@@ -181,7 +181,7 @@ impl FakeDatabase {
     ) -> Result<(), DatabaseWriteError> {
         self.save_block_added(
             block_added,
-            rng.gen(),
+            rng.r#gen(),
             "127.0.0.1".to_string(),
             "1.1.1".to_string(),
             "network-1".to_string(),

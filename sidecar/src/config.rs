@@ -162,7 +162,9 @@ mod tests {
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
-        assert!(error_message.contains("Can't run SSE if no `[storage.storage_folder]` is defined"));
+        assert!(
+            error_message.contains("Can't run SSE if no `[storage.storage_folder]` is defined")
+        );
     }
 
     #[test]
@@ -177,8 +179,10 @@ mod tests {
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
-        assert!(error_message
-            .contains("Can't run SSE with events persistence enabled without storage defined"));
+        assert!(
+            error_message
+                .contains("Can't run SSE with events persistence enabled without storage defined")
+        );
     }
 
     #[test]
@@ -193,8 +197,10 @@ mod tests {
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
-        assert!(error_message
-            .contains("Can't run SSE with events persistence enabled without storage defined"));
+        assert!(
+            error_message
+                .contains("Can't run SSE with events persistence enabled without storage defined")
+        );
     }
 
     #[test]
@@ -211,8 +217,10 @@ mod tests {
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
-        assert!(error_message
-            .contains("Can't run REST API server with SSE events persistence disabled"));
+        assert!(
+            error_message
+                .contains("Can't run REST API server with SSE events persistence disabled")
+        );
     }
 
     #[test]
@@ -246,8 +254,10 @@ mod tests {
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
-        assert!(error_message
-            .contains("Can't run REST API server with SSE events persistence disabled"));
+        assert!(
+            error_message
+                .contains("Can't run REST API server with SSE events persistence disabled")
+        );
     }
 
     #[test]

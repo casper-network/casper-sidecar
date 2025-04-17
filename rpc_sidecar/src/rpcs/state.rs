@@ -2,7 +2,7 @@
 
 mod auction_state;
 
-pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeight, ERA_VALIDATORS};
+pub(crate) use auction_state::{ERA_VALIDATORS, JsonEraValidators, JsonValidatorWeight};
 use std::{
     collections::{BTreeMap, BTreeSet},
     str,
@@ -16,13 +16,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams,
+    RpcWithParams,
     common::{
-        self, ByteCodeWithProof, ContractWasmWithProof, EntityWithBackwardCompat,
-        PackageWithBackwardCompat, MERKLE_PROOF,
+        self, ByteCodeWithProof, ContractWasmWithProof, EntityWithBackwardCompat, MERKLE_PROOF,
+        PackageWithBackwardCompat,
     },
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
-    CURRENT_API_VERSION,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 use auction_state::AuctionState;
 use casper_binary_port::{
@@ -32,21 +32,21 @@ use casper_binary_port::{
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
+    AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
+    EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
+    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, U512, URef,
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
     bytesrepr::Bytes,
     contracts::{ContractHash, ContractPackageHash},
     system::{
-        auction::{
-            BidKind, EraValidators, SeigniorageRecipientsV1, SeigniorageRecipientsV2,
-            ValidatorWeights, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        },
         AUCTION,
+        auction::{
+            BidKind, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SeigniorageRecipientsV1,
+            SeigniorageRecipientsV2, ValidatorWeights,
+        },
     },
-    AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
-    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
@@ -482,7 +482,7 @@ impl AccountIdentifier {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
             0 => AccountIdentifier::PublicKey(PublicKey::random(rng)),
-            1 => AccountIdentifier::AccountHash(rng.gen()),
+            1 => AccountIdentifier::AccountHash(rng.r#gen()),
             _ => unreachable!(),
         }
     }
@@ -582,8 +582,8 @@ impl EntityIdentifier {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
             0 => EntityIdentifier::PublicKey(PublicKey::random(rng)),
-            1 => EntityIdentifier::AccountHash(rng.gen()),
-            2 => EntityIdentifier::EntityAddr(rng.gen()),
+            1 => EntityIdentifier::AccountHash(rng.r#gen()),
+            2 => EntityIdentifier::EntityAddr(rng.r#gen()),
             _ => unreachable!(),
         }
     }
@@ -729,8 +729,8 @@ impl PackageIdentifier {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
-            0 => Self::PackageAddr(PackageHash::new(rng.gen())),
-            1 => Self::ContractPackageHash(ContractPackageHash::new(rng.gen())),
+            0 => Self::PackageAddr(PackageHash::new(rng.r#gen())),
+            1 => Self::ContractPackageHash(ContractPackageHash::new(rng.r#gen())),
             _ => unreachable!(),
         }
     }
@@ -1363,7 +1363,7 @@ mod tests {
         },
     };
 
-    use crate::{rpcs::ErrorCode, ClientError};
+    use crate::{ClientError, rpcs::ErrorCode};
     use casper_binary_port::{
         AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryResponse,
         BinaryResponseAndRequest, Command, ContractInformation, DictionaryQueryResult,
@@ -1371,6 +1371,9 @@ mod tests {
         GlobalStateQueryResult, InformationRequestTag, KeyPrefix, ValueWithProof,
     };
     use casper_types::{
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
+        ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
+        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
         addressable_entity::NamedKeyValue,
         contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
@@ -1379,9 +1382,6 @@ mod tests {
             ValidatorBid,
         },
         testing::TestRng,
-        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
-        ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
-        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1391,8 +1391,8 @@ mod tests {
     #[tokio::test]
     async fn should_read_state_item() {
         let rng = &mut TestRng::new();
-        let key = rng.gen::<Key>();
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let key = rng.r#gen::<Key>();
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
         let merkle_proof = vec![TrieMerkleProof::new(
             key,
             stored_value.clone(),
@@ -1403,7 +1403,7 @@ mod tests {
         let resp = GetItem::do_handle_request(
             Arc::new(ValidGlobalStateResultMock(expected.clone())),
             GetItemParams {
-                state_root_hash: rng.gen(),
+                state_root_hash: rng.r#gen(),
                 key,
                 path: vec![],
             },
@@ -1424,14 +1424,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_balance() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -1440,8 +1440,8 @@ mod tests {
         let resp = GetBalance::do_handle_request(
             Arc::new(ValidBalanceMock(balance.clone())),
             GetBalanceParams {
-                state_root_hash: rng.gen(),
-                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+                state_root_hash: rng.r#gen(),
+                purse_uref: URef::new(rng.r#gen(), AccessRights::empty()).to_formatted_string(),
             },
         )
         .await
@@ -1465,8 +1465,8 @@ mod tests {
         let err = GetBalance::do_handle_request(
             Arc::new(BalancePurseNotFoundMock),
             GetBalanceParams {
-                state_root_hash: rng.gen(),
-                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+                state_root_hash: rng.r#gen(),
+                purse_uref: URef::new(rng.r#gen(), AccessRights::empty()).to_formatted_string(),
             },
         )
         .await
@@ -1601,15 +1601,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
-        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
-        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
+        let bid =
+            BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.r#gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.r#gen());
 
         let resp = GetAuctionInfo::do_handle_request(
             Arc::new(ClientMock {
                 block: Block::V2(block.clone()),
                 bids: vec![bid.clone()],
                 legacy_bids: vec![legacy_bid.clone()],
-                contract_hash: rng.gen(),
+                contract_hash: rng.r#gen(),
                 snapshot: Default::default(),
             }),
             None,
@@ -1777,15 +1778,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
-        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
-        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
+        let bid =
+            BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.r#gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.r#gen());
 
         let resp = GetAuctionInfo::do_handle_request(
             Arc::new(ClientMock {
                 block: Block::V2(block.clone()),
                 bids: vec![bid.clone()],
                 legacy_bids: vec![legacy_bid.clone()],
-                contract_hash: rng.gen(),
+                contract_hash: rng.r#gen(),
                 snapshot: Default::default(),
             }),
             None,
@@ -1947,19 +1949,19 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let entity = AddressableEntity::new(
-            PackageHash::new(rng.gen()),
-            ByteCodeHash::new(rng.gen()),
+            PackageHash::new(rng.r#gen()),
+            ByteCodeHash::new(rng.r#gen()),
             ProtocolVersion::V1_0_0,
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
         );
-        let addr: EntityAddr = rng.gen();
+        let addr: EntityAddr = rng.r#gen();
 
         let named_key_count = rng.gen_range(0..10);
         let named_keys: NamedKeys =
-            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.gen())))
+            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.r#gen())))
                 .take(named_key_count)
                 .collect::<BTreeMap<_, _>>()
                 .into();
@@ -1973,7 +1975,7 @@ mod tests {
         .collect::<Vec<_>>();
 
         let bytecode = rng
-            .gen::<bool>()
+            .r#gen::<bool>()
             .then(|| ByteCode::new(ByteCodeKind::V1CasperWasm, rng.random_vec(10..50)));
 
         let entity_identifier = EntityIdentifier::random(rng);
@@ -2017,13 +2019,13 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let account = Account::new(
-            rng.gen(),
+            rng.r#gen(),
             NamedKeys::default(),
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
-        let entity_identifier = EntityIdentifier::AccountHash(rng.gen());
+        let entity_identifier = EntityIdentifier::AccountHash(rng.r#gen());
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ValidLegacyAccountMock {
@@ -2085,16 +2087,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let contract = Contract::new(
-            ContractPackageHash::new(rng.gen()),
-            ContractWasmHash::new(rng.gen()),
+            ContractPackageHash::new(rng.r#gen()),
+            ContractWasmHash::new(rng.r#gen()),
             Default::default(),
             Default::default(),
             ProtocolVersion::V2_0_0,
         );
-        let hash = ContractHash::new(rng.gen());
+        let hash = ContractHash::new(rng.r#gen());
 
         let wasm = rng
-            .gen::<bool>()
+            .r#gen::<bool>()
             .then(|| ContractWasm::new(rng.random_vec(10..50)));
 
         let entity_identifier = EntityIdentifier::random(rng);
@@ -2154,7 +2156,7 @@ mod tests {
         }
 
         let rng = &mut TestRng::new();
-        let entity_identifier = EntityIdentifier::EntityAddr(rng.gen());
+        let entity_identifier = EntityIdentifier::EntityAddr(rng.r#gen());
 
         let err = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock),
@@ -2264,7 +2266,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let package = ContractPackage::new(
-            rng.gen(),
+            rng.r#gen(),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -2301,9 +2303,9 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let account = Account::new(
-            rng.gen(),
+            rng.r#gen(),
             NamedKeys::default(),
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
@@ -2381,7 +2383,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let entity_hash: AddressableEntityHash = rng.gen();
+        let entity_hash: AddressableEntityHash = rng.r#gen();
         let account_identifier = AccountIdentifier::random(rng);
 
         let err = GetAccountInfo::do_handle_request(
@@ -2463,9 +2465,9 @@ mod tests {
     #[tokio::test]
     async fn should_read_dictionary_item() {
         let rng = &mut TestRng::new();
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
 
-        let uref = URef::new(rng.gen(), AccessRights::empty());
+        let uref = URef::new(rng.r#gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
         let query_result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
         let dict_key = Key::dictionary(uref, item_key.as_bytes());
@@ -2476,7 +2478,7 @@ mod tests {
                 query_result,
             }),
             GetDictionaryItemParams {
-                state_root_hash: rng.gen(),
+                state_root_hash: rng.r#gen(),
                 dictionary_identifier: DictionaryIdentifier::URef {
                     seed_uref: uref.to_formatted_string(),
                     dictionary_item_key: item_key.clone(),
@@ -2501,7 +2503,7 @@ mod tests {
     async fn should_read_query_global_state_result() {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
         let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let resp = QueryGlobalState::do_handle_request(
@@ -2511,7 +2513,7 @@ mod tests {
             }),
             QueryGlobalStateParams {
                 state_identifier: Some(GlobalStateIdentifier::BlockHash(*block.hash())),
-                key: rng.gen(),
+                key: rng.r#gen(),
                 path: vec![],
             },
         )
@@ -2532,14 +2534,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_query_balance_result() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -2550,7 +2552,7 @@ mod tests {
             QueryBalanceParams {
                 state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
-                    rng.gen(),
+                    rng.r#gen(),
                     AccessRights::empty(),
                 )),
             },
@@ -2570,14 +2572,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_query_balance_details_result() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -2588,7 +2590,7 @@ mod tests {
             QueryBalanceDetailsParams {
                 state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
-                    rng.gen(),
+                    rng.r#gen(),
                     AccessRights::empty(),
                 )),
             },

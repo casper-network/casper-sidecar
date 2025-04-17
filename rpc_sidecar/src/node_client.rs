@@ -1,4 +1,4 @@
-use crate::{config::ExponentialBackoffConfig, encode_request, parse_response, NodeClientConfig};
+use crate::{NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use casper_binary_port::{
@@ -12,12 +12,12 @@ use casper_binary_port::{
     SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::ContractPackage,
-    system::auction::DelegatorKind,
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
     ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey,
     StoredValue, Transaction, TransactionHash, Transfer,
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::ContractPackage,
+    system::auction::DelegatorKind,
 };
 use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{
@@ -29,14 +29,14 @@ use std::{
     fmt::{self, Display, Formatter},
     net::{IpAddr, SocketAddr},
     sync::{
-        atomic::{AtomicU16, Ordering},
         Arc,
+        atomic::{AtomicU16, Ordering},
     },
     time::{Duration, Instant},
 };
 use tokio::{
     net::TcpStream,
-    sync::{futures::Notified, RwLock, RwLockWriteGuard},
+    sync::{RwLock, RwLockWriteGuard, futures::Notified},
 };
 use tokio_util::codec::Framed;
 use tracing::{error, field, info, warn};
@@ -991,7 +991,10 @@ impl FramedNodeClient {
         if let Some(network_name) = maybe_network_name {
             let node_status = node_client.read_node_status().await?;
             if network_name != node_status.chainspec_name {
-                let msg = format!("Network name {} does't match name {network_name} configured for node RPC connection", node_status.chainspec_name);
+                let msg = format!(
+                    "Network name {} does't match name {network_name} configured for node RPC connection",
+                    node_status.chainspec_name
+                );
                 error!("{msg}");
                 return Err(AnyhowError::msg(msg));
             }
@@ -1032,9 +1035,9 @@ impl FramedNodeClient {
                     key: Vec::new(),
                 }))
                 .await; // We ignore failure from send_request because
-                        // keepalive should continue trying indefinitely.
-                        // Other mechanisms of the FramedNodeClient are
-                        // responsible for shutting down sidecar on retry exhaustion
+            // keepalive should continue trying indefinitely.
+            // Other mechanisms of the FramedNodeClient are
+            // responsible for shutting down sidecar on retry exhaustion
         }
     }
 
@@ -1131,14 +1134,13 @@ impl FramedNodeClient {
                     return Ok(Framed::new(
                         stream,
                         BinaryMessageCodec::new(max_message_size_bytes),
-                    ))
+                    ));
                 }
                 Err(err) => {
                     current_attempt += 1;
                     if *max_attempts < current_attempt {
                         anyhow::bail!(
-                            "Couldn't connect to node {} after {} attempts",
-                            tcp_socket,
+                            "Couldn't connect to node {tcp_socket} after {} attempts",
                             current_attempt - 1
                         );
                     }
@@ -1282,7 +1284,9 @@ fn try_parse_request_id(request: &[u8]) -> Result<u16, anyhow::Error> {
     let (payload_length, remainder) =
         u32::from_bytes(request).map_err(|e| anyhow::Error::msg(e.to_string()))?;
     if payload_length != remainder.len() as u32 {
-        anyhow::bail!("Node responded with request that has a mismatch in declared bytes vs the payload length")
+        anyhow::bail!(
+            "Node responded with request that has a mismatch in declared bytes vs the payload length"
+        )
     }
     let (header, _) = extract_header(remainder)?;
     Ok(header.id())
@@ -1373,7 +1377,7 @@ mod tests {
     use super::*;
     use casper_binary_port::{CommandHeader, ReactorStateName};
     use casper_types::{
-        testing::TestRng, BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp,
+        BlockSynchronizerStatus, CLValue, ProtocolVersion, TimeDiff, Timestamp, testing::TestRng,
     };
     use tokio::time::sleep;
 
@@ -1480,7 +1484,10 @@ mod tests {
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
 
-        assert_eq!(error_message, "Network name network-1 does't match name not-network-1 configured for node RPC connection");
+        assert_eq!(
+            error_message,
+            "Network name network-1 does't match name not-network-1 configured for node RPC connection"
+        );
     }
 
     async fn query_global_state_for_string_value(
@@ -1518,9 +1525,11 @@ mod tests {
 
         let scenario = async {
             // Request id = 1
-            assert!(query_global_state_for_string_value(&mut rng, &c)
-                .await
-                .is_ok());
+            assert!(
+                query_global_state_for_string_value(&mut rng, &c)
+                    .await
+                    .is_ok()
+            );
 
             // shutdown node
             shutdown_server.notify_one();
@@ -1545,9 +1554,11 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
             // Request id = 3
-            assert!(query_global_state_for_string_value(&mut rng, &c)
-                .await
-                .is_ok());
+            assert!(
+                query_global_state_for_string_value(&mut rng, &c)
+                    .await
+                    .is_ok()
+            );
 
             // restart node between requests
             shutdown_server.notify_one();
@@ -1561,9 +1572,11 @@ mod tests {
             .await;
 
             // Request id = 4 & 5 (retry)
-            assert!(query_global_state_for_string_value(&mut rng, &c)
-                .await
-                .is_ok());
+            assert!(
+                query_global_state_for_string_value(&mut rng, &c)
+                    .await
+                    .is_ok()
+            );
         };
 
         tokio::select! {

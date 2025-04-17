@@ -9,9 +9,9 @@ use crate::{
     },
 };
 use casper_types::{
-    contract_messages::Messages,
-    execution::{execution_result_v1::ExecutionEffect, Effects, ExecutionResult},
     Block, BlockHash, FinalitySignature, RuntimeArgs, Transaction,
+    contract_messages::Messages,
+    execution::{Effects, ExecutionResult, execution_result_v1::ExecutionEffect},
 };
 use schemars::{
     schema::{RootSchema, SchemaObject},
@@ -20,8 +20,8 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::{
-    openapi::{Components, Contact, RefOr, Schema},
     Modify, OpenApi, ToSchema,
+    openapi::{Components, Contact, RefOr, Schema},
 };
 use warp::{Filter, Rejection, Reply};
 

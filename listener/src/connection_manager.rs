@@ -1,13 +1,13 @@
 use super::ConnectionTasks;
 use crate::{
-    sse_connector::{EventResult, SseConnection, StreamConnector},
     SseEvent,
+    sse_connector::{EventResult, SseConnection, StreamConnector},
 };
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use casper_event_types::{
-    sse_data::{deserialize, SseData},
     Filter,
+    sse_data::{SseData, deserialize},
 };
 use casper_types::ProtocolVersion;
 use eventsource_stream::Event;
@@ -361,15 +361,15 @@ fn count_error(reason: &str) {
 pub mod tests {
     use super::ConnectionManager;
     use crate::{
-        connection_manager::{ConnectionManagerError, DefaultConnectionManager, FIRST_EVENT_EMPTY},
-        sse_connector::{tests::MockSseConnection, StreamConnector},
         SseEvent,
+        connection_manager::{ConnectionManagerError, DefaultConnectionManager, FIRST_EVENT_EMPTY},
+        sse_connector::{StreamConnector, tests::MockSseConnection},
     };
     use anyhow::anyhow;
-    use casper_event_types::{sse_data::test_support::*, Filter};
+    use casper_event_types::{Filter, sse_data::test_support::*};
     use std::time::Duration;
     use tokio::{
-        sync::mpsc::{channel, Receiver, Sender},
+        sync::mpsc::{Receiver, Sender, channel},
         time::sleep,
     };
     use url::Url;
@@ -408,9 +408,11 @@ pub mod tests {
         let (mut connection_manager, _, _) = build_manager(connector, "test".to_string());
         let res = connection_manager.do_start_handling().await;
         if let Err(ConnectionManagerError::NonRecoverableError { error }) = res {
-            assert!(error
-                .to_string()
-                .starts_with("Expected first message to be ApiVersion"));
+            assert!(
+                error
+                    .to_string()
+                    .starts_with("Expected first message to be ApiVersion")
+            );
         } else {
             unreachable!();
         }

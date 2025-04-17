@@ -6,13 +6,13 @@ use std::{
     process::ExitCode,
     time::Duration,
 };
-use tower::{buffer::Buffer, make::Shared, ServiceBuilder};
+use tower::{ServiceBuilder, buffer::Buffer, make::Shared};
 use tracing::info;
 use warp::{Filter, Rejection, Reply};
 
 use crate::{
     types::config::AdminApiServerConfig,
-    utils::{root_filter, Unexpected},
+    utils::{Unexpected, root_filter},
 };
 
 const BIND_ALL_INTERFACES: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);

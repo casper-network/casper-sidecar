@@ -1,17 +1,17 @@
 #[cfg(test)]
 use casper_types::ChainNameDigest;
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResult, AsymmetricType, Block, BlockHash,
-    EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash,
-};
-#[cfg(test)]
-use casper_types::{
-    execution::{execution_result_v1::ExecutionResultV1, ExecutionResultV2},
-    testing::TestRng,
-    TestBlockBuilder, TestBlockV1Builder,
+    AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, contract_messages::Messages,
+    execution::ExecutionResult,
 };
 use casper_types::{FinalitySignature as FinSig, Signature};
+#[cfg(test)]
+use casper_types::{
+    TestBlockBuilder, TestBlockV1Builder,
+    execution::{ExecutionResultV2, execution_result_v1::ExecutionResultV1},
+    testing::TestRng,
+};
 use derive_new::new;
 use hex::ToHex;
 #[cfg(test)]
@@ -44,7 +44,7 @@ pub struct BlockAdded {
 pub fn random_execution_result(rng: &mut TestRng) -> ExecutionResult {
     match rng.gen_range(0..2) {
         0 => {
-            let result_v1: ExecutionResultV1 = rng.gen();
+            let result_v1: ExecutionResultV1 = rng.r#gen();
             ExecutionResult::V1(result_v1)
         }
         1 => {
@@ -274,7 +274,7 @@ impl Fault {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
-            era_id: EraId::new(rng.gen()),
+            era_id: EraId::new(rng.r#gen()),
             public_key: PublicKey::random(rng),
             timestamp: Timestamp::random(rng),
         }
@@ -302,7 +302,7 @@ impl FinalitySignature {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let block_hash = BlockHash::random(rng);
-        let block_height = rng.gen::<u64>();
+        let block_height = rng.r#gen::<u64>();
         let era_id = EraId::random(rng);
         let chain_name_digest = ChainNameDigest::random(rng);
         Self(Box::new(FinSig::random_for_block(
@@ -355,7 +355,7 @@ impl Step {
 
         let execution_effect = Effects::random(rng);
         Self {
-            era_id: EraId::new(rng.gen()),
+            era_id: EraId::new(rng.r#gen()),
             execution_effect: to_raw_value(&execution_effect).unwrap(),
         }
     }

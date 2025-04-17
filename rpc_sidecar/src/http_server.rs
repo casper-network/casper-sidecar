@@ -3,6 +3,7 @@ use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
 use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
 
 use super::rpcs::{
+    RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     account::{PutDeploy, PutTransaction},
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
@@ -14,14 +15,13 @@ use super::rpcs::{
         QueryBalance, QueryGlobalState,
     },
     state_get_auction_info_v2::GetAuctionInfo as GetAuctionInfoV2,
-    RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
 };
 use crate::{
+    NodeClient,
     rpcs::{
         info::{GetPeers, GetReward, GetStatus, GetTransaction},
         state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
     },
-    NodeClient,
 };
 
 /// The URL path for all JSON-RPC requests.

@@ -1,9 +1,8 @@
 use super::{
-    structs,
+    LegacySseData, structs,
     translate_deploy_hashes::{
         DeployHashTranslator, StandardDeployHashesTranslator, TransferDeployHashesTranslator,
     },
-    LegacySseData,
 };
 use casper_types::{Block, BlockHash, BlockV2, EraEndV1, EraEndV2, EraReport, U512};
 use mockall::automock;
@@ -162,7 +161,7 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
-    use casper_types::{testing::TestRng, DeployHash, EraEndV1, EraId, EraReport, PublicKey, U512};
+    use casper_types::{DeployHash, EraEndV1, EraId, EraReport, PublicKey, U512, testing::TestRng};
     use mockall::predicate;
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -383,7 +382,7 @@ mod tests {
         let mut tree = BTreeMap::new();
         let number_of_weights = test_rng.gen_range(5..=10);
         for _ in 0..number_of_weights {
-            tree.insert(PublicKey::random(test_rng), test_rng.gen());
+            tree.insert(PublicKey::random(test_rng), test_rng.r#gen());
         }
         tree
     }

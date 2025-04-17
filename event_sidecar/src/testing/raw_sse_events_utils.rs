@@ -1,8 +1,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::testing::simple_sse_server::tests::{CacheAndData, SimpleSseServer};
-    use casper_event_types::sse_data::test_support::*;
     use casper_event_types::sse_data::SseData;
+    use casper_event_types::sse_data::test_support::*;
     use casper_types::testing::TestRng;
     use hex_fmt::HexFmt;
     use std::collections::HashMap;

@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use schemars::{
     schema::{InstanceType, SchemaObject, SubschemaValidation},
-    visit::{visit_schema_object, Visitor},
+    visit::{Visitor, visit_schema_object},
 };
 use serde_json::json;
 

@@ -1,4 +1,4 @@
-use crate::{parse_response, ClientError, NodeClient};
+use crate::{ClientError, NodeClient, parse_response};
 use anyhow::Error;
 use async_trait::async_trait;
 use casper_binary_port::{BinaryResponseAndRequest, Command, InformationRequest};
@@ -6,7 +6,7 @@ use casper_event_types::SidecarEvent;
 use casper_types::{BlockIdentifier, BlockWithSignatures};
 use std::{sync::Arc, time::Duration};
 use tokio::{
-    sync::{broadcast::Receiver, RwLock},
+    sync::{RwLock, broadcast::Receiver},
     time::timeout,
 };
 use tracing::info;
@@ -117,7 +117,9 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
                 tokio::sync::broadcast::error::RecvError::Closed => {
                     let mut guard = client.block_with_signatures_cache.write().await;
                     *guard = None;
-                    anyhow::bail!("In cache_update_loop: internal broadcast mechanism of sidecar events failed.");
+                    anyhow::bail!(
+                        "In cache_update_loop: internal broadcast mechanism of sidecar events failed."
+                    );
                 }
                 tokio::sync::broadcast::error::RecvError::Lagged(_) => {
                     let mut guard = client.block_with_signatures_cache.write().await;
@@ -131,12 +133,12 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
 
 #[cfg(test)]
 mod tests {
-    use super::{cache_update_loop, CachingNodeClient};
-    use crate::{rpcs::test_utils::BinaryPortMock, NodeClient};
+    use super::{CachingNodeClient, cache_update_loop};
+    use crate::{NodeClient, rpcs::test_utils::BinaryPortMock};
     use casper_binary_port::InformationRequest;
     use casper_event_types::SidecarEvent;
     use casper_types::{
-        testing::TestRng, Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder,
+        Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder, testing::TestRng,
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::broadcast;

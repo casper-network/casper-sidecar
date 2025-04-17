@@ -5,9 +5,9 @@ use serde_json::{Map, Value};
 use warp::reject::{self, Rejection};
 
 use crate::{
+    JSON_RPC_VERSION,
     error::{Error, ReservedErrorCode},
     rejections::MissingId,
-    JSON_RPC_VERSION,
 };
 pub use params::Params;
 
