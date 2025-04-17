@@ -103,7 +103,7 @@ pub use response::Response;
 const JSON_RPC_VERSION: &str = "2.0";
 
 /// Default value for limiter's number of requests.
-pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
+pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = NonZeroU32::new(10).unwrap();
 /// Default value for limiter's period of time.
 pub const DEFAULT_LIMIT_PERIOD: TimeDiff = TimeDiff::from_seconds(1);
 

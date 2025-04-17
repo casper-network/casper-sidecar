@@ -18,7 +18,7 @@ use crate::SpeculativeExecConfig;
 const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 const DEFAULT_PORT: u16 = 0;
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100) };
+const DEFAULT_QPS_LIMIT: NonZeroU32 = NonZeroU32::new(100).unwrap();
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
 /// JSON-RPC request, which would be an "account_put_deploy".
 const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;

@@ -12,14 +12,9 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
+
 use std::{collections::HashMap, path::Path, process::ExitCode, sync::Arc, time::Duration};
 
-use crate::types::config::LegacySseApiTag;
-use crate::{
-    event_stream_server::{Config as SseConfig, EventStreamServer},
-    rest_server::run_server as start_rest_server,
-    types::sse_events::*,
-};
 use anyhow::{Context, Error};
 use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
@@ -31,16 +26,24 @@ use event_handling_service::{
     DbSavingEventHandlingService, EventHandlingService, NoDbEventHandlingService,
 };
 use futures::future::join_all;
-use tokio::sync::Mutex;
 use tokio::{
-    sync::broadcast::Sender as BroadcastSender,
-    sync::mpsc::{Receiver, Sender, channel as mpsc_channel},
+    sync::{
+        Mutex,
+        broadcast::Sender as BroadcastSender,
+        mpsc::{Receiver, Sender, channel as mpsc_channel},
+    },
     task::JoinHandle,
     time::sleep,
 };
 use tracing::{error, info};
 #[cfg(feature = "additional-metrics")]
 use utils::start_metrics_thread;
+
+use crate::{
+    event_stream_server::{Config as SseConfig, EventStreamServer},
+    rest_server::run_server as start_rest_server,
+    types::{config::LegacySseApiTag, sse_events::*},
+};
 
 pub use admin_server::run_server as run_admin_server;
 pub use database::DatabaseConfigError;
