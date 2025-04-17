@@ -1,9 +1,11 @@
 //! RPCs related to accounts.
 
-use std::{str, sync::Arc};
+use std::{
+    str,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,21 +16,23 @@ use super::{
     docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 
-static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
+static PUT_DEPLOY_PARAMS: LazyLock<PutDeployParams> = LazyLock::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
 });
-static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
+static PUT_DEPLOY_RESULT: LazyLock<PutDeployResult> = LazyLock::new(|| PutDeployResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     deploy_hash: *Deploy::doc_example().hash(),
 });
 
-static PUT_TRANSACTION_PARAMS: Lazy<PutTransactionParams> = Lazy::new(|| PutTransactionParams {
-    transaction: Transaction::doc_example().clone(),
-});
-static PUT_TRANSACTION_RESULT: Lazy<PutTransactionResult> = Lazy::new(|| PutTransactionResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    transaction_hash: Transaction::doc_example().hash(),
-});
+static PUT_TRANSACTION_PARAMS: LazyLock<PutTransactionParams> =
+    LazyLock::new(|| PutTransactionParams {
+        transaction: Transaction::doc_example().clone(),
+    });
+static PUT_TRANSACTION_RESULT: LazyLock<PutTransactionResult> =
+    LazyLock::new(|| PutTransactionResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        transaction_hash: Transaction::doc_example().hash(),
+    });
 
 /// Params for "account_put_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

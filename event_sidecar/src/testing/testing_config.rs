@@ -18,9 +18,10 @@ pub struct TestingConfig {
 }
 
 #[cfg(test)]
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 #[cfg(test)]
-static USED_PORTS: Lazy<Arc<Mutex<Vec<u16>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+static USED_PORTS: LazyLock<Arc<Mutex<Vec<u16>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(Vec::new())));
 #[cfg(test)]
 /// This function (used in tests only) is used to make sure that concurrently running
 /// IT tests don't accidentally pick the same port. If in the future our tests would run

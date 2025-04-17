@@ -1,18 +1,18 @@
+use std::{str::FromStr, sync::LazyLock};
+
 use anyhow::{Context, Error, anyhow};
 use async_trait::async_trait;
 use casper_types::ProtocolVersion;
 use metrics::observe_error;
-use once_cell::sync::Lazy;
 use serde_json::Value;
-use std::str::FromStr;
 use tracing::debug;
 use url::Url;
 
 const BUILD_VERSION_KEY: &str = "build_version";
 const CHAINSPEC_NAME_KEY: &str = "chainspec_name";
 
-static MINIMAL_NODE_VERSION: Lazy<ProtocolVersion> =
-    Lazy::new(|| ProtocolVersion::from_parts(2, 0, 0));
+static MINIMAL_NODE_VERSION: LazyLock<ProtocolVersion> =
+    LazyLock::new(|| ProtocolVersion::from_parts(2, 0, 0));
 
 #[derive(Debug)]
 pub enum MetadataFetchError {

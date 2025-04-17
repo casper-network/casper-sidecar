@@ -1,14 +1,16 @@
-use super::REGISTRY;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 #[cfg(feature = "additional-metrics")]
 use prometheus::GaugeVec;
 use prometheus::{HistogramOpts, HistogramVec, Opts};
+
+use super::REGISTRY;
 
 const RAW_DATA_SIZE_BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
 ];
 
-static FETCHED_RAW_DATA_SIZE: Lazy<HistogramVec> = Lazy::new(|| {
+static FETCHED_RAW_DATA_SIZE: LazyLock<HistogramVec> = LazyLock::new(|| {
     let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new(
@@ -38,7 +40,7 @@ const DB_OPERATION_BUCKETS: &[f64; 8] = &[
 ];
 
 #[cfg(feature = "additional-metrics")]
-pub static DB_OPERATION_TIMES: Lazy<HistogramVec> = Lazy::new(|| {
+pub static DB_OPERATION_TIMES: LazyLock<HistogramVec> = LazyLock::new(|| {
     let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new(
@@ -56,7 +58,7 @@ pub static DB_OPERATION_TIMES: Lazy<HistogramVec> = Lazy::new(|| {
     counter
 });
 #[cfg(feature = "additional-metrics")]
-pub static EVENTS_PROCESSED_PER_SECOND: Lazy<GaugeVec> = Lazy::new(|| {
+pub static EVENTS_PROCESSED_PER_SECOND: LazyLock<GaugeVec> = LazyLock::new(|| {
     let counter = GaugeVec::new(
     Opts::new("events_processed", "Events processed by sidecar. Split by \"module\" which should be either \"inbound\" or \"outbound\". \"Inbound\" means the number of events per second which were read from node endpoints and persisted in DB. \"Outbound\" means number of events pushed to clients."),
     &["module"]

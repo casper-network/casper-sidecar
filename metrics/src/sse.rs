@@ -1,4 +1,5 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use prometheus::{GaugeVec, HistogramOpts, HistogramVec, Opts};
 
 use super::REGISTRY;
@@ -7,7 +8,7 @@ const BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
 ];
 
-static NODE_STATUSES: Lazy<GaugeVec> = Lazy::new(|| {
+static NODE_STATUSES: LazyLock<GaugeVec> = LazyLock::new(|| {
     let counter = GaugeVec::new(
         Opts::new("node_statuses", "Current status of node to which sidecar is connected. Numbers mean: 0 - preparing; 1 - connecting; 2 - connected; 3 - reconnecting; -1 - connections_exhausted -> used up all connection attempts ; -2 - incompatible -> node is in an incompatible version"),
         &["node"]
@@ -19,7 +20,7 @@ static NODE_STATUSES: Lazy<GaugeVec> = Lazy::new(|| {
     counter
 });
 
-static RECEIVED_BYTES: Lazy<HistogramVec> = Lazy::new(|| {
+static RECEIVED_BYTES: LazyLock<HistogramVec> = LazyLock::new(|| {
     let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new(
@@ -37,7 +38,7 @@ static RECEIVED_BYTES: Lazy<HistogramVec> = Lazy::new(|| {
     counter
 });
 
-static NUMBER_OF_RECEIVED_CONTRACT_MESSAGES: Lazy<GaugeVec> = Lazy::new(|| {
+static NUMBER_OF_RECEIVED_CONTRACT_MESSAGES: LazyLock<GaugeVec> = LazyLock::new(|| {
     let counter = GaugeVec::new(
         Opts::new(
             "sse_server_received_contract_messages",

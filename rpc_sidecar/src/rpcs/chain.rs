@@ -2,10 +2,13 @@
 
 mod era_summary;
 
-use std::{clone::Clone, str, sync::Arc};
+use std::{
+    clone::Clone,
+    str,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -21,46 +24,48 @@ use super::{
 use era_summary::ERA_SUMMARY;
 pub use era_summary::EraSummary;
 
-static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
+static GET_BLOCK_PARAMS: LazyLock<GetBlockParams> = LazyLock::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
 });
-static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
+static GET_BLOCK_RESULT: LazyLock<GetBlockResult> = LazyLock::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
-static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
-    Lazy::new(|| GetBlockTransfersParams {
+static GET_BLOCK_TRANSFERS_PARAMS: LazyLock<GetBlockTransfersParams> =
+    LazyLock::new(|| GetBlockTransfersParams {
         block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
     });
-static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
-    Lazy::new(|| GetBlockTransfersResult {
+static GET_BLOCK_TRANSFERS_RESULT: LazyLock<GetBlockTransfersResult> =
+    LazyLock::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: Some(*BlockHash::example()),
         transfers: Some(vec![Transfer::example().clone()]),
     });
-static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
-    Lazy::new(|| GetStateRootHashParams {
+static GET_STATE_ROOT_HASH_PARAMS: LazyLock<GetStateRootHashParams> =
+    LazyLock::new(|| GetStateRootHashParams {
         block_identifier: BlockIdentifier::Height(BlockHeaderV2::example().height()),
     });
-static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
-    Lazy::new(|| GetStateRootHashResult {
+static GET_STATE_ROOT_HASH_RESULT: LazyLock<GetStateRootHashResult> =
+    LazyLock::new(|| GetStateRootHashResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         state_root_hash: Some(*BlockHeaderV2::example().state_root_hash()),
     });
-static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
+static GET_ERA_INFO_PARAMS: LazyLock<GetEraInfoParams> = LazyLock::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
-static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
+static GET_ERA_INFO_RESULT: LazyLock<GetEraInfoResult> = LazyLock::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
 });
-static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
-    block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
-});
-static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    era_summary: ERA_SUMMARY.clone(),
-});
+static GET_ERA_SUMMARY_PARAMS: LazyLock<GetEraSummaryParams> =
+    LazyLock::new(|| GetEraSummaryParams {
+        block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
+    });
+static GET_ERA_SUMMARY_RESULT: LazyLock<GetEraSummaryResult> =
+    LazyLock::new(|| GetEraSummaryResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        era_summary: ERA_SUMMARY.clone(),
+    });
 
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

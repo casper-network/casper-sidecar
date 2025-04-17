@@ -28,7 +28,6 @@ http = "0.2"
 hyper = "0.14"
 metrics = { workspace = true }
 num-traits = { version = "0.2", default-features = false }
-once_cell.workspace = true
 portpicker = "0.1"
 rand = { workspace = true }
 schemars = { version = "0.8", features = [

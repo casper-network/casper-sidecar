@@ -1,11 +1,13 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    sync::LazyLock,
+};
 
-use once_cell::sync::Lazy;
 use prometheus::{IntCounterVec, Opts, Registry};
 
-pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+pub static REGISTRY: LazyLock<Registry> = LazyLock::new(Registry::new);
 
-static ERROR_COUNTS: Lazy<IntCounterVec> = Lazy::new(|| {
+static ERROR_COUNTS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let counter = IntCounterVec::new(
         Opts::new("error_counts", "Error counts"),
         &["category", "description"],

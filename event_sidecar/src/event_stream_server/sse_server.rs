@@ -1,8 +1,12 @@
 //! Types and functions used by the http server to manage the event-stream.
 
-use super::endpoint::Endpoint;
-#[cfg(feature = "additional-metrics")]
-use crate::utils::start_metrics_thread;
+#[cfg(test)]
+use std::sync::LazyLock;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
+
 use casper_event_types::{
     Filter as SseFilter,
     legacy_sse_data::LegacySseData,
@@ -15,17 +19,11 @@ use futures::{Stream, StreamExt, future};
 use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
-use once_cell::sync::Lazy;
-#[cfg(test)]
 use regex::Regex;
 #[cfg(test)]
 use serde::Serialize;
 #[cfg(test)]
 use serde_json::Value;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
-};
 #[cfg(feature = "additional-metrics")]
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{
@@ -44,6 +42,10 @@ use warp::{
     reply::Response,
     sse::{self, Event as WarpServerSentEvent},
 };
+
+use super::endpoint::Endpoint;
+#[cfg(feature = "additional-metrics")]
+use crate::utils::start_metrics_thread;
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -94,9 +96,9 @@ const SIGNATURES_FILTER: [EventFilter; 2] =
 const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 
 #[cfg(test)]
-static ENDS_WITH_ID_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\nid:\d*$").unwrap());
+static ENDS_WITH_ID_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\nid:\d*$").unwrap());
 #[cfg(test)]
-static STARTS_WITH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^data:").unwrap());
+static STARTS_WITH_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^data:").unwrap());
 
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;

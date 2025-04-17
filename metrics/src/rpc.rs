@@ -1,7 +1,6 @@
-use std::time::Duration;
+use std::{sync::LazyLock, time::Duration};
 
 use super::REGISTRY;
-use once_cell::sync::Lazy;
 use prometheus::{Histogram, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, Opts};
 
 const RESPONSE_SIZE_BUCKETS: &[f64; 8] = &[
@@ -12,7 +11,7 @@ const RESPONSE_TIME_MS_BUCKETS: &[f64; 9] = &[
     1_f64, 5_f64, 10_f64, 30_f64, 50_f64, 100_f64, 300_f64, 1000_f64, 3000_f64,
 ];
 
-static ENDPOINT_CALLS: Lazy<IntCounterVec> = Lazy::new(|| {
+static ENDPOINT_CALLS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let counter = IntCounterVec::new(
         Opts::new("rpc_server_endpoint_calls", "Endpoint calls"),
         &["endpoint_name"],
@@ -24,7 +23,7 @@ static ENDPOINT_CALLS: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-static TIMEOUT_COUNTERS: Lazy<IntCounterVec> = Lazy::new(|| {
+static TIMEOUT_COUNTERS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let counter = IntCounterVec::new(
         Opts::new(
             "rpc_server_timeout_counts",
@@ -39,7 +38,7 @@ static TIMEOUT_COUNTERS: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-static RESPONSE_TIMES_MS: Lazy<HistogramVec> = Lazy::new(|| {
+static RESPONSE_TIMES_MS: LazyLock<HistogramVec> = LazyLock::new(|| {
     let histogram = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new(
@@ -57,7 +56,7 @@ static RESPONSE_TIMES_MS: Lazy<HistogramVec> = Lazy::new(|| {
     histogram
 });
 
-static RECONNECT_TIMES_MS: Lazy<Histogram> = Lazy::new(|| {
+static RECONNECT_TIMES_MS: LazyLock<Histogram> = LazyLock::new(|| {
     let opts = HistogramOpts::new(
         "rpc_server_reconnect_time",
         "Time it takes the service to reconnect to node binary port in milliseconds",
@@ -71,7 +70,7 @@ static RECONNECT_TIMES_MS: Lazy<Histogram> = Lazy::new(|| {
     histogram
 });
 
-static MISMATCHED_IDS: Lazy<IntGauge> = Lazy::new(|| {
+static MISMATCHED_IDS: LazyLock<IntGauge> = LazyLock::new(|| {
     let counter = IntGauge::new(
         "rpc_server_mismatched_ids",
         "Number of mismatched ID events observed in responses from binary port",
@@ -83,7 +82,7 @@ static MISMATCHED_IDS: Lazy<IntGauge> = Lazy::new(|| {
     counter
 });
 
-static DISCONNECT_EVENTS: Lazy<IntGauge> = Lazy::new(|| {
+static DISCONNECT_EVENTS: LazyLock<IntGauge> = LazyLock::new(|| {
     let counter = IntGauge::new(
         "rpc_server_disconnects",
         "Number of TCP disconnects between sidecar and nodes binary port",
@@ -95,7 +94,7 @@ static DISCONNECT_EVENTS: Lazy<IntGauge> = Lazy::new(|| {
     counter
 });
 
-static ENDPOINT_REQUEST_BYTES: Lazy<HistogramVec> = Lazy::new(|| {
+static ENDPOINT_REQUEST_BYTES: LazyLock<HistogramVec> = LazyLock::new(|| {
     let counter = HistogramVec::new(
         HistogramOpts {
             common_opts: Opts::new("rpc_server_request_sizes", "Endpoint request sizes"),

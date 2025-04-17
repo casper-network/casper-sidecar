@@ -10,12 +10,13 @@ pub mod sse_data;
 #[cfg(any(feature = "sse-data-testing", test))]
 mod testing;
 
-use casper_types::{BlockHash, ProtocolVersion};
-pub use filter::Filter;
-use std::str::FromStr;
+use std::{str::FromStr, sync::LazyLock};
 
-use once_cell::sync::Lazy;
-pub static SIDECAR_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+use casper_types::{BlockHash, ProtocolVersion};
+
+pub use filter::Filter;
+
+pub static SIDECAR_VERSION: LazyLock<ProtocolVersion> = LazyLock::new(|| {
     let major: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MAJOR")).unwrap();
     let minor: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_MINOR")).unwrap();
     let patch: u32 = FromStr::from_str(env!("CARGO_PKG_VERSION_PATCH")).unwrap();

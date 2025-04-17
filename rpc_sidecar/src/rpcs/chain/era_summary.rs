@@ -1,4 +1,5 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +10,7 @@ use casper_types::{
 
 use crate::rpcs::common::MERKLE_PROOF;
 
-pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
+pub(super) static ERA_SUMMARY: LazyLock<EraSummary> = LazyLock::new(|| {
     let delegator_amount = U512::from(1000);
     let validator_amount = U512::from(2000);
     let delegator_public_key =

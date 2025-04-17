@@ -1,10 +1,9 @@
 //! RPCs related to finding information about currently supported RPCs.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use derive_new::new;
-use once_cell::sync::Lazy;
 use schemars::{
     JsonSchema, Map, MapEntry,
     r#gen::{SchemaGenerator, SchemaSettings},
@@ -36,17 +35,17 @@ pub(crate) const DOCS_EXAMPLE_API_VERSION: ApiVersion = CURRENT_API_VERSION;
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 pub(crate) const OPEN_RPC_VERSION: &str = "1.0.0-rc1";
 
-pub(crate) static CONTACT: Lazy<OpenRpcContactField> = Lazy::new(|| OpenRpcContactField {
+pub(crate) static CONTACT: LazyLock<OpenRpcContactField> = LazyLock::new(|| OpenRpcContactField {
     name: "Casper Labs".to_string(),
     url: "https://casperlabs.io".to_string(),
 });
 
-pub(crate) static LICENSE: Lazy<OpenRpcLicenseField> = Lazy::new(|| OpenRpcLicenseField {
+pub(crate) static LICENSE: LazyLock<OpenRpcLicenseField> = LazyLock::new(|| OpenRpcLicenseField {
     name: "APACHE LICENSE, VERSION 2.0".to_string(),
     url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
 });
 
-static SERVER: Lazy<OpenRpcServerEntry> = Lazy::new(|| {
+static SERVER: LazyLock<OpenRpcServerEntry> = LazyLock::new(|| {
     OpenRpcServerEntry::new(
         "any Sidecar with JSON RPC API enabled".to_string(),
         "http://IP:PORT/rpc/".to_string(),
@@ -54,7 +53,7 @@ static SERVER: Lazy<OpenRpcServerEntry> = Lazy::new(|| {
 });
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(|| {
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_API_VERSION.to_string(),
         title: "Client API of Casper Node".to_string(),
@@ -131,7 +130,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
 
     schema
 });
-static LIST_RPCS_RESULT: Lazy<RpcDiscoverResult> = Lazy::new(|| RpcDiscoverResult {
+static LIST_RPCS_RESULT: LazyLock<RpcDiscoverResult> = LazyLock::new(|| RpcDiscoverResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),

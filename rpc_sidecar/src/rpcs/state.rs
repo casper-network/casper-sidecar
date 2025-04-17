@@ -2,16 +2,13 @@
 
 mod auction_state;
 
-pub(crate) use auction_state::{ERA_VALIDATORS, JsonEraValidators, JsonValidatorWeight};
 use std::{
     collections::{BTreeMap, BTreeSet},
     str,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
-use crate::node_client::{EntityResponse, PackageResponse};
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +21,10 @@ use super::{
     },
     docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
+use crate::node_client::{EntityResponse, PackageResponse};
+
 use auction_state::AuctionState;
+pub(crate) use auction_state::{ERA_VALIDATORS, JsonEraValidators, JsonValidatorWeight};
 use casper_binary_port::{
     DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier,
     PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
@@ -51,7 +51,7 @@ use casper_types::{
 #[cfg(test)]
 use rand::Rng;
 
-static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
+static GET_ITEM_PARAMS: LazyLock<GetItemParams> = LazyLock::new(|| GetItemParams {
     state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     key: Key::from_formatted_str(
         "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
@@ -59,29 +59,31 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     .unwrap(),
     path: vec!["inner".to_string()],
 });
-static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
+static GET_ITEM_RESULT: LazyLock<GetItemResult> = LazyLock::new(|| GetItemResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
+static GET_BALANCE_PARAMS: LazyLock<GetBalanceParams> = LazyLock::new(|| GetBalanceParams {
     state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
         .to_string(),
 });
-static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
+static GET_BALANCE_RESULT: LazyLock<GetBalanceResult> = LazyLock::new(|| GetBalanceResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuctionInfoParams {
-    block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
-});
-static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    auction_state: AuctionState::doc_example().clone(),
-});
-static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
+static GET_AUCTION_INFO_PARAMS: LazyLock<GetAuctionInfoParams> =
+    LazyLock::new(|| GetAuctionInfoParams {
+        block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
+    });
+static GET_AUCTION_INFO_RESULT: LazyLock<GetAuctionInfoResult> =
+    LazyLock::new(|| GetAuctionInfoResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        auction_state: AuctionState::doc_example().clone(),
+    });
+static GET_ACCOUNT_INFO_PARAMS: LazyLock<GetAccountInfoParams> = LazyLock::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
@@ -89,19 +91,20 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     }
 });
-static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    account: Account::doc_example().clone(),
-    merkle_proof: MERKLE_PROOF.into(),
-});
-static GET_ADDRESSABLE_ENTITY_PARAMS: Lazy<GetAddressableEntityParams> =
-    Lazy::new(|| GetAddressableEntityParams {
+static GET_ACCOUNT_INFO_RESULT: LazyLock<GetAccountInfoResult> =
+    LazyLock::new(|| GetAccountInfoResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        account: Account::doc_example().clone(),
+        merkle_proof: MERKLE_PROOF.into(),
+    });
+static GET_ADDRESSABLE_ENTITY_PARAMS: LazyLock<GetAddressableEntityParams> =
+    LazyLock::new(|| GetAddressableEntityParams {
         entity_identifier: EntityIdentifier::EntityAddr(EntityAddr::new_account([0; 32])),
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
         include_bytecode: None,
     });
-static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
-    Lazy::new(|| GetAddressableEntityResult {
+static GET_ADDRESSABLE_ENTITY_RESULT: LazyLock<GetAddressableEntityResult> =
+    LazyLock::new(|| GetAddressableEntityResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         merkle_proof: MERKLE_PROOF.into(),
         entity: EntityWithBackwardCompat::AddressableEntity {
@@ -117,11 +120,11 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
             bytecode: None,
         },
     });
-static GET_PACKAGE_PARAMS: Lazy<GetPackageParams> = Lazy::new(|| GetPackageParams {
+static GET_PACKAGE_PARAMS: LazyLock<GetPackageParams> = LazyLock::new(|| GetPackageParams {
     package_identifier: PackageIdentifier::ContractPackageHash(ContractPackageHash::new([0; 32])),
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
 });
-static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResult {
+static GET_PACKAGE_RESULT: LazyLock<GetPackageResult> = LazyLock::new(|| GetPackageResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     package: PackageWithBackwardCompat::Package(
         Package::new(
@@ -134,8 +137,8 @@ static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResul
     ),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
-    Lazy::new(|| GetDictionaryItemParams {
+static GET_DICTIONARY_ITEM_PARAMS: LazyLock<GetDictionaryItemParams> =
+    LazyLock::new(|| GetDictionaryItemParams {
         state_root_hash: *BlockHeaderV2::example().state_root_hash(),
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
@@ -143,8 +146,8 @@ static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
             dictionary_item_key: "a_unique_entry_identifier".to_string(),
         },
     });
-static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
-    Lazy::new(|| GetDictionaryItemResult {
+static GET_DICTIONARY_ITEM_RESULT: LazyLock<GetDictionaryItemResult> =
+    LazyLock::new(|| GetDictionaryItemResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         dictionary_key:
             "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
@@ -152,8 +155,8 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
         stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.into(),
     });
-static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
-    Lazy::new(|| QueryGlobalStateParams {
+static QUERY_GLOBAL_STATE_PARAMS: LazyLock<QueryGlobalStateParams> =
+    LazyLock::new(|| QueryGlobalStateParams {
         state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockV2::example().hash())),
         key: Key::from_formatted_str(
             "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
@@ -161,35 +164,35 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
         .unwrap(),
         path: vec![],
     });
-static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
-    Lazy::new(|| QueryGlobalStateResult {
+static QUERY_GLOBAL_STATE_RESULT: LazyLock<QueryGlobalStateResult> =
+    LazyLock::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_header: Some(BlockHeaderV2::example().clone().into()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.into(),
     });
-static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
+static GET_TRIE_PARAMS: LazyLock<GetTrieParams> = LazyLock::new(|| GetTrieParams {
     trie_key: *BlockHeaderV2::example().state_root_hash(),
 });
-static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
+static GET_TRIE_RESULT: LazyLock<GetTrieResult> = LazyLock::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     maybe_trie_bytes: None,
 });
-static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
+static QUERY_BALANCE_PARAMS: LazyLock<QueryBalanceParams> = LazyLock::new(|| QueryBalanceParams {
     state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
-static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
+static QUERY_BALANCE_RESULT: LazyLock<QueryBalanceResult> = LazyLock::new(|| QueryBalanceResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance: U512::from(123_456),
 });
-static QUERY_BALANCE_DETAILS_PARAMS: Lazy<QueryBalanceDetailsParams> =
-    Lazy::new(|| QueryBalanceDetailsParams {
+static QUERY_BALANCE_DETAILS_PARAMS: LazyLock<QueryBalanceDetailsParams> =
+    LazyLock::new(|| QueryBalanceDetailsParams {
         state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
         purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
     });
-static QUERY_BALANCE_DETAILS_RESULT: Lazy<QueryBalanceDetailsResult> =
-    Lazy::new(|| QueryBalanceDetailsResult {
+static QUERY_BALANCE_DETAILS_RESULT: LazyLock<QueryBalanceDetailsResult> =
+    LazyLock::new(|| QueryBalanceDetailsResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         total_balance: U512::from(123_456),
         available_balance: U512::from(123_456),

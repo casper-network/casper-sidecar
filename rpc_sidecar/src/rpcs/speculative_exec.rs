@@ -1,10 +1,12 @@
 //! RPC related to speculative execution.
 
-use std::{str, sync::Arc};
+use std::{
+    str,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use casper_binary_port::SpeculativeExecutionResult;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -16,18 +18,19 @@ use super::{
     speculative_open_rpc_schema::SPECULATIVE_OPEN_RPC_SCHEMA,
 };
 
-static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
-    Lazy::new(|| SpeculativeExecTxnParams {
+static SPECULATIVE_EXEC_TXN_PARAMS: LazyLock<SpeculativeExecTxnParams> =
+    LazyLock::new(|| SpeculativeExecTxnParams {
         transaction: Transaction::doc_example().clone(),
     });
-static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
-    Lazy::new(|| SpeculativeExecTxnResult {
+static SPECULATIVE_EXEC_TXN_RESULT: LazyLock<SpeculativeExecTxnResult> =
+    LazyLock::new(|| SpeculativeExecTxnResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         execution_result: SpeculativeExecutionResult::example().clone(),
     });
-static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
-    deploy: Deploy::doc_example().clone(),
-});
+static SPECULATIVE_EXEC_PARAMS: LazyLock<SpeculativeExecParams> =
+    LazyLock::new(|| SpeculativeExecParams {
+        deploy: Deploy::doc_example().clone(),
+    });
 
 /// Params for "speculative_exec_txn" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -136,8 +139,8 @@ pub struct SpeculativeRpcDiscoverResult {
     schema: OpenRpcSchema,
 }
 
-static SPECULATIVE_DISCOVER_RPC_RESULT: Lazy<SpeculativeRpcDiscoverResult> =
-    Lazy::new(|| SpeculativeRpcDiscoverResult {
+static SPECULATIVE_DISCOVER_RPC_RESULT: LazyLock<SpeculativeRpcDiscoverResult> =
+    LazyLock::new(|| SpeculativeRpcDiscoverResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         name: "OpenRPC Schema for speculative exectution server".to_string(),
         schema: SPECULATIVE_OPEN_RPC_SCHEMA.clone(),

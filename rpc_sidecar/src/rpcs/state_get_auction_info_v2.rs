@@ -1,37 +1,41 @@
 //! RPCs of state_get_auction_info_v2.
 
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    str,
+    sync::{Arc, LazyLock},
+};
 
-use crate::rpcs::state::ERA_VALIDATORS;
 use async_trait::async_trait;
-use casper_types::system::auction::ValidatorBid;
-use once_cell::sync::Lazy;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use super::common;
-use super::state::{
-    GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeight, era_validators_from_snapshot,
-    fetch_bid_kinds,
-};
-use super::{
-    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams,
-    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
-};
 use casper_types::{
     AddressableEntityHash, Digest, GlobalStateIdentifier, Key, PublicKey, U512,
     addressable_entity::EntityKindTag,
     system::{
         AUCTION,
-        auction::{BidKind, DelegatorBid, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
+        auction::{
+            BidKind, DelegatorBid, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, ValidatorBid,
+        },
     },
 };
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    auction_state: AuctionState::doc_example().clone(),
-});
-static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
+use super::{
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams, common,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
+    state::{
+        GetAuctionInfoParams, JsonEraValidators, JsonValidatorWeight, era_validators_from_snapshot,
+        fetch_bid_kinds,
+    },
+};
+use crate::rpcs::state::ERA_VALIDATORS;
+
+static GET_AUCTION_INFO_RESULT: LazyLock<GetAuctionInfoResult> =
+    LazyLock::new(|| GetAuctionInfoResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        auction_state: AuctionState::doc_example().clone(),
+    });
+static AUCTION_INFO: LazyLock<AuctionState> = LazyLock::new(|| {
     use casper_types::{AccessRights, SecretKey, URef, system::auction::DelegationRate};
     use num_traits::Zero;
 

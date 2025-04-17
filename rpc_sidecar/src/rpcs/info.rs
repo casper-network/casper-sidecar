@@ -1,10 +1,13 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    str,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use casper_binary_port::{EraIdentifier as PortEraIdentifier, MinimalBlockInfo};
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -21,11 +24,11 @@ use super::{
     docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 
-static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
+static GET_DEPLOY_PARAMS: LazyLock<GetDeployParams> = LazyLock::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().hash(),
     finalized_approvals: true,
 });
-static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
+static GET_DEPLOY_RESULT: LazyLock<GetDeployResult> = LazyLock::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_info: Some(ExecutionInfo {
@@ -34,27 +37,29 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });
-static GET_TRANSACTION_PARAMS: Lazy<GetTransactionParams> = Lazy::new(|| GetTransactionParams {
-    transaction_hash: Transaction::doc_example().hash(),
-    finalized_approvals: true,
-});
-static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTransactionResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    transaction: Transaction::doc_example().clone(),
-    execution_info: Some(ExecutionInfo {
-        block_hash: *Block::example().hash(),
-        block_height: Block::example().height(),
-        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
-    }),
-});
-static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
+static GET_TRANSACTION_PARAMS: LazyLock<GetTransactionParams> =
+    LazyLock::new(|| GetTransactionParams {
+        transaction_hash: Transaction::doc_example().hash(),
+        finalized_approvals: true,
+    });
+static GET_TRANSACTION_RESULT: LazyLock<GetTransactionResult> =
+    LazyLock::new(|| GetTransactionResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        transaction: Transaction::doc_example().clone(),
+        execution_info: Some(ExecutionInfo {
+            block_hash: *Block::example().hash(),
+            block_height: Block::example().height(),
+            execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
+        }),
+    });
+static GET_PEERS_RESULT: LazyLock<GetPeersResult> = LazyLock::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     peers: Some(("tls:0101..0101".to_owned(), "127.0.0.1:54321".to_owned()))
         .into_iter()
         .collect::<BTreeMap<_, _>>()
         .into(),
 });
-static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
+static GET_VALIDATOR_CHANGES_RESULT: LazyLock<GetValidatorChangesResult> = LazyLock::new(|| {
     let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::example().clone();
     let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
@@ -63,12 +68,12 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
         changes,
     }
 });
-static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
+static GET_CHAINSPEC_RESULT: LazyLock<GetChainspecResult> = LazyLock::new(|| GetChainspecResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     chainspec_bytes: ChainspecRawBytes::new(vec![42, 42].into(), None, None),
 });
 
-static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
+static GET_STATUS_RESULT: LazyLock<GetStatusResult> = LazyLock::new(|| GetStatusResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     protocol_version: ProtocolVersion::from_parts(2, 0, 0),
     peers: GET_PEERS_RESULT.peers.clone(),
@@ -94,12 +99,12 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
     #[cfg(test)]
     build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
 });
-static GET_REWARD_PARAMS: Lazy<GetRewardParams> = Lazy::new(|| GetRewardParams {
+static GET_REWARD_PARAMS: LazyLock<GetRewardParams> = LazyLock::new(|| GetRewardParams {
     era_identifier: Some(EraIdentifier::Era(EraId::new(1))),
     validator: PublicKey::example().clone(),
     delegator: Some(PublicKey::example().clone()),
 });
-static GET_REWARD_RESULT: Lazy<GetRewardResult> = Lazy::new(|| GetRewardResult {
+static GET_REWARD_RESULT: LazyLock<GetRewardResult> = LazyLock::new(|| GetRewardResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     reward_amount: U512::from(42),
     era_id: EraId::new(1),

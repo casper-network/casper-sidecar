@@ -212,7 +212,7 @@ impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
         } else if let Some(config) = value.postgresql_config {
             let postgresql_config: PostgresqlConfig = config.try_into()?;
             storage_config.postgresql_config = Some(postgresql_config);
-        };
+        }
         Ok(storage_config)
     }
 }

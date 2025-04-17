@@ -11,7 +11,7 @@ repository = "https://github.com/casper-network/casper-sidecar/"
 [dependencies]
 casper-types = { workspace = true }
 mockall = "0.13"
-once_cell = { workspace = true }
+once_cell = "1.21"
 pretty_assertions = "1.4"
 rand = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true, features = [
