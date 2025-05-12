@@ -14,11 +14,17 @@ members = [
 anyhow = "1"
 async-stream = "0.3"
 async-trait = "0.1"
-casper-types = { git = "https://github.com/casper-network/casper-node.git", tag = "release-2.0.0-rc10", features = [
+
+casper-types = { path = "/home/zajko/DEV/src/CA/casper-node/types", features = [
     "json-schema",
     "std",
 ] }
-casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", tag = "release-2.0.0-rc10" }
+#casper-types = { git = "https://github.com/casper-network/casper-node.git", tag = "release-2.0.0-rc10", features = [
+#    "json-schema",
+#    "std",
+#] }
+#casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", tag = "release-2.0.0-rc10" }
+casper-binary-port = { path = "/home/zajko/DEV/src/CA/casper-node/binary_port" }
 casper-event-listener = { path = "./listener", version = "1.0.4" }
 casper-event-sidecar = { path = "./event_sidecar", version = "1.0.4" }
 casper-event-types = { path = "./types", version = "1.0.4" }

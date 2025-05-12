@@ -1,8 +1,8 @@
 //! The set of JSON-RPCs which the API server handles.
 
 use std::{convert::TryFrom, fmt, net::IpAddr, num::NonZeroU32, str, sync::Arc, time::Duration};
-
 pub mod account;
+pub mod action;
 pub mod chain;
 mod common;
 pub mod docs;

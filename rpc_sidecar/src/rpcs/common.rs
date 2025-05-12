@@ -8,8 +8,11 @@ use crate::rpcs::error::Error;
 use casper_types::{
     Account, AddressableEntity, AvailableBlockRange, BlockHeader, BlockIdentifier,
     BlockWithSignatures, ByteCode, Contract, ContractWasm, EntityAddr, EntryPointValue,
-    GlobalStateIdentifier, Key, NamedKeys, Package, StoredValue, bytesrepr::ToBytes,
-    contracts::ContractPackage, global_state::TrieMerkleProof,
+    GlobalStateIdentifier, Key, NamedKeys, Package, StoredValue,
+    bytesrepr::ToBytes,
+    contracts::ContractPackage,
+    global_state::TrieMerkleProof,
+    system::auction::{DelegatorBid, ValidatorBid},
 };
 
 use crate::NodeClient;
@@ -228,4 +231,17 @@ pub fn encode_proof(proof: &Vec<TrieMerkleProof<Key, StoredValue>>) -> Result<St
     Ok(base16::encode_lower(
         &proof.to_bytes().map_err(Error::BytesreprFailure)?,
     ))
+}
+
+/// Polymorphic result type of the possible outcomes that a bid query can have
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum BidQueryResult {
+    Validator {
+        validator: ValidatorBid,
+        delegators: Vec<DelegatorBid>,
+    },
+    Delegator {
+        validator: ValidatorBid,
+        delegator: DelegatorBid,
+    },
 }

@@ -65,6 +65,8 @@ pub enum Error {
     SpecExecReturnedNothing,
     #[error("unexpected bytesrepr failure: {0}")]
     BytesreprFailure(bytesrepr::Error),
+    #[error("the bid state query returned nothing")]
+    BidQueryNoResponse,
 }
 
 impl Error {
@@ -117,7 +119,8 @@ impl Error {
             | Error::InvalidAuctionState
             | Error::InvalidNamedKeys(_)
             | Error::InvalidEntryPoints(_)
-            | Error::BytesreprFailure(_) => None,
+            | Error::BytesreprFailure(_)
+            | Error::BidQueryNoResponse => None,
         }
     }
 }

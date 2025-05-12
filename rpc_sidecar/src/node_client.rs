@@ -1,15 +1,19 @@
-use crate::{NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response};
+use crate::{
+    NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response,
+    rpcs::action::query_bid::QueryBid,
+};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
-    ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
-    PayloadEntity, PurseIdentifier, RecordId, ResponseType, RewardResponse,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
+    ConsensusValidatorChanges, ContractInformation, DelegatorBidInformation,
+    DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
+    PackageIdentifier, PayloadEntity, PurseIdentifier, RecordId, ResponseType, RewardResponse,
+    SpeculativeExecutionResult, TransactionWithExecutionInfo, ValidatorBidInformation,
+    ValueWithProof,
 };
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
@@ -314,6 +318,44 @@ pub trait NodeClient: Send + Sync {
             ),
         }
     }
+
+    async fn query_bids(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        query_bid: QueryBid,
+    ) -> Result<Option<BidQueryResponse>, Error> {
+        let get = match query_bid.clone() {
+            QueryBid::ValidatorBid {
+                public_key,
+                include_delegators,
+            } => InformationRequest::ValidatorBid {
+                state_identifier,
+                public_key,
+                include_delegators,
+            },
+            QueryBid::DelegatorBid {
+                validator_public_key,
+                delegator,
+            } => InformationRequest::DelegatorBid {
+                state_identifier,
+                validator_public_key,
+                delegator,
+            },
+        };
+
+        let resp = self.read_info(get).await?;
+
+        Ok(match query_bid {
+            QueryBid::ValidatorBid { .. } => {
+                let validator_info = parse_response::<ValidatorBidInformation>(&resp.into())?;
+                validator_info.map(BidQueryResponse::Validator)
+            }
+            QueryBid::DelegatorBid { .. } => {
+                let delegator_info = parse_response::<DelegatorBidInformation>(&resp.into())?;
+                delegator_info.map(BidQueryResponse::Delegator)
+            }
+        })
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -554,6 +596,20 @@ pub enum InvalidTransactionOrDeploy {
     InvalidTransactionInvalidPaymentAmount,
     #[error("Unexpected entry point for Transaction::V1")]
     InvalidTransactionUnexpectedEntryPoint,
+    #[error("Transaction includes an argument named amount with a value below a relevant limit")]
+    InsufficientAmountArgValue,
+    #[error(
+        "Transaction attempts to set a minimum delegation amount below the lowest allowed value"
+    )]
+    InvalidMinimumDelegationAmount,
+    #[error(
+        "Transaction attempts to set a maximum delegation amount above the highest allowed value"
+    )]
+    InvalidMaximumDelegationAmount,
+    #[error("Transaction attempts to set a reserved slots count above the highest allowed value")]
+    InvalidReservedSlots,
+    #[error("Transaction attempts to set a delegation amount above the highest allowed value")]
+    InvalidDelegationAmount,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -700,6 +756,11 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionUnexpectedEntryPoint => {
                 Self::InvalidTransactionUnexpectedEntryPoint
             }
+            ErrorCode::InsufficientAmountArgValue => Self::InsufficientAmountArgValue,
+            ErrorCode::InvalidMinimumDelegationAmount => Self::InvalidMinimumDelegationAmount,
+            ErrorCode::InvalidMaximumDelegationAmount => Self::InvalidMaximumDelegationAmount,
+            ErrorCode::InvalidReservedSlots => Self::InvalidReservedSlots,
+            ErrorCode::InvalidDelegationAmount => Self::InvalidDelegationAmount,
             _ => Self::TransactionOrDeployUnspecified,
         }
     }
@@ -881,7 +942,12 @@ impl Error {
                 | ErrorCode::InvalidDeployInvalidPaymentAmount
                 | ErrorCode::InvalidTransactionInsufficientBurnAmount
                 | ErrorCode::InvalidTransactionInvalidPaymentAmount
-                | ErrorCode::InvalidTransactionUnexpectedEntryPoint),
+                | ErrorCode::InvalidTransactionUnexpectedEntryPoint
+                | ErrorCode::InsufficientAmountArgValue
+                | ErrorCode::InvalidMinimumDelegationAmount
+                | ErrorCode::InvalidMaximumDelegationAmount
+                | ErrorCode::InvalidReservedSlots
+                | ErrorCode::InvalidDelegationAmount),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(ErrorCode::RequestThrottled) => Self::RequestThrottled,
             Ok(ErrorCode::MalformedInformationRequest) => Self::MalformedInformationRequest,
@@ -1253,6 +1319,12 @@ pub enum EntityResponse {
 pub enum PackageResponse {
     Package(ValueWithProof<Package>),
     ContractPackage(ValueWithProof<ContractPackage>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BidQueryResponse {
+    Validator(ValidatorBidInformation),
+    Delegator(DelegatorBidInformation),
 }
 
 fn validate_response(
