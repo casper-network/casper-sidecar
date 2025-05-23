@@ -553,7 +553,7 @@ The [EXAMPLE_NCTL_CONFIG.toml](./resources/example_configs/EXAMPLE_NCTL_CONFIG.t
 
 #### Testing the Sidecar using NCTL
 
-The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casperlabs.io/dapp-dev-guide/building-dapps/setup-nctl/).
+The Sidecar application can be tested against live Casper nodes or a local [NCTL network](https://docs.casper.network/dapp-dev-guide/building-dapps/setup-nctl/).
 
 The configuration shown [here](./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml) will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would while connected to a live node, displaying events as they occur in the local NCTL network.
 

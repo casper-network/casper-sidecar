@@ -1,12 +1,12 @@
 [package]
 name = "casper-sidecar"
-version = "1.0.4"
-authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
+version = "1.0.5"
+authors = ["Jakub Zajkowski <jakub@casper.network>"]
 edition = "2024"
 description = "Base module that spins up casper sidecar"
 readme = "README.md"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/casper-network/casper-sidecar/tree/dev"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-sidecar/"
 license = "Apache-2.0"
 
 [dependencies]
