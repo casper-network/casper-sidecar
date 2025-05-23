@@ -6,7 +6,7 @@
     "description": "This describes the JSON-RPC 2.0 API of a node on the Casper network.",
     "contact": {
       "name": "Casper Labs",
-      "url": "https://casperlabs.io"
+      "url": "https://casper.network"
     },
     "license": {
       "name": "APACHE LICENSE, VERSION 2.0",

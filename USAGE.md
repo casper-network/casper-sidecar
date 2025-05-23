@@ -19,7 +19,7 @@ Events are emitted on two endpoints:
 - All events that come from a node are re-emitted under `http://<HOST>:<SIDECAR_SSE_PORT>/events`.
 - All Sidecar-generated events reporting the Sidecar's internal state are emitted under `http://<HOST>:<SIDECAR_SSE_PORT>/events/sidecar`.
 
-For more information on various event types emitted by the node, visit the [Monitoring and Consuming Events](https://docs.casperlabs.io/developers/dapps/monitor-and-consume-events/#event-types) documentation.
+For more information on various event types emitted by the node, visit the [Monitoring and Consuming Events](https://docs.casper.network/developers/dapps/monitor-and-consume-events/#event-types) documentation.
 
 ### Monitoring the Sidecar event stream
 
@@ -397,7 +397,7 @@ Retrieve an aggregate of the various states a transaction goes through, given it
 
 The path URL is `<HOST:PORT>/transaction/<transaction-type>/<transaction-hash>`. Enter a valid transaction hash.
 
-The output differs depending on the transaction's status, which changes over time as the transaction goes through its [lifecycle](https://docs.casperlabs.io/concepts/design/casper-design/#execution-semantics-phases).
+The output differs depending on the transaction's status, which changes over time as the transaction goes through its [lifecycle](https://docs.casper.network/concepts/design/casper-design/#execution-semantics-phases).
 
 Example:
 
