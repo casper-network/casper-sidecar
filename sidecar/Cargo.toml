@@ -70,10 +70,6 @@ Package for Casper Sidecar
 unit-scripts = "../resources/maintainer_scripts/casper_sidecar"
 restart-after-upgrade = true
 
-[package.metadata.deb.variants.bionic]
-name = "casper-sidecar"
-revision = "0+bionic"
-
 [package.metadata.deb.variants.focal]
 name = "casper-sidecar"
 revision = "0+focal"
