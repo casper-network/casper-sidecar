@@ -2,8 +2,8 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
 
 use async_trait::async_trait;
 use casper_binary_port::{
-    BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, GlobalStateEntityQualifier,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    BidsInformation, BinaryResponse, BinaryResponseAndRequest, Command, GetRequest,
+    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
 };
 use casper_types::{
     AddressableEntityHash, BlockHeader, BlockWithSignatures, CLValue, GlobalStateIdentifier, Key,
@@ -167,12 +167,26 @@ impl BinaryPortMock {
         self.when_then(req, res).await;
     }
 
+    pub async fn add_bids_request_response(
+        &self,
+        information_request: InformationRequest,
+        bids: Vec<BidKind>,
+    ) {
+        let get_request = information_request
+            .try_into()
+            .expect("should create request");
+        let req = Command::Get(get_request);
+        let res = BinaryResponse::from_value(BidsInformation::new(bids));
+        self.when_then(req, res).await;
+    }
+
     pub async fn when_then(&self, when: Command, then: BinaryResponse) {
         let payload = when.to_bytes().unwrap();
         let response_and_request = BinaryResponseAndRequest::new(then, payload.into());
         let mut guard = self.request_responses.lock().await;
         guard.push((when, response_and_request));
     }
+
     pub async fn verify_no_lingering(&self) {
         let guard = self.request_responses.lock().await;
         assert!(guard.is_empty());

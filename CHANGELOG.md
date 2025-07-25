@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
+## [2.1.0] -
+
+### Added
+
+- JSON RPC API has a new action "state_query_bids".
+
 ## [2.0.0] -
 
 ### Added

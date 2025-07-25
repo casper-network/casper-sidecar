@@ -1,10 +1,13 @@
-use crate::{NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response};
+use crate::{
+    NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response,
+    rpcs::action::query_bid::QueryBid,
+};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use casper_binary_port::{
-    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
-    ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
+    BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command,
+    CommandHeader, ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
     DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
@@ -314,6 +317,40 @@ pub trait NodeClient: Send + Sync {
             ),
         }
     }
+
+    async fn query_bids(
+        &self,
+        state_identifier: Option<GlobalStateIdentifier>,
+        query_bid: QueryBid,
+    ) -> Result<Option<BidQueryResponse>, Error> {
+        let get = match query_bid.clone() {
+            QueryBid::ValidatorBid { public_key } => InformationRequest::ValidatorBid {
+                state_identifier,
+                public_key,
+            },
+            QueryBid::DelegatorBid {
+                validator_public_key,
+                delegator,
+            } => InformationRequest::DelegatorBid {
+                state_identifier,
+                validator_public_key,
+                delegator,
+            },
+        };
+
+        let resp = self.read_info(get).await?;
+
+        Ok(match query_bid {
+            QueryBid::ValidatorBid { .. } => {
+                let validator_info = parse_response::<BidsInformation>(&resp.into())?;
+                validator_info.map(|el| BidQueryResponse::Validator(Box::new(el)))
+            }
+            QueryBid::DelegatorBid { .. } => {
+                let delegator_info = parse_response::<BidsInformation>(&resp.into())?;
+                delegator_info.map(|el| BidQueryResponse::Delegator(Box::new(el)))
+            }
+        })
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -564,6 +601,8 @@ pub enum InvalidTransactionOrDeploy {
     InvalidMinimumDelegationAmount,
     #[error("Insufficient amount arg value")]
     InsufficientAmountArgValue,
+    #[error("Unsupported invocation target")]
+    UnsupportedInvocationTarget,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -715,6 +754,7 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidMaximumDelegationAmount => Self::InvalidMaximumDelegationAmount,
             ErrorCode::InvalidMinimumDelegationAmount => Self::InvalidMinimumDelegationAmount,
             ErrorCode::InsufficientAmountArgValue => Self::InsufficientAmountArgValue,
+            ErrorCode::UnsupportedInvocationTarget => Self::UnsupportedInvocationTarget,
             _ => Self::TransactionOrDeployUnspecified,
         }
     }
@@ -800,6 +840,8 @@ pub enum Error {
     TransactionHasMalformedBinaryRepresentation,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget,
+    #[error("Sandboxed execution failed")]
+    SandboxedExecutionFailed,
 }
 
 impl Error {
@@ -936,6 +978,7 @@ impl Error {
                 }
             }
             Ok(ErrorCode::UnsupportedInvocationTarget) => Self::UnsupportedInvocationTarget,
+            Ok(ErrorCode::SandboxedExecutionFailed) => Self::SandboxedExecutionFailed,
             Err(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,
@@ -1276,6 +1319,12 @@ pub enum EntityResponse {
 pub enum PackageResponse {
     Package(ValueWithProof<Package>),
     ContractPackage(ValueWithProof<ContractPackage>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BidQueryResponse {
+    Validator(Box<BidsInformation>),
+    Delegator(Box<BidsInformation>),
 }
 
 fn validate_response(

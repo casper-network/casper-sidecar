@@ -19,6 +19,7 @@ use super::rpcs::{
 use crate::{
     NodeClient,
     rpcs::{
+        action::query_bid::QueryBids,
         info::{GetPeers, GetReward, GetStatus, GetTransaction},
         state::{GetAddressableEntity, GetPackage, QueryBalanceDetails},
     },
@@ -76,6 +77,7 @@ pub async fn run(
     register!(GetChainspec);
     register!(QueryBalance);
     register!(QueryBalanceDetails);
+    register!(QueryBids);
 
     let handlers = handlers.build();
 

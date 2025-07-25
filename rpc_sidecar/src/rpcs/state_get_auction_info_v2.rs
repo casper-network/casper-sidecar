@@ -108,9 +108,6 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let state_identifier =
             state_identifier.unwrap_or(GlobalStateIdentifier::BlockHeight(block_header.height()));
 
-        let is_1x = block_header.protocol_version().value().major == 1;
-        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_1x).await?;
-
         // always retrieve the latest system contract registry, old versions of the node
         // did not write it to the global state
         let (registry_value, _) = node_client
@@ -155,8 +152,9 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let snapshot = snapshot_value
             .into_cl_value()
             .ok_or(Error::InvalidAuctionState)?;
-
+        let is_1x = block_header.protocol_version().value().major == 1;
         let validators = era_validators_from_snapshot(snapshot, is_1x)?;
+        let bids = fetch_bid_kinds(node_client.clone(), state_identifier, is_1x).await?;
         let auction_state = AuctionState::new(
             *block_header.state_root_hash(),
             block_header.height(),
@@ -298,9 +296,6 @@ mod tests {
             .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
-            .add_bids_fetch_res(bids.clone(), state_identifier)
-            .await;
-        binary_port_mock
             .add_system_registry(state_identifier, registry)
             .await;
         binary_port_mock
@@ -312,6 +307,9 @@ mod tests {
                 auction_hash,
                 Some(stored_value),
             )
+            .await;
+        binary_port_mock
+            .add_bids_fetch_res(bids.clone(), state_identifier)
             .await;
         let resp = GetAuctionInfo::do_handle_request(Arc::new(binary_port_mock), None)
             .await
@@ -376,9 +374,6 @@ mod tests {
             .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
-            .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)
-            .await;
-        binary_port_mock
             .add_system_registry(state_identifier, registry)
             .await;
         binary_port_mock
@@ -390,6 +385,9 @@ mod tests {
                 auction_hash,
                 Some(stored_value),
             )
+            .await;
+        binary_port_mock
+            .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)
             .await;
         let resp = GetAuctionInfo::do_handle_request(Arc::new(binary_port_mock), None)
             .await
@@ -449,9 +447,6 @@ mod tests {
             .add_block_header_req_res(block_header.clone(), InformationRequest::BlockHeader(None))
             .await;
         binary_port_mock
-            .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)
-            .await;
-        binary_port_mock
             .add_system_registry(state_identifier, registry)
             .await;
         binary_port_mock
@@ -460,6 +455,9 @@ mod tests {
                 auction_hash,
                 Some(stored_value),
             )
+            .await;
+        binary_port_mock
+            .add_bid_kinds_fetch_res(bid_kinds.clone(), state_identifier)
             .await;
         let resp = GetAuctionInfo::do_handle_request(Arc::new(binary_port_mock), None)
             .await
