@@ -50,11 +50,11 @@ jobs:
           gpg_private_key: ${{ secrets.APTLY_GPG_KEY }}
           passphrase: ${{ secrets.APTLY_GPG_PASS }}
 
-      - name: Install cargo deb
-        run: cargo install cargo-deb
+      #- name: Install cargo deb
+      #  run: cargo install cargo-deb
 
-      - name: Cargo deb
-        run: cargo deb --package casper-sidecar --variant ${{ matrix.code_name }}
+      #- name: Cargo deb
+      #  run: cargo deb --package casper-sidecar --variant ${{ matrix.code_name }}
 
       - name: Upload binaries to repo
         env:

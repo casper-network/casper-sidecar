@@ -50,9 +50,9 @@ jobs:
       - name: test
         run: cargo test
 
-      - name: install cargo packaging tools
-        run: |
-          cargo install cargo-deb
+      #- name: install cargo packaging tools
+      #  run: |
+      #    cargo install cargo-deb
 
-      - name: deb
-        run: cargo deb --package casper-sidecar
+      #- name: deb
+      #  run: cargo deb --package casper-sidecar
