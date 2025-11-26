@@ -35,7 +35,7 @@ use casper_types::{
     AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
     BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
     EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
-    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, U512, URef,
+    PackageAddr, PackageStatus, PublicKey, SecretKey, StoredValue, U512, URef,
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
     bytesrepr::Bytes,
@@ -723,7 +723,7 @@ impl RpcWithParams for GetAddressableEntity {
 #[serde(deny_unknown_fields)]
 pub enum PackageIdentifier {
     /// The address of a package.
-    PackageAddr(PackageHash),
+    PackageAddr(PackageAddr),
     /// The hash of a contract package.
     ContractPackageHash(ContractPackageHash),
 }
@@ -732,7 +732,7 @@ impl PackageIdentifier {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
-            0 => Self::PackageAddr(PackageHash::new(rng.r#gen())),
+            0 => Self::PackageAddr(PackageAddr::new(rng.r#gen())),
             1 => Self::ContractPackageHash(ContractPackageHash::new(rng.r#gen())),
             _ => unreachable!(),
         }
@@ -740,9 +740,7 @@ impl PackageIdentifier {
 
     pub fn into_port_package_identifier(self) -> PortPackageIdentifier {
         match self {
-            Self::PackageAddr(package_addr) => {
-                PortPackageIdentifier::PackageAddr(package_addr.value())
-            }
+            Self::PackageAddr(package_addr) => PortPackageIdentifier::PackageAddr(package_addr),
             Self::ContractPackageHash(contract_package_hash) => {
                 PortPackageIdentifier::ContractPackageHash(contract_package_hash)
             }
@@ -1374,7 +1372,7 @@ mod tests {
     use casper_types::{
         AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
         ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
-        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
+        NamedKeys, PackageAddr, ProtocolVersion, TestBlockBuilder,
         addressable_entity::NamedKeyValue,
         contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
@@ -1950,7 +1948,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let entity = AddressableEntity::new(
-            PackageHash::new(rng.r#gen()),
+            PackageAddr::new(rng.r#gen()),
             ByteCodeHash::new(rng.r#gen()),
             ProtocolVersion::V1_0_0,
             rng.r#gen(),

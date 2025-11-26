@@ -844,8 +844,6 @@ pub enum Error {
     TransactionHasMalformedBinaryRepresentation,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget,
-    #[error("Sandboxed execution failed")]
-    SandboxedExecutionFailed,
     #[error("Node client not initialized properly")]
     NotInitialized,
 }
@@ -984,7 +982,6 @@ impl Error {
                 }
             }
             Ok(ErrorCode::UnsupportedInvocationTarget) => Self::UnsupportedInvocationTarget,
-            Ok(ErrorCode::SandboxedExecutionFailed) => Self::SandboxedExecutionFailed,
             Err(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,

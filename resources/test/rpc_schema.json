@@ -814,8 +814,8 @@
                     "entity_kind": {
                       "Account": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c"
                     },
-                    "package_hash": "package-0000000000000000000000000000000000000000000000000000000000000000",
-                    "byte_code_hash": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
+                    "package": "package-0000000000000000000000000000000000000000000000000000000000000000",
+                    "byte_code": "byte-code-0000000000000000000000000000000000000000000000000000000000000000",
                     "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
                     "associated_keys": [
                       {
@@ -2877,7 +2877,7 @@
             "additionalProperties": false
           },
           {
-            "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
+            "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
             "type": "object",
             "required": [
               "StoredVersionedContractByHash"
@@ -5616,6 +5616,29 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "Registers an entry point called.",
+            "type": "object",
+            "required": [
+              "EntryPointCalled"
+            ],
+            "properties": {
+              "EntryPointCalled": {
+                "type": "array",
+                "items": [
+                  {
+                    "$ref": "#/components/schemas/Key"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "maxItems": 2,
+                "minItems": 2
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -5884,6 +5907,19 @@
             "properties": {
               "EntryPoint": {
                 "$ref": "#/components/schemas/EntryPointValue"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A bundle of type definitions.",
+            "type": "object",
+            "required": [
+              "TypeDef"
+            ],
+            "properties": {
+              "TypeDef": {
+                "$ref": "#/components/schemas/TypeDefinition"
               }
             },
             "additionalProperties": false
@@ -6308,10 +6344,10 @@
         "required": [
           "action_thresholds",
           "associated_keys",
-          "byte_code_hash",
+          "byte_code",
           "entity_kind",
           "main_purse",
-          "package_hash",
+          "package",
           "protocol_version"
         ],
         "properties": {
@@ -6321,10 +6357,10 @@
           "entity_kind": {
             "$ref": "#/components/schemas/EntityKind"
           },
-          "package_hash": {
-            "$ref": "#/components/schemas/PackageHash"
+          "package": {
+            "$ref": "#/components/schemas/PackageAddr"
           },
-          "byte_code_hash": {
+          "byte_code": {
             "$ref": "#/components/schemas/ByteCodeHash"
           },
           "main_purse": {
@@ -6379,6 +6415,18 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Package"
+            ],
+            "properties": {
+              "Package": {
+                "$ref": "#/components/schemas/PackageAddr"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6423,7 +6471,7 @@
           "VmCasperV2"
         ]
       },
-      "PackageHash": {
+      "PackageAddr": {
         "description": "The hex-encoded address of the Package.",
         "type": "string"
       },
@@ -6579,7 +6627,7 @@
         "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
         "anyOf": [
           {
-            "description": "The address for a system entity account or contract.",
+            "description": "The address for a system entity contract.",
             "type": "string"
           },
           {
@@ -6588,6 +6636,10 @@
           },
           {
             "description": "The address of an entity that corresponds to a Userland smart contract.",
+            "type": "string"
+          },
+          {
+            "description": "The address of an entity that corresponds to a Userland smart contract package.",
             "type": "string"
           }
         ]
@@ -6755,6 +6807,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "Entrypoints to be executed against the V2 Casper VM.",
+            "type": "object",
+            "required": [
+              "V2CasperVm"
+            ],
+            "properties": {
+              "V2CasperVm": {
+                "$ref": "#/components/schemas/EntityEntryPointV2"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6818,6 +6883,306 @@
             ]
           }
         ]
+      },
+      "EntityEntryPointV2": {
+        "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+        "type": "object",
+        "required": [
+          "args",
+          "entry_point_payment",
+          "flags",
+          "name",
+          "ret"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TypeUid"
+            }
+          },
+          "ret": {
+            "$ref": "#/components/schemas/TypeUid"
+          },
+          "entry_point_payment": {
+            "$ref": "#/components/schemas/EntryPointPayment"
+          },
+          "flags": {
+            "$ref": "#/components/schemas/EntityEntryPointV2Flags"
+          }
+        }
+      },
+      "TypeUid": {
+        "description": "Unique identifier for a type definition.",
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0.0
+      },
+      "EntityEntryPointV2Flags": {
+        "type": "object",
+        "required": [
+          "bits"
+        ],
+        "properties": {
+          "bits": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        }
+      },
+      "TypeDefinition": {
+        "type": "object",
+        "required": [
+          "cl_type",
+          "definition",
+          "fqn",
+          "name",
+          "uid"
+        ],
+        "properties": {
+          "uid": {
+            "description": "Uid",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TypeUid"
+              }
+            ]
+          },
+          "name": {
+            "description": "Name of the type definition (i.e. [`String`]).",
+            "type": "string"
+          },
+          "fqn": {
+            "description": "The fully qualified name of the declaration (i.e. [`alloc::string::String`]).",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/TypeDefinitionKind"
+          },
+          "cl_type": {
+            "$ref": "#/components/schemas/CLType"
+          }
+        }
+      },
+      "TypeDefinitionKind": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "Primitive"
+            ],
+            "properties": {
+              "Primitive": {
+                "$ref": "#/components/schemas/Primitive"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Mapping"
+            ],
+            "properties": {
+              "Mapping": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "$ref": "#/components/schemas/TypeUid"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/TypeUid"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Sequence"
+            ],
+            "properties": {
+              "Sequence": {
+                "type": "object",
+                "required": [
+                  "decl"
+                ],
+                "properties": {
+                  "decl": {
+                    "$ref": "#/components/schemas/TypeUid"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "FixedSequence"
+            ],
+            "properties": {
+              "FixedSequence": {
+                "type": "object",
+                "required": [
+                  "decl",
+                  "length"
+                ],
+                "properties": {
+                  "length": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0.0
+                  },
+                  "decl": {
+                    "$ref": "#/components/schemas/TypeUid"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Tuple"
+            ],
+            "properties": {
+              "Tuple": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TypeUid"
+                    }
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Enum"
+            ],
+            "properties": {
+              "Enum": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EnumVariant"
+                    }
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "Struct"
+            ],
+            "properties": {
+              "Struct": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/StructField"
+                    }
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "Primitive": {
+        "type": "string",
+        "enum": [
+          "Char",
+          "U8",
+          "I8",
+          "U16",
+          "I16",
+          "U32",
+          "I32",
+          "U64",
+          "I64",
+          "U128",
+          "I128",
+          "F32",
+          "F64",
+          "Bool"
+        ]
+      },
+      "EnumVariant": {
+        "type": "object",
+        "required": [
+          "discriminant",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "discriminant": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "decl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TypeUid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "StructField": {
+        "type": "object",
+        "required": [
+          "decl",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "decl": {
+            "$ref": "#/components/schemas/TypeUid"
+          }
+        }
       },
       "TransformError": {
         "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
@@ -6925,6 +7290,12 @@
       "RetValue": {
         "description": "Type disambiguating between the formatting of the returned data.",
         "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "Unit"
+            ]
+          },
           {
             "description": "The returned data is CLValue.",
             "type": "object",
@@ -7216,7 +7587,7 @@
             ],
             "properties": {
               "PackageAddr": {
-                "$ref": "#/components/schemas/PackageHash"
+                "$ref": "#/components/schemas/PackageAddr"
               }
             },
             "additionalProperties": false

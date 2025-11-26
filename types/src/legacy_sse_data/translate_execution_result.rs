@@ -97,6 +97,7 @@ fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
         TransformKindV2::Prune(key) => Some(TransformKindV1::Prune(*key)),
         TransformKindV2::Failure(err) => Some(TransformKindV1::Failure(err.to_string())),
         TransformKindV2::Ret(_) => None,
+        TransformKindV2::EntryPointCalled(_, _) => None,
     };
     maybe_transform_kind
 }
@@ -142,7 +143,6 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
                 None
             }
         }
-        // following variants will not be understood by old clients since they were introduced in 2.x
         StoredValue::AddressableEntity(_)
         | StoredValue::BidKind(_)
         | StoredValue::SmartContract(_)
@@ -150,7 +150,8 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         | StoredValue::MessageTopic(_)
         | StoredValue::Message(_)
         | StoredValue::Prepayment(_)
-        | StoredValue::EntryPoint(_) => None,
+        | StoredValue::EntryPoint(_)
+        | StoredValue::TypeDef(_) => None,
     }
 }
 
