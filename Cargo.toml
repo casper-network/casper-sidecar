@@ -14,11 +14,12 @@ members = [
 anyhow = "1"
 async-stream = "0.3"
 async-trait = "0.1"
-casper-types = { version = "6.0.1", features = [
+casper-types = { git = "https://github.com/casper-network/casper-node.git", tag="v2.2.0", features = [
     "json-schema",
     "std",
 ] }
-casper-binary-port = { version = "1.1.1" }
+casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", tag="v2.2.0" }
+
 casper-event-listener = { path = "./listener", version = "2" }
 casper-event-sidecar = { path = "./event_sidecar", version = "2" }
 casper-event-types = { path = "./types", version = "2" }

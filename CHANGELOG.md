@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
+## [2.1.0]
+
+### Added
+
+- Bumped `casper-types` and `casper-binary-port` to be compatible with node 2.2.0 release.
+
 ## [2.0.0] -
 
 ### Added
