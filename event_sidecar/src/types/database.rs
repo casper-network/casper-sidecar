@@ -329,36 +329,36 @@ impl From<sea_query::error::Error> for DatabaseWriteError {
 
 impl From<sqlx::Error> for DatabaseWriteError {
     fn from(sqlx_err: sqlx::Error) -> Self {
-        if let Some(db_err) = sqlx_err.as_database_error() {
-            if let Some(code) = db_err.code() {
-                match code.as_ref() {
-                    "23505" => {
-                        //"23505" is postgresql unique constraint violation violation
-                        let table = db_err
-                            .table()
-                            .map(ToString::to_string)
-                            .unwrap_or(db_err.message().to_string());
-                        return Self::UniqueConstraint(UniqueConstraintError {
-                            table,
-                            error: sqlx_err,
-                        });
-                    }
-                    "1555" | "2067" => {
-                        // The message looks something like this:
-                        // UNIQUE constraint failed: DeployProcessed.transaction_hash
-
-                        let table = db_err.message().split(':').collect::<Vec<&str>>()[1]
-                            .split('.')
-                            .collect::<Vec<&str>>()[0]
-                            .trim()
-                            .to_string();
-                        return Self::UniqueConstraint(UniqueConstraintError {
-                            table,
-                            error: sqlx_err,
-                        });
-                    }
-                    _ => {}
+        if let Some(db_err) = sqlx_err.as_database_error()
+            && let Some(code) = db_err.code()
+        {
+            match code.as_ref() {
+                "23505" => {
+                    //"23505" is postgresql unique constraint violation violation
+                    let table = db_err
+                        .table()
+                        .map(ToString::to_string)
+                        .unwrap_or(db_err.message().to_string());
+                    return Self::UniqueConstraint(UniqueConstraintError {
+                        table,
+                        error: sqlx_err,
+                    });
                 }
+                "1555" | "2067" => {
+                    // The message looks something like this:
+                    // UNIQUE constraint failed: DeployProcessed.transaction_hash
+
+                    let table = db_err.message().split(':').collect::<Vec<&str>>()[1]
+                        .split('.')
+                        .collect::<Vec<&str>>()[0]
+                        .trim()
+                        .to_string();
+                    return Self::UniqueConstraint(UniqueConstraintError {
+                        table,
+                        error: sqlx_err,
+                    });
+                }
+                _ => {}
             }
         }
         Self::Database(sqlx_err)
@@ -480,7 +480,7 @@ pub struct TransactionAggregate {
 #[allow(dead_code)] //Allowing dead code here because the Raw enum is used only in ITs
 pub enum StatementWrapper {
     TableCreateStatement(Box<sea_query::TableCreateStatement>),
-    InsertStatement(sea_query::InsertStatement),
+    InsertStatement(Box<sea_query::InsertStatement>),
     Raw(String),
 }
 
@@ -488,7 +488,7 @@ pub enum StatementWrapper {
 #[async_trait]
 pub trait TransactionWrapper: Send + Sync {
     /// Execute the *sql* param in transaction
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
+    async fn execute(&self, sql: String) -> Result<(), DatabaseWriteError>;
 }
 
 /// Trait used to abstract a set of instructions necessary to perform a migration.
@@ -609,7 +609,7 @@ fn migration_1_ddl_statements(
             config.db_supports_unsigned,
         ))),
         StatementWrapper::TableCreateStatement(Box::new(tables::shutdown::create_table_stmt())),
-        StatementWrapper::InsertStatement(insert_event_types_stmt),
-        StatementWrapper::InsertStatement(insert_transaction_types_stmt),
+        StatementWrapper::InsertStatement(Box::new(insert_event_types_stmt)),
+        StatementWrapper::InsertStatement(Box::new(insert_transaction_types_stmt)),
     ]
 }

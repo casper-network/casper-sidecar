@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     FinalitySignature, Step, TransactionAccepted, TransactionProcessed,
     types::database::DatabaseWriteError,
@@ -25,7 +27,7 @@ pub trait EventHandlingService {
     async fn handle_block_added(
         &self,
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Arc<Block>,
         sse_event: SseEvent,
     );
 

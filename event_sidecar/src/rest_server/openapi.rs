@@ -1,4 +1,3 @@
-mod schema_transformation_visitor;
 use crate::{
     database::types::*,
     types::{
@@ -17,7 +16,6 @@ use schemars::{
     schema::{RootSchema, SchemaObject},
     schema_for,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::{
     Modify, OpenApi, ToSchema,
@@ -133,10 +131,4 @@ fn rebuild_schema_object(key: &str, schemars_schema_obj: &SchemaObject) -> Schem
             );
         }
     }
-}
-
-#[derive(Deserialize, Serialize)]
-struct ApiError {
-    code: u16,
-    message: String,
 }

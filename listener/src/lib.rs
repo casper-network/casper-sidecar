@@ -255,14 +255,14 @@ impl EventListener {
         match fetch_result {
             Ok(node_metadata) => {
                 // check if reveived network name matches optional configuration
-                if let Some(network_name) = &self.node.network_name {
-                    if *network_name != node_metadata.network_name {
-                        let msg = format!(
-                            "Network name {network_name} does't match name {} configured for node connection",
-                            node_metadata.network_name
-                        );
-                        return GetNodeMetadataResult::Error(Error::msg(msg));
-                    }
+                if let Some(network_name) = &self.node.network_name
+                    && *network_name != node_metadata.network_name
+                {
+                    let msg = format!(
+                        "Network name {network_name} does't match name {} configured for node connection",
+                        node_metadata.network_name
+                    );
+                    return GetNodeMetadataResult::Error(Error::msg(msg));
                 }
                 if self.node_metadata != node_metadata {
                     return GetNodeMetadataResult::Ok(Some(node_metadata));

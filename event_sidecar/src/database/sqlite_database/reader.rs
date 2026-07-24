@@ -1,5 +1,3 @@
-use crate::database_reader_implementation;
-
 use super::SqliteDatabase;
 use sea_query::SqliteQueryBuilder;
 use sqlx::{SqlitePool, sqlite::SqliteRow};
@@ -9,7 +7,7 @@ async fn fetch_optional_with_error_check(
     stmt: String,
 ) -> Result<SqliteRow, DatabaseReadError> {
     connection
-        .fetch_optional(stmt.as_str())
+        .fetch_optional(sqlx::AssertSqlSafe(stmt))
         .await
         .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
         .and_then(|maybe_row| match maybe_row {

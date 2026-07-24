@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 use std::{collections::HashMap, net::IpAddr, num::NonZeroU32};
 use thiserror::Error;
 
-use crate::SpeculativeExecConfig;
+use crate::{BinaryPortCacheConfig, SpeculativeExecConfig};
 
 /// Default binding address for the JSON-RPC HTTP server.
 ///
@@ -48,6 +48,9 @@ pub struct RpcServerConfig {
     pub main_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,
     pub node_client: NodeClientConfig,
+    /// Configuration for the persistent, LMDB-backed binary port cache. Disabled when absent.
+    #[serde(default)]
+    pub binary_port_cache: Option<BinaryPortCacheConfig>,
 }
 
 impl RpcServerConfig {
@@ -57,6 +60,7 @@ impl RpcServerConfig {
             main_server: RpcConfig::test_default(),
             speculative_exec_server: None,
             node_client: NodeClientConfig::test_default(),
+            binary_port_cache: None,
         }
     }
 }
@@ -86,8 +90,7 @@ pub struct RpcConfig {
     pub default_limit_period: TimeDiff,
     /// Limits; key is RPC method name.
     pub limits: Option<HashMap<String, ConfigLimit>>,
-    /// If set to true, sidecar will prefetch and cache in-memory the latest block info for `chain_get_block`. The node
-    /// reacts to the sses observance of `BlockAdded` sse event. If sse is not set-up, setting this flag to "true" will have no effect.
+    /// This functionality is deprecated, the property will be removed in next major release
     #[serde(default = "default_enable_block_prefetch")]
     pub enable_block_prefetch: bool,
 }

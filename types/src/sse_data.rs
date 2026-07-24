@@ -63,7 +63,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Arc<Block>,
     },
     /// The given transaction has been newly-accepted by this node.
     TransactionAccepted(Arc<Transaction>),
@@ -150,7 +150,7 @@ impl SseData {
         let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(block.into()),
+            block: Arc::new(block.into()),
         }
     }
 

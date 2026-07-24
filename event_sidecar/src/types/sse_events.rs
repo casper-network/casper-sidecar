@@ -1,9 +1,8 @@
 #[cfg(test)]
 use casper_types::ChainNameDigest;
 use casper_types::{
-    AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, contract_messages::Messages,
-    execution::ExecutionResult,
+    AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash, contract_messages::Messages, execution::ExecutionResult,
 };
 use casper_types::{FinalitySignature as FinSig, Signature};
 #[cfg(test)]
@@ -26,18 +25,13 @@ use utoipa::ToSchema;
 
 use crate::sql::tables::transaction_type::TransactionTypeId;
 
-/// The version of this node's API server.  This event will always be the first sent to a new
-/// client, and will have no associated event ID provided.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
-pub struct ApiVersion(ProtocolVersion);
-
 /// The given block has been added to the linear chain and stored locally.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct BlockAdded {
     #[schema(value_type = [u8; BlockHash::LENGTH])]
     block_hash: BlockHash,
     #[schema(value_type = Object)]
-    block: Box<Block>,
+    block: Arc<Block>,
 }
 
 #[cfg(test)]
@@ -71,7 +65,7 @@ impl BlockAdded {
         };
         Self {
             block_hash: *block.hash(),
-            block: Box::new(block),
+            block: Arc::new(block),
         }
     }
 }
@@ -161,6 +155,14 @@ pub struct TransactionProcessed {
 impl TransactionProcessed {
     pub fn identifier(&self) -> String {
         transaction_hash_to_identifier(&self.transaction_hash)
+    }
+
+    pub fn transaction_hash(&self) -> &TransactionHash {
+        &self.transaction_hash
+    }
+
+    pub fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
     }
 
     pub fn transaction_type_id(&self) -> TransactionTypeId {

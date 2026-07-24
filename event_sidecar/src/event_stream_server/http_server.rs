@@ -84,16 +84,20 @@ fn build_buffer(
 fn send_api_version_from_global_state(
     protocol_version: ProtocolVersion,
     subscriber: &NewSubscriberInfo,
-) -> Result<(), SendError<ServerSentEvent>> {
+) -> Result<(), Box<SendError<ServerSentEvent>>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::initial_event(protocol_version))
+        .map_err(Box::new)
 }
 
-fn send_legacy_comment(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
+fn send_legacy_comment(
+    subscriber: &NewSubscriberInfo,
+) -> Result<(), Box<SendError<ServerSentEvent>>> {
     subscriber
         .initial_events_sender
         .send(ServerSentEvent::legacy_comment_event())
+        .map_err(Box::new)
 }
 
 fn handle_incoming_data(

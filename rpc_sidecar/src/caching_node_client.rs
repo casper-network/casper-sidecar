@@ -1,48 +1,41 @@
-use crate::{ClientError, NodeClient, parse_response};
+use crate::{
+    ClientError, NodeClient,
+    binary_port_cache::{BinaryPortCache, InFlightDataHandling},
+    parse_response,
+};
 use anyhow::Error;
 use async_trait::async_trait;
-use casper_binary_port::{BinaryResponseAndRequest, Command, InformationRequest};
-use casper_event_types::SidecarEvent;
-use casper_types::{BlockIdentifier, BlockWithSignatures};
-use std::{sync::Arc, time::Duration};
-use tokio::{
-    sync::{RwLock, broadcast::Receiver},
-    time::timeout,
+use casper_binary_port::{
+    BinaryResponseAndRequest, Command, InformationRequest, TransactionWithExecutionInfo,
 };
-use tracing::info;
+use casper_event_types::SidecarEvent;
+use casper_types::{BlockHeader, BlockIdentifier, BlockWithSignatures, TransactionHash};
+use metrics::binary_port_cache as cache_metrics;
+use std::sync::Arc;
+use tokio::sync::broadcast::Receiver;
+use tracing::warn;
 
-const CACHE_FETCH_TIMEOUT: Duration = Duration::from_millis(5);
-
-pub struct CachingNodeClient<T: NodeClient + Send + Sync> {
+pub struct CachingNodeClient<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling>
+{
     inner_client: Arc<T>,
-    block_with_signatures_cache: Arc<RwLock<Option<BlockWithSignatures>>>,
+    binary_port_cache: Option<Arc<C>>,
 }
 
-impl<T: NodeClient + Send + Sync> CachingNodeClient<T> {
-    pub(crate) fn new(inner_client: Arc<T>) -> Self {
-        let block_with_signatures_cache = Arc::new(RwLock::new(None));
+impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling>
+    CachingNodeClient<T, C>
+{
+    pub(crate) fn new(inner_client: Arc<T>, binary_port_cache: Option<Arc<C>>) -> Self {
         Self {
             inner_client,
-            block_with_signatures_cache,
+            binary_port_cache,
         }
-    }
-
-    async fn get_block_from_cache(&self) -> Option<BlockWithSignatures> {
-        match timeout(CACHE_FETCH_TIMEOUT, self.block_with_signatures_cache.read()).await {
-            Ok(maybe_block) => maybe_block.clone(),
-            Err(_) => None,
-        }
-    }
-
-    #[cfg(test)]
-    async fn inner_cached_block(&self) -> Option<BlockWithSignatures> {
-        let guard = self.block_with_signatures_cache.read().await;
-        (*guard).clone()
     }
 }
 
 #[async_trait]
-impl<T: NodeClient + Send + Sync> NodeClient for CachingNodeClient<T> {
+impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> NodeClient
+    for CachingNodeClient<T, C>
+{
     async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, ClientError> {
         self.inner_client.send_request(req).await
     }
@@ -51,80 +44,159 @@ impl<T: NodeClient + Send + Sync> NodeClient for CachingNodeClient<T> {
         &self,
         block_identifier: Option<BlockIdentifier>,
     ) -> Result<Option<BlockWithSignatures>, ClientError> {
-        if block_identifier.is_none() {
-            if let Some(block) = self.get_block_from_cache().await {
-                return Ok(Some(block));
+        // The persistent binary port cache is keyed by identifier, so it has no entry for
+        // "whatever the latest block is" - always fall through to the node for that case.
+        let Some(id) = block_identifier else {
+            let resp = self
+                .read_info(InformationRequest::BlockWithSignatures(None))
+                .await?;
+            return parse_response::<BlockWithSignatures>(&resp.into());
+        };
+        if let Some(cache) = &self.binary_port_cache {
+            match cache.get_block_with_signatures(id).await {
+                Ok(envelope) => {
+                    if let Some(block) = envelope.into_option() {
+                        cache_metrics::record_cache_lookup("block_with_signatures", true);
+                        return Ok(Some(block));
+                    }
+                    cache_metrics::record_cache_lookup("block_with_signatures", false);
+                }
+                Err(err) => {
+                    cache_metrics::record_cache_lookup("block_with_signatures", false);
+                    warn!(%err, "binary port cache: get_block_with_signatures failed");
+                }
             }
         }
         let resp = self
-            .read_info(InformationRequest::BlockWithSignatures(block_identifier))
+            .read_info(InformationRequest::BlockWithSignatures(Some(id)))
             .await?;
-        parse_response::<BlockWithSignatures>(&resp.into())
+        let block = parse_response::<BlockWithSignatures>(&resp.into())?;
+        if let (Some(cache), Some(block)) = (&self.binary_port_cache, &block)
+            && let Err(err) = cache.put_block_with_signatures(block).await
+        {
+            warn!(%err, "binary port cache: put_block_with_signatures failed");
+        }
+        Ok(block)
+    }
+
+    async fn read_block_header(
+        &self,
+        block_identifier: Option<BlockIdentifier>,
+    ) -> Result<Option<BlockHeader>, ClientError> {
+        let Some(id) = block_identifier else {
+            let resp = self
+                .read_info(InformationRequest::BlockHeader(None))
+                .await?;
+            return parse_response::<BlockHeader>(&resp.into());
+        };
+        if let Some(cache) = &self.binary_port_cache {
+            match cache.get_block_header(id).await {
+                Ok(envelope) => {
+                    if let Some(header) = envelope.into_option() {
+                        cache_metrics::record_cache_lookup("block_header", true);
+                        return Ok(Some(header));
+                    }
+                    cache_metrics::record_cache_lookup("block_header", false);
+                }
+                Err(err) => {
+                    cache_metrics::record_cache_lookup("block_header", false);
+                    warn!(%err, "binary port cache: get_block_header failed");
+                }
+            }
+        }
+        let resp = self
+            .read_info(InformationRequest::BlockHeader(Some(id)))
+            .await?;
+        let header = parse_response::<BlockHeader>(&resp.into())?;
+        if let (Some(cache), Some(header)) = (&self.binary_port_cache, &header)
+            && let Err(err) = cache.put_block_header(header).await
+        {
+            warn!(%err, "binary port cache: put_block_header failed");
+        }
+        Ok(header)
+    }
+
+    async fn read_transaction_with_execution_info(
+        &self,
+        hash: TransactionHash,
+        with_finalized_approvals: bool,
+    ) -> Result<Option<TransactionWithExecutionInfo>, ClientError> {
+        if let Some(cache) = &self.binary_port_cache {
+            match cache
+                .get_transaction_with_execution_info(hash, with_finalized_approvals)
+                .await
+            {
+                Ok(envelope) => {
+                    let hit = envelope.into_option();
+                    if hit.is_some() {
+                        cache_metrics::record_cache_lookup("transaction_with_execution_info", true);
+                        return Ok(hit);
+                    }
+                    cache_metrics::record_cache_lookup("transaction_with_execution_info", false);
+                }
+                Err(err) => {
+                    cache_metrics::record_cache_lookup("transaction_with_execution_info", false);
+                    warn!(%err, "binary port cache: get_transaction_with_execution_info failed")
+                }
+            }
+        }
+        let resp = self
+            .read_info(InformationRequest::Transaction {
+                hash,
+                with_finalized_approvals,
+            })
+            .await?;
+        let Some(transaction) = parse_response::<TransactionWithExecutionInfo>(&resp.into())?
+        else {
+            return Ok(None);
+        };
+        let (transaction, execution_info) = transaction.into_inner();
+        // A transaction without execution info yet is still pending, not immutable data - it
+        // will transition to `Some(..)` once executed, so caching it now would risk permanently
+        // serving a stale "no result yet" answer.
+        if let (Some(cache), Some(execution_info)) = (&self.binary_port_cache, &execution_info) {
+            let to_cache = TransactionWithExecutionInfo::new(
+                transaction.clone(),
+                Some(execution_info.clone()),
+            );
+            if let Err(err) = cache
+                .put_transaction_with_execution_info(hash, with_finalized_approvals, &to_cache)
+                .await
+            {
+                warn!(%err, "binary port cache: put_transaction_with_execution_info failed");
+            }
+        }
+        Ok(Some(TransactionWithExecutionInfo::new(
+            transaction,
+            execution_info,
+        )))
     }
 }
 
-pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
-    client: Arc<CachingNodeClient<T>>,
+pub(crate) async fn cache_update_loop<
+    T: NodeClient + Send + Sync + 'static,
+    C: BinaryPortCache + InFlightDataHandling + 'static,
+>(
+    client: Arc<CachingNodeClient<T, C>>,
     mut sidecar_event_receiver: Receiver<SidecarEvent>,
 ) -> Result<(), Error> {
     loop {
         match sidecar_event_receiver.recv().await {
-            Ok(msg) => match msg {
-                SidecarEvent::BlockAdded { height, .. } => {
-                    let guard = client.block_with_signatures_cache.read().await;
-                    if let Some(block) = guard.as_ref() {
-                        let known_height = block.block().height();
-                        if height <= known_height {
-                            //We know of a heigher block than the sse is reporting to us.
-                            // This may happen if the node that we listen to is still catching up.
-                            // In this case we just skip this one.
-                            continue;
-                        }
-                    }
-                    drop(guard);
-                    let block_identifier = Some(BlockIdentifier::Height(height));
-                    let res = client
-                        .inner_client
-                        .read_block_with_signatures(block_identifier)
-                        .await;
-
-                    let mut guard = client.block_with_signatures_cache.write().await;
-                    match res {
-                        Ok(Some(block)) => {
-                            let height = block.block().height();
-                            if let Some(block) = guard.as_ref() {
-                                let known_height = block.block().height();
-                                if height <= known_height {
-                                    //It seems that for some reason we got an older block than we already have, let's just skip it
-                                    continue;
-                                }
-                            }
-                            *guard = Some(block);
-                        }
-                        Ok(None) => {
-                            //This should generally NOT happen since this loops reacts to BlockAdded events. But for completeness we are handling this.
-                            // To be sure we set the cache to None so we will fall through to underlying client
-                            *guard = None;
-                        }
-                        Err(_) => {
-                            // We can't trust the cache since we might have fallen behind, resetting it to None so we will fall through to underlying client
-                            *guard = None;
-                        }
-                    }
+            Ok(msg) => {
+                if let Some(handler) = client.binary_port_cache.clone()
+                    && let Err(err) = handler.handle_sidecar_event(msg).await
+                {
+                    warn!(%err, "binary port cache: failed to handle sidecar event");
                 }
-            },
+            }
             Err(x) => match x {
                 tokio::sync::broadcast::error::RecvError::Closed => {
-                    let mut guard = client.block_with_signatures_cache.write().await;
-                    *guard = None;
                     anyhow::bail!(
                         "In cache_update_loop: internal broadcast mechanism of sidecar events failed."
                     );
                 }
                 tokio::sync::broadcast::error::RecvError::Lagged(_) => {
-                    let mut guard = client.block_with_signatures_cache.write().await;
-                    *guard = None;
-                    info!("lag detected in cache_update_loop");
+                    warn!("lag detected in cache_update_loop");
                 }
             },
         }
@@ -134,117 +206,334 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
 #[cfg(test)]
 mod tests {
     use super::{CachingNodeClient, cache_update_loop};
+    use crate::binary_port_cache::{BinaryPortCache, HeedBinaryPortCache};
     use crate::{NodeClient, rpcs::test_utils::BinaryPortMock};
     use casper_binary_port::InformationRequest;
     use casper_event_types::SidecarEvent;
     use casper_types::{
-        Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder, testing::TestRng,
+        Block, BlockSignatures, BlockWithSignatures, EraId, TestBlockBuilder, testing::TestRng,
     };
+    use rand::Rng;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::broadcast;
 
+    /// `read_block_with_signatures(None)` ("give me the latest block") has no persistent-cache
+    /// entry to serve from - the binary port cache is keyed by identifier, not "latest" - so it
+    /// must fall through to the node client on every call, never serving a stale answer from an
+    /// earlier call.
     #[tokio::test]
-    async fn if_no_block_was_cached_should_fetch_directly() {
+    async fn latest_block_always_falls_through_to_node_client() {
         let (_tx, rx) = broadcast::channel(16);
         let rng = &mut TestRng::new();
         let binary_port_mock = Arc::new(BinaryPortMock::new());
-        let under_test = Arc::new(CachingNodeClient::new(binary_port_mock.clone()));
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            None::<Arc<HeedBinaryPortCache>>,
+        ));
         let node_client_to_move = under_test.clone();
         tokio::spawn(async move {
             cache_update_loop(node_client_to_move, rx).await.unwrap();
         });
+
+        for _ in 0..2 {
+            let block_v2 = TestBlockBuilder::new().build(rng);
+            let block = Block::V2(block_v2);
+            let signatures = BlockSignatures::random(rng);
+            let block_with_signatures = BlockWithSignatures::new(block.clone(), signatures);
+            binary_port_mock
+                .add_block_with_signatures(
+                    block_with_signatures.clone(),
+                    InformationRequest::BlockWithSignatures(None),
+                )
+                .await;
+            let got = under_test.read_block_with_signatures(None).await;
+            assert_eq!(got, Ok(Some(block_with_signatures)));
+        }
+        binary_port_mock.verify_no_lingering().await;
+    }
+
+    /// Builds a persistent cache + in-flight handler pair backed by the same store, wired up to
+    /// `node_client` (mirrors what `new_binary_port_cache` + `CachingNodeClient::new` do in
+    /// production).
+    fn new_persistent_cache(
+        node_client: Arc<BinaryPortMock>,
+    ) -> (Arc<HeedBinaryPortCache>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let config = crate::BinaryPortCacheConfig::test_default(dir.path().to_path_buf());
+        let store = crate::binary_port_cache::new_binary_port_cache(&config, node_client).unwrap();
+        (store.clone(), dir)
+    }
+
+    #[tokio::test]
+    async fn binary_port_cache_populates_on_miss_and_serves_on_hit() {
+        let rng = &mut TestRng::new();
+        let (_tx, rx) = broadcast::channel(16);
+        let binary_port_mock = Arc::new(BinaryPortMock::new());
+        let (persistent_cache, _dir) = new_persistent_cache(binary_port_mock.clone());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            Some(persistent_cache),
+        ));
+        let node_client_to_move = under_test.clone();
+        tokio::spawn(async move {
+            cache_update_loop(node_client_to_move, rx).await.unwrap();
+        });
+
         let block_v2 = TestBlockBuilder::new().build(rng);
         let block = Block::V2(block_v2);
         let signatures = BlockSignatures::random(rng);
         let block_with_signatures = BlockWithSignatures::new(block.clone(), signatures);
+        let id = casper_types::BlockIdentifier::Height(block.height());
         binary_port_mock
             .add_block_with_signatures(
                 block_with_signatures.clone(),
-                InformationRequest::BlockWithSignatures(None),
+                InformationRequest::BlockWithSignatures(Some(id)),
             )
             .await;
-        //Give some time for inner messages propagation
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(under_test.inner_cached_block().await, None);
-        let got = under_test.read_block_with_signatures(None).await;
+
+        // first call is a persistent-cache miss, consumes the single mock response
+        let got = under_test.read_block_with_signatures(Some(id)).await;
+        assert_eq!(got, Ok(Some(block_with_signatures.clone())));
+
+        // second call must be served entirely from the persistent cache - no mock response left
+        let got = under_test.read_block_with_signatures(Some(id)).await;
         assert_eq!(got, Ok(Some(block_with_signatures)));
         binary_port_mock.verify_no_lingering().await;
     }
 
     #[tokio::test]
-    async fn incoming_sidecar_event_should_trigger_block_fetch() {
-        let (tx, rx) = broadcast::channel(16);
+    async fn binary_port_cache_hit_across_identifier_forms() {
         let rng = &mut TestRng::new();
+        let (_tx, rx) = broadcast::channel(16);
         let binary_port_mock = Arc::new(BinaryPortMock::new());
-        let under_test = Arc::new(CachingNodeClient::new(binary_port_mock.clone()));
+        let (persistent_cache, _dir) = new_persistent_cache(binary_port_mock.clone());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            Some(persistent_cache),
+        ));
         let node_client_to_move = under_test.clone();
         tokio::spawn(async move {
             cache_update_loop(node_client_to_move, rx).await.unwrap();
         });
+
         let block_v2 = TestBlockBuilder::new().build(rng);
         let block = Block::V2(block_v2);
-        let signatures = BlockSignatures::random(rng);
-        let block_with_signatures = BlockWithSignatures::new(block.clone(), signatures);
+        let header = block.clone_header();
+        let height_id = casper_types::BlockIdentifier::Height(block.height());
+        let hash_id = casper_types::BlockIdentifier::Hash(*block.hash());
         binary_port_mock
-            .add_block_with_signatures(
-                block_with_signatures.clone(),
-                InformationRequest::BlockWithSignatures(Some(
-                    casper_types::BlockIdentifier::Height(block.height()),
-                )),
+            .add_block_header_req_res(
+                header.clone(),
+                InformationRequest::BlockHeader(Some(height_id)),
             )
             .await;
+
+        let got = under_test.read_block_header(Some(height_id)).await;
+        assert_eq!(got, Ok(Some(header.clone())));
+
+        // populated via Height, must also be servable via Hash without hitting the mock again
+        let got = under_test.read_block_header(Some(hash_id)).await;
+        assert_eq!(got, Ok(Some(header)));
+        binary_port_mock.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn no_persistent_cache_falls_through_every_time() {
+        let rng = &mut TestRng::new();
+        let (_tx, rx) = broadcast::channel(16);
+        let binary_port_mock = Arc::new(BinaryPortMock::new());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            None::<Arc<HeedBinaryPortCache>>,
+        ));
+        let node_client_to_move = under_test.clone();
+        tokio::spawn(async move {
+            cache_update_loop(node_client_to_move, rx).await.unwrap();
+        });
+
+        let block_v2 = TestBlockBuilder::new().build(rng);
+        let block = Block::V2(block_v2);
+        let header = block.clone_header();
+        let id = casper_types::BlockIdentifier::Height(block.height());
+        for _ in 0..2 {
+            binary_port_mock
+                .add_block_header_req_res(header.clone(), InformationRequest::BlockHeader(Some(id)))
+                .await;
+        }
+
+        assert_eq!(
+            under_test.read_block_header(Some(id)).await,
+            Ok(Some(header.clone()))
+        );
+        assert_eq!(
+            under_test.read_block_header(Some(id)).await,
+            Ok(Some(header))
+        );
+        binary_port_mock.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn transaction_cache_keys_include_finalized_approvals_flag() {
+        let rng = &mut TestRng::new();
+        let (_tx, rx) = broadcast::channel(16);
+        let binary_port_mock = Arc::new(BinaryPortMock::new());
+        let (persistent_cache, _dir) = new_persistent_cache(binary_port_mock.clone());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            Some(persistent_cache),
+        ));
+        let node_client_to_move = under_test.clone();
+        tokio::spawn(async move {
+            cache_update_loop(node_client_to_move, rx).await.unwrap();
+        });
+
+        let transaction = casper_types::Transaction::random(rng);
+        let hash = transaction.hash();
+        let execution_info = casper_types::ExecutionInfo {
+            block_hash: casper_types::BlockHash::random(rng),
+            block_height: rng.r#gen(),
+            execution_result: Some(casper_types::execution::ExecutionResult::random(rng)),
+        };
+        // `TransactionWithExecutionInfo` isn't `Clone`, so build fresh (but equal) instances for
+        // each use from the `Clone`-able `Transaction`/`ExecutionInfo` parts instead.
+        let with_info = || {
+            casper_binary_port::TransactionWithExecutionInfo::new(
+                transaction.clone(),
+                Some(execution_info.clone()),
+            )
+        };
+
+        binary_port_mock
+            .add_transaction_with_execution_info_req_res(
+                with_info(),
+                InformationRequest::Transaction {
+                    hash,
+                    with_finalized_approvals: true,
+                },
+            )
+            .await;
+        binary_port_mock
+            .add_transaction_with_execution_info_req_res(
+                with_info(),
+                InformationRequest::Transaction {
+                    hash,
+                    with_finalized_approvals: false,
+                },
+            )
+            .await;
+
+        let got_true = under_test
+            .read_transaction_with_execution_info(hash, true)
+            .await;
+        assert_eq!(got_true, Ok(Some(with_info())));
+        // different `with_finalized_approvals` value must NOT hit the entry cached above
+        let got_false = under_test
+            .read_transaction_with_execution_info(hash, false)
+            .await;
+        assert_eq!(got_false, Ok(Some(with_info())));
+        binary_port_mock.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn pending_transaction_is_not_cached() {
+        let rng = &mut TestRng::new();
+        let (_tx, rx) = broadcast::channel(16);
+        let binary_port_mock = Arc::new(BinaryPortMock::new());
+        let (persistent_cache, _dir) = new_persistent_cache(binary_port_mock.clone());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            Some(persistent_cache),
+        ));
+        let node_client_to_move = under_test.clone();
+        tokio::spawn(async move {
+            cache_update_loop(node_client_to_move, rx).await.unwrap();
+        });
+
+        let transaction = casper_types::Transaction::random(rng);
+        let hash = transaction.hash();
+        let pending =
+            || casper_binary_port::TransactionWithExecutionInfo::new(transaction.clone(), None);
+
+        for _ in 0..2 {
+            binary_port_mock
+                .add_transaction_with_execution_info_req_res(
+                    pending(),
+                    InformationRequest::Transaction {
+                        hash,
+                        with_finalized_approvals: true,
+                    },
+                )
+                .await;
+        }
+
+        // both calls must hit the mock - a pending (execution_info: None) result is never cached
+        assert_eq!(
+            under_test
+                .read_transaction_with_execution_info(hash, true)
+                .await,
+            Ok(Some(pending()))
+        );
+        assert_eq!(
+            under_test
+                .read_transaction_with_execution_info(hash, true)
+                .await,
+            Ok(Some(pending()))
+        );
+        binary_port_mock.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn sse_block_with_era_end_populates_validators_cache() {
+        let (tx, rx) = broadcast::channel(16);
+        let rng = &mut TestRng::new();
+        let binary_port_mock = Arc::new(BinaryPortMock::new());
+        let (persistent_cache, _dir) = new_persistent_cache(binary_port_mock.clone());
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            Some(persistent_cache.clone()),
+        ));
+        let node_client_to_move = under_test.clone();
+        tokio::spawn(async move {
+            cache_update_loop(node_client_to_move, rx).await.unwrap();
+        });
+
+        let era_id = EraId::from(5);
+        let block_v2 = TestBlockBuilder::new()
+            .switch_block(true)
+            .era(era_id)
+            .height(50)
+            .build(rng);
+        let block = Block::V2(block_v2);
+        let expected_weights = block
+            .clone_era_end()
+            .expect("test block should be a switch block")
+            .next_era_validator_weights()
+            .clone();
         tx.send(SidecarEvent::BlockAdded {
-            block_hash: *block.hash(),
-            height: block.height(),
+            block: Arc::new(block.clone()),
         })
         .unwrap();
-        wait_for_inner_block(under_test.clone()).await;
-        assert_eq!(
-            under_test.inner_cached_block().await,
-            Some(block_with_signatures)
-        );
 
-        binary_port_mock.verify_no_lingering().await;
-    }
-
-    #[tokio::test]
-    async fn none_cache_forces_real_fetch() {
-        let (tx, rx) = broadcast::channel(16);
-        let rng = &mut TestRng::new();
-        let binary_port_mock = Arc::new(BinaryPortMock::new());
-        let under_test = Arc::new(CachingNodeClient::new(binary_port_mock.clone()));
-        let node_client_to_move = under_test.clone();
-        tokio::spawn(async move {
-            cache_update_loop(node_client_to_move, rx).await.unwrap();
-        });
-        let block_v2 = TestBlockBuilder::new().build(rng);
-        let block = Block::V2(block_v2);
-        let signatures = BlockSignatures::random(rng);
-        let block_with_signatures = BlockWithSignatures::new(block.clone(), signatures);
-        binary_port_mock
-            .add_block_with_signatures(
-                block_with_signatures.clone(),
-                InformationRequest::BlockWithSignatures(None),
-            )
-            .await;
-        drop(tx);
-        //Give some time for inner messages propagation
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(under_test.inner_cached_block().await, None);
-        let got = under_test.read_block_with_signatures(None).await;
-        assert_eq!(got, Ok(Some(block_with_signatures)));
-        binary_port_mock.verify_no_lingering().await;
-    }
-
-    async fn wait_for_inner_block(client: Arc<CachingNodeClient<BinaryPortMock>>) {
-        let mut num_of_tries = 5;
-
-        while num_of_tries > 0 {
-            num_of_tries -= 1;
-            if client.inner_cached_block().await.is_some() {
-                break;
+        // the switch block's `next_era_validator_weights` belong to the *following* era
+        let next_era_id = era_id.successor();
+        let mut num_of_tries = 20;
+        loop {
+            match persistent_cache.get_validators(next_era_id).await.unwrap() {
+                crate::binary_port_cache::CacheEnvelope::Have(data) => {
+                    assert_eq!(data.validators, expected_weights);
+                    break;
+                }
+                _ => {
+                    num_of_tries -= 1;
+                    assert!(
+                        num_of_tries > 0,
+                        "expected validators to be cached from the SSE-driven block fetch"
+                    );
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
         }
+
+        binary_port_mock.verify_no_lingering().await;
     }
 }

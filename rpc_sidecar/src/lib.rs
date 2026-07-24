@@ -1,3 +1,4 @@
+mod binary_port_cache;
 mod caching_node_client;
 mod config;
 mod http_server;
@@ -11,6 +12,8 @@ pub mod testing;
 use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Error;
+pub use binary_port_cache::BinaryPortCacheConfig;
+use binary_port_cache::{new_binary_port_cache, prune_loop};
 use caching_node_client::{CachingNodeClient, cache_update_loop};
 use casper_binary_port::{BinaryResponse, Command, CommandHeader, PayloadEntity};
 use casper_event_types::SidecarEvent;
@@ -26,7 +29,7 @@ pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
 use tokio::sync::broadcast::Sender;
-use tracing::error;
+use tracing::{error, warn};
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -43,8 +46,19 @@ pub async fn build_rpc_server<'a>(
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
-    let node_client: Arc<dyn NodeClient> = if main_server_config.enable_block_prefetch {
-        let caching_client = Arc::new(CachingNodeClient::new(node_client));
+    if main_server_config.enable_block_prefetch {
+        warn!(
+            "enable_block_prefetch is no longer supported and has been replaced by the more \
+             general binary_port_cache; this setting now has no effect"
+        );
+    }
+    let binary_port_store = config
+        .binary_port_cache
+        .as_ref()
+        .map(|cfg| new_binary_port_cache(cfg, node_client.clone()))
+        .transpose()?;
+    let node_client: Arc<dyn NodeClient> = if let Some(store) = binary_port_store {
+        let caching_client = Arc::new(CachingNodeClient::new(node_client, Some(store.clone())));
         let cache_loop =
             cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
                 .map(|q| {
@@ -55,6 +69,15 @@ pub async fn build_rpc_server<'a>(
                 })
                 .boxed();
         futures.push(cache_loop);
+        let prune_loop_future = prune_loop(store)
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("binary port cache prune_loop finished with error: {e}");
+                }
+                Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+            })
+            .boxed();
+        futures.push(prune_loop_future);
         caching_client
     } else {
         node_client
@@ -71,18 +94,18 @@ pub async fn build_rpc_server<'a>(
         futures.push(future);
     }
     let speculative_server_config = config.speculative_exec_server;
-    if let Some(config) = speculative_server_config {
-        if config.enable_server {
-            let future = run_speculative_exec(config, node_client)
-                .map(|q| {
-                    if let Err(e) = q {
-                        error!("Rpc speculative server finished with error: {e}");
-                    }
-                    Ok(ExitCode::SUCCESS)
-                })
-                .boxed();
-            futures.push(future);
-        }
+    if let Some(config) = speculative_server_config
+        && config.enable_server
+    {
+        let future = run_speculative_exec(config, node_client)
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("Rpc speculative server finished with error: {e}");
+                }
+                Ok(ExitCode::SUCCESS)
+            })
+            .boxed();
+        futures.push(future);
     }
     let reconnect_loop = reconnect_loop
         .map(|q| {

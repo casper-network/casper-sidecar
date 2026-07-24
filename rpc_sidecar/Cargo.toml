@@ -24,9 +24,13 @@ datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 derive-new = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
+# Pinned: 0.22.1 uses the unstable `unsigned_is_multiple_of` feature, requiring a newer rustc
+# than this workspace's MSRV.
+heed = { version = "=0.22.0", default-features = false }
 http = "0.2"
 hyper = "0.14"
 metrics = { workspace = true }
+num-rational = { version = "0.4", default-features = false, features = ["serde"] }
 num-traits = { version = "0.2", default-features = false }
 portpicker = "0.1"
 rand = { workspace = true }
@@ -40,6 +44,7 @@ serde-map-to-array = "1.1"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.6", features = ["codec"] }
+toml = { workspace = true }
 tracing = { workspace = true, default-features = true }
 warp = { workspace = true, features = ["compression"] }
 
@@ -59,7 +64,9 @@ jsonschema = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
-vergen = { version = "9", features = ["build", "cargo", "rustc"] }
+# Pinned: 9.1.0 bumps vergen's own dependency on vergen-lib to 9.1.0, which conflicts with
+# vergen-gitcl 1.0.8's dependency on vergen-lib 0.1.6 (two incompatible `Add` trait impls).
+vergen = { version = "=9.0.6", features = ["build", "cargo", "rustc"] }
 vergen-gitcl = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
 
 [features]

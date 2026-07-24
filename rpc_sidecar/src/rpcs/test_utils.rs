@@ -167,6 +167,28 @@ impl BinaryPortMock {
         self.when_then(req, res).await;
     }
 
+    pub async fn add_chainspec_req_res(&self, chainspec_bytes: casper_types::ChainspecRawBytes) {
+        let get_request = InformationRequest::ChainspecRawBytes
+            .try_into()
+            .expect("should create request");
+        let req = Command::Get(get_request);
+        let res = BinaryResponse::from_option(Some(chainspec_bytes));
+        self.when_then(req, res).await;
+    }
+
+    pub async fn add_transaction_with_execution_info_req_res(
+        &self,
+        transaction_with_execution_info: casper_binary_port::TransactionWithExecutionInfo,
+        information_request: InformationRequest,
+    ) {
+        let get_request = information_request
+            .try_into()
+            .expect("should create request");
+        let req = Command::Get(get_request);
+        let res = BinaryResponse::from_option(Some(transaction_with_execution_info));
+        self.when_then(req, res).await;
+    }
+
     pub async fn when_then(&self, when: Command, then: BinaryResponse) {
         let payload = when.to_bytes().unwrap();
         let response_and_request = BinaryResponseAndRequest::new(then, payload.into());

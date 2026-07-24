@@ -959,7 +959,7 @@ impl<T> Notify<T> {
         })
     }
 
-    fn notified(&self) -> Notified {
+    fn notified(&self) -> Notified<'_> {
         self.inner.notified()
     }
 
@@ -1374,7 +1374,7 @@ where
     T: std::error::Error,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut opt_source: Option<&(dyn std::error::Error)> = Some(self.0);
+        let mut opt_source: Option<&dyn std::error::Error> = Some(self.0);
 
         while let Some(source) = opt_source {
             write!(f, "{source}")?;

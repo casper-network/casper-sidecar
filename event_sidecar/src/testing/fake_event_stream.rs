@@ -436,7 +436,7 @@ async fn do_stream(
             )
             .await;
         }
-        if era_counter % 2 == 0 {
+        if era_counter.is_multiple_of(2) {
             events_sender
                 .send(transaction_expired_events.pop().unwrap())
                 .await
