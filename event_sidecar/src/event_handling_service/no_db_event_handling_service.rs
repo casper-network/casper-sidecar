@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     Fault, FinalitySignature, Step, TransactionAccepted, TransactionProcessed,
     event_handling_service::handle_database_save_result, transaction_hash_to_identifier,
@@ -27,6 +29,12 @@ pub struct NoDbEventHandlingService {
 #[async_trait]
 impl EventHandlingService for NoDbEventHandlingService {
     async fn handle_api_version(&self, version: ProtocolVersion, filter: Filter) {
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case
+            let _ = sender.send(SidecarEvent::ApiVersion(version));
+        }
         if let Err(error) = self
             .outbound_sse_data_sender
             .send((SseData::ApiVersion(version), Some(filter)))
@@ -45,7 +53,7 @@ impl EventHandlingService for NoDbEventHandlingService {
     async fn handle_block_added(
         &self,
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Arc<Block>,
         sse_event: SseEvent,
     ) {
         if self.enable_event_logging {
@@ -58,10 +66,7 @@ impl EventHandlingService for NoDbEventHandlingService {
             // `send` will return error if there is no receiving party. But we treat this
             // Sender as an event bus, so having no receiver is normal and we should muffle
             // the error since there's really nothing to do in that case
-            let _ = sender.send(SidecarEvent::BlockAdded {
-                block_hash,
-                height: block.height(),
-            });
+            let _ = sender.send(SidecarEvent::BlockAdded { block });
         }
         handle_database_save_result(
             "BlockAdded",
@@ -134,6 +139,16 @@ impl EventHandlingService for NoDbEventHandlingService {
         if messages_len > 0 {
             observe_contract_messages("all", messages_len);
         }
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case
+            let _ = sender.send(SidecarEvent::TransactionProcessed {
+                transaction_hash: *transaction_processed.transaction_hash(),
+                block_hash: *transaction_processed.block_hash(),
+                execution_result: Arc::new(transaction_processed.execution_result().clone()),
+            });
+        }
         handle_database_save_result(
             "TransactionProcessed",
             &entity_identifier,
@@ -199,6 +214,14 @@ impl EventHandlingService for NoDbEventHandlingService {
             );
         }
         let filter = sse_event.inbound_filter;
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case
+            let _ = sender.send(SidecarEvent::FinalitySignature(Box::new(
+                finality_signature.inner(),
+            )));
+        }
         handle_database_save_result(
             "FinalitySignature",
             "",

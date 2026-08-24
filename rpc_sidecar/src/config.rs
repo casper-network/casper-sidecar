@@ -16,7 +16,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::SpeculativeExecConfig;
+use crate::{BinaryPortCacheConfig, SpeculativeExecConfig};
 
 /// Default binding address for the JSON-RPC HTTP server.
 ///
@@ -57,6 +57,9 @@ pub struct RpcServerConfig {
     pub main_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,
     pub node_client: NodeClientConfig,
+    /// Configuration for the persistent, LMDB-backed binary port cache. Disabled when absent.
+    #[serde(default)]
+    pub binary_port_cache: Option<BinaryPortCacheConfig>,
 }
 
 impl RpcServerConfig {
@@ -66,6 +69,7 @@ impl RpcServerConfig {
             main_server: RpcConfig::test_default(),
             speculative_exec_server: None,
             node_client: NodeClientConfig::test_default(),
+            binary_port_cache: None,
         }
     }
 }
@@ -101,8 +105,7 @@ pub struct RpcConfig {
     pub default_limit_period: TimeDiff,
     /// Limits; key is RPC method name.
     pub limits: Option<HashMap<String, ConfigLimit>>,
-    /// If set to true, sidecar will prefetch and cache in-memory the latest block info for `chain_get_block`. The node
-    /// reacts to the sses observance of `BlockAdded` sse event. If sse is not set-up, setting this flag to "true" will have no effect.
+    /// This functionality is deprecated, the property will be removed in next major release
     #[serde(default = "default_enable_block_prefetch")]
     pub enable_block_prefetch: bool,
     /// Maximum number of blocks an Ethereum log query can scan in a single request or catch-up range.
@@ -144,6 +147,9 @@ impl RpcConfig {
 const DEFAULT_NODE_CONNECT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 #[cfg(any(feature = "testing", test))]
 const DEFAULT_NODE_CONNECT_PORT: u16 = 28104;
+/// Default REST API port of the node, used to fetch node status over HTTP.
+#[cfg(any(feature = "testing", test))]
+const DEFAULT_NODE_CONNECT_REST_PORT: u16 = 8888;
 /// Default maximum payload size.
 #[cfg(any(feature = "testing", test))]
 const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
@@ -178,6 +184,8 @@ pub struct NodeClientConfig {
     pub ip_address: IpAddr,
     /// Port of the node.
     pub port: u16,
+    /// Port of the node's REST API.
+    pub rest_port: u16,
     /// Maximum size of a message in bytes.
     pub max_message_size_bytes: u32,
     /// Message transfer timeout in seconds.
@@ -197,6 +205,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
             port: DEFAULT_NODE_CONNECT_PORT,
+            rest_port: DEFAULT_NODE_CONNECT_REST_PORT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
@@ -218,6 +227,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: localhost,
             port,
+            rest_port: DEFAULT_NODE_CONNECT_REST_PORT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,
@@ -240,6 +250,7 @@ impl NodeClientConfig {
         NodeClientConfig {
             ip_address: localhost,
             port,
+            rest_port: DEFAULT_NODE_CONNECT_REST_PORT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
             client_access_timeout_secs: DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS,

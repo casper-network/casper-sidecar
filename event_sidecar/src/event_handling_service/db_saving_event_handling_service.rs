@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     BlockAdded, Fault, FinalitySignature, Step, TransactionAccepted, TransactionExpired,
     TransactionProcessed,
@@ -34,6 +36,12 @@ where
     Db: DatabaseReader + DatabaseWriter + Clone + Send + Sync + 'static,
 {
     async fn handle_api_version(&self, version: ProtocolVersion, filter: Filter) {
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case
+            let _ = sender.send(SidecarEvent::ApiVersion(version));
+        }
         if let Err(error) = self
             .outbound_sse_data_sender
             .send((SseData::ApiVersion(version), Some(filter)))
@@ -52,7 +60,7 @@ where
     async fn handle_block_added(
         &self,
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Arc<Block>,
         sse_event: SseEvent,
     ) {
         if self.enable_event_logging {
@@ -65,24 +73,23 @@ where
         let api_version = sse_event.api_version;
         let network_name = sse_event.network_name;
         let filter = sse_event.inbound_filter;
-        let height = block.height();
         let res = self
             .database
             .save_block_added(
-                BlockAdded::new(block_hash, block), //TODO maybe we could avoid these clones
+                BlockAdded::new(block_hash, block.clone()),
                 id,
                 source,
                 api_version,
                 network_name,
             )
             .await;
-        if res.is_ok() {
-            if let Some(sender) = self.sidecar_event_sender.as_ref() {
-                // `send` will return error if there is no receiving party. But we treat this
-                // Sender as an event bus, so having no receiver is normal and we should muffle
-                // the error since there's really nothing to do in that case
-                let _ = sender.send(SidecarEvent::BlockAdded { block_hash, height });
-            }
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case.
+            let _ = sender.send(SidecarEvent::BlockAdded {
+                block: block.clone(),
+            });
         }
         handle_database_save_result(
             "BlockAdded",
@@ -181,6 +188,9 @@ where
         if messages_len > 0 {
             observe_contract_messages("all", messages_len);
         }
+        let transaction_hash = *transaction_processed.transaction_hash();
+        let block_hash = *transaction_processed.block_hash();
+        let execution_result = Arc::new(transaction_processed.execution_result().clone());
         let res = self
             .database
             .save_transaction_processed(
@@ -193,6 +203,16 @@ where
             .await;
         if res.is_ok() && messages_len > 0 {
             observe_contract_messages("unique", messages_len);
+        }
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case.
+            let _ = sender.send(SidecarEvent::TransactionProcessed {
+                transaction_hash,
+                block_hash,
+                execution_result,
+            });
         }
         handle_database_save_result(
             "TransactionProcessed",
@@ -290,6 +310,14 @@ where
                 network_name,
             )
             .await;
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case.
+            let _ = sender.send(SidecarEvent::FinalitySignature(Box::new(
+                finality_signature.inner(),
+            )));
+        }
         handle_database_save_result(
             "FinalitySignature",
             "",

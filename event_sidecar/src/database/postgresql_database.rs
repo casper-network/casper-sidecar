@@ -73,21 +73,25 @@ impl PostgreSqlDatabase {
                 Ok(()) => {
                     let insert_version_stmt = tables::migration::create_insert_stmt(version, true)?
                         .to_string(PostgresQueryBuilder);
-                    db_connection.execute(insert_version_stmt.as_str()).await?;
+                    db_connection
+                        .execute(sqlx::AssertSqlSafe(insert_version_stmt))
+                        .await?;
                     Ok(())
                 }
                 Err(e) => {
                     let insert_version_stmt =
                         tables::migration::create_insert_stmt(version, false)?
                             .to_string(PostgresQueryBuilder);
-                    db_connection.execute(insert_version_stmt.as_str()).await?;
+                    db_connection
+                        .execute(sqlx::AssertSqlSafe(insert_version_stmt))
+                        .await?;
                     Err(e)
                 }
             },
         }
     }
 
-    pub async fn get_transaction(&self) -> Result<Transaction<Postgres>, sqlx::Error> {
+    pub async fn get_transaction(&self) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
         self.connection_pool.begin().await
     }
 }

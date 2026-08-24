@@ -10,9 +10,14 @@ pub mod sse_data;
 #[cfg(any(feature = "sse-data-testing", test))]
 mod testing;
 
-use std::{str::FromStr, sync::LazyLock};
+use std::{
+    str::FromStr,
+    sync::{Arc, LazyLock},
+};
 
-use casper_types::{BlockHash, ProtocolVersion};
+use casper_types::{
+    Block, BlockHash, FinalitySignature, ProtocolVersion, TransactionHash, execution::ExecutionResult,
+};
 
 pub use filter::Filter;
 
@@ -25,5 +30,14 @@ pub static SIDECAR_VERSION: LazyLock<ProtocolVersion> = LazyLock::new(|| {
 
 #[derive(Debug, Clone)]
 pub enum SidecarEvent {
-    BlockAdded { block_hash: BlockHash, height: u64 },
+    ApiVersion(ProtocolVersion),
+    BlockAdded {
+        block: Arc<Block>,
+    },
+    FinalitySignature(Box<FinalitySignature>),
+    TransactionProcessed {
+        transaction_hash: TransactionHash,
+        block_hash: BlockHash,
+        execution_result: Arc<ExecutionResult>,
+    },
 }

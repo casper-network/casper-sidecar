@@ -98,6 +98,8 @@ storage_path = "/var/lib/casper-sidecar"
 
 The DB setup is described [here](../README#database-connectivity-setup).
 
+If the RPC server's persistent binary port cache is enabled, it stores an LMDB environment at `rpc_server.binary_port_cache.path`, separate from the storage above. This cache is disabled by default; see [Persistent binary port cache](../README.md#persistent-binary-port-cache) for setup and disk usage details.
+
 ## OpenAPI Specification
 
 An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`.

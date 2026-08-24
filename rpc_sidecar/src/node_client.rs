@@ -13,18 +13,19 @@ use casper_binary_port::{
     ValueWithProof,
 };
 use casper_types::{
-    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
-    ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key, KeyTag, Package, Peers,
-    PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
+    BlockWithSignatures, ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key,
+    KeyTag, Package, Peers, PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
+    execution::ExecutionResult,
     system::auction::DelegatorKind,
 };
 use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{
     inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
 };
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, de::DeserializeOwned};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
@@ -233,6 +234,18 @@ pub trait NodeClient: Send + Sync {
         parse_response::<TransactionWithExecutionInfo>(&resp.into())
     }
 
+    async fn read_transaction_execution_result(
+        &self,
+        hash: TransactionHash,
+    ) -> Result<Option<ExecutionResult>, Error> {
+        let with_info = self
+            .read_transaction_with_execution_info(hash, false)
+            .await?;
+        Ok(with_info
+            .and_then(|transaction| transaction.into_inner().1)
+            .and_then(|execution_info| execution_info.execution_result))
+    }
+
     async fn read_peers(&self) -> Result<Peers, Error> {
         let resp = self.read_info(InformationRequest::Peers).await?;
         parse_response::<Peers>(&resp.into())?.ok_or(Error::EmptyEnvelope)
@@ -269,6 +282,13 @@ pub trait NodeClient: Send + Sync {
     async fn read_node_status(&self) -> Result<NodeStatus, Error> {
         let resp = self.read_info(InformationRequest::NodeStatus).await?;
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Reads node status from the node's REST API (`GET /status`) rather than the binary port.
+    /// Only implementors backed by an actual node connection can serve this; the default
+    /// implementation reports the request as unsupported.
+    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
+        Err(Error::UnsupportedRequest)
     }
 
     async fn read_reward(
@@ -335,6 +355,16 @@ pub trait NodeClient: Send + Sync {
             ),
         }
     }
+}
+
+/// The subset of fields read from the node's REST `/status` endpoint response that's needed to
+/// determine sync progress. The endpoint returns additional fields (build version, peers, etc.)
+/// which are deliberately ignored here.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct RestNodeStatus {
+    pub reactor_state: String,
+    pub available_block_range: AvailableBlockRange,
+    pub block_sync: BlockSynchronizerStatus,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -600,6 +630,87 @@ pub enum InvalidTransactionOrDeploy {
     InvalidMinimumDelegationAmount,
     #[error("Insufficient amount arg value")]
     InsufficientAmountArgValue,
+    /// The function needed to execute this request is disabled on the node.
+    #[error("this function is disabled")]
+    FunctionDisabled,
+    /// The node could not find the requested data.
+    #[error("data not found")]
+    NotFound,
+    /// The node could not find the requested state root.
+    #[error("root not found")]
+    RootNotFound,
+    /// The item variant requested from global state was invalid.
+    #[error("invalid item variant")]
+    InvalidItemVariant,
+    /// Preprocessing the wasm bytes of the transaction failed.
+    #[error("wasm preprocessing")]
+    WasmPreprocessing,
+    /// The node encountered an internal error while handling the request.
+    #[error("internal error")]
+    InternalError,
+    /// The node's query failed.
+    #[error("the query failed")]
+    FailedQuery,
+    /// The request sent to the node was malformed.
+    #[error("bad request")]
+    BadRequest,
+    /// The node received an unsupported type of request.
+    #[error("unsupported request")]
+    UnsupportedRequest,
+    /// The node could not find the requested dictionary URef.
+    #[error("dictionary URef not found")]
+    DictionaryURefNotFound,
+    /// The node has no complete blocks.
+    #[error("no complete blocks")]
+    NoCompleteBlocks,
+    /// The switch block for the requested era was not found.
+    #[error("the switch block for the requested era was not found")]
+    SwitchBlockNotFound,
+    /// The parent of the switch block for the requested era was not found.
+    #[error("the parent of the switch block for the requested era was not found")]
+    SwitchBlockParentNotFound,
+    /// The node cannot serve rewards stored in the V1 format.
+    #[error("cannot serve rewards stored in V1 format")]
+    UnsupportedRewardsV1Request,
+    /// The binary protocol header version sent by the client didn't match the node's.
+    #[error("binary request header versions mismatch")]
+    CommandHeaderVersionMismatch,
+    /// The gas price tolerance of the transaction was too low.
+    #[error("gas price tolerance too low")]
+    GasPriceToleranceTooLow,
+    /// A V1 transaction was received where speculative execution expected a deploy.
+    #[error("received v1 transaction for speculative execution")]
+    ReceivedV1Transaction,
+    /// The purse requested by the given identifier was not found.
+    #[error("purse was not found for given identifier")]
+    PurseNotFound,
+    /// The request was throttled by the node.
+    #[error("request was throttled")]
+    RequestThrottled,
+    /// The transfer record key in the request was malformed.
+    #[error("malformed transfer record key")]
+    TransferRecordMalformedKey,
+    /// The information request sent to the node was malformed.
+    #[error("malformed information request")]
+    MalformedInformationRequest,
+    /// The binary request header didn't contain enough bytes to read its version.
+    #[error("not enough bytes to read version of the binary request header")]
+    TooLittleBytesForRequestHeaderVersion,
+    /// The command header version in the request was malformed.
+    #[error("malformed command header version")]
+    MalformedCommandHeaderVersion,
+    /// The command header in the request was malformed.
+    #[error("malformed command header")]
+    MalformedCommandHeader,
+    /// The command in the request was malformed.
+    #[error("malformed command")]
+    MalformedCommand,
+    /// The transaction could not be serialized into its binary representation.
+    #[error("transaction has malformed binary representation")]
+    TransactionHasMalformedBinaryRepresentation,
+    /// The transaction's invocation target is unsupported under the V2 runtime.
+    #[error("the transaction invocation target is unsupported under V2 runtime")]
+    UnsupportedInvocationTarget,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -762,6 +873,37 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidMaximumDelegationAmount => Self::InvalidMaximumDelegationAmount,
             ErrorCode::InvalidMinimumDelegationAmount => Self::InvalidMinimumDelegationAmount,
             ErrorCode::InsufficientAmountArgValue => Self::InsufficientAmountArgValue,
+            ErrorCode::FunctionDisabled => Self::FunctionDisabled,
+            ErrorCode::NotFound => Self::NotFound,
+            ErrorCode::RootNotFound => Self::RootNotFound,
+            ErrorCode::InvalidItemVariant => Self::InvalidItemVariant,
+            ErrorCode::WasmPreprocessing => Self::WasmPreprocessing,
+            ErrorCode::InternalError => Self::InternalError,
+            ErrorCode::FailedQuery => Self::FailedQuery,
+            ErrorCode::BadRequest => Self::BadRequest,
+            ErrorCode::UnsupportedRequest => Self::UnsupportedRequest,
+            ErrorCode::DictionaryURefNotFound => Self::DictionaryURefNotFound,
+            ErrorCode::NoCompleteBlocks => Self::NoCompleteBlocks,
+            ErrorCode::SwitchBlockNotFound => Self::SwitchBlockNotFound,
+            ErrorCode::SwitchBlockParentNotFound => Self::SwitchBlockParentNotFound,
+            ErrorCode::UnsupportedRewardsV1Request => Self::UnsupportedRewardsV1Request,
+            ErrorCode::CommandHeaderVersionMismatch => Self::CommandHeaderVersionMismatch,
+            ErrorCode::GasPriceToleranceTooLow => Self::GasPriceToleranceTooLow,
+            ErrorCode::ReceivedV1Transaction => Self::ReceivedV1Transaction,
+            ErrorCode::PurseNotFound => Self::PurseNotFound,
+            ErrorCode::RequestThrottled => Self::RequestThrottled,
+            ErrorCode::TransferRecordMalformedKey => Self::TransferRecordMalformedKey,
+            ErrorCode::MalformedInformationRequest => Self::MalformedInformationRequest,
+            ErrorCode::TooLittleBytesForRequestHeaderVersion => {
+                Self::TooLittleBytesForRequestHeaderVersion
+            }
+            ErrorCode::MalformedCommandHeaderVersion => Self::MalformedCommandHeaderVersion,
+            ErrorCode::MalformedCommandHeader => Self::MalformedCommandHeader,
+            ErrorCode::MalformedCommand => Self::MalformedCommand,
+            ErrorCode::TransactionHasMalformedBinaryRepresentation => {
+                Self::TransactionHasMalformedBinaryRepresentation
+            }
+            ErrorCode::UnsupportedInvocationTarget => Self::UnsupportedInvocationTarget,
             _ => Self::TransactionOrDeployUnspecified,
         }
     }
@@ -847,6 +989,8 @@ pub enum Error {
     TransactionHasMalformedBinaryRepresentation,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget,
+    #[error("node REST status request failed: {0}")]
+    RestRequestFailed(String),
 }
 
 impl Error {
@@ -1314,6 +1458,22 @@ impl NodeClient for FramedNodeClient {
             }
         }
         result
+    }
+
+    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
+        let url = format!(
+            "http://{}:{}/status",
+            self.config.ip_address, self.config.rest_port
+        );
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))?
+            .error_for_status()
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))?;
+        response
+            .json::<RestNodeStatus>()
+            .await
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))
     }
 }
 

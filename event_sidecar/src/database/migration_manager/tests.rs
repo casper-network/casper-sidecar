@@ -327,7 +327,10 @@ impl MigrationScriptExecutor for InsertValuesInTableScript {
     ) -> Result<(), DatabaseWriteError> {
         let values_sql_part = self.values.iter().map(|el| format!("({})", el)).join(",");
         transaction
-            .execute(format!("INSERT INTO {} VALUES {}", self.table_name, values_sql_part).as_str())
+            .execute(format!(
+                "INSERT INTO {} VALUES {}",
+                self.table_name, values_sql_part
+            ))
             .await
     }
 }
@@ -340,6 +343,6 @@ impl MigrationScriptExecutor for FailingScript {
         &self,
         transaction: Arc<dyn TransactionWrapper>,
     ) -> Result<(), DatabaseWriteError> {
-        transaction.execute("CREATE TAB").await
+        transaction.execute("CREATE TAB".to_string()).await
     }
 }

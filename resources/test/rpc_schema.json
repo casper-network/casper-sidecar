@@ -2067,6 +2067,35 @@
       ]
     },
     {
+      "name": "eth_syncing",
+      "summary": "returns `false` if the node has caught up to the tip of the chain, or an object describing sync progress otherwise",
+      "params": [],
+      "result": {
+        "name": "eth_syncing_result",
+        "schema": {
+          "description": "`eth_syncing` result: `false` once the node has caught up to tip, otherwise sync progress.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/components/schemas/SyncingStatus"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_syncing_example",
+          "params": [],
+          "result": {
+            "name": "eth_syncing_example_result",
+            "value": false
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getBlockByHash",
       "summary": "returns an Ethereum-compatible block by hash",
       "params": [
@@ -10224,6 +10253,42 @@
             ]
           }
         ]
+      },
+      "SyncingStatus": {
+        "description": "Sync progress reported while the node has not yet caught up to the tip of the chain.",
+        "type": "object",
+        "required": [
+          "currentBlock",
+          "highestBlock",
+          "startingBlock"
+        ],
+        "properties": {
+          "startingBlock": {
+            "description": "Height of the lowest block held contiguously by this node.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              }
+            ]
+          },
+          "currentBlock": {
+            "description": "Height of the highest block held contiguously by this node.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              }
+            ]
+          },
+          "highestBlock": {
+            "description": "Height of the highest block this node is aware of, whether or not it holds it yet.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "EvmHash": {
         "description": "A 32-byte EVM hash encoded as 0x-prefixed hexadecimal.",

@@ -1,5 +1,5 @@
 use super::PostgreSqlDatabase;
-use crate::{database::types::DDLConfiguration, database_writer_implementation};
+use crate::database::types::DDLConfiguration;
 use sea_query::PostgresQueryBuilder;
 #[cfg(test)]
 use sqlx::postgres::PgRow;
@@ -18,7 +18,7 @@ database_writer_implementation!(
 impl PostgreSqlDatabase {
     pub async fn fetch_one(&self, sql: &str) -> PgRow {
         self.connection_pool
-            .fetch_one(sql)
+            .fetch_one(sqlx::AssertSqlSafe(sql))
             .await
             .expect("Error executing provided SQL")
     }

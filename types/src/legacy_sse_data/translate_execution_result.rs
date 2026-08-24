@@ -85,7 +85,7 @@ impl ExecutionEffectsTranslator for DefaultExecutionEffectsTranslator {
 }
 
 fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
-    let maybe_transform_kind = match ex_ef.kind() {
+    match ex_ef.kind() {
         TransformKindV2::Identity => Some(TransformKindV1::Identity),
         TransformKindV2::Write(stored_value) => maybe_tanslate_stored_value(stored_value),
         TransformKindV2::AddInt32(v) => Some(TransformKindV1::AddInt32(*v)),
@@ -99,8 +99,7 @@ fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
             Some(TransformKindV1::Identity)
         }
         TransformKindV2::Failure(err) => Some(TransformKindV1::Failure(err.to_string())),
-    };
-    maybe_transform_kind
+    }
 }
 
 fn handle_named_keys(keys: &NamedKeys) -> TransformKindV1 {

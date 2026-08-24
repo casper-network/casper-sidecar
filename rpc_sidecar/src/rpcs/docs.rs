@@ -31,7 +31,7 @@ use super::{
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
-        UninstallFilter as EthUninstallFilter,
+        Syncing as EthSyncing, UninstallFilter as EthUninstallFilter,
     },
     info::{
         GetChainspec, GetDeploy, GetPeers, GetReward, GetStatus, GetTransaction,
@@ -129,6 +129,10 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
         "returns historical EVM base fees, gas usage ratios, and priority-fee rewards",
     );
     schema.push_without_params::<EthBlockNumber>("returns the latest block height");
+    schema.push_without_params::<EthSyncing>(
+        "returns `false` if the node has caught up to the tip of the chain, or an object \
+        describing sync progress otherwise",
+    );
     schema.push_with_params::<EthGetBlockByHash>("returns an Ethereum-compatible block by hash");
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
     schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");

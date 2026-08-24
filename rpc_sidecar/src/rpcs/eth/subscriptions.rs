@@ -493,7 +493,8 @@ async fn run_log_subscription(
         tokio::select! {
             event = sidecar_event_receiver.recv() => {
                 match event {
-                    Ok(SidecarEvent::BlockAdded { height, .. }) => {
+                    Ok(SidecarEvent::BlockAdded { block }) => {
+                        let height = block.height();
                         info!(
                             subscription_id,
                             event_height = height,
@@ -620,6 +621,7 @@ async fn run_log_subscription(
                         );
                         break;
                     }
+                    Ok(_) => {}
                 }
             }
         }

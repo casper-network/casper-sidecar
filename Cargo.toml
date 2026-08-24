@@ -14,11 +14,11 @@ members = [
 anyhow = "1"
 async-stream = "0.3"
 async-trait = "0.1"
-casper-types= { git = "https://github.com/casper-network/casper-node.git", branch="feat-evm", features = [
+casper-types= { git = "https://github.com/mpapierski/casper-node.git", branch="evm-align-evm-value-and-fee-accounting", features = [
     "json-schema",
     "std",
 ] }
-casper-binary-port = { git = "https://github.com/casper-network/casper-node.git", branch="feat-evm" }
+casper-binary-port = { git = "https://github.com/mpapierski/casper-node.git", branch="evm-align-evm-value-and-fee-accounting" }
 
 casper-event-listener = { path = "./listener", version = "2" }
 casper-event-sidecar = { path = "./event_sidecar", version = "2" }

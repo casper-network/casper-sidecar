@@ -59,7 +59,7 @@ macro_rules! database_reader_implementation {
                     .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|maybe_row| match maybe_row {
@@ -135,7 +135,7 @@ macro_rules! database_reader_implementation {
                 .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|maybe_row| match maybe_row {
@@ -164,7 +164,7 @@ macro_rules! database_reader_implementation {
                 .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|maybe_row| match maybe_row {
@@ -193,7 +193,7 @@ macro_rules! database_reader_implementation {
                 .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|maybe_row| match maybe_row {
@@ -219,7 +219,7 @@ macro_rules! database_reader_implementation {
                         .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_all(stmt.as_str())
+                    .fetch_all(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(parse_faults_from_rows)
@@ -235,7 +235,7 @@ macro_rules! database_reader_implementation {
                     .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_all(stmt.as_str())
+                    .fetch_all(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(parse_faults_from_rows)
@@ -254,7 +254,7 @@ macro_rules! database_reader_implementation {
                     .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_all(stmt.as_str())
+                    .fetch_all(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(parse_finality_signatures_from_rows)
@@ -270,7 +270,7 @@ macro_rules! database_reader_implementation {
                     tables::step::create_get_by_era_stmt(era).to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|maybe_row| match maybe_row {
@@ -291,7 +291,7 @@ macro_rules! database_reader_implementation {
                 let stmt = tables::event_log::count().to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_one(stmt.as_str())
+                    .fetch_one(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(|row| {
@@ -310,7 +310,7 @@ macro_rules! database_reader_implementation {
                     .to_string($query_materializer_expr);
 
                 db_connection
-                    .fetch_optional(stmt.as_str())
+                    .fetch_optional(sqlx::AssertSqlSafe(stmt))
                     .await
                     .map_err(|sql_err| DatabaseReadError::Unhandled(Error::from(sql_err)))
                     .and_then(parse_migration_row)

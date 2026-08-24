@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use super::{
     super::NodeClient,
     eth_u256::EthU256,
-    projection::{LogResponse, evm_hash_to_block_hash, project_block},
+    projection::{LogResponse, evm_hash_to_block_hash, project_block_logs},
     types::{BlockNumberParam, EthAddress, invalid_params, parse_positional_params},
 };
 use crate::rpcs::docs::DocExample;
@@ -281,14 +281,10 @@ async fn logs_for_block(
     identifier: Option<BlockIdentifier>,
     filter: &LogFilter,
 ) -> Result<Vec<LogResponse>, RpcError> {
-    let Some(projected_block) = project_block(node_client, identifier, false).await? else {
+    let Some(logs) = project_block_logs(node_client, identifier).await? else {
         return Ok(Vec::new());
     };
-    Ok(projected_block
-        .logs()
-        .filter(|log| filter.matches(log))
-        .cloned()
-        .collect())
+    Ok(logs.into_iter().filter(|log| filter.matches(log)).collect())
 }
 
 #[derive(Clone, Debug)]

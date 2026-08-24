@@ -26,6 +26,7 @@ default_limit_period = "1s"
 [rpc_server.node_client]
 ip_address = "0.0.0.0"
 port = 28102
+rest_port = 14101
 max_message_size_bytes = 134_217_728
 message_timeout_secs = 10
 client_access_timeout_secs = 10
@@ -36,6 +37,21 @@ initial_delay_ms = 1000
 max_delay_ms = 32000
 coefficient = 2
 max_attempts = 30
+
+# ====================================================================
+# Configuration options for the persistent (LMDB-backed) binary port
+# cache. Disabled by default - uncomment to enable. Caches immutable,
+# identifier-addressed historical data (block headers, blocks with
+# signatures, transactions with execution info) fetched over the
+# node's binary port, surviving sidecar restarts.
+# ====================================================================
+# [rpc_server.binary_port_cache]
+# Directory backing the LMDB environment. Created on startup if missing.
+# path = '/var/lib/casper-sidecar/binary_port_cache'
+#
+# Upper bound (bytes) on the LMDB environment size (map_size). This is a
+# hard ceiling fixed at startup and is not grown automatically.
+# max_size_bytes = 536_870_912
 
 [sse_server]
 enable_server = true

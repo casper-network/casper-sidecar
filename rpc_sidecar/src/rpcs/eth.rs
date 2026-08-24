@@ -26,6 +26,7 @@ mod new_filter;
 mod projection;
 mod send_raw_transaction;
 mod subscriptions;
+mod syncing;
 mod transaction_response;
 mod types;
 mod uninstall_filter;
@@ -56,5 +57,6 @@ pub use send_raw_transaction::SendRawTransaction;
 pub(crate) use subscriptions::{
     SUBSCRIBE_METHOD, UNSUBSCRIBE_METHOD, WebSocketOriginPolicy, websocket_route,
 };
+pub use syncing::Syncing;
 pub use uninstall_filter::UninstallFilter;
 pub use web3_client_version::ClientVersion;

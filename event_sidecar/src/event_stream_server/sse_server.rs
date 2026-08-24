@@ -332,13 +332,13 @@ pub(super) fn get_filter(
 ///
 /// If `query` is not empty, returns a 422 response if `query` doesn't have exactly one entry,
 /// "starts_from" mapped to a value representing an event ID.
-fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
+fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Box<Response>> {
     if query.is_empty() {
         return Ok(None);
     }
 
     if query.len() > 1 {
-        return Err(create_422());
+        return Err(Box::new(create_422()));
     }
 
     match query
@@ -346,7 +346,7 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
         .and_then(|id_str| id_str.parse::<Id>().ok())
     {
         Some(id) => Ok(Some(id)),
-        None => Err(create_422()),
+        None => Err(Box::new(create_422())),
     }
 }
 
@@ -411,7 +411,7 @@ fn serve_sse_response_handler(
     let (event_filter, stream_filter, start_from, is_legacy_filter) =
         match parse_url_props(maybe_path_param, query, enable_legacy_filters) {
             Ok(value) => value,
-            Err(error_response) => return error_response,
+            Err(error_response) => return *error_response,
         };
 
     // Create a channel for the client's handler to receive the stream of initial events.
@@ -450,15 +450,15 @@ fn parse_url_props(
     maybe_path_param: Option<String>,
     query: HashMap<String, String>,
     enable_legacy_filters: bool,
-) -> Result<UrlProps, http::Response<Body>> {
+) -> Result<UrlProps, Box<http::Response<Body>>> {
     let path_param = maybe_path_param.unwrap_or_else(|| SSE_API_ROOT_PATH.to_string());
     let Some((event_filter, is_legacy_filter)) =
         get_filter(path_param.as_str(), enable_legacy_filters)
     else {
-        return Err(create_404(enable_legacy_filters));
+        return Err(Box::new(create_404(enable_legacy_filters)));
     };
     let Some(stream_filter) = path_to_filter(path_param.as_str(), enable_legacy_filters) else {
-        return Err(create_404(enable_legacy_filters));
+        return Err(Box::new(create_404(enable_legacy_filters)));
     };
     let start_from = parse_query(query)?;
     Ok((event_filter, stream_filter, start_from, is_legacy_filter))
@@ -643,11 +643,11 @@ fn handle_sse_event(
     event: ServerSentEvent,
     cloned_initial_ids: Arc<RwLock<HashSet<u32>>>,
 ) -> Option<Result<ServerSentEvent, RecvError>> {
-    if let Some(id) = event.id {
-        if cloned_initial_ids.read().unwrap().contains(&id) {
-            debug!(event_id=%id, "skipped duplicate event");
-            return None;
-        }
+    if let Some(id) = event.id
+        && cloned_initial_ids.read().unwrap().contains(&id)
+    {
+        debug!(event_id=%id, "skipped duplicate event");
+        return None;
     }
     Some(Ok(event))
 }

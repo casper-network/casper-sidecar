@@ -55,6 +55,9 @@ period = "1s"
 # The address of the node to connect to.
 ip_address = '127.0.0.1'
 port = 7779
+# The node's REST API port, used to fetch node status over HTTP (e.g. for eth_syncing) instead
+# of the binary port.
+rest_port = 8888
 # Maximum size of a message in bytes.
 max_message_size_bytes = 134_217_728
 # Timeout for a node request in seconds.
@@ -73,6 +76,21 @@ max_delay_ms = 32_000
 coefficient = 2
 # Maximum number of connection attempts.
 max_attempts = 30
+
+# ====================================================================
+# Configuration options for the persistent (LMDB-backed) binary port
+# cache. Disabled by default - uncomment to enable. Caches immutable,
+# identifier-addressed historical data (block headers, blocks with
+# signatures, transactions with execution info) fetched over the
+# node's binary port, surviving sidecar restarts.
+# ====================================================================
+# [rpc_server.binary_port_cache]
+# Directory backing the LMDB environment. Created on startup if missing.
+# path = '/var/lib/casper-sidecar/binary_port_cache'
+#
+# Upper bound (bytes) on the LMDB environment size (map_size). This is a
+# hard ceiling fixed at startup and is not grown automatically.
+# max_size_bytes = 536_870_912
 
 
 # Uncomment the following sse configuration to enable sse capabilities in sidecar.

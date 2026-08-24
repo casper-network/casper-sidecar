@@ -39,7 +39,6 @@ metrics = { workspace = true }
 pin-project = "1.1"
 rand = { workspace = true }
 regex = "1.6"
-reqwest = "0.12"
 schemars = "0.8"
 sea-query = "0.32"
 serde = { workspace = true, default-features = true, features = [
@@ -47,15 +46,16 @@ serde = { workspace = true, default-features = true, features = [
     "rc",
 ] }
 serde_json = "1.0"
-sqlx = { version = "0.8", features = [
-    "runtime-tokio-native-tls",
+sqlx = { version = "0.9", features = [
+    "runtime-tokio", 
+    "tls-native-tls",
     "sqlite",
     "postgres",
 ] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower = { version = "0.4", features = ["buffer", "limit", "make", "timeout"] }
+tower = { version = "0.5", features = ["buffer", "limit", "make", "timeout"] }
 tracing = { workspace = true, default-features = true }
 utoipa = { version = "5", features = ["rc_schema"] }
 warp = { workspace = true, features = ["compression"] }
@@ -65,12 +65,12 @@ wheelbuf = "0.2"
 async-stream = { workspace = true }
 casper-event-types = { workspace = true, features = ["sse-data-testing"] }
 casper-types = { workspace = true, features = ["testing"] }
-colored = "2.0"
+colored = "3.0"
 futures-util = { workspace = true }
 pg-embed = { git = "https://github.com/faokunega/pg-embed", tag = "v0.9.0" }
 portpicker = "0.1"
 pretty_assertions = "1"
-reqwest = { version = "0.12", features = ["stream"] }
-tabled = { version = "0.18", features = ["derive"] }
+reqwest = { version = "0.13", features = ["stream"] }
+tabled = { version = "0.21", features = ["derive"] }
 tempfile = "3"
 tokio-util = "0.7"

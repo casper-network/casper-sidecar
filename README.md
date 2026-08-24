@@ -12,6 +12,7 @@
   - [The RPC API server](#the-rpc-api-server)
 - [Configuring the Sidecar](#configuring-the-sidecar)
   - [RPC server setup](#rpc-server-setup)
+    - [Persistent binary port cache](#persistent-binary-port-cache)
   - [SSE server setup](#sse-server-setup)
     - [Configuring SSE node connections](#configuring-sse-node-connections)
     - [Configuring SSE legacy emulations](#configuring-sse-legacy-emulations)
@@ -212,6 +213,7 @@ default_limit_period = "1s"
 [rpc_server.node_client]
 ip_address = '0.0.0.0'
 port = 28101
+rest_port = 8888
 max_message_size_bytes = 4_194_304
 message_timeout_secs = 10
 client_access_timeout_secs = 10
@@ -261,6 +263,7 @@ max_attempts = 30
 
 - `node_client.ip_address` - Ip address of the Casper Node binary port.
 - `node_client.port` - Port of the Casper Node binary port.
+- `node_client.rest_port` - Port of the Casper Node's REST API. Used to fetch node status over HTTP (`GET /status`) for endpoints such as `eth_syncing`, instead of the binary port.
 - `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
 - `node_client.message_timeout_secs` - Timeout for the message.
 - `node_client.client_access_timeout_secs` - Timeout for the client connection.
@@ -285,6 +288,23 @@ Clients must omit `params` or send `params: []` for parameterless methods. The w
 
 The RPC server can be configured to prefetch highest block. To enable this feature set `rpc_server.main_server.enable_block_prefetch` to `true`. If this flag is set to true, the RPC server will observe `BlockAdded` events from the [sse feed](#SSE-server-setup). If a new `BlockAdded` event will be observed, and it's height is higher than any of the heights observed uptill this point in time - the RPC server will fetch the blocks data from binary port in the node. The obtained data will be cached in memory. If someone calls sidecars `chain_get_block` json RPC API requests without params (effectively asking for "newest" block) - the cached data will be served.
 This feature is based both on the RPC and SSE sides of sidecar. If enabled, it will not verify that the SSE feed is operational, enabled or even defined. There will be no error of warning notice if `enable_block_prefetch` is `true` but SSE is not turned on. This mechanism will react to observed `BlockAdded` events, but it won't obstruct the RPCs function if no `BlockAdded` events will be ever observed.
+
+#### Persistent binary port cache
+
+The RPC server can optionally maintain a persistent, on-disk cache of immutable, identifier-addressed historical data read over the node's binary port - block headers, blocks with signatures, and transactions with their execution info. Unlike the in-memory [block prefetch cache](#prefetching-blocks-feature) above (which only ever holds the newest block), this cache is backed by an [LMDB](http://www.lmdb.tech/doc/) (Lightning Memory-Mapped Database) environment on disk, using the [`heed`](https://crates.io/crates/heed) crate, so cached entries survive Sidecar restarts. Because the cached data is immutable and content-addressed, entries never need to be invalidated once written.
+
+This cache is disabled by default. To enable it, add a `[rpc_server.binary_port_cache]` section to the configuration file:
+
+```toml
+[rpc_server.binary_port_cache]
+path = '/var/lib/casper-sidecar/binary_port_cache'
+max_size_bytes = 536_870_912
+```
+
+- `binary_port_cache.path` - Required. Directory backing the LMDB environment. It is created on startup if it doesn't already exist.
+- `binary_port_cache.max_size_bytes` - Optional (default `536_870_912`, i.e. 512 MiB). Upper bound, in bytes, on the LMDB environment's size (its `map_size`). This is a hard ceiling fixed when the environment is opened at startup and is not grown automatically; exceeding it causes cache writes to fail (logged and ignored) without affecting reads or RPC serving.
+
+Omitting the `[rpc_server.binary_port_cache]` section entirely disables the persistent cache - the Sidecar will fall back to fetching this data from the node's binary port on every request, as before. See the commented-out example in [default_rpc_only_config.toml](./resources/example_configs/default_rpc_only_config.toml) for a template.
 
 ### SSE server setup
 
@@ -653,6 +673,8 @@ Remember to check the `event_stream_buffer_length` setting in the configuration 
 ### Ensuring sufficient storage
 
 Ensuring enough space in the database is essential for the Sidecar to consume events produced from the nodes' SSE streams over a more extended period. Each event is written to the database in a raw format for future processing. Running the Sidecar for an extended period (weeks or months) can result in storing multiple Gigabytes of data. If the database runs out of space, the Sidecar will lose events, as it cannot record them.
+
+If the [persistent binary port cache](#persistent-binary-port-cache) is enabled, its LMDB environment consumes disk space at `rpc_server.binary_port_cache.path`, separate from the SSE/database storage above, up to the configured `max_size_bytes` ceiling.
 
 ### Inspecting the REST API
 

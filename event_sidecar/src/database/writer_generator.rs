@@ -36,9 +36,9 @@ struct TransactionWrapperType<'a> {
 
 #[async_trait]
 impl TransactionWrapper for TransactionWrapperType<'_> {
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError> {
+    async fn execute(&self, sql: String) -> Result<(), DatabaseWriteError> {
         let mut lock = self.transaction_mutex.lock().await;
-        lock.execute(sql)
+        lock.execute(sqlx::AssertSqlSafe(sql))
             .await
             .map(|_| ())
             .map_err(DatabaseWriteError::from)
@@ -80,7 +80,7 @@ network_name: String,
         )?
         .to_string($query_materializer_expr);
 
-        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(insert_stmt)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -125,7 +125,7 @@ network_name: String,
         .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(batched_insert_stmts)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -169,7 +169,7 @@ network_name: String,
         .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(batched_insert_stmts)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -213,7 +213,7 @@ network_name: String,
         .map(|stmt| stmt.to_string($query_materializer_expr))
         .join(";");
 
-        let res = handle_result(transaction.execute(batched_insert_stmts.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(batched_insert_stmts)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -252,7 +252,7 @@ network_name: String,
         let insert_stmt =
             tables::fault::create_insert_stmt(era_id, public_key, json, event_log_id)?
                 .to_string($query_materializer_expr);
-        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(insert_stmt)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -297,7 +297,7 @@ network_name: String,
         )?
         .to_string($query_materializer_expr);
 
-        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(insert_stmt)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -334,7 +334,7 @@ network_name: String,
         let insert_stmt = tables::step::create_insert_stmt(era_id, json, event_log_id)?
             .to_string($query_materializer_expr);
 
-        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(insert_stmt)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -373,7 +373,7 @@ network_name: String,
 
         let insert_stmt = tables::shutdown::create_insert_stmt(event_source_address, event_log_id)?
             .to_string($query_materializer_expr);
-        let res = handle_result(transaction.execute(insert_stmt.as_str()).await);
+        let res = handle_result(transaction.execute(sqlx::AssertSqlSafe(insert_stmt)).await);
         if res.is_ok() {
             transaction.commit().await?;
         }
@@ -395,7 +395,7 @@ network_name: String,
                 let sqls = materialize_statements(migration.get_migrations($database_specific_configuration)?);
                 sqls.iter().join(";")
             };
-            match wrapper_arc.clone().execute(sql.as_str()).await {
+            match wrapper_arc.clone().execute(sql).await {
                 Ok(_) => {
                     if let Some(script_executor) = migration.script_executor {
                         script_executor.execute(wrapper_arc.clone()).await
@@ -458,7 +458,7 @@ async fn save_event_log(
     )?
     .to_string($query_materializer_expr);
     let event_log_id = transaction
-        .fetch_one(insert_to_event_log_stmt.as_str())
+        .fetch_one(sqlx::AssertSqlSafe(insert_to_event_log_stmt))
         .await?
         .try_get::<i64, usize>(0)
         .context("save_block_added: Error parsing event_log_id from row")?

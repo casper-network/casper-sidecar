@@ -168,14 +168,14 @@ impl DefaultConnectionManager {
             }
         };
 
-        if let Some(tasks) = &self.maybe_tasks {
-            if !tasks.wait().await {
-                let error = Error::msg(format!(
-                    "Failed to connect to all filters. Disconnecting from {}",
-                    self.bind_address
-                ));
-                return Err(non_recoverable_error(error));
-            }
+        if let Some(tasks) = &self.maybe_tasks
+            && !tasks.wait().await
+        {
+            let error = Error::msg(format!(
+                "Failed to connect to all filters. Disconnecting from {}",
+                self.bind_address
+            ));
+            return Err(non_recoverable_error(error));
         }
         //If we loose connection for some reason we need to go back to the event listener and do
         // the whole handshake process again. The Ok branch here means that we need to do a force restart of connection manager

@@ -42,13 +42,10 @@ jobs:
         run: cargo clippy --all-targets -- --deny warnings
 
       - name: audit
-        # Hope to get to here:
-        # run: cargo audit --deny warnings
+        # RUSTSEC-2025-0141 - bincode is unmaintained but it's the nodes dependency
         # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
-        # RUSTSEC-2025-0141 - that's a warning, need to fix that
-        # RUSTSEC-2023-0071 - dev dependency, low priority
-        # RUSTSEC-2026-0009
-        run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141 --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0009
+        # RUSTSEC-2026-0173 - proc-macro-error2 is unmainteined
+        run: cargo audit --deny warnings --ignore RUSTSEC-2026-0173 --ignore RUSTSEC-2025-0141 --ignore RUSTSEC-2023-0071
 
       - name: test
         run: cargo test

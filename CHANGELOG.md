@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file. The format 
   mixed `eth_subscribe` and `eth_unsubscribe` batches.
 - Added configurable batch item and soft response-size limits with metrics for batch size and
   limit enforcement.
+- Added an optional persistent, LMDB-backed cache (`rpc_server.binary_port_cache`) for immutable,
+  identifier-addressed historical data (block headers, blocks with signatures, transactions with
+  execution info) read over the node's binary port, surviving Sidecar restarts. Disabled by
+  default.
 
 ### Changed
 

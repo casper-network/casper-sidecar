@@ -1,5 +1,6 @@
 pub mod metrics;
 pub use metrics::{MetricCollectionError, metrics_summary, observe_error};
+pub mod binary_port_cache;
 pub mod db;
 pub mod rest_api;
 pub mod rpc;

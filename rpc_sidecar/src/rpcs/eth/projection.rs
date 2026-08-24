@@ -78,10 +78,6 @@ impl ProjectedBlock {
             .iter()
             .find(|receipt| receipt.transaction_hash == transaction_hash)
     }
-
-    pub(crate) fn logs(&self) -> impl Iterator<Item = &LogResponse> {
-        self.receipts.iter().flat_map(|receipt| receipt.logs.iter())
-    }
 }
 
 pub(crate) async fn project_transaction_receipt(
@@ -123,6 +119,76 @@ pub(crate) async fn project_transaction_receipt(
         .cloned()
         .ok_or_else(|| internal_error("receipt block does not contain EVM transaction hash"))?;
     Ok(Some((block.hash, receipt)))
+}
+
+/// Lean companion to [`project_block`] for logs-only consumers (`eth_subscribe`'s log delivery,
+/// `eth_getLogs`, `eth_getFilterLogs`/`eth_getFilterChanges` - see `log_filter::logs_for_block`).
+/// Unlike `project_block`, this never needs a transaction's full body (sender/recipient/envelope
+/// kind) - only its execution result - so it reads through
+/// [`NodeClient::read_transaction_execution_result`] instead of
+/// `read_transaction_with_execution_info`. That distinction matters for caching: the former can
+/// be served entirely from data already carried by `SidecarEvent::TransactionProcessed` (no node
+/// fetch), while the latter requires the transaction body, which is not.
+pub(crate) async fn project_block_logs(
+    node_client: Arc<dyn NodeClient>,
+    identifier: Option<BlockIdentifier>,
+) -> Result<Option<Vec<LogResponse>>, RpcError> {
+    let Some(block_with_signatures) = node_client
+        .read_block_with_signatures(identifier)
+        .await
+        .map_err(internal_error)?
+    else {
+        return Ok(None);
+    };
+    let block = block_with_signatures.block();
+    let block_number = block.height();
+    let evm_hashes = block
+        .all_transaction_hashes()
+        .filter_map(|hash| match hash {
+            TransactionHash::Evm(hash) => Some(hash),
+            TransactionHash::Deploy(_) | TransactionHash::V1(_) => None,
+        })
+        .collect::<Vec<_>>();
+
+    let mut log_index = 0usize;
+    let mut logs = Vec::new();
+    for (transaction_index, evm_transaction_hash) in evm_hashes.into_iter().enumerate() {
+        let transaction_hash = TransactionHash::from(evm_transaction_hash);
+        let Some(execution_result) = node_client
+            .read_transaction_execution_result(transaction_hash)
+            .await
+            .map_err(internal_error)?
+        else {
+            return Err(internal_error(
+                "block EVM transaction did not include execution result",
+            ));
+        };
+        let ExecutionResult::Evm(evm_execution_result) = execution_result else {
+            return Err(internal_error(
+                "block EVM transaction resolved to non-EVM execution result",
+            ));
+        };
+        let transaction_hash = evm_transaction_hash.hash();
+        let tx_logs = evm_execution_result
+            .receipt
+            .logs
+            .iter()
+            .enumerate()
+            .map(|(offset, log)| {
+                receipt_log_response(
+                    log,
+                    *block.hash(),
+                    block_number,
+                    transaction_hash,
+                    transaction_index,
+                    log_index + offset,
+                )
+            })
+            .collect::<Vec<_>>();
+        log_index = log_index.saturating_add(tx_logs.len());
+        logs.extend(tx_logs);
+    }
+    Ok(Some(logs))
 }
 
 pub(crate) async fn project_block(

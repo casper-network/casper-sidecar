@@ -1,4 +1,3 @@
-mod schema_transformation_visitor;
 use crate::{
     database::types::*,
     types::{
@@ -17,7 +16,6 @@ use schemars::{
     schema::{RootSchema, SchemaObject},
     schema_for,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::{
     Modify, OpenApi, ToSchema,
@@ -123,20 +121,19 @@ fn force_produce_utoipa_schemas(
 }
 
 fn rebuild_schema_object(key: &str, schemars_schema_obj: &SchemaObject) -> Schema {
-    let schema_str = serde_json::to_string(&schemars_schema_obj).unwrap();
-    match serde_json::from_str::<Schema>(&schema_str) {
+    // Deserialize from an already-built `Value` rather than a JSON string: when
+    // serde_json's `arbitrary_precision` feature is enabled elsewhere in the workspace
+    // (and unified into this crate's build by cargo), parsing numbers from a string
+    // makes serde's untagged-enum content-buffering see them as maps instead of
+    // numbers, so `Schema` (an untagged enum) fails to match any variant.
+    let schema_value = serde_json::to_value(schemars_schema_obj).unwrap();
+    match serde_json::from_value::<Schema>(schema_value.clone()) {
         Ok(x) => x,
         Err(e) => {
             panic!(
                 "Failed handling schema for type {}. Err: {}\n\n{}",
-                key, e, schema_str
+                key, e, schema_value
             );
         }
     }
-}
-
-#[derive(Deserialize, Serialize)]
-struct ApiError {
-    code: u16,
-    message: String,
 }
