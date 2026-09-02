@@ -31,6 +31,11 @@ impl EthU256 {
         }
     }
 
+    /// Converts this value into a `usize` if it fits.
+    pub(crate) fn as_usize(self) -> Result<usize, &'static str> {
+        usize::try_from(self.as_u64()?).map_err(|_| "quantity exceeds usize")
+    }
+
     fn to_quantity_hex(self) -> String {
         if self.0.is_zero() {
             return "0x0".to_string();
@@ -192,6 +197,16 @@ mod tests {
         assert_eq!(
             EthU256::from(U256::from(u64::MAX) + U256::from(1)).as_u64(),
             Err("quantity exceeds u64")
+        );
+    }
+
+    #[test]
+    fn as_usize_rejects_overflow() {
+        assert_eq!(EthU256::from(1_234usize).as_usize(), Ok(1_234));
+        assert!(
+            EthU256::from(U256::from(u64::MAX) + U256::from(1))
+                .as_usize()
+                .is_err()
         );
     }
 

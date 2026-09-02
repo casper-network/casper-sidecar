@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
-use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{BlockHash, BlockIdentifier, Digest, GlobalStateIdentifier, evm};
+use casper_json_rpc::{Error as RpcError, ErrorCodeT, Params, ReservedErrorCode};
+use casper_types::{BlockHash, BlockIdentifier, Digest, GlobalStateIdentifier, U256, evm};
 use schemars::{JsonSchema, r#gen::SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -22,6 +22,16 @@ static HEX_DATA_EXAMPLE: LazyLock<HexData> = LazyLock::new(|| HexData(Vec::new()
 impl DocExample for EthU256 {
     fn doc_example() -> &'static Self {
         &ETH_U256_EXAMPLE
+    }
+}
+
+static OPTIONAL_ETH_U256_EXAMPLE: LazyLock<Option<EthU256>> = LazyLock::new(|| None);
+
+/// Shared doc example for the `Option<EthU256>` quantity-or-null responses returned by the
+/// block/uncle transaction-count RPCs (`null` when the referenced block is unknown).
+impl DocExample for Option<EthU256> {
+    fn doc_example() -> &'static Self {
+        &OPTIONAL_ETH_U256_EXAMPLE
     }
 }
 
@@ -128,6 +138,49 @@ impl JsonSchema for HexData {
 impl DocExample for HexData {
     fn doc_example() -> &'static Self {
         &HEX_DATA_EXAMPLE
+    }
+}
+
+/// An Ethereum `bytesMax32` value: a 256-bit word encoded as `0x`-prefixed hexadecimal.
+///
+/// Compact and left-padded forms are both accepted — a caller may pass `0x1` for the word `1` —
+/// and the value is serialized back as a canonical Ethereum quantity. Used wherever the
+/// Execution API accepts a `bytesMax32`, e.g. the `eth_getStorageAt` slot and the
+/// `eth_getProof` storage keys.
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct EthBytesMax32(EthU256);
+
+impl EthBytesMax32 {
+    /// The zero word.
+    pub(super) const ZERO: Self = EthBytesMax32(EthU256::ZERO);
+
+    /// Returns the word as a 256-bit integer.
+    pub(super) fn value(self) -> U256 {
+        self.0.value()
+    }
+}
+
+impl JsonSchema for EthBytesMax32 {
+    fn schema_name() -> String {
+        "EthBytesMax32".to_string()
+    }
+
+    fn json_schema(schema_generator: &mut SchemaGenerator) -> Schema {
+        let schema = String::json_schema(schema_generator);
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "An Ethereum bytesMax32 value encoded as 0x-prefixed hexadecimal with 1 to 64 \
+             digits; compact and left-padded forms are accepted."
+                .to_string(),
+        );
+        let string_validation = schema_object.string();
+        string_validation.min_length = Some(3);
+        string_validation.max_length = Some(2 + evm::HASH_LENGTH as u32 * 2);
+        string_validation.pattern = Some(r"^0x[0-9a-fA-F]{1,64}$".to_string());
+        schema_object.into()
     }
 }
 
@@ -265,6 +318,8 @@ impl StateBlockParam {
                 }
             }
             StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Earliest)) => {
+                // TODO: this needs to be handled correctly, reuse the mechanism of fetching
+                // block range used in eth_syncing
                 Ok(Some(BlockIdentifier::Height(0)))
             }
             StateBlockParam::Number(BlockNumberParam::Tag(
@@ -386,6 +441,39 @@ pub(super) fn invalid_params(message: impl Into<String>) -> RpcError {
 
 pub(super) fn internal_error(message: impl ToString) -> RpcError {
     RpcError::new(ReservedErrorCode::InternalError, message.to_string())
+}
+
+/// JSON-RPC error code for an `eth_*` method that this server's API recognizes but does not
+/// implement.
+///
+/// EIP-1474's non-standard error-code table assigns "method not supported" to `-32004`. This is
+/// a distinct concept from [`ReservedErrorCode::MethodNotFound`] (`-32601`), which means the
+/// method is not part of the API at all. `-32004` is outside the JSON-RPC pre-defined range
+/// (`-32768..=-32100`), so a non-reserved code type carrying it is passed through verbatim by
+/// [`RpcError::new`], message text included.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+#[repr(i64)]
+pub(super) enum EthApiErrorCode {
+    /// Method not supported.
+    MethodNotSupported = -32004,
+}
+
+impl From<EthApiErrorCode> for (i64, &'static str) {
+    fn from(error_code: EthApiErrorCode) -> Self {
+        match error_code {
+            EthApiErrorCode::MethodNotSupported => (error_code as i64, "method not supported"),
+        }
+    }
+}
+
+impl ErrorCodeT for EthApiErrorCode {}
+
+/// Returns an error indicating that a method recognized by this server's API is not supported by
+/// this implementation (as opposed to [`ReservedErrorCode::MethodNotFound`], which signals that
+/// the method is not part of the API at all). The caller-supplied `message` is carried as the
+/// error's `data`; the wire code/message are EIP-1474's `-32004` / "method not supported".
+pub(super) fn method_not_supported(message: impl Into<String>) -> RpcError {
+    RpcError::new(EthApiErrorCode::MethodNotSupported, message.into())
 }
 
 fn bytes_hex(bytes: &[u8]) -> String {

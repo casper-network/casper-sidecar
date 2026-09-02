@@ -11,8 +11,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as Serde
 
 use super::{
     super::{Error, NodeClient, RpcWithParams},
-    eth_u256::EthU256,
-    types::{EthAddress, PendingPolicy, StateBlockParam, internal_error, parse_positional_params},
+    types::{
+        EthAddress, EthBytesMax32, PendingPolicy, StateBlockParam, internal_error,
+        parse_positional_params,
+    },
 };
 use crate::rpcs::docs::DocExample;
 
@@ -21,7 +23,7 @@ const DATA_32_BYTES: usize = 32;
 static GET_STORAGE_AT_PARAMS_EXAMPLE: LazyLock<GetStorageAtParams> =
     LazyLock::new(|| GetStorageAtParams {
         address: EthAddress::from(evm::Address::ZERO),
-        slot: EthStorageSlot(EthU256::ZERO),
+        slot: EthBytesMax32::ZERO,
         block: StateBlockParam::default(),
     });
 static DATA_32_EXAMPLE: LazyLock<EthData32> = LazyLock::new(EthData32::default);
@@ -31,7 +33,7 @@ static DATA_32_EXAMPLE: LazyLock<EthData32> = LazyLock::new(EthData32::default);
 #[serde(deny_unknown_fields)]
 pub(crate) struct GetStorageAtParams {
     address: EthAddress,
-    slot: EthStorageSlot,
+    slot: EthBytesMax32,
     block: StateBlockParam,
 }
 
@@ -42,7 +44,7 @@ impl DocExample for GetStorageAtParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(EthAddress, EthStorageSlot, StateBlockParam);
+struct PositionalParams(EthAddress, EthBytesMax32, StateBlockParam);
 
 impl From<PositionalParams> for GetStorageAtParams {
     fn from(params: PositionalParams) -> Self {
@@ -51,39 +53,6 @@ impl From<PositionalParams> for GetStorageAtParams {
             slot: params.1,
             block: params.2,
         }
-    }
-}
-
-/// An EVM storage slot encoded as compact or left-padded `0x` hexadecimal.
-#[derive(
-    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-struct EthStorageSlot(EthU256);
-
-impl EthStorageSlot {
-    fn value(self) -> U256 {
-        self.0.value()
-    }
-}
-
-impl JsonSchema for EthStorageSlot {
-    fn schema_name() -> String {
-        "EthStorageSlot".to_string()
-    }
-
-    fn json_schema(schema_generator: &mut SchemaGenerator) -> Schema {
-        let schema = String::json_schema(schema_generator);
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some(
-            "An EVM storage slot encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted."
-                .to_string(),
-        );
-        let string_validation = schema_object.string();
-        string_validation.min_length = Some(3);
-        string_validation.max_length = Some(2 + DATA_32_BYTES as u32 * 2);
-        string_validation.pattern = Some(r"^0x[0-9a-fA-F]{1,64}$".to_string());
-        schema_object.into()
     }
 }
 

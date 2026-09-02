@@ -80,6 +80,47 @@ impl ProjectedBlock {
     }
 }
 
+/// Returns the EVM transaction hashes of the block identified by `identifier`, in
+/// transaction-index order, or `None` if no such block is known.
+///
+/// This is the cheap companion to [`project_block`] for callers that only need the block's
+/// transaction list (`eth_getBlockTransactionCountBy*`, `eth_getTransactionByBlock*AndIndex`):
+/// it is a single node round-trip and never fetches a transaction body or execution result.
+pub(crate) async fn block_evm_transaction_hashes(
+    node_client: &dyn NodeClient,
+    identifier: Option<BlockIdentifier>,
+) -> Result<Option<Vec<evm::Hash>>, RpcError> {
+    let Some(block_with_signatures) = node_client
+        .read_block_with_signatures(identifier)
+        .await
+        .map_err(internal_error)?
+    else {
+        return Ok(None);
+    };
+    let hashes = block_with_signatures
+        .block()
+        .all_transaction_hashes()
+        .filter_map(|hash| match hash {
+            TransactionHash::Evm(hash) => Some(hash.hash()),
+            TransactionHash::Deploy(_) | TransactionHash::V1(_) => None,
+        })
+        .collect();
+    Ok(Some(hashes))
+}
+
+/// Returns `true` if `identifier` resolves to a block known to the node. A single node
+/// round-trip that only reads the block header.
+pub(crate) async fn block_exists(
+    node_client: &dyn NodeClient,
+    identifier: Option<BlockIdentifier>,
+) -> Result<bool, RpcError> {
+    Ok(node_client
+        .read_block_header(identifier)
+        .await
+        .map_err(internal_error)?
+        .is_some())
+}
+
 pub(crate) async fn project_transaction_receipt(
     node_client: Arc<dyn NodeClient>,
     hash: evm::Hash,

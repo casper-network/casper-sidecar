@@ -20,14 +20,24 @@ use super::rpcs::{
     docs::RpcDiscover,
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        ClientVersion as Web3ClientVersion, EstimateGas as EthEstimateGas, EthFilterState,
-        FeeHistory as EthFeeHistory, GasPrice as EthGasPrice, GetBalance as EthGetBalance,
-        GetBlockByHash as EthGetBlockByHash, GetBlockByNumber as EthGetBlockByNumber,
+        ClientVersion as Web3ClientVersion, CreateAccessList as EthCreateAccessList,
+        EstimateGas as EthEstimateGas, EthFilterState, FeeHistory as EthFeeHistory,
+        GasPrice as EthGasPrice, GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
+        GetBlockByNumber as EthGetBlockByNumber, GetBlockReceipts as EthGetBlockReceipts,
+        GetBlockTransactionCountByHash as EthGetBlockTransactionCountByHash,
+        GetBlockTransactionCountByNumber as EthGetBlockTransactionCountByNumber,
         GetCode as EthGetCode, GetFilterChanges as EthGetFilterChanges,
-        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
+        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs, GetProof as EthGetProof,
+        GetStorageAt as EthGetStorageAt,
+        GetTransactionByBlockHashAndIndex as EthGetTransactionByBlockHashAndIndex,
+        GetTransactionByBlockNumberAndIndex as EthGetTransactionByBlockNumberAndIndex,
         GetTransactionByHash as EthGetTransactionByHash,
         GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
+        GetUncleByBlockHashAndIndex as EthGetUncleByBlockHashAndIndex,
+        GetUncleByBlockNumberAndIndex as EthGetUncleByBlockNumberAndIndex,
+        GetUncleCountByBlockHash as EthGetUncleCountByBlockHash,
+        GetUncleCountByBlockNumber as EthGetUncleCountByBlockNumber,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SUBSCRIBE_METHOD, SendRawTransaction as EthSendRawTransaction,
         Syncing as EthSyncing, UNSUBSCRIBE_METHOD, UninstallFilter as EthUninstallFilter,
@@ -121,16 +131,27 @@ pub async fn run(
     register_with_context!(EthSyncing, eth_syncing_state.clone(), node.clone());
     register!(EthGetBlockByHash);
     register!(EthGetBlockByNumber);
+    register!(EthGetBlockReceipts);
+    register!(EthGetBlockTransactionCountByHash);
+    register!(EthGetBlockTransactionCountByNumber);
+    register!(EthGetUncleByBlockHashAndIndex);
+    register!(EthGetUncleByBlockNumberAndIndex);
+    register!(EthGetUncleCountByBlockHash);
+    register!(EthGetUncleCountByBlockNumber);
     register!(EthGetBalance);
     register!(EthGetCode);
     register!(EthGetStorageAt);
+    register!(EthGetProof);
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionByHash);
+    register!(EthGetTransactionByBlockHashAndIndex);
+    register!(EthGetTransactionByBlockNumberAndIndex);
     register!(EthGetTransactionReceipt);
     register_with_context!(EthGetLogs, node.clone(), max_eth_log_block_range);
     register!(EthCall);
     register!(EthEstimateGas);
+    register!(EthCreateAccessList);
     register_with_context!(
         EthNewFilter,
         node.clone(),

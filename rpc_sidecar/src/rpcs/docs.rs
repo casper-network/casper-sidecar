@@ -21,14 +21,24 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        ClientVersion as Web3ClientVersion, EstimateGas as EthEstimateGas,
-        FeeHistory as EthFeeHistory, GasPrice as EthGasPrice, GetBalance as EthGetBalance,
-        GetBlockByHash as EthGetBlockByHash, GetBlockByNumber as EthGetBlockByNumber,
+        ClientVersion as Web3ClientVersion, CreateAccessList as EthCreateAccessList,
+        EstimateGas as EthEstimateGas, FeeHistory as EthFeeHistory, GasPrice as EthGasPrice,
+        GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
+        GetBlockByNumber as EthGetBlockByNumber, GetBlockReceipts as EthGetBlockReceipts,
+        GetBlockTransactionCountByHash as EthGetBlockTransactionCountByHash,
+        GetBlockTransactionCountByNumber as EthGetBlockTransactionCountByNumber,
         GetCode as EthGetCode, GetFilterChanges as EthGetFilterChanges,
-        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
+        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs, GetProof as EthGetProof,
+        GetStorageAt as EthGetStorageAt,
+        GetTransactionByBlockHashAndIndex as EthGetTransactionByBlockHashAndIndex,
+        GetTransactionByBlockNumberAndIndex as EthGetTransactionByBlockNumberAndIndex,
         GetTransactionByHash as EthGetTransactionByHash,
         GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
+        GetUncleByBlockHashAndIndex as EthGetUncleByBlockHashAndIndex,
+        GetUncleByBlockNumberAndIndex as EthGetUncleByBlockNumberAndIndex,
+        GetUncleCountByBlockHash as EthGetUncleCountByBlockHash,
+        GetUncleCountByBlockNumber as EthGetUncleCountByBlockNumber,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
         Syncing as EthSyncing, UninstallFilter as EthUninstallFilter,
@@ -135,10 +145,41 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     );
     schema.push_with_params::<EthGetBlockByHash>("returns an Ethereum-compatible block by hash");
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
+    schema.push_with_params::<EthGetBlockReceipts>(
+        "returns the transaction receipts for every transaction in a block, or `null` if no \
+        such block is known",
+    );
+    schema.push_with_params::<EthGetBlockTransactionCountByHash>(
+        "returns the number of transactions in a block identified by hash, or `null` if no \
+        such block is known",
+    );
+    schema.push_with_params::<EthGetBlockTransactionCountByNumber>(
+        "returns the number of transactions in a block identified by number, or `null` if no \
+        such block is known",
+    );
+    schema.push_with_params::<EthGetUncleByBlockHashAndIndex>(
+        "returns null: Casper blocks have no uncles",
+    );
+    schema.push_with_params::<EthGetUncleByBlockNumberAndIndex>(
+        "returns null: Casper blocks have no uncles",
+    );
+    schema.push_with_params::<EthGetUncleCountByBlockHash>(
+        "returns `0x0` for a known block (Casper blocks have no uncles), or `null` if no such \
+        block is known",
+    );
+    schema.push_with_params::<EthGetUncleCountByBlockNumber>(
+        "returns `0x0` for a known block (Casper blocks have no uncles), or `null` if no such \
+        block is known",
+    );
     schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");
     schema.push_with_params::<EthGetCode>("returns EVM bytecode stored at an address");
     schema.push_with_params::<EthGetStorageAt>(
         "returns the 32-byte value stored at an EVM contract storage slot",
+    );
+    schema.push_with_params::<EthGetProof>(
+        "always returns an EIP-1474 `-32004` (\"method not supported\") error: Casper's global \
+        state (blake2b-256 hashing, non-EVM data layout) cannot reproduce an EIP-1186 \
+        Merkle-Patricia proof",
     );
     schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
     schema.push_with_params::<EthSendRawTransaction>(
@@ -146,6 +187,14 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     );
     schema.push_with_params::<EthGetTransactionByHash>(
         "returns an Ethereum-compatible pending or block-included EVM transaction by hash",
+    );
+    schema.push_with_params::<EthGetTransactionByBlockHashAndIndex>(
+        "returns the transaction at an index within a block identified by hash, or `null` if \
+        the block or the index within it does not exist",
+    );
+    schema.push_with_params::<EthGetTransactionByBlockNumberAndIndex>(
+        "returns the transaction at an index within a block identified by number, or `null` if \
+        the block or the index within it does not exist",
     );
     schema.push_with_params::<EthGetTransactionReceipt>(
         "returns an Ethereum-compatible receipt for an executed EVM transaction",
@@ -161,6 +210,10 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_with_params::<EthUninstallFilter>("removes a process-local Ethereum log filter");
     schema.push_with_params::<EthCall>("executes a read-only EVM call");
     schema.push_with_params::<EthEstimateGas>("estimates gas using speculative EVM execution");
+    schema.push_with_params::<EthCreateAccessList>(
+        "always returns an EIP-1474 `-32004` (\"method not supported\") error, since this \
+        chain rejects any transaction carrying a non-empty EIP-2930 access list",
+    );
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",

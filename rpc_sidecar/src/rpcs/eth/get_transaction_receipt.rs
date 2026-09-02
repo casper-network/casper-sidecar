@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     super::{NodeClient, RpcWithParams},
     eth_u256::EthU256,
-    projection::{LogResponse, project_transaction_receipt},
+    projection::{LogResponse, ProjectedReceipt, project_transaction_receipt},
     types::{EthAddress, HexData, parse_positional_params},
 };
 use crate::rpcs::docs::DocExample;
@@ -66,6 +66,27 @@ impl DocExample for Option<TransactionReceiptResponse> {
     }
 }
 
+impl From<ProjectedReceipt> for TransactionReceiptResponse {
+    fn from(receipt: ProjectedReceipt) -> Self {
+        TransactionReceiptResponse {
+            transaction_type: receipt.transaction_type,
+            transaction_hash: receipt.transaction_hash,
+            block_hash: receipt.block_hash,
+            block_number: receipt.block_number,
+            from: receipt.from,
+            to: receipt.to,
+            contract_address: receipt.contract_address,
+            status: receipt.status,
+            gas_used: receipt.gas_used,
+            effective_gas_price: receipt.effective_gas_price,
+            logs: receipt.logs,
+            logs_bloom: receipt.logs_bloom,
+            transaction_index: receipt.transaction_index,
+            cumulative_gas_used: receipt.cumulative_gas_used,
+        }
+    }
+}
+
 /// `eth_getTransactionReceipt`.
 pub struct GetTransactionReceipt;
 
@@ -90,21 +111,6 @@ impl RpcWithParams for GetTransactionReceipt {
             return Ok(None);
         };
 
-        Ok(Some(TransactionReceiptResponse {
-            transaction_type: receipt.transaction_type,
-            transaction_hash: receipt.transaction_hash,
-            block_hash: receipt.block_hash,
-            block_number: receipt.block_number,
-            from: receipt.from,
-            to: receipt.to,
-            contract_address: receipt.contract_address,
-            status: receipt.status,
-            gas_used: receipt.gas_used,
-            effective_gas_price: receipt.effective_gas_price,
-            logs: receipt.logs,
-            logs_bloom: receipt.logs_bloom,
-            transaction_index: receipt.transaction_index,
-            cumulative_gas_used: receipt.cumulative_gas_used,
-        }))
+        Ok(Some(TransactionReceiptResponse::from(receipt)))
     }
 }

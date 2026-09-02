@@ -2200,6 +2200,314 @@
       ]
     },
     {
+      "name": "eth_getBlockReceipts",
+      "summary": "returns the transaction receipts for every transaction in a block, or `null` if no such block is known",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/StateBlockParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBlockReceipts_result",
+        "schema": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/components/schemas/TransactionReceiptResponse"
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBlockReceipts_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getBlockReceipts_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getBlockTransactionCountByHash",
+      "summary": "returns the number of transactions in a block identified by hash, or `null` if no such block is known",
+      "params": [
+        {
+          "name": "block_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBlockTransactionCountByHash_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBlockTransactionCountByHash_example",
+          "params": [
+            {
+              "name": "block_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "result": {
+            "name": "eth_getBlockTransactionCountByHash_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getBlockTransactionCountByNumber",
+      "summary": "returns the number of transactions in a block identified by number, or `null` if no such block is known",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBlockTransactionCountByNumber_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBlockTransactionCountByNumber_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getBlockTransactionCountByNumber_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getUncleByBlockHashAndIndex",
+      "summary": "returns null: Casper blocks have no uncles",
+      "params": [
+        {
+          "name": "block_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        },
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getUncleByBlockHashAndIndex_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BlockResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getUncleByBlockHashAndIndex_example",
+          "params": [
+            {
+              "name": "block_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "name": "index",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getUncleByBlockHashAndIndex_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getUncleByBlockNumberAndIndex",
+      "summary": "returns null: Casper blocks have no uncles",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        },
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getUncleByBlockNumberAndIndex_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BlockResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getUncleByBlockNumberAndIndex_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            },
+            {
+              "name": "index",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getUncleByBlockNumberAndIndex_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getUncleCountByBlockHash",
+      "summary": "returns `0x0` for a known block (Casper blocks have no uncles), or `null` if no such block is known",
+      "params": [
+        {
+          "name": "block_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getUncleCountByBlockHash_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getUncleCountByBlockHash_example",
+          "params": [
+            {
+              "name": "block_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "result": {
+            "name": "eth_getUncleCountByBlockHash_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getUncleCountByBlockNumber",
+      "summary": "returns `0x0` for a known block (Casper blocks have no uncles), or `null` if no such block is known",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getUncleCountByBlockNumber_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getUncleCountByBlockNumber_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getUncleCountByBlockNumber_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getBalance",
       "summary": "returns an EVM account balance in wei",
       "params": [
@@ -2304,7 +2612,7 @@
         {
           "name": "slot",
           "schema": {
-            "$ref": "#/components/schemas/EthStorageSlot"
+            "$ref": "#/components/schemas/EthBytesMax32"
           },
           "required": true
         },
@@ -2346,6 +2654,113 @@
           "result": {
             "name": "eth_getStorageAt_example_result",
             "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getProof",
+      "summary": "always returns an EIP-1474 `-32004` (\"method not supported\") error: Casper's global state (blake2b-256 hashing, non-EVM data layout) cannot reproduce an EIP-1186 Merkle-Patricia proof",
+      "params": [
+        {
+          "name": "address",
+          "schema": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "required": true
+        },
+        {
+          "name": "storage_keys",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EthBytesMax32"
+            }
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "default": "latest",
+            "$ref": "#/components/schemas/StateBlockParam"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_getProof_result",
+        "schema": {
+          "description": "EIP-1186 account and storage proof response for `eth_getProof`.",
+          "type": "object",
+          "required": [
+            "accountProof",
+            "address",
+            "balance",
+            "codeHash",
+            "nonce",
+            "storageHash",
+            "storageProof"
+          ],
+          "properties": {
+            "address": {
+              "$ref": "#/components/schemas/EthAddress"
+            },
+            "accountProof": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EthHexData"
+              }
+            },
+            "balance": {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            "codeHash": {
+              "$ref": "#/components/schemas/EvmHash"
+            },
+            "nonce": {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            "storageHash": {
+              "$ref": "#/components/schemas/EvmHash"
+            },
+            "storageProof": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/StorageProofResponse"
+              }
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getProof_example",
+          "params": [
+            {
+              "name": "address",
+              "value": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "name": "storage_keys",
+              "value": []
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getProof_example_result",
+            "value": {
+              "address": "0x0000000000000000000000000000000000000000",
+              "accountProof": [],
+              "balance": "0x0",
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "nonce": "0x0",
+              "storageHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "storageProof": []
+            }
           }
         }
       ]
@@ -2468,6 +2883,110 @@
           ],
           "result": {
             "name": "eth_getTransactionByHash_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getTransactionByBlockHashAndIndex",
+      "summary": "returns the transaction at an index within a block identified by hash, or `null` if the block or the index within it does not exist",
+      "params": [
+        {
+          "name": "block_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        },
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getTransactionByBlockHashAndIndex_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TransactionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getTransactionByBlockHashAndIndex_example",
+          "params": [
+            {
+              "name": "block_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "name": "index",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getTransactionByBlockHashAndIndex_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getTransactionByBlockNumberAndIndex",
+      "summary": "returns the transaction at an index within a block identified by number, or `null` if the block or the index within it does not exist",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        },
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getTransactionByBlockNumberAndIndex_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TransactionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getTransactionByBlockNumberAndIndex_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            },
+            {
+              "name": "index",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getTransactionByBlockNumberAndIndex_example_result",
             "value": null
           }
         }
@@ -2967,6 +3486,85 @@
           "result": {
             "name": "eth_estimateGas_example_result",
             "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_createAccessList",
+      "summary": "always returns an EIP-1474 `-32004` (\"method not supported\") error, since this chain rejects any transaction carrying a non-empty EIP-2930 access list",
+      "params": [
+        {
+          "name": "call",
+          "schema": {
+            "$ref": "#/components/schemas/CallObject"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "default": "latest",
+            "$ref": "#/components/schemas/StateBlockParam"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_createAccessList_result",
+        "schema": {
+          "description": "Response for `eth_createAccessList`.",
+          "type": "object",
+          "required": [
+            "accessList",
+            "gasUsed"
+          ],
+          "properties": {
+            "accessList": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AccessListItemResponse"
+              }
+            },
+            "gasUsed": {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_createAccessList_example",
+          "params": [
+            {
+              "name": "call",
+              "value": {
+                "from": null,
+                "to": null,
+                "data": null,
+                "input": null,
+                "value": null,
+                "gas": null,
+                "gasPrice": null
+              }
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_createAccessList_example_result",
+            "value": {
+              "accessList": [],
+              "gasUsed": "0x0"
+            }
           }
         }
       ]
@@ -10997,13 +11595,6 @@
         },
         "additionalProperties": false
       },
-      "EthStorageSlot": {
-        "description": "An EVM storage slot encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted.",
-        "type": "string",
-        "maxLength": 66,
-        "minLength": 3,
-        "pattern": "^0x[0-9a-fA-F]{1,64}$"
-      },
       "TransactionReceiptResponse": {
         "description": "Ethereum transaction receipt response.",
         "type": "object",
@@ -11127,6 +11718,36 @@
           },
           "removed": {
             "type": "boolean"
+          }
+        }
+      },
+      "EthBytesMax32": {
+        "description": "An Ethereum bytesMax32 value encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted.",
+        "type": "string",
+        "maxLength": 66,
+        "minLength": 3,
+        "pattern": "^0x[0-9a-fA-F]{1,64}$"
+      },
+      "StorageProofResponse": {
+        "description": "A single EIP-1186 Merkle-Patricia storage proof entry.",
+        "type": "object",
+        "required": [
+          "key",
+          "proof",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "value": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "proof": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EthHexData"
+            }
           }
         }
       },
