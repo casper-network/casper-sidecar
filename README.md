@@ -295,7 +295,7 @@ This feature is based both on the RPC and SSE sides of sidecar. If enabled, it w
 
 The RPC server can optionally maintain a persistent, on-disk cache of immutable, identifier-addressed historical data read over the node's binary port - block headers, blocks with signatures, and transactions with their execution info. Unlike the in-memory [block prefetch cache](#prefetching-blocks-feature) above (which only ever holds the newest block), this cache is backed by an [LMDB](http://www.lmdb.tech/doc/) (Lightning Memory-Mapped Database) environment on disk, using the [`heed`](https://crates.io/crates/heed) crate, so cached entries survive Sidecar restarts. Because the cached data is immutable and content-addressed, entries never need to be invalidated once written.
 
-This cache is disabled by default. To enable it, add a `[rpc_server.binary_port_cache]` section to the configuration file:
+The cache is configured with a `[rpc_server.binary_port_cache]` section, which the bundled example configs enable by default:
 
 ```toml
 [rpc_server.binary_port_cache]
@@ -306,7 +306,7 @@ max_size_bytes = 536_870_912
 - `binary_port_cache.path` - Required. Directory backing the LMDB environment. It is created on startup if it doesn't already exist.
 - `binary_port_cache.max_size_bytes` - Optional (default `536_870_912`, i.e. 512 MiB). Upper bound, in bytes, on the LMDB environment's size (its `map_size`). This is a hard ceiling fixed when the environment is opened at startup and is not grown automatically; exceeding it causes cache writes to fail (logged and ignored) without affecting reads or RPC serving.
 
-Omitting the `[rpc_server.binary_port_cache]` section entirely disables the persistent cache - the Sidecar will fall back to fetching this data from the node's binary port on every request, as before. See the commented-out example in [default_rpc_only_config.toml](./resources/example_configs/default_rpc_only_config.toml) for a template.
+Removing the `[rpc_server.binary_port_cache]` section entirely disables the persistent cache - the Sidecar will fall back to fetching this data from the node's binary port on every request. See [default_rpc_only_config.toml](./resources/example_configs/default_rpc_only_config.toml) for a template.
 
 ### SSE server setup
 
