@@ -206,6 +206,7 @@ max_body_bytes = 2_621_440
 max_batch_items = 100
 max_batch_response_bytes = 25_000_000
 max_eth_log_block_range = 10_000
+latest_block_cache_ttl = "8 seconds"
 cors_origin = ''
 default_limit_requests = 100
 default_limit_period = "1s"
@@ -246,6 +247,7 @@ max_attempts = 30
 - `main_server.max_batch_items` - Maximum number of calls, notifications, and invalid entries accepted in one JSON-RPC batch.
 - `main_server.max_batch_response_bytes` - Soft maximum serialized JSON-RPC batch response size.
 - `main_server.max_eth_log_block_range` - optional (default `10_000`). Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
+- `main_server.latest_block_cache_ttl` - optional (default `"1 second"`). How long a block or block header observed on the SSE feed may be served from the in-process cache before a fresh read from the node is required. `"0 seconds"` disables this cache. No effect when the SSE server is disabled.
 - `main_server.cors_origin` - Configures the CORS origin.
 - `main_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
 - `main_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format

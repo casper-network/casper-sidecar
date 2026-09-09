@@ -21,6 +21,17 @@ All notable changes to this project will be documented in this file. The format 
   identifier-addressed historical data (block headers, blocks with signatures, transactions with
   execution info) read over the node's binary port, surviving Sidecar restarts. Disabled by
   default.
+- Added the `rpc_server_binary_port_calls_total{outcome}` counter tracking binary port RPC calls
+  actually dispatched to the node (cache hits excluded), split into `success` and `failure`.
+- Added a process-wide `NodeStateCache`: the `eth_syncing` result, the latest block / block header
+  observed on the SSE feed, and the node's `(ProtocolVersion, Chainspec)`. Hot "latest block" and
+  chainspec reads are now served from it instead of hitting the node's binary port. The latest
+  block only ever moves forward (out-of-order SSE replays are ignored). The chainspec is hydrated
+  at startup and refreshed on protocol-version change (`ApiVersion` SSE event, or a 60s poll when
+  SSE is disabled); a failed refresh drops the cached chainspec rather than serving a stale one.
+- Added `rpc_server.main_server.latest_block_cache_ttl` (default `"1 second"`, `"0 seconds"`
+  disables) controlling how long an SSE-observed block / header stays trusted. No effect when the
+  SSE server is disabled.
 
 ### Changed
 

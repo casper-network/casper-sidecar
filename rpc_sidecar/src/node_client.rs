@@ -14,8 +14,9 @@ use casper_binary_port::{
 };
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
-    BlockWithSignatures, ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key,
-    KeyTag, Package, Peers, PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
+    BlockWithSignatures, Chainspec, ChainspecRawBytes, Digest, EvmTransaction,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey, StoredValue, Transaction,
+    TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
     execution::ExecutionResult,
@@ -23,7 +24,8 @@ use casper_types::{
 };
 use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{
-    inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
+    inc_binary_port_call, inc_disconnect, observe_reconnect_time, register_mismatched_id,
+    register_timeout,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{
@@ -263,6 +265,19 @@ pub trait NodeClient: Send + Sync {
             .read_info(InformationRequest::ChainspecRawBytes)
             .await?;
         parse_response::<ChainspecRawBytes>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Fetches the chainspec bytes and deserializes them into a [`Chainspec`]. Implementors backed
+    /// by [`crate::node_state_cache::NodeStateCache`] serve this (and `read_chainspec_bytes`) from
+    /// the cache, avoiding a binary port round-trip on hot config reads.
+    async fn read_chainspec(&self) -> Result<Arc<Chainspec>, Error> {
+        let raw = self.read_chainspec_bytes().await?;
+        let text = std::str::from_utf8(raw.chainspec_bytes()).map_err(|err| {
+            Error::Deserialization(format!("chainspec bytes are not valid utf8: {err}"))
+        })?;
+        let chainspec = toml::from_str::<Chainspec>(text)
+            .map_err(|err| Error::Deserialization(format!("chainspec toml: {err}")))?;
+        Ok(Arc::new(chainspec))
     }
 
     async fn read_validator_changes(&self) -> Result<ConsensusValidatorChanges, Error> {
@@ -1394,11 +1409,17 @@ impl FramedNodeClient {
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         Self::reconnect_internal(config).await
     }
-}
 
-#[async_trait]
-impl NodeClient for FramedNodeClient {
-    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error> {
+    /// Dispatches a single binary port request, transparently reconnecting and
+    /// retrying once if the connection was lost. Every actual binary port
+    /// round-trip goes through here (the caching layer sits above the `NodeClient`
+    /// trait), so the `send_request` wrapper counts one logical call by outcome in
+    /// `rpc_server_binary_port_calls_total` — the internal reconnect/retry is not
+    /// counted separately.
+    async fn send_request_and_reconnect(
+        &self,
+        req: Command,
+    ) -> Result<BinaryResponseAndRequest, Error> {
         let Ok(mut client) = tokio::time::timeout(
             Duration::from_secs(self.config.client_access_timeout_secs),
             self.client.write(),
@@ -1457,6 +1478,15 @@ impl NodeClient for FramedNodeClient {
                 }
             }
         }
+        result
+    }
+}
+
+#[async_trait]
+impl NodeClient for FramedNodeClient {
+    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error> {
+        let result = self.send_request_and_reconnect(req).await;
+        inc_binary_port_call(result.is_ok());
         result
     }
 

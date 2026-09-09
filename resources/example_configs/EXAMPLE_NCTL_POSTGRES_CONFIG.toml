@@ -7,6 +7,10 @@ max_body_bytes = 4000000
 max_batch_items = 100
 max_batch_response_bytes = 25_000_000
 max_eth_log_block_range = 10_000
+
+# How long a block/header observed on the SSE feed may be served from the in-process cache
+# before a fresh read from the node. "0 seconds" disables it; no effect when SSE is disabled.
+latest_block_cache_ttl = "8 seconds"
 cors_origin = ""
 default_limit_requests = 100
 default_limit_period = "1s"
@@ -116,4 +120,4 @@ max_requests_per_second = 50
 [admin_api_server]
 port = 18887
 max_concurrent_requests = 1
-max_requests_per_second = 1
+max_requests_per_second = 10

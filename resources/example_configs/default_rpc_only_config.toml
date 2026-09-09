@@ -30,6 +30,10 @@ max_batch_response_bytes = 25_000_000
 # Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
 max_eth_log_block_range = 10_000
 
+# How long a block/header observed on the SSE feed may be served from the in-process cache
+# before a fresh read from the node. "0 seconds" disables it; no effect when SSE is disabled.
+latest_block_cache_ttl = "8 seconds"
+
 # Specifies which origin will be reported as allowed by RPC server.
 #
 # If left empty, CORS will be disabled.
@@ -91,3 +95,9 @@ max_attempts = 30
 # Upper bound (bytes) on the LMDB environment size (map_size). This is a
 # hard ceiling fixed at startup and is not grown automatically.
 # max_size_bytes = 536_870_912
+
+[admin_api_server]
+enable_server = true
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 10

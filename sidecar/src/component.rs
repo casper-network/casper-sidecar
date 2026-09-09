@@ -235,10 +235,15 @@ impl Component for RpcApiComponent {
             if !is_speculative_exec_defined {
                 info!("Speculative RPC API server is disabled. Only main RPC API will be running.");
             }
+            let sse_enabled = config
+                .sse_server
+                .as_ref()
+                .is_some_and(|sse_config| sse_config.enable_server);
             let res = build_rpc_server(
                 rpc_server_config.clone(),
                 config.network_name.clone(),
                 self.sidecar_event_sender.clone(),
+                sse_enabled,
             )
             .await;
             match res {
