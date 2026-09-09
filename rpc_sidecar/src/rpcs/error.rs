@@ -1,5 +1,5 @@
 use crate::node_client::{Error as NodeClientError, InvalidTransactionOrDeploy};
-use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
+use casper_json_rpc::{Error as RpcError, ReservedErrorCode, RpcErrorCode};
 use casper_types::{
     AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash, URefFromStrError,
     bytesrepr,
@@ -132,10 +132,37 @@ impl From<Error> for RpcError {
                     available_block_range,
                 },
             ),
+            Error::NodeRequest(_, NodeClientError::LocalRequestThrottled(wait)) => RpcError::new(
+                RpcErrorCode::RequestThrottled,
+                format!("retry-after {:.4}s", wait.as_secs_f32()),
+            ),
             _ => match value.code() {
                 Some(code) => RpcError::new(code, value.to_string()),
                 None => RpcError::new(ReservedErrorCode::InternalError, value.to_string()),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// A locally-throttled binary-port request must surface to the JSON-RPC client identically to
+    /// how the per-method `MethodLimiter` already reports its own throttling (see
+    /// `casper_json_rpc::request_handlers::MethodLimiter::check`): same error code, same
+    /// "retry-after Ns" message format.
+    #[test]
+    fn local_request_throttled_maps_to_request_throttled_rpc_error() {
+        let wait = Duration::from_millis(823);
+        let error = Error::NodeRequest("some_method", NodeClientError::LocalRequestThrottled(wait));
+
+        let rpc_error = RpcError::from(error);
+
+        assert_eq!(
+            rpc_error,
+            RpcError::new(RpcErrorCode::RequestThrottled, "retry-after 0.8230s")
+        );
     }
 }

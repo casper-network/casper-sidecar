@@ -40,6 +40,8 @@ const DEFAULT_CORS_ORIGIN: String = String::new();
 const DEFAULT_ENABLE_BLOCK_PREFETCH: bool = false;
 /// Default maximum number of blocks an Ethereum log query can scan.
 const DEFAULT_MAX_ETH_LOG_BLOCK_RANGE: u64 = 10_000;
+/// Default trust window for the SSE-fed latest block / header cache.
+const DEFAULT_LATEST_BLOCK_CACHE_TTL: TimeDiff = TimeDiff::from_millis(1_000);
 
 #[derive(Error, Debug)]
 pub enum FieldParseError {
@@ -111,6 +113,12 @@ pub struct RpcConfig {
     /// Maximum number of blocks an Ethereum log query can scan in a single request or catch-up range.
     #[serde(default = "default_max_eth_log_block_range")]
     pub max_eth_log_block_range: u64,
+    /// How long a block or block header observed on the SSE feed may be served from the in-process
+    /// cache before a fresh read from the node is required. `"0 seconds"` disables this cache
+    /// (every "latest block" read then goes to the node). Has no effect when the SSE server is
+    /// disabled.
+    #[serde(default = "default_latest_block_cache_ttl")]
+    pub latest_block_cache_ttl: TimeDiff,
 }
 
 impl RpcConfig {
@@ -137,6 +145,7 @@ impl RpcConfig {
             limits: None,
             enable_block_prefetch: DEFAULT_ENABLE_BLOCK_PREFETCH,
             max_eth_log_block_range: DEFAULT_MAX_ETH_LOG_BLOCK_RANGE,
+            latest_block_cache_ttl: DEFAULT_LATEST_BLOCK_CACHE_TTL,
         }
     }
 }
@@ -197,6 +206,12 @@ pub struct NodeClientConfig {
     pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfig,
+    /// Maximum number of binary port requests (i.e. requests that actually cross the wire to the
+    /// node) allowed per second. `None` (the default) leaves binary-port traffic locally
+    /// unthrottled; requests served from a cache never count against this limit.
+    #[serde(default)]
+    #[data_size(with = optional_nonzero_u32)]
+    pub binary_port_qps_limit: Option<NonZeroU32>,
 }
 
 impl NodeClientConfig {
@@ -216,6 +231,7 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
+            binary_port_qps_limit: None,
         }
     }
 
@@ -238,6 +254,7 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
+            binary_port_qps_limit: None,
         }
     }
 
@@ -261,6 +278,7 @@ impl NodeClientConfig {
                 coefficient: 3,
                 max_attempts: num_of_retries,
             },
+            binary_port_qps_limit: None,
         }
     }
 }
@@ -286,4 +304,12 @@ fn default_enable_block_prefetch() -> bool {
 
 fn default_max_eth_log_block_range() -> u64 {
     DEFAULT_MAX_ETH_LOG_BLOCK_RANGE
+}
+
+fn default_latest_block_cache_ttl() -> TimeDiff {
+    DEFAULT_LATEST_BLOCK_CACHE_TTL
+}
+
+fn optional_nonzero_u32(value: &Option<NonZeroU32>) -> usize {
+    value.map_or(0, |limit| nonzero_u32(&limit))
 }

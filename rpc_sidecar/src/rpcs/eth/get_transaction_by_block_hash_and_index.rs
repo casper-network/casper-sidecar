@@ -88,7 +88,8 @@ mod tests {
     use casper_json_rpc::ReservedErrorCode;
     use casper_types::{
         Block, BlockIdentifier, BlockSignatures, BlockWithSignatures, Deploy, EvmTransaction,
-        EvmTransactionHash, ExecutionInfo, TestBlockBuilder, TimeDiff, Transaction, TransactionHash,
+        EvmTransactionHash, ExecutionInfo, TestBlockBuilder, TimeDiff, Transaction,
+        TransactionHash,
         execution::{EvmExecutionResult, ExecutionResult},
         testing::TestRng,
     };
