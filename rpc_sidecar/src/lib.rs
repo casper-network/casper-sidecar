@@ -4,6 +4,7 @@ mod caching_node_client;
 mod config;
 mod http_server;
 mod node_client;
+mod node_state_cache;
 mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
@@ -27,6 +28,7 @@ use futures::{FutureExt, future::BoxFuture};
 pub use http_server::run as run_rpc_server;
 use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
+use node_state_cache::{NodeStateCache, protocol_version_poll_loop};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
 use tokio::sync::broadcast::Sender;
@@ -42,8 +44,9 @@ pub async fn build_rpc_server<'a>(
     config: RpcServerConfig,
     maybe_network_name: Option<String>,
     sidecar_event_sender: Sender<SidecarEvent>,
+    sse_enabled: bool,
 ) -> MaybeRpcServerReturn<'a> {
-    let (node_client, reconnect_loop, keepalive_loop) =
+    let (framed_node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
@@ -53,23 +56,47 @@ pub async fn build_rpc_server<'a>(
              general binary_port_cache; this setting now has no effect"
         );
     }
+
+    // Process-wide cache of node-derived state (syncing status, latest block/header from the SSE
+    // feed, and `(ProtocolVersion, Chainspec)`). Hydrate the chainspec now that the node
+    // connection is up so the first config read is already served locally.
+    let node_state_cache = Arc::new(NodeStateCache::new(
+        sse_enabled,
+        main_server_config.latest_block_cache_ttl,
+    ));
+    if let Err(err) = node_state_cache
+        .hydrate_chainspec(framed_node_client.as_ref())
+        .await
+    {
+        warn!(%err, "failed to hydrate node state cache at startup; it will be filled lazily");
+    }
+
     let binary_port_store = config
         .binary_port_cache
         .as_ref()
-        .map(|cfg| new_binary_port_cache(cfg, node_client.clone()))
+        .map(|cfg| new_binary_port_cache(cfg, framed_node_client.clone()))
         .transpose()?;
-    let node_client: Arc<dyn NodeClient> = if let Some(store) = binary_port_store {
-        let caching_client = Arc::new(CachingNodeClient::new(node_client, Some(store.clone())));
-        let cache_loop =
-            cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
-                .map(|q| {
-                    if let Err(e) = q {
-                        error!("cache_update_loop finished with error: {e}");
-                    }
-                    Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
-                })
-                .boxed();
-        futures.push(cache_loop);
+
+    let caching_client = Arc::new(CachingNodeClient::new(
+        framed_node_client,
+        binary_port_store.clone(),
+        node_state_cache.clone(),
+    ));
+    let node_client: Arc<dyn NodeClient> = caching_client.clone();
+
+    // Feed the node state cache (and, if enabled, the persistent binary port cache) from the SSE
+    // event stream. No-ops harmlessly if the SSE server is disabled - the channel just stays quiet.
+    let cache_loop = cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
+        .map(|q| {
+            if let Err(e) = q {
+                error!("cache_update_loop finished with error: {e}");
+            }
+            Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+        })
+        .boxed();
+    futures.push(cache_loop);
+
+    if let Some(store) = binary_port_store {
         let prune_loop_future = prune_loop(store)
             .map(|q| {
                 if let Err(e) = q {
@@ -79,14 +106,27 @@ pub async fn build_rpc_server<'a>(
             })
             .boxed();
         futures.push(prune_loop_future);
-        caching_client
-    } else {
-        node_client
-    };
+    }
+
+    if !sse_enabled {
+        // Without an SSE feed there is no `ApiVersion` event, so poll for protocol version changes
+        // to keep the cached chainspec fresh across node upgrades.
+        let poll_loop = protocol_version_poll_loop(node_client.clone(), node_state_cache.clone())
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("protocol_version_poll_loop finished with error: {e}");
+                }
+                Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+            })
+            .boxed();
+        futures.push(poll_loop);
+    }
+
     if main_server_config.enable_server {
         let future = run_rpc(
             main_server_config,
             node_client.clone(),
+            node_state_cache.clone(),
             sidecar_event_sender.clone(),
         )
         .map(|q| {
@@ -142,10 +182,12 @@ async fn retype_future_vec(
 async fn run_rpc(
     config: RpcConfig,
     node_client: Arc<dyn NodeClient>,
+    node_state_cache: Arc<NodeStateCache>,
     sidecar_event_sender: Sender<SidecarEvent>,
 ) -> Result<(), Error> {
     run_rpc_server(
         node_client,
+        node_state_cache,
         sidecar_event_sender,
         config.ip_address,
         config.port,

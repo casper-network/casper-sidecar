@@ -37,7 +37,7 @@ mod new_filter;
 mod projection;
 mod send_raw_transaction;
 mod subscriptions;
-mod syncing;
+pub(crate) mod syncing;
 mod transaction_response;
 mod types;
 mod uninstall_filter;

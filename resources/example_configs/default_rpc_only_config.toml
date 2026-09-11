@@ -30,6 +30,10 @@ max_batch_response_bytes = 25_000_000
 # Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
 max_eth_log_block_range = 10_000
 
+# How long a block/header observed on the SSE feed may be served from the in-process cache
+# before a fresh read from the node. "0 seconds" disables it; no effect when SSE is disabled.
+latest_block_cache_ttl = "8 seconds"
+
 # Specifies which origin will be reported as allowed by RPC server.
 #
 # If left empty, CORS will be disabled.
@@ -79,15 +83,52 @@ max_attempts = 30
 
 # ====================================================================
 # Configuration options for the persistent (LMDB-backed) binary port
-# cache. Disabled by default - uncomment to enable. Caches immutable,
-# identifier-addressed historical data (block headers, blocks with
-# signatures, transactions with execution info) fetched over the
-# node's binary port, surviving sidecar restarts.
+# cache. Caches immutable, identifier-addressed historical data (block
+# headers, blocks with signatures, transactions with execution info)
+# fetched over the node's binary port, surviving sidecar restarts.
+# Remove this section to disable it.
 # ====================================================================
-# [rpc_server.binary_port_cache]
+[rpc_server.binary_port_cache]
 # Directory backing the LMDB environment. Created on startup if missing.
-# path = '/var/lib/casper-sidecar/binary_port_cache'
-#
+path = '/var/lib/casper-sidecar/binary_port_cache'
 # Upper bound (bytes) on the LMDB environment size (map_size). This is a
 # hard ceiling fixed at startup and is not grown automatically.
-# max_size_bytes = 536_870_912
+max_size_bytes = 536_870_912
+
+# ==================================================
+# Configuration options for the SSE event listener
+# ==================================================
+# The RPC server consumes the node's SSE stream to keep an in-process cache of the
+# latest block / block header warm (see main_server.latest_block_cache_ttl) and to
+# react to protocol-version changes. Event persistence is disabled here, so no
+# database is used - the outbound SSE endpoint still republishes the live stream.
+[sse_server]
+enable_server = true
+disable_event_persistence = true
+
+[[sse_server.connections]]
+ip_address = "127.0.0.1"
+sse_port = 9999
+rest_port = 8888
+max_attempts = 10000
+delay_between_retries_in_seconds = 5
+allow_partial_connection = false
+enable_logging = true
+
+[sse_server.event_stream_server]
+# Outbound SSE port exposed by the sidecar.
+port = 19999
+max_concurrent_subscribers = 100
+event_stream_buffer_length = 5000
+
+# A storage folder must be defined whenever the SSE server is enabled, even with
+# event persistence disabled. No [storage.sqlite_config] / [storage.postgresql_config]
+# section => no database.
+[storage]
+storage_folder = "/var/lib/casper-sidecar"
+
+[admin_api_server]
+enable_server = true
+port = 18887
+max_concurrent_requests = 1
+max_requests_per_second = 10
