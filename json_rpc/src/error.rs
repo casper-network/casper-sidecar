@@ -122,6 +122,12 @@ pub struct Error {
     message: Cow<'static, str>,
     /// Additional information about the error.
     data: Option<Value>,
+    /// An HTTP status code to use for the response carrying this error, in place of the default
+    /// `200 OK`. Not part of the JSON-RPC error object itself, so it's never serialized onto the
+    /// wire - it only affects the outer HTTP response status (see
+    /// [`Error::with_http_status_override`]).
+    #[serde(skip)]
+    http_status_override: Option<u16>,
 }
 
 impl Error {
@@ -152,6 +158,7 @@ impl Error {
                 data: Some(Value::String(format!(
                     "attempted to return reserved error code {code}"
                 ))),
+                http_status_override: None,
             };
         }
 
@@ -171,6 +178,7 @@ impl Error {
             code,
             message: Cow::Borrowed(message),
             data,
+            http_status_override: None,
         }
     }
 
@@ -178,6 +186,21 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> i64 {
         self.code
+    }
+
+    /// Attaches an HTTP status code to use for the response carrying this error, in place of the
+    /// default `200 OK`. This only changes the outer HTTP response status.
+    #[must_use]
+    pub fn with_http_status_override(mut self, status: u16) -> Self {
+        self.http_status_override = Some(status);
+        self
+    }
+
+    /// Returns the HTTP status code to use for the response carrying this error, if one was set
+    /// via [`Error::with_http_status_override`].
+    #[must_use]
+    pub fn http_status_override(&self) -> Option<u16> {
+        self.http_status_override
     }
 }
 

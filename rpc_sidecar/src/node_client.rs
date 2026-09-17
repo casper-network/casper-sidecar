@@ -23,20 +23,15 @@ use casper_types::{
     system::auction::DelegatorKind,
 };
 use futures::{Future, SinkExt, StreamExt};
-use governor::{
-    DefaultDirectRateLimiter, Quota,
-    clock::{Clock, DefaultClock},
-};
 use metrics::rpc::{
-    inc_binary_port_call, inc_binary_port_throttled, inc_disconnect, observe_reconnect_time,
-    register_mismatched_id, register_timeout,
+    inc_binary_port_call, inc_disconnect, observe_reconnect_time, register_mismatched_id,
+    register_timeout,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
     net::{IpAddr, SocketAddr},
-    num::NonZeroU32,
     sync::{
         Arc,
         atomic::{AtomicU16, Ordering},
@@ -975,8 +970,6 @@ pub enum Error {
     CommandHeaderVersionMismatch,
     #[error("request was throttled by the node")]
     RequestThrottled,
-    #[error("request was throttled by this sidecar's local binary-port rate limit")]
-    LocalRequestThrottled(Duration),
     #[error("malformed information request")]
     MalformedInformationRequest,
     #[error("malformed version bytes in command header")]
@@ -1514,46 +1507,6 @@ impl NodeClient for FramedNodeClient {
     }
 }
 
-/// Wraps a [`NodeClient`] and applies a local rate limit to outgoing binary port requests, i.e.
-/// requests that actually cross the wire via [`NodeClient::send_request`]. This is independent of
-/// the JSON-RPC layer's own QPS/per-method limiters, and independent of any caching layer wrapped
-/// around this client: a request served from a cache never reaches `send_request` here, so it
-/// never counts against this limit.
-pub struct ThrottledNodeClient<T: NodeClient + Send + Sync> {
-    inner: Arc<T>,
-    limiter: Option<Arc<DefaultDirectRateLimiter>>,
-}
-
-impl<T: NodeClient + Send + Sync> ThrottledNodeClient<T> {
-    /// Creates a new client wrapping `inner`. `qps_limit` of `None` disables throttling entirely.
-    pub fn new(inner: Arc<T>, qps_limit: Option<NonZeroU32>) -> Self {
-        let limiter = qps_limit
-            .map(|limit| Arc::new(DefaultDirectRateLimiter::direct(Quota::per_second(limit))));
-        Self { inner, limiter }
-    }
-}
-
-#[async_trait]
-impl<T: NodeClient + Send + Sync> NodeClient for ThrottledNodeClient<T> {
-    async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, Error> {
-        if let Some(negative) = self
-            .limiter
-            .as_ref()
-            .and_then(|limiter| limiter.check().err())
-        {
-            let wait_time = negative.wait_time_from(DefaultClock::default().now());
-            inc_binary_port_throttled();
-            return Err(Error::LocalRequestThrottled(wait_time));
-        }
-        self.inner.send_request(req).await
-    }
-
-    // Not a binary-port call - forward directly so throttling doesn't affect it and it doesn't
-    // fall back to the trait's default (unsupported) implementation.
-    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
-        self.inner.read_rest_node_status().await
-    }
-}
 
 #[derive(Debug)]
 pub enum EntityResponse {
@@ -2162,107 +2115,4 @@ mod tests {
         ));
     }
 
-    /// A minimal `NodeClient` that always succeeds and counts how many times
-    /// `send_request`/`read_rest_node_status` were actually invoked, so throttling tests can
-    /// assert exactly how many requests got past the limiter.
-    struct CountingMock {
-        send_request_calls: Arc<std::sync::atomic::AtomicUsize>,
-    }
-
-    #[async_trait]
-    impl NodeClient for CountingMock {
-        async fn send_request(&self, _req: Command) -> Result<BinaryResponseAndRequest, Error> {
-            self.send_request_calls
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(BinaryResponseAndRequest::new(
-                BinaryResponse::new_empty(),
-                bytesrepr::Bytes::new(),
-            ))
-        }
-
-        async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
-            Ok(RestNodeStatus {
-                reactor_state: "KeepUp".to_string(),
-                available_block_range: AvailableBlockRange::new(0, 0),
-                block_sync: BlockSynchronizerStatus::new(None, None),
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn throttled_client_rejects_requests_over_quota() {
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let inner = Arc::new(CountingMock {
-            send_request_calls: calls.clone(),
-        });
-        let under_test = ThrottledNodeClient::new(inner, Some(NonZeroU32::new(1).unwrap()));
-        fn protocol_version_request() -> Command {
-            Command::Get(GetRequest::Information {
-                info_type_tag: InformationRequestTag::ProtocolVersion.into(),
-                key: Vec::new(),
-            })
-        }
-
-        // governor's default quota starts with a full burst of size 1, so the first request
-        // passes straight through to the inner client...
-        under_test
-            .send_request(protocol_version_request())
-            .await
-            .expect("first request should be within quota");
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-
-        // ...but the second, made immediately after, exhausts it.
-        let err = under_test
-            .send_request(protocol_version_request())
-            .await
-            .expect_err("second immediate request should be throttled");
-        assert!(matches!(err, Error::LocalRequestThrottled(_)));
-        // The rejected request never reached the inner client.
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-
-        let summary = match metrics::metrics_summary() {
-            Ok(s) => s,
-            Err(e) => panic!("metrics_summary failed: {}", e),
-        };
-        assert!(summary.contains("rpc_server_binary_port_throttled_total"));
-    }
-
-    #[tokio::test]
-    async fn throttled_client_with_no_limit_never_rejects() {
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let inner = Arc::new(CountingMock {
-            send_request_calls: calls.clone(),
-        });
-        let under_test = ThrottledNodeClient::new(inner, None);
-
-        for _ in 0..10 {
-            under_test
-                .send_request(Command::Get(GetRequest::Information {
-                    info_type_tag: InformationRequestTag::ProtocolVersion.into(),
-                    key: Vec::new(),
-                }))
-                .await
-                .expect("no limit configured, so nothing should ever be throttled");
-        }
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 10);
-    }
-
-    /// `ThrottledNodeClient` only overrides `send_request` (the throttled path) and
-    /// `read_rest_node_status` (a REST call, not a binary-port one, forwarded untouched); every
-    /// other `NodeClient` method must reach the inner client via the trait's own default
-    /// implementations, which dispatch back through `send_request` on `self` - not on the inner
-    /// client directly - so the throttle still applies to them.
-    #[tokio::test]
-    async fn throttled_client_forwards_read_rest_node_status_to_inner_client() {
-        let inner = Arc::new(CountingMock {
-            send_request_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        });
-        let under_test = ThrottledNodeClient::new(inner, Some(NonZeroU32::new(1).unwrap()));
-
-        let status = under_test
-            .read_rest_node_status()
-            .await
-            .expect("should forward to inner client rather than hit the unsupported default");
-        assert_eq!(status.reactor_state, "KeepUp");
-    }
 }

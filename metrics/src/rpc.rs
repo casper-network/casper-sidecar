@@ -43,20 +43,6 @@ static BINARY_PORT_CALLS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     counter
 });
 
-static BINARY_PORT_THROTTLED: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter = IntCounter::new(
-        "rpc_server_binary_port_throttled_total",
-        "Total number of binary port requests rejected by the sidecar's own local rate limit \
-         (`node_client.binary_port_qps_limit`) before ever reaching the node. Distinct from \
-         `rpc_server_binary_port_calls_total`, which only counts calls that were dispatched.",
-    )
-    .expect("rpc_server_binary_port_throttled_total metric can't be created");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("cannot register metric");
-    counter
-});
-
 static TIMEOUT_COUNTERS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let counter = IntCounterVec::new(
         Opts::new(
@@ -209,12 +195,6 @@ pub fn inc_binary_port_call(success: bool) {
     BINARY_PORT_CALLS.with_label_values(&[outcome]).inc();
 }
 
-/// Records a binary port request rejected locally by `binary_port_qps_limit`, i.e. one that
-/// never reached the node at all.
-pub fn inc_binary_port_throttled() {
-    BINARY_PORT_THROTTLED.inc();
-}
-
 pub fn observe_response_time(method: &str, status: &str, response_time: Duration) {
     let response_time = response_time.as_secs_f64() * 1000.0;
     RESPONSE_TIMES_MS
@@ -288,21 +268,5 @@ mod tests {
             Err(e) => panic!("metrics_summary failed: {}", e),
         };
         assert!(summary.contains("rpc_server_binary_port_calls_total"));
-    }
-
-    #[test]
-    fn binary_port_throttled_counter_increments() {
-        let before = BINARY_PORT_THROTTLED.get();
-
-        inc_binary_port_throttled();
-        inc_binary_port_throttled();
-
-        assert_eq!(BINARY_PORT_THROTTLED.get(), before + 2);
-
-        let summary = match crate::metrics_summary() {
-            Ok(s) => s,
-            Err(e) => panic!("metrics_summary failed: {}", e),
-        };
-        assert!(summary.contains("rpc_server_binary_port_throttled_total"));
     }
 }

@@ -206,12 +206,6 @@ pub struct NodeClientConfig {
     pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfig,
-    /// Maximum number of binary port requests (i.e. requests that actually cross the wire to the
-    /// node) allowed per second. `None` (the default) leaves binary-port traffic locally
-    /// unthrottled; requests served from a cache never count against this limit.
-    #[serde(default)]
-    #[data_size(with = optional_nonzero_u32)]
-    pub binary_port_qps_limit: Option<NonZeroU32>,
 }
 
 impl NodeClientConfig {
@@ -231,7 +225,6 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
-            binary_port_qps_limit: None,
         }
     }
 
@@ -254,7 +247,6 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
-            binary_port_qps_limit: None,
         }
     }
 
@@ -278,7 +270,6 @@ impl NodeClientConfig {
                 coefficient: 3,
                 max_attempts: num_of_retries,
             },
-            binary_port_qps_limit: None,
         }
     }
 }
@@ -308,8 +299,4 @@ fn default_max_eth_log_block_range() -> u64 {
 
 fn default_latest_block_cache_ttl() -> TimeDiff {
     DEFAULT_LATEST_BLOCK_CACHE_TTL
-}
-
-fn optional_nonzero_u32(value: &Option<NonZeroU32>) -> usize {
-    value.map_or(0, |limit| nonzero_u32(&limit))
 }

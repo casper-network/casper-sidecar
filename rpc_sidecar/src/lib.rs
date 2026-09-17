@@ -27,7 +27,7 @@ pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{FutureExt, future::BoxFuture};
 pub use http_server::run as run_rpc_server;
 pub use node_client::{Error as ClientError, NodeClient};
-use node_client::{FramedNodeClient, ThrottledNodeClient};
+use node_client::FramedNodeClient;
 use node_state_cache::{NodeStateCache, protocol_version_poll_loop};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
@@ -48,13 +48,6 @@ pub async fn build_rpc_server<'a>(
 ) -> MaybeRpcServerReturn<'a> {
     let (framed_node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
-    // Throttles outgoing binary port traffic (independent of the JSON-RPC layer's own QPS/
-    // per-method limiters), applied here - below the caching layer - so cache hits never count
-    // against it and any binary-port traffic reaches the node through this single gate.
-    let framed_node_client = Arc::new(ThrottledNodeClient::new(
-        framed_node_client,
-        config.node_client.binary_port_qps_limit,
-    ));
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     if main_server_config.enable_block_prefetch {

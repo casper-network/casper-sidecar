@@ -20,9 +20,19 @@ use warp::{
 };
 
 use crate::{
-    JsonRpcOptions, JsonRpcOutput, handle_json_request_bytes, rejections::BodyTooLarge,
-    request_handlers::RequestHandlers,
+    Error, JsonRpcOptions, JsonRpcOutput, Response, handle_json_request_bytes,
+    rejections::BodyTooLarge, request_handlers::RequestHandlers,
 };
+
+/// The HTTP status to use for the response carrying `error`, honoring an override set via
+/// [`Error::with_http_status_override`] and falling back to `200 OK` (the JSON-RPC default)
+/// otherwise.
+fn http_status_of(error: Option<&Error>) -> StatusCode {
+    error
+        .and_then(Error::http_status_override)
+        .and_then(|status| StatusCode::from_u16(status).ok())
+        .unwrap_or(StatusCode::OK)
+}
 
 const CONTENT_TYPE_VALUE: &str = "application/json";
 
@@ -70,10 +80,15 @@ pub fn main_filter(
                         reply::with_status("", StatusCode::NO_CONTENT).into_response()
                     }
                     JsonRpcOutput::Single(response) => {
-                        reply::with_status(reply::json(&response), StatusCode::OK).into_response()
+                        let status = http_status_of(response.error());
+                        reply::with_status(reply::json(&response), status).into_response()
                     }
                     JsonRpcOutput::Batch(responses) => {
-                        reply::with_status(reply::json(&responses), StatusCode::OK).into_response()
+                        // A batch shares a single outer HTTP response even though it may carry
+                        // several JSON-RPC results - use the first response's status override, if
+                        // any of them set one.
+                        let status = http_status_of(responses.iter().find_map(Response::error));
+                        reply::with_status(reply::json(&responses), status).into_response()
                     }
                 }
             }

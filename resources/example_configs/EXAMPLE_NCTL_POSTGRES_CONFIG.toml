@@ -35,11 +35,6 @@ max_message_size_bytes = 134_217_728
 message_timeout_secs = 10
 client_access_timeout_secs = 10
 keepalive_timeout_ms = 4_000
-# Maximum binary port requests per second allowed to cross the wire to the node,
-# independent of the JSON-RPC layer's qps_limit/per-method limits above. Requests
-# served from the binary_port_cache or the SSE-fed caches never count against this.
-# Comment out (or omit) to leave binary-port traffic locally unthrottled.
-# binary_port_qps_limit = 50
 
 [rpc_server.node_client.exponential_backoff]
 initial_delay_ms = 1000

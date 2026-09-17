@@ -32,14 +32,7 @@ All notable changes to this project will be documented in this file. The format 
 - Added `rpc_server.main_server.latest_block_cache_ttl` (default `"1 second"`, `"0 seconds"`
   disables) controlling how long an SSE-observed block / header stays trusted. No effect when the
   SSE server is disabled.
-- Added `rpc_server.node_client.binary_port_qps_limit`, an optional rate limit on binary port
-  requests that actually cross the wire to the node, independent of the JSON-RPC layer's own
-  QPS/per-method limits. Unset (the default) leaves binary-port traffic locally unthrottled;
-  requests served from the binary port cache or `NodeStateCache` never count against it. A
-  throttled request gets the same JSON-RPC error response as the existing per-method limiter
-  (`code: 429`, `"Request throttled"`).
-- Added the `rpc_server_binary_port_throttled_total` counter tracking binary port requests
-  rejected locally by `binary_port_qps_limit` before ever reaching the node.
+- Added `casper_json_rpc::Error::with_http_status_override`.
 
 ### Changed
 
@@ -47,6 +40,9 @@ All notable changes to this project will be documented in this file. The format 
   async `RequestDispatcher` API.
 - JSON-RPC requests now accept fractional number IDs, distinguish missing IDs from explicit null
   IDs, and reject `params: null` in favor of omitted parameters or an empty array.
+- A binary port request throttled by the node itself (`ErrorCode::RequestThrottled`) now surfaces
+  as a genuine HTTP 429 response instead of a JSON-RPC error object wrapped in `200 OK`, so proxies,
+  load balancers, and clients that only check the HTTP status still observe the throttling.
 
 ## [2.1.0]
 
