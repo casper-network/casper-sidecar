@@ -2,7 +2,7 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_binary_port::EvmSpeculativeExecutionResult;
-use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
+use casper_json_rpc::{Error as RpcError, ErrorCodeT, Params, ReservedErrorCode};
 use casper_types::{
     BlockIdentifier, EvmAddr, EvmConfig, EvmTransaction, GlobalStateIdentifier, Key, TimeDiff,
     Timestamp, U256, evm,
@@ -167,6 +167,22 @@ struct EthCallError {
     gas_used: EthU256,
 }
 
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+#[repr(i64)]
+enum EthExecutionErrorCode {
+    ExecutionReverted = 3,
+}
+
+impl From<EthExecutionErrorCode> for (i64, &'static str) {
+    fn from(error_code: EthExecutionErrorCode) -> Self {
+        match error_code {
+            EthExecutionErrorCode::ExecutionReverted => (error_code as i64, "execution reverted"),
+        }
+    }
+}
+
+impl ErrorCodeT for EthExecutionErrorCode {}
+
 pub(super) async fn execute_evm_call(
     node_client: &dyn NodeClient,
     call: &CallObject,
@@ -223,6 +239,12 @@ pub(super) fn ensure_evm_call_succeeded(
     let receipt = result.evm_receipt();
     if receipt.status.is_success() {
         return Ok(());
+    }
+    if matches!(receipt.status, evm::ReceiptStatus::Revert) {
+        return Err(RpcError::new(
+            EthExecutionErrorCode::ExecutionReverted,
+            HexData::from(result.evm_output()),
+        ));
     }
     Err(RpcError::new(
         ReservedErrorCode::InternalError,
@@ -342,6 +364,23 @@ mod tests {
             params.block,
             StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest))
         );
+    }
+
+    #[test]
+    fn eth_call_returns_geth_compatible_revert_error() {
+        for (output, expected_data) in [(Vec::new(), "0x"), (vec![0xde, 0xad], "0xdead")] {
+            let error = ensure_evm_call_succeeded(&execution_result(ReceiptStatus::Revert, output))
+                .expect_err("reverted EVM call should fail");
+
+            assert_eq!(
+                serde_json::to_value(error).unwrap(),
+                json!({
+                    "code": 3,
+                    "message": "execution reverted",
+                    "data": expected_data,
+                })
+            );
+        }
     }
 
     #[tokio::test]
@@ -734,6 +773,10 @@ wei_per_mote = 1000000000
     }
 
     fn successful_result() -> EvmSpeculativeExecutionResult {
+        execution_result(ReceiptStatus::Success, vec![0x2a])
+    }
+
+    fn execution_result(status: ReceiptStatus, output: Vec<u8>) -> EvmSpeculativeExecutionResult {
         EvmSpeculativeExecutionResult::new(
             BlockHash::new([3; 32].into()),
             Gas::new(30_000_000u64),
@@ -741,13 +784,13 @@ wei_per_mote = 1000000000
             Effects::new(),
             None,
             Receipt {
-                status: ReceiptStatus::Success,
+                status,
                 gas_used: 21_000,
                 effective_gas_price: evm_config().base_fee_wei(),
                 contract_address: None,
                 logs: Vec::new(),
             },
-            Bytes::from(vec![0x2a]),
+            Bytes::from(output),
         )
     }
 }
