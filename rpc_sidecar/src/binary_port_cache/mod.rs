@@ -2,13 +2,11 @@ mod heed_store;
 pub(crate) use heed_store::HeedBinaryPortCache;
 
 use async_trait::async_trait;
-use casper_binary_port::TransactionWithExecutionInfo;
 use casper_event_types::SidecarEvent;
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures, EraId, FinalitySignature,
-    PublicKey, TransactionHash, U512,
+    Block, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures, EraId, ExecutionInfo,
+    FinalitySignature, PublicKey, Transaction, TransactionHash, U512,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH, U32_SERIALIZED_LENGTH},
-    execution::ExecutionResult,
 };
 use datasize::DataSize;
 use serde::Deserialize;
@@ -90,6 +88,80 @@ impl FromBytes for ValidatorsData {
             Self {
                 validators,
                 total_stake,
+            },
+            remainder,
+        ))
+    }
+}
+
+/// Everything the cache currently knows about one transaction, assembled piecemeal (and
+/// out of order) from two independent SSE signals - `TransactionAccepted` (the transaction's
+/// body, seen before execution) and `TransactionProcessed` (its execution result, seen after) -
+/// plus, on a cache miss, a direct node fetch.
+///
+/// Each field is independently `None` ("not learned yet") vs `Some` ("learned"), because the two
+/// pieces become known at different, unordered times: `TransactionProcessed` can in principle
+/// even race `TransactionAccepted` for the same hash. `execution_info` is additionally double
+/// `Option`ed: the outer layer is this cache's own "have I learned anything about execution
+/// status" bit, while the inner `Option<ExecutionInfo>` mirrors the domain-level meaning already
+/// used elsewhere in the API ("no execution info" - i.e. accepted but not yet executed - is
+/// itself a piece of information, distinct from "the cache hasn't looked/heard yet"). Nothing in
+/// this module currently constructs `Some(None)`: unlike the outer "haven't heard yet" `None`,
+/// asserting "confirmed still pending" would need some invalidation story once execution
+/// actually happens, which doesn't exist yet - see `CachingNodeClient`'s equivalent caution
+/// before this type existed. The variant is kept for callers (e.g. a future node-fetch path) that
+/// can respect that contract.
+///
+/// A cache entry only exists once at least one of these fields has actual content - see
+/// `BinaryPortCache::merge_transaction`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub(crate) struct TransactionKnowledge {
+    pub(crate) transaction: Option<Transaction>,
+    pub(crate) execution_info: Option<Option<ExecutionInfo>>,
+}
+
+impl TransactionKnowledge {
+    /// Combines already-known knowledge with newly-learned pieces. `None` for either parameter
+    /// of the "new" side means "nothing new learned about that piece this time" - it never erases
+    /// existing knowledge, only adds to it.
+    pub(crate) fn merged(
+        self,
+        new_transaction: Option<Transaction>,
+        new_execution_info: Option<Option<ExecutionInfo>>,
+    ) -> Self {
+        Self {
+            transaction: new_transaction.or(self.transaction),
+            execution_info: new_execution_info.or(self.execution_info),
+        }
+    }
+}
+
+impl ToBytes for TransactionKnowledge {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.transaction.serialized_length() + self.execution_info.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.transaction.write_bytes(writer)?;
+        self.execution_info.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for TransactionKnowledge {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (transaction, remainder) = Option::<Transaction>::from_bytes(bytes)?;
+        let (execution_info, remainder) = Option::<Option<ExecutionInfo>>::from_bytes(remainder)?;
+        Ok((
+            Self {
+                transaction,
+                execution_info,
             },
             remainder,
         ))
@@ -298,28 +370,28 @@ pub(crate) trait BinaryPortCache: Send + Sync {
         value: &BlockWithSignatures,
     ) -> Result<(), CacheError>;
 
-    async fn get_transaction_with_execution_info(
+    /// Returns everything currently known about `hash` - possibly just the transaction body,
+    /// possibly just its execution info, possibly both, possibly neither field (a
+    /// `CacheEnvelope::DontHave` instead, if nothing at all is known yet). Callers decide for
+    /// themselves whether the returned knowledge is enough to answer the request they're serving,
+    /// or whether they still need to fall back to the node (and then call
+    /// [`Self::merge_transaction`] with whatever they learned).
+    async fn get_transaction(
         &self,
         hash: TransactionHash,
-        with_finalized_approvals: bool,
-    ) -> Result<CacheEnvelope<TransactionWithExecutionInfo>, CacheError>;
+    ) -> Result<CacheEnvelope<TransactionKnowledge>, CacheError>;
 
-    async fn put_transaction_with_execution_info(
+    /// Merges newly-learned pieces into whatever is already known about `hash`, creating the
+    /// entry if this is the first thing ever learned about it. `None` for either parameter means
+    /// "nothing new learned about that piece this call" and leaves the existing value (if any)
+    /// untouched - it never erases already-known information. Locks internally against
+    /// concurrent merges for the same hash, so callers never need their own read-decide-write
+    /// dance (contrast [`Self::put_block_parts`], which pushes that requirement onto callers).
+    async fn merge_transaction(
         &self,
         hash: TransactionHash,
-        with_finalized_approvals: bool,
-        value: &TransactionWithExecutionInfo,
-    ) -> Result<(), CacheError>;
-
-    async fn get_transaction_execution_result(
-        &self,
-        hash: TransactionHash,
-    ) -> Result<CacheEnvelope<ExecutionResult>, CacheError>;
-
-    async fn put_transaction_execution_result(
-        &self,
-        hash: TransactionHash,
-        value: &ExecutionResult,
+        transaction: Option<Transaction>,
+        execution_info: Option<Option<ExecutionInfo>>,
     ) -> Result<(), CacheError>;
 
     async fn get_block_parts(

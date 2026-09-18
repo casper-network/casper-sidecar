@@ -1,6 +1,6 @@
 use crate::{
     ClientError, NodeClient,
-    binary_port_cache::{BinaryPortCache, InFlightDataHandling},
+    binary_port_cache::{BinaryPortCache, InFlightDataHandling, TransactionKnowledge},
     node_client::RestNodeStatus,
     node_state_cache::NodeStateCache,
     parse_response,
@@ -160,23 +160,30 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
         with_finalized_approvals: bool,
     ) -> Result<Option<TransactionWithExecutionInfo>, ClientError> {
         if let Some(cache) = &self.binary_port_cache {
-            match cache
-                .get_transaction_with_execution_info(hash, with_finalized_approvals)
-                .await
-            {
-                Ok(envelope) => {
-                    let hit = envelope.into_option();
-                    if hit.is_some() {
-                        cache_metrics::record_cache_lookup("transaction_with_execution_info", true);
-                        return Ok(hit);
-                    }
-                    cache_metrics::record_cache_lookup("transaction_with_execution_info", false);
-                }
+            let cached = match cache.get_transaction(hash).await {
+                Ok(envelope) => envelope.into_option(),
                 Err(err) => {
-                    cache_metrics::record_cache_lookup("transaction_with_execution_info", false);
-                    warn!(%err, "binary port cache: get_transaction_with_execution_info failed")
+                    warn!(%err, "binary port cache: get_transaction failed");
+                    None
                 }
+            };
+            // The cached transaction body only ever holds the originally-received-approvals
+            // variant (populated from `TransactionAccepted`, or from a `with_finalized_approvals
+            // = false` fetch below) - it can't answer a `with_finalized_approvals = true`
+            // request, which needs the node's authoritative finalized-approvals variant instead.
+            if !with_finalized_approvals
+                && let Some(TransactionKnowledge {
+                    transaction: Some(transaction),
+                    execution_info: Some(execution_info),
+                }) = cached
+            {
+                cache_metrics::record_cache_lookup("transaction_with_execution_info", true);
+                return Ok(Some(TransactionWithExecutionInfo::new(
+                    transaction,
+                    execution_info,
+                )));
             }
+            cache_metrics::record_cache_lookup("transaction_with_execution_info", false);
         }
         let resp = self
             .read_info(InformationRequest::Transaction {
@@ -189,19 +196,26 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
             return Ok(None);
         };
         let (transaction, execution_info) = transaction.into_inner();
-        // A transaction without execution info yet is still pending, not immutable data - it
-        // will transition to `Some(..)` once executed, so caching it now would risk permanently
-        // serving a stale "no result yet" answer.
-        if let (Some(cache), Some(execution_info)) = (&self.binary_port_cache, &execution_info) {
-            let to_cache = TransactionWithExecutionInfo::new(
-                transaction.clone(),
-                Some(execution_info.clone()),
-            );
-            if let Err(err) = cache
-                .put_transaction_with_execution_info(hash, with_finalized_approvals, &to_cache)
-                .await
+        if let Some(cache) = &self.binary_port_cache {
+            // Only merge the transaction body itself back in when it's the originally-received
+            // variant - merging in a finalized-approvals fetch here would make later
+            // `with_finalized_approvals = false` lookups incorrectly return finalized approvals.
+            // The execution info, in contrast, doesn't depend on the flag at all, so it's always
+            // safe to merge in once known.
+            //
+            // A transaction without execution info yet is still pending, not immutable data - it
+            // will transition to `Some(..)` once executed, so merging in `Some(None)` here would
+            // risk permanently serving a stale "no result yet" answer (this cache never
+            // invalidates a negative result on its own). So only merge execution info when the
+            // node actually returned some.
+            let transaction_to_merge = (!with_finalized_approvals).then(|| transaction.clone());
+            let execution_info_to_merge = execution_info.clone().map(Some);
+            if (transaction_to_merge.is_some() || execution_info_to_merge.is_some())
+                && let Err(err) = cache
+                    .merge_transaction(hash, transaction_to_merge, execution_info_to_merge)
+                    .await
             {
-                warn!(%err, "binary port cache: put_transaction_with_execution_info failed");
+                warn!(%err, "binary port cache: merge_transaction failed");
             }
         }
         Ok(Some(TransactionWithExecutionInfo::new(
@@ -215,33 +229,31 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
         hash: TransactionHash,
     ) -> Result<Option<ExecutionResult>, ClientError> {
         if let Some(cache) = &self.binary_port_cache {
-            match cache.get_transaction_execution_result(hash).await {
+            match cache.get_transaction(hash).await {
                 Ok(envelope) => {
-                    if let Some(result) = envelope.into_option() {
+                    if let Some(TransactionKnowledge {
+                        execution_info: Some(execution_info),
+                        ..
+                    }) = envelope.into_option()
+                    {
                         cache_metrics::record_cache_lookup("transaction_execution_result", true);
-                        return Ok(Some(result));
+                        return Ok(execution_info.and_then(|info| info.execution_result));
                     }
-                    cache_metrics::record_cache_lookup("transaction_execution_result", false);
                 }
-                Err(err) => {
-                    cache_metrics::record_cache_lookup("transaction_execution_result", false);
-                    warn!(%err, "binary port cache: get_transaction_execution_result failed");
-                }
+                Err(err) => warn!(%err, "binary port cache: get_transaction failed"),
             }
+            cache_metrics::record_cache_lookup("transaction_execution_result", false);
         }
-        // No data found in cache, fallback to asking the node directly
+        // No data found in cache, fallback to asking the node directly. This also merges the
+        // freshly-learned execution info (and, if it was the originally-received variant, the
+        // transaction body) back into the cache via `read_transaction_with_execution_info`'s own
+        // merge - no separate cache write needed here.
         let with_info = self
             .read_transaction_with_execution_info(hash, false)
             .await?;
-        let execution_result = with_info
+        Ok(with_info
             .and_then(|transaction| transaction.into_inner().1)
-            .and_then(|execution_info| execution_info.execution_result);
-        if let (Some(cache), Some(result)) = (&self.binary_port_cache, &execution_result)
-            && let Err(err) = cache.put_transaction_execution_result(hash, result).await
-        {
-            warn!(%err, "binary port cache: put_transaction_execution_result failed");
-        }
-        Ok(execution_result)
+            .and_then(|execution_info| execution_info.execution_result))
     }
 }
 
@@ -713,13 +725,25 @@ mod tests {
         let transaction = casper_types::Transaction::random(rng);
         let hash = transaction.hash();
         let execution_result = casper_types::execution::ExecutionResult::random(rng);
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let block_hash = *block.hash();
 
-        // Simulate the SSE event this cache is proactively populated from - no node request is
-        // registered on `binary_port_mock` at all, so a hit here proves no fallback fetch
-        // happened.
+        // `ExecutionInfo` needs the containing block's height, which `TransactionProcessed` alone
+        // doesn't carry - register the one node fetch `handle_transaction_processed` falls back
+        // to for it, since this block isn't otherwise known to the cache.
+        binary_port_mock
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(casper_types::BlockIdentifier::Hash(
+                    block_hash,
+                ))),
+            )
+            .await;
+
+        // Simulate the SSE event this cache is proactively populated from.
         tx.send(SidecarEvent::TransactionProcessed {
             transaction_hash: hash,
-            block_hash: casper_types::BlockHash::random(rng),
+            block_hash,
             execution_result: Arc::new(execution_result.clone()),
         })
         .unwrap();
@@ -728,13 +752,19 @@ mod tests {
         // land - that method falls back to a node fetch on a miss, which would spuriously panic
         // the mock (empty request queue) while the event is still in flight.
         let mut num_of_tries = 20;
-        while matches!(
-            persistent_cache
-                .get_transaction_execution_result(hash)
-                .await
-                .unwrap(),
-            crate::binary_port_cache::CacheEnvelope::DontHave
-        ) {
+        loop {
+            let knowledge = persistent_cache.get_transaction(hash).await.unwrap();
+            if matches!(
+                knowledge,
+                crate::binary_port_cache::CacheEnvelope::Have(
+                    crate::binary_port_cache::TransactionKnowledge {
+                        execution_info: Some(_),
+                        ..
+                    }
+                )
+            ) {
+                break;
+            }
             num_of_tries -= 1;
             assert!(num_of_tries > 0, "execution result was never cached");
             tokio::time::sleep(Duration::from_millis(50)).await;
