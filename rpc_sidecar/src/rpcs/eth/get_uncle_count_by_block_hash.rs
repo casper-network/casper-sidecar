@@ -125,9 +125,9 @@ mod tests {
 
     #[test]
     fn requires_a_block_hash() {
-        let error = GetUncleCountByBlockHash::try_parse_params(Some(casper_json_rpc::Params::Array(
-            Vec::new(),
-        )))
+        let error = GetUncleCountByBlockHash::try_parse_params(Some(
+            casper_json_rpc::Params::Array(Vec::new()),
+        ))
         .expect_err("an omitted block hash must be rejected");
         assert_eq!(
             error.code(),

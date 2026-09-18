@@ -36,4 +36,4 @@ max_requests_per_second = 50
 enable_server = true
 port = 18887
 max_concurrent_requests = 1
-max_requests_per_second = 1
+max_requests_per_second = 10

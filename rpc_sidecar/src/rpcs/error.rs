@@ -1,5 +1,6 @@
 use crate::node_client::{Error as NodeClientError, InvalidTransactionOrDeploy};
-use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
+use casper_json_rpc::{Error as RpcError, ReservedErrorCode, RpcErrorCode};
+use http::StatusCode;
 use casper_types::{
     AvailableBlockRange, BlockIdentifier, DeployHash, KeyTag, TransactionHash, URefFromStrError,
     bytesrepr,
@@ -132,10 +133,41 @@ impl From<Error> for RpcError {
                     available_block_range,
                 },
             ),
+            // The node's own binary port rejected this request as throttled (it stays reachable
+            // over the same connection - see `NodeClient::Error::RequestThrottled` - this just
+            // means it's telling us to back off). Surface it as a real HTTP 429 rather than
+            // burying it in a `200 OK` JSON-RPC envelope, so clients, proxies, and load balancers
+            // that only look at the HTTP status still see the throttling.
+            Error::NodeRequest(_, NodeClientError::RequestThrottled) => {
+                RpcError::new(RpcErrorCode::RequestThrottled, value.to_string())
+                    .with_http_status_override(StatusCode::TOO_MANY_REQUESTS.as_u16())
+            }
             _ => match value.code() {
                 Some(code) => RpcError::new(code, value.to_string()),
                 None => RpcError::new(ReservedErrorCode::InternalError, value.to_string()),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// When the node's own binary port throttles a request, the sidecar must surface a genuine
+    /// HTTP 429 - not just a JSON-RPC error object wrapped in a `200 OK` - so that anything
+    /// watching only the HTTP status (a proxy, a load balancer, a naive client) still observes the
+    /// throttling.
+    #[test]
+    fn node_request_throttled_maps_to_http_429() {
+        let error = Error::NodeRequest("some_method", NodeClientError::RequestThrottled);
+
+        let rpc_error = RpcError::from(error);
+
+        assert_eq!(rpc_error.code(), RpcErrorCode::RequestThrottled as i64);
+        assert_eq!(
+            rpc_error.http_status_override(),
+            Some(StatusCode::TOO_MANY_REQUESTS.as_u16())
+        );
     }
 }
