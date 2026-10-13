@@ -14,6 +14,7 @@ use crate::{
 
 const GET_GOOD_THING: &str = "get good thing";
 const GET_BAD_THING: &str = "get bad thing";
+const GET_THROTTLED_THING: &str = "get throttled thing";
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct GoodThing {
@@ -42,6 +43,11 @@ async fn get_bad_thing(_params: Option<Params>) -> Result<BadThing, Error> {
     Ok(BadThing)
 }
 
+async fn get_throttled_thing(_params: Option<Params>) -> Result<GoodThing, Error> {
+    Err(Error::new(ReservedErrorCode::InternalError, "throttled")
+        .with_http_status_override(StatusCode::TOO_MANY_REQUESTS.as_u16()))
+}
+
 async fn from_http_response(response: http::Response<hyper::Body>) -> Response {
     let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
     serde_json::from_slice(&body_bytes).unwrap()
@@ -51,6 +57,11 @@ fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     let mut handlers = RequestHandlersBuilder::new();
     handlers.register_handler(GET_GOOD_THING, get_good_thing, &ConfigLimit::default());
     handlers.register_handler(GET_BAD_THING, get_bad_thing, &ConfigLimit::default());
+    handlers.register_handler(
+        GET_THROTTLED_THING,
+        get_throttled_thing,
+        &ConfigLimit::default(),
+    );
     let handlers = handlers.build();
 
     main_filter(handlers, JsonRpcOptions::default())
@@ -322,6 +333,58 @@ async fn should_handle_invalid_json() {
             "expected value at line 1 column 1"
         )
     );
+}
+
+#[tokio::test]
+async fn should_use_http_status_carried_by_the_error() {
+    let _ = env_logger::try_init();
+
+    let filter = main_filter_with_recovery();
+
+    // `get_throttled_thing` attaches an HTTP status override to its error - the outer HTTP
+    // response must use it instead of the JSON-RPC default of `200 OK`, while the JSON-RPC error
+    // object on the wire is unaffected by it.
+    let http_response = warp::test::request()
+        .body(json!({"jsonrpc":"2.0","id":"a","method":"get throttled thing"}).to_string())
+        .filter(&filter)
+        .await
+        .unwrap()
+        .into_response();
+
+    assert_eq!(http_response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let rpc_response = from_http_response(http_response).await;
+    assert_eq!(rpc_response.id(), "a");
+    assert_eq!(
+        rpc_response.error().unwrap(),
+        &Error::new(ReservedErrorCode::InternalError, "throttled")
+    );
+}
+
+#[tokio::test]
+async fn should_use_http_status_from_any_entry_in_a_batch() {
+    let filter = main_filter_with_recovery();
+
+    // A batch shares one outer HTTP response - if any entry's error carries a status override,
+    // the whole response must use it, even though the other entry succeeds.
+    let http_response = warp::test::request()
+        .body(
+            json!([
+                {"jsonrpc":"2.0","id":1,"method":"get good thing","params":["one"]},
+                {"jsonrpc":"2.0","id":2,"method":"get throttled thing"}
+            ])
+            .to_string(),
+        )
+        .filter(&filter)
+        .await
+        .unwrap()
+        .into_response();
+
+    assert_eq!(http_response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body = hyper::body::to_bytes(http_response.into_body())
+        .await
+        .unwrap();
+    let responses: Vec<Response> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(responses.len(), 2);
 }
 
 #[tokio::test]

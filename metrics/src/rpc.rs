@@ -25,6 +25,24 @@ static ENDPOINT_CALLS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     counter
 });
 
+static BINARY_PORT_CALLS: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    let counter = IntCounterVec::new(
+        Opts::new(
+            "rpc_server_binary_port_calls_total",
+            "Total number of binary port RPC calls actually dispatched to the node, \
+             labelled by outcome (`success` = a response was received from the node, \
+             `failure` = the call did not complete, e.g. timeout or lost connection). \
+             Requests served from the binary port cache are not counted.",
+        ),
+        &["outcome"],
+    )
+    .unwrap();
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+
 static TIMEOUT_COUNTERS: LazyLock<IntCounterVec> = LazyLock::new(|| {
     let counter = IntCounterVec::new(
         Opts::new(
@@ -169,6 +187,14 @@ pub fn inc_method_call(method: &str) {
     ENDPOINT_CALLS.with_label_values(&[method]).inc();
 }
 
+/// Records a single binary port RPC call that was actually dispatched to the node
+/// (i.e. not served from the cache). `success` is `true` when a response was
+/// received, `false` when the call failed to complete.
+pub fn inc_binary_port_call(success: bool) {
+    let outcome = if success { "success" } else { "failure" };
+    BINARY_PORT_CALLS.with_label_values(&[outcome]).inc();
+}
+
 pub fn observe_response_time(method: &str, status: &str, response_time: Duration) {
     let response_time = response_time.as_secs_f64() * 1000.0;
     RESPONSE_TIMES_MS
@@ -213,4 +239,34 @@ pub fn inc_batch_count_limit_rejection() {
 
 pub fn inc_batch_response_limit_truncation() {
     BATCH_RESPONSE_LIMIT_TRUNCATIONS.inc();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binary_port_call_counter_splits_by_outcome() {
+        let ok_before = BINARY_PORT_CALLS.with_label_values(&["success"]).get();
+        let err_before = BINARY_PORT_CALLS.with_label_values(&["failure"]).get();
+
+        inc_binary_port_call(true);
+        inc_binary_port_call(true);
+        inc_binary_port_call(false);
+
+        assert_eq!(
+            BINARY_PORT_CALLS.with_label_values(&["success"]).get(),
+            ok_before + 2
+        );
+        assert_eq!(
+            BINARY_PORT_CALLS.with_label_values(&["failure"]).get(),
+            err_before + 1
+        );
+
+        let summary = match crate::metrics_summary() {
+            Ok(s) => s,
+            Err(e) => panic!("metrics_summary failed: {}", e),
+        };
+        assert!(summary.contains("rpc_server_binary_port_calls_total"));
+    }
 }

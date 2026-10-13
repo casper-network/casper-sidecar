@@ -16,7 +16,7 @@ use std::{
 };
 
 use casper_types::{
-    Block, BlockHash, FinalitySignature, ProtocolVersion, TransactionHash,
+    Block, BlockHash, FinalitySignature, ProtocolVersion, Transaction, TransactionHash,
     execution::ExecutionResult,
 };
 
@@ -36,6 +36,9 @@ pub enum SidecarEvent {
         block: Arc<Block>,
     },
     FinalitySignature(Box<FinalitySignature>),
+    TransactionAccepted {
+        transaction: Arc<Transaction>,
+    },
     TransactionProcessed {
         transaction_hash: TransactionHash,
         block_hash: BlockHash,

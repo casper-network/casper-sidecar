@@ -8,7 +8,6 @@ use casper_json_rpc::{ConfigLimit, Error as RpcError, RequestHandlersBuilder};
 use casper_types::BlockSynchronizerStatus;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 use tracing::warn;
 
 use super::{
@@ -16,7 +15,10 @@ use super::{
     eth_u256::EthU256,
     types::internal_error,
 };
-use crate::{ClientError, node_client::RestNodeStatus, rpcs::docs::DocExample};
+use crate::{
+    ClientError, node_client::RestNodeStatus, node_state_cache::NodeStateCache,
+    rpcs::docs::DocExample,
+};
 
 static SYNCING_RESULT_EXAMPLE: LazyLock<SyncingResult> =
     LazyLock::new(|| SyncingResult::NotSyncing(false));
@@ -93,64 +95,57 @@ impl DocExample for SyncingResult {
 
 /// `eth_syncing`.
 ///
-/// Holds the most recently computed [`SyncingResult`], refreshed by a background task polling
-/// the node's REST `/status` endpoint every [`POLL_INTERVAL`]. `SyncingStatus::starting_block`
-/// within it stays fixed for the duration of a catch-up instead of drifting with `current_block`
-/// on every poll: each refresh carries it forward from the previous cached value, only resetting
-/// to the freshly observed `current_block` when the previous value wasn't itself a catch-up (i.e.
-/// this is a fresh catch-up starting from scratch).
+/// The most recently computed [`SyncingResult`] lives in the process-wide
+/// [`NodeStateCache`](crate::node_state_cache::NodeStateCache) as `node_syncing_status`, refreshed
+/// by a background task polling the node's REST `/status` endpoint every [`POLL_INTERVAL`].
+/// `SyncingStatus::starting_block` stays fixed for the duration of a catch-up instead of drifting
+/// with `current_block` on every poll: each refresh carries it forward from the previous cached
+/// value, only resetting to the freshly observed `current_block` when the previous value wasn't
+/// itself a catch-up (i.e. this is a fresh catch-up starting from scratch).
 ///
 /// Handling an `eth_syncing` request never itself talks to the node - it only ever serves the
 /// cached result, and reports an error if the cache hasn't been populated yet.
-pub struct Syncing {
-    cached_result: Mutex<Option<SyncingResult>>,
-}
+pub struct Syncing;
 
 impl Syncing {
     pub const METHOD: &'static str = "eth_syncing";
 
-    pub(crate) fn new() -> Self {
-        Self {
-            cached_result: Mutex::new(None),
-        }
-    }
-
     pub(crate) fn register_as_handler(
-        state: Arc<Syncing>,
+        cache: Arc<NodeStateCache>,
         node_client: Arc<dyn NodeClient>,
         handlers_builder: &mut RequestHandlersBuilder,
         limit: ConfigLimit,
     ) {
-        tokio::spawn(Self::run_status_updater(Arc::clone(&state), node_client));
+        tokio::spawn(Self::run_status_updater(Arc::clone(&cache), node_client));
 
         let handler = move |maybe_params| {
-            let state = Arc::clone(&state);
+            let cache = Arc::clone(&cache);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(state).await
+                Self::do_handle_request(cache).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
     }
 
-    async fn do_handle_request(state: Arc<Syncing>) -> Result<SyncingResult, RpcError> {
-        state.cached_result.lock().await.ok_or_else(|| {
+    async fn do_handle_request(cache: Arc<NodeStateCache>) -> Result<SyncingResult, RpcError> {
+        cache.syncing_status().await.ok_or_else(|| {
             internal_error("node sync status is not yet available, try again shortly")
         })
     }
 
-    async fn run_status_updater(state: Arc<Syncing>, node_client: Arc<dyn NodeClient>) {
+    async fn run_status_updater(cache: Arc<NodeStateCache>, node_client: Arc<dyn NodeClient>) {
         let mut ticker = tokio::time::interval(POLL_INTERVAL);
         loop {
             ticker.tick().await;
             match Self::fetch_status_with_retries(&node_client).await {
                 Ok(status) => {
-                    let result = state.compute_result(&status).await;
-                    *state.cached_result.lock().await = Some(result);
+                    let result = Self::compute_result(&cache, &status).await;
+                    cache.set_syncing_status(Some(result)).await;
                 }
                 Err(err) => {
                     warn!(%err, "eth_syncing: failed to refresh node status after retries");
-                    *state.cached_result.lock().await = None;
+                    cache.set_syncing_status(None).await;
                 }
             }
         }
@@ -189,13 +184,13 @@ impl Syncing {
 
     /// Computes the `eth_syncing` result for a freshly fetched status, carrying `starting_block`
     /// forward from the previous cached result (see the struct docs).
-    async fn compute_result(&self, status: &RestNodeStatus) -> SyncingResult {
+    async fn compute_result(cache: &NodeStateCache, status: &RestNodeStatus) -> SyncingResult {
         if !is_catching_up(&status.reactor_state) {
             return SyncingResult::NotSyncing(false);
         }
 
         let current_block = status.available_block_range.high();
-        let starting_block = match *self.cached_result.lock().await {
+        let starting_block = match cache.syncing_status().await {
             Some(SyncingResult::Syncing(SyncingStatus { starting_block, .. })) => {
                 starting_block.as_u64().unwrap_or(current_block)
             }
@@ -238,12 +233,16 @@ mod tests {
     use super::*;
     use crate::{ClientError, node_client::RestNodeStatus};
 
-    /// Populates `state`'s cache as the background updater would for a freshly fetched `status`,
+    /// Populates the cache as the background updater would for a freshly fetched `status`,
     /// without going through the node client or the polling loop.
-    async fn poll_and_cache(state: &Syncing, status: RestNodeStatus) -> SyncingResult {
-        let result = state.compute_result(&status).await;
-        *state.cached_result.lock().await = Some(result);
+    async fn poll_and_cache(cache: &NodeStateCache, status: RestNodeStatus) -> SyncingResult {
+        let result = Syncing::compute_result(cache, &status).await;
+        cache.set_syncing_status(Some(result)).await;
         result
+    }
+
+    fn new_cache() -> Arc<NodeStateCache> {
+        Arc::new(NodeStateCache::new_for_test(false, Duration::ZERO))
     }
 
     /// Repeatedly yields to the executor so that any tasks woken by a `tokio::spawn` or a
@@ -265,7 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn errors_when_cache_not_yet_populated() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
 
         let result = Syncing::do_handle_request(state).await;
 
@@ -274,7 +273,7 @@ mod tests {
 
     #[tokio::test]
     async fn reports_false_once_caught_up() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
         let status = rest_status("KeepUp", BlockSynchronizerStatus::new(None, None));
         poll_and_cache(&state, status).await;
 
@@ -288,7 +287,7 @@ mod tests {
 
     #[tokio::test]
     async fn reports_progress_while_catching_up() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
         let block_sync = BlockSynchronizerStatus::new(
             Some(casper_types::BlockSyncStatus::new(
                 Default::default(),
@@ -315,7 +314,7 @@ mod tests {
 
     #[tokio::test]
     async fn falls_back_to_current_block_when_sync_target_unknown() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
         poll_and_cache(
             &state,
             rest_status("Initialize", BlockSynchronizerStatus::new(None, None)),
@@ -346,7 +345,7 @@ mod tests {
             )),
             None,
         );
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
 
         let first = poll_and_cache(
             &state,
@@ -394,7 +393,7 @@ mod tests {
     #[tokio::test]
     async fn starting_block_cache_clears_once_caught_up() {
         let no_block_sync = || BlockSynchronizerStatus::new(None, None);
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
 
         let first = poll_and_cache(
             &state,
@@ -536,7 +535,7 @@ mod tests {
                 "have block header(150)".to_string(),
             )),
         );
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
 
         let result = poll_and_cache(&state, rest_status("CatchUp", block_sync)).await;
 
@@ -614,7 +613,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn status_updater_polls_immediately_then_every_poll_interval() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
         let client: Arc<dyn NodeClient> = Arc::new(IncreasingStatusMock {
             calls: AtomicU32::new(0),
         });
@@ -654,7 +653,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn status_updater_flushes_cache_on_failure() {
-        let state = Arc::new(Syncing::new());
+        let state = new_cache();
         poll_and_cache(
             &state,
             rest_status("KeepUp", BlockSynchronizerStatus::new(None, None)),

@@ -7,6 +7,10 @@ max_body_bytes = 4000000
 max_batch_items = 100
 max_batch_response_bytes = 25_000_000
 max_eth_log_block_range = 10_000
+
+# How long a block/header observed on the SSE feed may be served from the in-process cache
+# before a fresh read from the node. "0 seconds" disables it; no effect when SSE is disabled.
+latest_block_cache_ttl = "8 seconds"
 cors_origin = ""
 default_limit_requests = 100
 default_limit_period = "1s"
@@ -40,18 +44,17 @@ max_attempts = 30
 
 # ====================================================================
 # Configuration options for the persistent (LMDB-backed) binary port
-# cache. Disabled by default - uncomment to enable. Caches immutable,
-# identifier-addressed historical data (block headers, blocks with
-# signatures, transactions with execution info) fetched over the
-# node's binary port, surviving sidecar restarts.
+# cache. Caches immutable, identifier-addressed historical data (block
+# headers, blocks with signatures, transactions with execution info)
+# fetched over the node's binary port, surviving sidecar restarts.
+# Remove this section to disable it.
 # ====================================================================
-# [rpc_server.binary_port_cache]
+[rpc_server.binary_port_cache]
 # Directory backing the LMDB environment. Created on startup if missing.
-# path = '/var/lib/casper-sidecar/binary_port_cache'
-#
+path = "/var/lib/casper-sidecar/binary_port_cache"
 # Upper bound (bytes) on the LMDB environment size (map_size). This is a
 # hard ceiling fixed at startup and is not grown automatically.
-# max_size_bytes = 536_870_912
+max_size_bytes = 536_870_912
 
 [sse_server]
 enable_server = true
@@ -114,6 +117,7 @@ max_concurrent_requests = 50
 max_requests_per_second = 50
 
 [admin_api_server]
+enable_server = true
 port = 18887
 max_concurrent_requests = 1
-max_requests_per_second = 1
+max_requests_per_second = 10

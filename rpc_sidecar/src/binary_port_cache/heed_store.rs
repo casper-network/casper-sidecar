@@ -8,11 +8,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use casper_binary_port::TransactionWithExecutionInfo;
 use casper_event_types::SidecarEvent;
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockIdentifier, BlockSignatures, BlockSignaturesV2,
-    BlockWithSignatures, EraId, FinalitySignature, ProtocolVersion, TransactionHash, U512,
+    BlockWithSignatures, EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, Transaction,
+    TransactionHash, U512,
     bytesrepr::{self, FromBytes, ToBytes},
     execution::ExecutionResult,
 };
@@ -26,7 +26,8 @@ use crate::{ClientError, NodeClient};
 
 use super::{
     BinaryPortCache, BinaryPortCacheConfig, BlockWithSignaturesBuiltInFlight, CacheEnvelope,
-    CacheError, InFlightDataHandling, ValidatorsData, validators_from_latest_switch_block,
+    CacheError, InFlightDataHandling, TransactionKnowledge, ValidatorsData,
+    validators_from_latest_switch_block,
 };
 
 /// Number of named databases the environment must have room for. Fixed at env-creation time by
@@ -81,8 +82,7 @@ const BLOCK_HEADER_BY_HEIGHT_DB: &str = "block_header_by_height";
 // `BlockWithSignaturesBuiltInFlight` (a fully-known block is just the `BlockWithSignatures`
 // variant of that enum), so they share a single table instead of duplicating block content.
 const BLOCK_WITH_SIGNATURES_BY_HEIGHT_DB: &str = "block_with_signatures_by_height";
-const TRANSACTION_WITH_EXECUTION_INFO_DB: &str = "transaction_with_execution_info_by_hash";
-const TRANSACTION_EXECUTION_RESULT_BY_HASH_DB: &str = "transaction_execution_result_by_hash";
+const TRANSACTION_KNOWLEDGE_BY_HASH_DB: &str = "transaction_knowledge_by_hash";
 const BLOCK_HASH_TO_HEIGHT_INDEX_DB: &str = "block_hash_to_height_index";
 const BLOCKS_BY_ERA_DB: &str = "blocks_by_era";
 const VALIDATORS_BY_ERA_DB: &str = "validators_by_era";
@@ -98,8 +98,7 @@ pub(crate) struct HeedBinaryPortCache {
     env: Env,
     block_header_by_height: Database<Bytes, Bytes>,
     block_with_signatures_by_height: Database<Bytes, Bytes>,
-    transaction_with_execution_info_by_hash: Database<Bytes, Bytes>,
-    transaction_execution_result_by_hash: Database<Bytes, Bytes>,
+    transaction_knowledge_by_hash: Database<Bytes, Bytes>,
     block_hash_to_height_index: Database<Bytes, Bytes>,
     blocks_by_era: Database<Bytes, Bytes>,
     validators_by_era: Database<Bytes, Bytes>,
@@ -112,11 +111,11 @@ pub(crate) struct HeedBinaryPortCache {
     /// on a miss): without this, one path can read a stale value, do its (possibly async) work,
     /// and then write back over a more-complete value the other path stored in the meantime.
     block_locks: StripedLocks,
-    /// Serializes read-modify-write sequences against `blocks_by_era`'s pending-heights list,
-    /// keyed by era id. Without this, two concurrent events pending on the same era's
-    /// not-yet-known validators (e.g. two `FinalitySignature`s for different blocks in that era)
-    /// can each read the same list, append their own height, and write back - the second write
-    /// clobbers the first, silently dropping a height from the pending list.
+    /// Striped locks preventing concurrent writes to transaction knowledge cache based on hash
+    /// of key
+    transaction_locks: StripedLocks,
+    /// Striped locks preventing concurrent writes to transaction knowledge cache based on hash
+    /// of era
     era_locks: StripedLocks,
     /// Lower bound (exclusive) below which `blocks_by_era`/`validators_by_era` entries are
     /// eligible for pruning by [`Self::prune_old_eras`]. Advanced by [`Self::note_era_asked`]
@@ -137,8 +136,7 @@ impl HeedBinaryPortCache {
         env: Env,
         block_header_by_height: Database<Bytes, Bytes>,
         block_with_signatures_by_height: Database<Bytes, Bytes>,
-        transaction_with_execution_info_by_hash: Database<Bytes, Bytes>,
-        transaction_execution_result_by_hash: Database<Bytes, Bytes>,
+        transaction_knowledge_by_hash: Database<Bytes, Bytes>,
         block_hash_to_height_index: Database<Bytes, Bytes>,
         blocks_by_era: Database<Bytes, Bytes>,
         validators_by_era: Database<Bytes, Bytes>,
@@ -149,14 +147,14 @@ impl HeedBinaryPortCache {
             env,
             block_header_by_height,
             block_with_signatures_by_height,
-            transaction_with_execution_info_by_hash,
-            transaction_execution_result_by_hash,
+            transaction_knowledge_by_hash,
             block_hash_to_height_index,
             blocks_by_era,
             validators_by_era,
             finality_threshold_fraction_by_protocol_version,
             node_client,
             block_locks: StripedLocks::new(),
+            transaction_locks: StripedLocks::new(),
             era_locks: StripedLocks::new(),
             era_horizon: AtomicU64::new(0),
         }
@@ -180,10 +178,8 @@ impl HeedBinaryPortCache {
             env.create_database(&mut wtxn, Some(BLOCK_HEADER_BY_HEIGHT_DB))?;
         let block_with_signatures_by_height =
             env.create_database(&mut wtxn, Some(BLOCK_WITH_SIGNATURES_BY_HEIGHT_DB))?;
-        let transaction_with_execution_info_by_hash =
-            env.create_database(&mut wtxn, Some(TRANSACTION_WITH_EXECUTION_INFO_DB))?;
-        let transaction_execution_result_by_hash =
-            env.create_database(&mut wtxn, Some(TRANSACTION_EXECUTION_RESULT_BY_HASH_DB))?;
+        let transaction_knowledge_by_hash =
+            env.create_database(&mut wtxn, Some(TRANSACTION_KNOWLEDGE_BY_HASH_DB))?;
         let block_hash_to_height_index =
             env.create_database(&mut wtxn, Some(BLOCK_HASH_TO_HEIGHT_INDEX_DB))?;
         let blocks_by_era = env.create_database(&mut wtxn, Some(BLOCKS_BY_ERA_DB))?;
@@ -198,8 +194,7 @@ impl HeedBinaryPortCache {
             env,
             block_header_by_height,
             block_with_signatures_by_height,
-            transaction_with_execution_info_by_hash,
-            transaction_execution_result_by_hash,
+            transaction_knowledge_by_hash,
             block_hash_to_height_index,
             blocks_by_era,
             validators_by_era,
@@ -228,13 +223,15 @@ fn open_env(path: &Path, max_size_bytes: usize) -> anyhow::Result<Env> {
     Ok(env)
 }
 
-fn transaction_key(
-    hash: &TransactionHash,
-    with_finalized_approvals: bool,
-) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut key = hash.to_bytes()?;
-    key.push(with_finalized_approvals as u8);
-    Ok(key)
+/// Derives a `transaction_locks` stripe index from a `TransactionHash`. Doesn't need to be
+/// cryptographically anything - just spread hashes reasonably evenly across stripes - so this
+/// reuses `TransactionHash`'s own `Hash` impl via a fast, non-cryptographic hasher rather than
+/// hashing its `bytesrepr` encoding.
+fn transaction_lock_key(hash: &TransactionHash) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    hash.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Shared read path for `BlockIdentifier`-keyed resources: resolves `Hash` to a `Height` via the
@@ -423,58 +420,14 @@ impl BinaryPortCache for HeedBinaryPortCache {
         Ok(())
     }
 
-    async fn get_transaction_with_execution_info(
+    async fn get_transaction(
         &self,
         hash: TransactionHash,
-        with_finalized_approvals: bool,
-    ) -> Result<CacheEnvelope<TransactionWithExecutionInfo>, CacheError> {
+    ) -> Result<CacheEnvelope<TransactionKnowledge>, CacheError> {
         let env = self.env.clone();
-        let db = self.transaction_with_execution_info_by_hash;
+        let db = self.transaction_knowledge_by_hash;
         tokio::task::spawn_blocking(
-            move || -> Result<CacheEnvelope<TransactionWithExecutionInfo>, CacheError> {
-                let key = transaction_key(&hash, with_finalized_approvals)?;
-                let rtxn = env.read_txn()?;
-                match db.get(&rtxn, key.as_slice())? {
-                    Some(raw) => {
-                        let value = bytesrepr::deserialize_from_slice(raw)?;
-                        Ok(CacheEnvelope::Have(value))
-                    }
-                    None => Ok(CacheEnvelope::DontHave),
-                }
-            },
-        )
-        .await
-        .map_err(CacheError::from)?
-    }
-
-    async fn put_transaction_with_execution_info(
-        &self,
-        hash: TransactionHash,
-        with_finalized_approvals: bool,
-        value: &TransactionWithExecutionInfo,
-    ) -> Result<(), CacheError> {
-        let key = transaction_key(&hash, with_finalized_approvals)?;
-        let value_bytes = value.to_bytes()?;
-        let env = self.env.clone();
-        let db = self.transaction_with_execution_info_by_hash;
-        tokio::task::spawn_blocking(move || -> Result<(), CacheError> {
-            let mut wtxn = env.write_txn()?;
-            db.put(&mut wtxn, key.as_slice(), &value_bytes)?;
-            wtxn.commit()?;
-            Ok(())
-        })
-        .await
-        .map_err(CacheError::from)?
-    }
-
-    async fn get_transaction_execution_result(
-        &self,
-        hash: TransactionHash,
-    ) -> Result<CacheEnvelope<ExecutionResult>, CacheError> {
-        let env = self.env.clone();
-        let db = self.transaction_execution_result_by_hash;
-        tokio::task::spawn_blocking(
-            move || -> Result<CacheEnvelope<ExecutionResult>, CacheError> {
+            move || -> Result<CacheEnvelope<TransactionKnowledge>, CacheError> {
                 let key = hash.to_bytes()?;
                 let rtxn = env.read_txn()?;
                 match db.get(&rtxn, key.as_slice())? {
@@ -490,17 +443,29 @@ impl BinaryPortCache for HeedBinaryPortCache {
         .map_err(CacheError::from)?
     }
 
-    async fn put_transaction_execution_result(
+    async fn merge_transaction(
         &self,
         hash: TransactionHash,
-        value: &ExecutionResult,
+        transaction: Option<Transaction>,
+        execution_info: Option<Option<ExecutionInfo>>,
     ) -> Result<(), CacheError> {
-        let key = hash.to_bytes()?;
-        let value_bytes = value.to_bytes()?;
         let env = self.env.clone();
-        let db = self.transaction_execution_result_by_hash;
+        let db = self.transaction_knowledge_by_hash;
+        // See `transaction_locks`'s docs: this whole read-decide-write sequence must be atomic
+        // with respect to any other `merge_transaction` call for the same hash.
+        let _guard = self
+            .transaction_locks
+            .lock(transaction_lock_key(&hash))
+            .await;
         tokio::task::spawn_blocking(move || -> Result<(), CacheError> {
+            let key = hash.to_bytes()?;
             let mut wtxn = env.write_txn()?;
+            let existing = match db.get(&wtxn, key.as_slice())? {
+                Some(raw) => bytesrepr::deserialize_from_slice(raw)?,
+                None => TransactionKnowledge::default(),
+            };
+            let merged = existing.merged(transaction, execution_info);
+            let value_bytes = merged.to_bytes()?;
             db.put(&mut wtxn, key.as_slice(), &value_bytes)?;
             wtxn.commit()?;
             Ok(())
@@ -918,13 +883,75 @@ impl HeedBinaryPortCache {
         }
     }
 
+    /// Handles a freshly-observed `TransactionAccepted` SSE event: merges the transaction's body
+    /// into whatever is already known about it. Fires before execution, so this is normally the
+    /// first thing learned about a given hash - but not always (`TransactionProcessed` could in
+    /// principle race it), which is exactly why `merge_transaction` merges rather than overwrites.
+    async fn handle_transaction_accepted(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<(), CacheError> {
+        cache_metrics::inc_new_entry("transaction_accepted");
+        self.merge_transaction(transaction.hash(), Some(transaction.clone()), None)
+            .await
+    }
+
+    /// Handles a freshly-observed `TransactionProcessed` SSE event: merges the transaction's
+    /// execution info into whatever is already known about it.
+    ///
+    /// The event itself only carries the containing block's *hash*, but `ExecutionInfo` needs its
+    /// *height* too. This looks the height up from whatever the cache already knows about that
+    /// block (free - no node round trip) and, on the rare miss (e.g. `BlockAdded` for it hasn't
+    /// arrived yet), falls back to a single direct block-header fetch from the node - mirroring
+    /// `cache_finality_threshold_fraction`'s existing precedent of an SSE handler reaching out to
+    /// the node for one small, essential piece of enrichment data. That fetched header is cached
+    /// too, so this fallback only pays its cost once per block.
     async fn handle_transaction_processed(
         &self,
         transaction_hash: TransactionHash,
+        block_hash: BlockHash,
         execution_result: &ExecutionResult,
     ) -> Result<(), CacheError> {
         cache_metrics::inc_new_entry("transaction_processed");
-        self.put_transaction_execution_result(transaction_hash, execution_result)
+        let block_height = match self
+            .get_block_parts(BlockIdentifier::Hash(block_hash))
+            .await?
+            .into_option()
+            .and_then(|parts| parts.block_height_and_hash())
+        {
+            Some((height, _)) => height,
+            None => match self
+                .node_client
+                .read_block_header(Some(BlockIdentifier::Hash(block_hash)))
+                .await
+            {
+                Ok(Some(header)) => {
+                    let height = header.height();
+                    if let Err(err) = self.put_block_header(&header).await {
+                        warn!(%err, "binary port cache: put_block_header failed");
+                    }
+                    height
+                }
+                Ok(None) => {
+                    warn!(
+                        %block_hash,
+                        "binary port cache: node has no header for a block it just reported \
+                         processing a transaction in; dropping execution info for {transaction_hash}"
+                    );
+                    return Ok(());
+                }
+                Err(err) => {
+                    warn!(%err, %block_hash, "binary port cache: failed to fetch block header for TransactionProcessed");
+                    return Ok(());
+                }
+            },
+        };
+        let execution_info = ExecutionInfo {
+            block_hash,
+            block_height,
+            execution_result: Some(execution_result.clone()),
+        };
+        self.merge_transaction(transaction_hash, None, Some(Some(execution_info)))
             .await
     }
 
@@ -1193,13 +1220,17 @@ impl InFlightDataHandling for HeedBinaryPortCache {
                 cache_metrics::inc_handle_call("finality_signature");
                 self.handle_finality_signature(*finality_signature).await
             }
+            SidecarEvent::TransactionAccepted { transaction } => {
+                cache_metrics::inc_handle_call("transaction_accepted");
+                self.handle_transaction_accepted(&transaction).await
+            }
             SidecarEvent::TransactionProcessed {
                 transaction_hash,
+                block_hash,
                 execution_result,
-                ..
             } => {
                 cache_metrics::inc_handle_call("transaction_processed");
-                self.handle_transaction_processed(transaction_hash, &execution_result)
+                self.handle_transaction_processed(transaction_hash, block_hash, &execution_result)
                     .await
             }
         }
@@ -1341,31 +1372,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transaction_cache_is_keyed_by_finalized_approvals_flag() {
+    async fn transaction_knowledge_merges_incrementally_and_roundtrips() {
         let (store, _node_client, _dir) = new_store();
         let rng = &mut TestRng::new();
         let transaction = Transaction::random(rng);
         let hash = transaction.hash();
-        let with_info = TransactionWithExecutionInfo::new(transaction, None);
 
+        assert_eq!(
+            store.get_transaction(hash).await.unwrap(),
+            CacheEnvelope::DontHave
+        );
+
+        // Learning just the transaction body (e.g. via `TransactionAccepted`) leaves
+        // `execution_info` as "not learned yet".
         store
-            .put_transaction_with_execution_info(hash, true, &with_info)
+            .merge_transaction(hash, Some(transaction.clone()), None)
             .await
             .unwrap();
-
         assert_eq!(
-            store
-                .get_transaction_with_execution_info(hash, true)
-                .await
-                .unwrap(),
-            CacheEnvelope::Have(with_info)
+            store.get_transaction(hash).await.unwrap(),
+            CacheEnvelope::Have(TransactionKnowledge {
+                transaction: Some(transaction.clone()),
+                execution_info: None,
+            })
         );
+
+        // Learning the execution info afterwards (e.g. via `TransactionProcessed`) merges in
+        // rather than clobbering the already-known transaction body.
+        let execution_info = ExecutionInfo {
+            block_hash: BlockHash::random(rng),
+            block_height: 42,
+            execution_result: Some(casper_types::execution::ExecutionResult::random(rng)),
+        };
+        store
+            .merge_transaction(hash, None, Some(Some(execution_info.clone())))
+            .await
+            .unwrap();
         assert_eq!(
-            store
-                .get_transaction_with_execution_info(hash, false)
-                .await
-                .unwrap(),
-            CacheEnvelope::DontHave
+            store.get_transaction(hash).await.unwrap(),
+            CacheEnvelope::Have(TransactionKnowledge {
+                transaction: Some(transaction),
+                execution_info: Some(Some(execution_info)),
+            })
         );
     }
 
@@ -1780,15 +1828,26 @@ finality_threshold_fraction = [1, 3]
     }
 
     #[tokio::test]
-    async fn transaction_processed_event_caches_execution_result_without_a_node_fetch() {
+    async fn transaction_processed_event_caches_execution_info_using_locally_known_block_height() {
         let (store, node_client, _dir) = new_handler();
         let rng = &mut TestRng::new();
 
         let transaction_hash = TransactionHash::from(EvmTransactionHash::from_raw(rng.r#gen()));
-        let block_hash = casper_types::BlockHash::random(rng);
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let block_hash = *block.hash();
         let execution_result = casper_types::execution::ExecutionResult::random(rng);
 
-        // no request/response is registered on `node_client` - the event alone must be enough.
+        // The block is already known locally (e.g. via a prior `BlockAdded`), so resolving its
+        // height for `ExecutionInfo` must not need a node fetch - no request/response is
+        // registered on `node_client`.
+        store
+            .put_block_parts(&BlockWithSignaturesBuiltInFlight::NotSureBlock {
+                block: Some(block.clone()),
+                signatures: Vec::new(),
+            })
+            .await
+            .unwrap();
+
         store
             .clone()
             .handle_sidecar_event(SidecarEvent::TransactionProcessed {
@@ -1800,20 +1859,68 @@ finality_threshold_fraction = [1, 3]
             .unwrap();
 
         assert_eq!(
-            store
-                .get_transaction_execution_result(transaction_hash)
-                .await
-                .unwrap(),
-            CacheEnvelope::Have(execution_result)
+            store.get_transaction(transaction_hash).await.unwrap(),
+            CacheEnvelope::Have(TransactionKnowledge {
+                // the event doesn't carry a full transaction body, so this piece stays unknown.
+                transaction: None,
+                execution_info: Some(Some(ExecutionInfo {
+                    block_hash,
+                    block_height: block.height(),
+                    execution_result: Some(execution_result),
+                })),
+            })
         );
-        // the general-purpose (transaction-plus-execution-info) cache is untouched - the event
-        // doesn't carry a full transaction body to populate it with.
+        node_client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn transaction_processed_event_falls_back_to_a_node_header_fetch_when_block_is_unknown() {
+        let (store, node_client, _dir) = new_handler();
+        let rng = &mut TestRng::new();
+
+        let transaction_hash = TransactionHash::from(EvmTransactionHash::from_raw(rng.r#gen()));
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let block_hash = *block.hash();
+        let header = block.clone_header();
+        let execution_result = casper_types::execution::ExecutionResult::random(rng);
+
+        // Nothing local knows about this block yet - register the one node fetch the handler
+        // must fall back to in order to resolve its height.
+        node_client
+            .add_block_header_req_res(
+                header.clone(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(block_hash))),
+            )
+            .await;
+
+        store
+            .clone()
+            .handle_sidecar_event(SidecarEvent::TransactionProcessed {
+                transaction_hash,
+                block_hash,
+                execution_result: Arc::new(execution_result.clone()),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.get_transaction(transaction_hash).await.unwrap(),
+            CacheEnvelope::Have(TransactionKnowledge {
+                transaction: None,
+                execution_info: Some(Some(ExecutionInfo {
+                    block_hash,
+                    block_height: header.height(),
+                    execution_result: Some(execution_result),
+                })),
+            })
+        );
+        // The fetched header is cached too, so the fallback only ever pays its cost once.
         assert_eq!(
             store
-                .get_transaction_with_execution_info(transaction_hash, true)
+                .get_block_header(BlockIdentifier::Hash(block_hash))
                 .await
                 .unwrap(),
-            CacheEnvelope::DontHave
+            CacheEnvelope::Have(header)
         );
         node_client.verify_no_lingering().await;
     }

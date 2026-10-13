@@ -117,6 +117,14 @@ where
         let api_version = sse_event.api_version;
         let network_name = sse_event.network_name;
         let filter = sse_event.inbound_filter;
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            // `send` will return error if there is no receiving party. But we treat this
+            // Sender as an event bus, so having no receiver is normal and we should muffle
+            // the error since there's really nothing to do in that case
+            let _ = sender.send(SidecarEvent::TransactionAccepted {
+                transaction: transaction_accepted.transaction(),
+            });
+        }
         let res = self
             .database
             .save_transaction_accepted(transaction_accepted, id, source, api_version, network_name)

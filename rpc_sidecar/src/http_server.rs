@@ -65,6 +65,7 @@ const RPC_API_SERVER_NAME: &str = "JSON RPC";
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     node: Arc<dyn NodeClient>,
+    node_state_cache: Arc<crate::node_state_cache::NodeStateCache>,
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
     ip_address: IpAddr,
     port: u16,
@@ -79,7 +80,6 @@ pub async fn run(
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     let eth_filter_state = Arc::new(EthFilterState::new());
-    let eth_syncing_state = Arc::new(EthSyncing::new());
 
     macro_rules! register_with_context {
         ($rpc:ident, $($context:expr),+ $(,)?) => {{
@@ -128,7 +128,7 @@ pub async fn run(
     register!(EthMaxPriorityFeePerGas);
     register!(EthFeeHistory);
     register!(EthBlockNumber);
-    register_with_context!(EthSyncing, eth_syncing_state.clone(), node.clone());
+    register_with_context!(EthSyncing, node_state_cache.clone(), node.clone());
     register!(EthGetBlockByHash);
     register!(EthGetBlockByNumber);
     register!(EthGetBlockReceipts);
