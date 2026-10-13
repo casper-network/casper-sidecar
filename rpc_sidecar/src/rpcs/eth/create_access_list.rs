@@ -74,9 +74,8 @@ impl DocExample for CreateAccessListResponse {
 
 /// `eth_createAccessList`.
 ///
-/// Always returns an EIP-1474 `-32004` ("method not supported") error: Casper's EVM rejects any
-/// transaction carrying a non-empty EIP-2930 access list, so there is never a real access list
-/// to suggest.
+/// Always returns an EIP-1474 `-32004` ("method not supported") error: the node's binary
+/// protocol does not expose the execution tracing needed to generate an EIP-2930 access list.
 pub struct CreateAccessList;
 
 #[async_trait]
@@ -94,8 +93,8 @@ impl RpcWithParams for CreateAccessList {
         _params: CreateAccessListParams,
     ) -> Result<CreateAccessListResponse, RpcError> {
         Err(method_not_supported(
-            "eth_createAccessList is not supported: this chain rejects any transaction \
-             carrying a non-empty EIP-2930 access list, so no access list can ever be suggested",
+            "eth_createAccessList is not supported: the node's binary protocol does not \
+             expose the execution tracing needed to generate an EIP-2930 access list",
         ))
     }
 }
@@ -123,6 +122,11 @@ mod tests {
         let error = serde_json::to_value(error).unwrap();
         assert_eq!(error["code"], EthApiErrorCode::MethodNotSupported as i64);
         assert_eq!(error["message"], "method not supported");
+        assert_eq!(
+            error["data"],
+            "eth_createAccessList is not supported: the node's binary protocol does not \
+             expose the execution tracing needed to generate an EIP-2930 access list"
+        );
     }
 
     #[test]

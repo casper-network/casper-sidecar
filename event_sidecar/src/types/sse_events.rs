@@ -132,6 +132,7 @@ impl TransactionAccepted {
 }
 
 /// The given transaction has been executed, committed and forms part of the given block.
+#[allow(clippy::too_many_arguments)]
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]
 pub struct TransactionProcessed {
     #[schema(value_type = Object)]

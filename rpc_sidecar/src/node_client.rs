@@ -529,6 +529,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction maximum priority fee exceeds its maximum total fee.
     #[error("The EVM transaction max priority fee per gas exceeds its max fee per gas")]
     TransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas,
+    /// The EVM transaction gas limit is below its intrinsic gas requirement.
+    #[error("The EVM transaction intrinsic gas exceeds its gas limit")]
+    TransactionEvmIntrinsicGasExceedsGasLimit,
     /// The transaction initiator address is invalid.
     #[error("The transaction initiator address is invalid")]
     TransactionInvalidInitiatorAddr,
@@ -813,6 +816,9 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas => {
                 Self::TransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
             }
+            ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit => {
+                Self::TransactionEvmIntrinsicGasExceedsGasLimit
+            }
             ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
                 Self::TransactionInvalidInitiatorAddr
             }
@@ -1066,6 +1072,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionEvmInvalidNonce
                 | ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
                 | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
+                | ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
                 | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
@@ -1506,7 +1513,6 @@ impl NodeClient for FramedNodeClient {
             .map_err(|err| Error::RestRequestFailed(err.to_string()))
     }
 }
-
 
 #[derive(Debug)]
 pub enum EntityResponse {
@@ -1994,6 +2000,14 @@ mod tests {
             )
         ));
         assert!(matches!(
+            Error::from_error_code(
+                ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit as u16
+            ),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmIntrinsicGasExceedsGasLimit
+            )
+        ));
+        assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionInvalidInitiatorAddr as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionInvalidInitiatorAddr)
         ));
@@ -2114,5 +2128,4 @@ mod tests {
             Error::ReceivedV1Transaction
         ));
     }
-
 }

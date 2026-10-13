@@ -130,6 +130,7 @@ spec = "prague"
 block_gas_limit = 30000000
 base_fee = 5000
 wei_per_mote = 1000000000
+transaction_lanes = [[100, 131072, 1024, 1000000, 50]]
 "#
             .to_vec()
             .into(),

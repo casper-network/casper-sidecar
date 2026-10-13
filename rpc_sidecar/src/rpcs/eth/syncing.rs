@@ -668,8 +668,7 @@ mod tests {
         settle().await;
         let result = Syncing::do_handle_request(state.clone())
             .await
-            .err()
-            .expect("expected error");
+            .expect_err("expected error");
 
         assert_eq!(
             result,

@@ -212,7 +212,8 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_with_params::<EthEstimateGas>("estimates gas using speculative EVM execution");
     schema.push_with_params::<EthCreateAccessList>(
         "always returns an EIP-1474 `-32004` (\"method not supported\") error, since this \
-        chain rejects any transaction carrying a non-empty EIP-2930 access list",
+        node's binary protocol does not expose the execution tracing needed to generate \
+        an EIP-2930 access list",
     );
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(

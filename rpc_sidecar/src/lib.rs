@@ -26,8 +26,8 @@ use casper_types::{
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{FutureExt, future::BoxFuture};
 pub use http_server::run as run_rpc_server;
-pub use node_client::{Error as ClientError, NodeClient};
 use node_client::FramedNodeClient;
+pub use node_client::{Error as ClientError, NodeClient};
 use node_state_cache::{NodeStateCache, protocol_version_poll_loop};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;

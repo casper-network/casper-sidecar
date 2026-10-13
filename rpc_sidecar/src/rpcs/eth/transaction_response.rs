@@ -357,7 +357,7 @@ fn alloy_u256_to_eth(value: AlloyU256) -> EthU256 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use alloy_consensus::{
         SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
         crypto::secp256k1,
@@ -534,6 +534,12 @@ mod tests {
     }
 
     pub(crate) fn fixture_transactions() -> Vec<EvmTransaction> {
+        fixture_transactions_with_access_list(AccessList::default())
+    }
+
+    pub(crate) fn fixture_transactions_with_access_list(
+        access_list: AccessList,
+    ) -> Vec<EvmTransaction> {
         let legacy = TxLegacy {
             chain_id: Some(7),
             nonce: 1,
@@ -550,7 +556,7 @@ mod tests {
             gas_limit: 50_000,
             to: TxKind::Call(AlloyAddress::from([0x22; 20])),
             value: AlloyU256::from(12),
-            access_list: AccessList::default(),
+            access_list: access_list.clone(),
             input: AlloyBytes::from(vec![0xde, 0xad]),
         };
         let eip1559 = TxEip1559 {
@@ -561,7 +567,7 @@ mod tests {
             max_priority_fee_per_gas: 0,
             to: TxKind::Call(AlloyAddress::from([0x55; 20])),
             value: AlloyU256::from(13),
-            access_list: AccessList::default(),
+            access_list: access_list.clone(),
             input: AlloyBytes::from(vec![0xbe, 0xef]),
         };
         let authorization = Authorization {
@@ -582,7 +588,7 @@ mod tests {
             max_priority_fee_per_gas: 0,
             to: AlloyAddress::from([0x77; 20]),
             value: AlloyU256::from(14),
-            access_list: AccessList::default(),
+            access_list,
             authorization_list: vec![authorization.into_signed(authorization_signature)],
             input: AlloyBytes::from(vec![0xca, 0xfe]),
         };
