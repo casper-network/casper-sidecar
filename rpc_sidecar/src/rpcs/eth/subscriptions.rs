@@ -648,7 +648,7 @@ fn initial_subscription_range(
         return Ok((None, latest_height.saturating_add(1)));
     }
 
-    let from_height = filter.from_block_height_or_latest(latest_height)?;
+    let from_height = filter.start_block_height_or_latest(latest_height)?;
     let to_height = filter.to_block_height(latest_height)?.min(latest_height);
     if from_height > to_height {
         Ok((None, from_height))

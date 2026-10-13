@@ -16,7 +16,8 @@ use std::{
 };
 
 use casper_types::{
-    Block, BlockHash, FinalitySignature, ProtocolVersion, TransactionHash, execution::ExecutionResult,
+    Block, BlockHash, FinalitySignature, ProtocolVersion, TransactionHash,
+    execution::ExecutionResult,
 };
 
 pub use filter::Filter;

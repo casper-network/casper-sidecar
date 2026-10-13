@@ -69,7 +69,7 @@ fn ensure_initial_filter_range_within_limit(
     if filter.block_hash().is_some() || !filter.has_block_range_bound() {
         return Ok(());
     }
-    let from_height = filter.from_block_height_or_latest(latest_height)?;
+    let from_height = filter.start_block_height_or_latest(latest_height)?;
     let to_height = filter.to_block_height(latest_height)?.min(latest_height);
     ensure_log_block_range_within_limit(from_height, to_height, max_block_range)
 }
@@ -82,7 +82,7 @@ fn initial_next_block(filter: &LogFilter, latest_height: Option<u64>) -> Result<
         return Ok(0);
     };
     if filter.has_block_range_bound() {
-        filter.from_block_height_or_latest(latest_height)
+        filter.start_block_height_or_latest(latest_height)
     } else {
         Ok(latest_height.saturating_add(1))
     }

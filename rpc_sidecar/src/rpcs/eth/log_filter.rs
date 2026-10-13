@@ -107,10 +107,10 @@ pub(crate) struct LogFilter {
 
 impl LogFilter {
     pub(crate) fn matches(&self, log: &LogResponse) -> bool {
-        if let Some(addresses) = &self.addresses {
-            if !addresses.contains(&log.address) {
-                return false;
-            }
+        if let Some(addresses) = &self.addresses
+            && !addresses.contains(&log.address)
+        {
+            return false;
         }
 
         for (index, maybe_topics) in self.topics.iter().enumerate() {
@@ -136,7 +136,7 @@ impl LogFilter {
         self.from_block.is_some() || self.to_block.is_some()
     }
 
-    pub(super) fn from_block_height_or_latest(&self, latest_height: u64) -> Result<u64, RpcError> {
+    pub(super) fn start_block_height_or_latest(&self, latest_height: u64) -> Result<u64, RpcError> {
         Ok(match self.from_block {
             Some(from_block) => from_block.height()?.unwrap_or(latest_height),
             None => latest_height,
@@ -220,7 +220,7 @@ pub(crate) async fn logs_for_filter(
     let Some(latest_height) = latest_block_height(node_client.clone()).await? else {
         return Ok(Vec::new());
     };
-    let from_height = filter.from_block_height_or_latest(latest_height)?;
+    let from_height = filter.start_block_height_or_latest(latest_height)?;
     let to_height = filter.to_block_height(latest_height)?;
     ensure_log_block_range_within_limit(from_height, to_height, max_block_range)?;
     logs_for_block_range(node_client, filter, from_height, to_height).await

@@ -52,9 +52,11 @@ impl RpcWithParams for GetUncleCountByBlockNumber {
         node_client: Arc<dyn NodeClient>,
         params: GetUncleCountByBlockNumberParams,
     ) -> Result<Option<EthU256>, RpcError> {
-        Ok(block_exists(node_client.as_ref(), params.block.identifier()?)
-            .await?
-            .then_some(EthU256::ZERO))
+        Ok(
+            block_exists(node_client.as_ref(), params.block.identifier()?)
+                .await?
+                .then_some(EthU256::ZERO),
+        )
     }
 }
 
@@ -73,10 +75,7 @@ mod tests {
         let block = Block::V2(TestBlockBuilder::new().height(42).build(rng));
         let client = Arc::new(BinaryPortMock::new());
         client
-            .add_block_header_req_res(
-                block.clone_header(),
-                InformationRequest::BlockHeader(None),
-            )
+            .add_block_header_req_res(block.clone_header(), InformationRequest::BlockHeader(None))
             .await;
 
         let count = GetUncleCountByBlockNumber::do_handle_request(

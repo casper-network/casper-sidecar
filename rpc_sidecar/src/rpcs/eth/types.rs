@@ -185,12 +185,13 @@ impl JsonSchema for EthBytesMax32 {
 }
 
 /// Ethereum block tags supported by this first-pass RPC surface.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum BlockTag {
     /// Genesis block.
     Earliest,
     /// Latest finalized Casper state known to the node.
+    #[default]
     Latest,
     /// Alias for latest until pending EVM state is exposed.
     Pending,
@@ -198,12 +199,6 @@ pub(crate) enum BlockTag {
     Safe,
     /// Alias for latest finalized Casper state.
     Finalized,
-}
-
-impl Default for BlockTag {
-    fn default() -> Self {
-        BlockTag::Latest
-    }
 }
 
 /// Ethereum block selector accepting either a named tag or a numeric height.

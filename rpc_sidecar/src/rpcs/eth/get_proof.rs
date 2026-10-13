@@ -43,7 +43,11 @@ impl DocExample for GetProofParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(EthAddress, Vec<EthBytesMax32>, #[serde(default)] StateBlockParam);
+struct PositionalParams(
+    EthAddress,
+    Vec<EthBytesMax32>,
+    #[serde(default)] StateBlockParam,
+);
 
 impl From<PositionalParams> for GetProofParams {
     fn from(params: PositionalParams) -> Self {
