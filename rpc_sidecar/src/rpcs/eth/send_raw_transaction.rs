@@ -74,13 +74,23 @@ impl RpcWithParams for SendRawTransaction {
 #[cfg(test)]
 mod tests {
     use alloy_consensus::{SignableTransaction, TxEip7702, TxEnvelope, crypto::secp256k1};
-    use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, eip7702::Authorization};
+    use alloy_eips::{
+        eip2718::Encodable2718,
+        eip2930::{AccessList, AccessListItem},
+        eip7702::Authorization,
+    };
     use alloy_primitives::{Address as AlloyAddress, B256, Bytes as AlloyBytes, U256 as AlloyU256};
     use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command};
-    use casper_types::{EvmTransactionKind, bytesrepr::Bytes};
+    use casper_types::{
+        EvmTransactionKind,
+        bytesrepr::{self, Bytes, ToBytes},
+    };
     use serde_json::json;
     use tokio::sync::Mutex;
 
+    use super::super::transaction_response::{
+        TransactionLocation, project_transaction, tests::fixture_transactions_with_access_list,
+    };
     use super::*;
     use crate::ClientError;
 
@@ -141,6 +151,67 @@ mod tests {
         };
         assert_eq!(accepted.kind(), EvmTransactionKind::Eip7702);
         assert_eq!(accepted.authorization_list(), expected.authorization_list());
+    }
+
+    #[tokio::test]
+    async fn preserves_access_lists_through_submission_and_projection() {
+        let access_list = AccessList(vec![
+            AccessListItem {
+                address: AlloyAddress::from([0x11; 20]),
+                storage_keys: vec![B256::from([0x22; 32]), B256::from([0x33; 32])],
+            },
+            AccessListItem {
+                address: AlloyAddress::from([0x44; 20]),
+                storage_keys: Vec::new(),
+            },
+        ]);
+        // Legacy envelopes cannot carry an access list. Check all three supported typed
+        // envelopes across the RPC, Casper binary serialization, and Ethereum projection.
+        for expected in fixture_transactions_with_access_list(access_list.clone())
+            .into_iter()
+            .skip(1)
+        {
+            let raw_transaction = expected.raw_signed_rlp().unwrap();
+            let node_client = Arc::new(ClientMock::default());
+            let hash = SendRawTransaction::do_handle_request(
+                node_client.clone(),
+                SendRawTransactionParams {
+                    raw_transaction: HexData::from(raw_transaction.clone()),
+                },
+            )
+            .await
+            .expect("transaction carrying an access list should be forwarded");
+            assert_eq!(hash, expected.hash().hash());
+
+            let accepted = node_client.accepted.lock().await.take().unwrap();
+            let decoded: Transaction =
+                bytesrepr::deserialize(accepted.to_bytes().unwrap()).unwrap();
+            let Transaction::Evm(decoded) = decoded else {
+                panic!("expected an EVM transaction");
+            };
+            assert_eq!(decoded.access_list(), expected.access_list());
+            assert_eq!(decoded.raw_signed_rlp().unwrap(), raw_transaction);
+
+            let response = project_transaction(&decoded, TransactionLocation::Pending).unwrap();
+            let response = serde_json::to_value(response).unwrap();
+            assert_eq!(response["hash"], json!(hash));
+            assert_eq!(
+                response["accessList"],
+                json!([
+                    {
+                        "address": format!("0x{}", "11".repeat(20)),
+                        "storageKeys": [
+                            format!("0x{}", "22".repeat(32)),
+                            format!("0x{}", "33".repeat(32)),
+                        ],
+                    },
+                    {
+                        "address": format!("0x{}", "44".repeat(20)),
+                        "storageKeys": [],
+                    },
+                ])
+            );
+        }
     }
 
     #[tokio::test]
