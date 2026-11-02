@@ -509,7 +509,7 @@ mod tests {
             None,
             storage_key(address, slot),
             BinaryResponse::from_option(Some(GlobalStateQueryResult::new(
-                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, vec![0x00])),
+                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, vec![0x00])),
                 Vec::new(),
             ))),
         )

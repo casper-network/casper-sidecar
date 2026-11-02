@@ -532,6 +532,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction gas limit is below its intrinsic gas requirement.
     #[error("The EVM transaction intrinsic gas exceeds its gas limit")]
     TransactionEvmIntrinsicGasExceedsGasLimit,
+    /// The EVM transaction gas limit exceeds the protocol transaction gas limit.
+    #[error("The EVM transaction gas limit exceeds the protocol transaction gas limit")]
+    TransactionEvmGasLimitExceedsTransactionGasLimit,
     /// The transaction initiator address is invalid.
     #[error("The transaction initiator address is invalid")]
     TransactionInvalidInitiatorAddr,
@@ -819,6 +822,9 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit => {
                 Self::TransactionEvmIntrinsicGasExceedsGasLimit
             }
+            ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit => {
+                Self::TransactionEvmGasLimitExceedsTransactionGasLimit
+            }
             ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
                 Self::TransactionInvalidInitiatorAddr
             }
@@ -996,6 +1002,8 @@ pub enum Error {
     BadRequest,
     #[error("unsupported request")]
     UnsupportedRequest,
+    #[error("response exceeds the binary message size limit")]
+    ResponseTooLarge,
     #[error("dictionary URef not found")]
     DictionaryURefNotFound,
     #[error("no complete blocks")]
@@ -1073,6 +1081,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
                 | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
                 | ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
+                | ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit
                 | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
@@ -1139,6 +1148,7 @@ impl Error {
             Ok(ErrorCode::InternalError) => Self::InternalNodeError,
             Ok(ErrorCode::BadRequest) => Self::BadRequest,
             Ok(ErrorCode::UnsupportedRequest) => Self::UnsupportedRequest,
+            Ok(ErrorCode::ResponseTooLarge) => Self::ResponseTooLarge,
             Ok(ErrorCode::DictionaryURefNotFound) => Self::DictionaryURefNotFound,
             Ok(ErrorCode::NoCompleteBlocks) => Self::NoCompleteBlocks,
             Ok(ErrorCode::GasPriceToleranceTooLow) => Self::GasPriceToleranceTooLow,
@@ -2007,6 +2017,18 @@ mod tests {
                 InvalidTransactionOrDeploy::TransactionEvmIntrinsicGasExceedsGasLimit
             )
         ));
+        assert!(matches!(
+            Error::from_error_code(
+                ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit as u16
+            ),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmGasLimitExceedsTransactionGasLimit
+            )
+        ));
+        assert_eq!(
+            Error::from_error_code(ErrorCode::ResponseTooLarge as u16),
+            Error::ResponseTooLarge
+        );
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionInvalidInitiatorAddr as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionInvalidInitiatorAddr)
