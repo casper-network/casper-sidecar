@@ -49,7 +49,7 @@ mod tests {
 [evm]
 enabled = true
 chain_id = 1129533695
-spec = "prague"
+spec = "osaka"
 block_gas_limit = 30000000
 base_fee = 1
 wei_per_mote = 1000000000
