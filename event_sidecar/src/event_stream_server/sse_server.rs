@@ -65,8 +65,9 @@ pub const QUERY_FIELD: &str = "start_from";
 pub const LEGACY_ENDPOINT_NOTICE: &str = "This endpoint is NOT a 1 to 1 representation of events coming off of the node. Some events are not transformable to legacy format. Please consult the documentation for details. This endpoint is deprecated and will be removed in a future release. Please migrate to the /events endpoint instead.";
 
 /// The filter associated with `/events` path.
-const EVENTS_FILTER: [EventFilter; 8] = [
+const EVENTS_FILTER: [EventFilter; 9] = [
     EventFilter::ApiVersion,
+    EventFilter::StagedProtocol,
     EventFilter::BlockAdded,
     EventFilter::TransactionAccepted,
     EventFilter::TransactionProcessed,
@@ -218,6 +219,7 @@ fn filter_map_server_sent_event(
         match data {
             &SseData::ApiVersion { .. } => event_to_warp_event(event, data, is_legacy_filter, None),
             &SseData::BlockAdded { .. }
+            | &SseData::StagedProtocol(_)
             | &SseData::TransactionProcessed { .. }
             | &SseData::TransactionExpired { .. }
             | &SseData::Fault { .. }
@@ -697,6 +699,14 @@ mod tests {
             data: Some(SseData::random_api_version(&mut rng)),
             inbound_filter: None,
         };
+        let staged_protocol = ServerSentEvent {
+            id: Some(rng.r#gen()),
+            comment: None,
+            data: Some(SseData::StagedProtocol(ProtocolVersion::from_parts(
+                2, 3, 4,
+            ))),
+            inbound_filter: None,
+        };
         let block_added = ServerSentEvent {
             id: Some(rng.r#gen()),
             comment: None,
@@ -750,6 +760,7 @@ mod tests {
         };
 
         should_not_filter_out(&api_version, &EVENTS_FILTER[..]);
+        should_not_filter_out(&staged_protocol, &EVENTS_FILTER[..]);
         should_not_filter_out(&block_added, &EVENTS_FILTER[..]);
         should_not_filter_out(&transaction_accepted, &EVENTS_FILTER[..]);
         should_not_filter_out(&transaction_processed, &EVENTS_FILTER[..]);
@@ -769,6 +780,7 @@ mod tests {
         should_not_filter_out(&shutdown, &MAIN_FILTER);
 
         should_filter_out(&transaction_accepted, &MAIN_FILTER[..]);
+        should_filter_out(&staged_protocol, &MAIN_FILTER[..]);
         should_filter_out(&finality_signature, &MAIN_FILTER[..]);
 
         should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]);

@@ -13,7 +13,7 @@ use casper_binary_port::{
 use casper_event_types::SidecarEvent;
 use casper_types::{
     BlockHeader, BlockIdentifier, BlockWithSignatures, Chainspec, ChainspecRawBytes,
-    TransactionHash, execution::ExecutionResult,
+    ProtocolVersion, TransactionHash, execution::ExecutionResult,
 };
 use metrics::binary_port_cache as cache_metrics;
 use std::sync::Arc;
@@ -60,6 +60,19 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
             return Ok((*raw).clone());
         }
         self.inner_client.read_chainspec_bytes().await
+    }
+
+    async fn read_staged_protocol_versions(&self) -> Result<Vec<ProtocolVersion>, ClientError> {
+        self.inner_client.read_staged_protocol_versions().await
+    }
+
+    async fn read_future_chainspec(
+        &self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<ChainspecRawBytes>, ClientError> {
+        self.node_state_cache
+            .read_future_chainspec(self.inner_client.as_ref(), protocol_version)
+            .await
     }
 
     async fn read_chainspec(&self) -> Result<Arc<Chainspec>, ClientError> {
@@ -277,6 +290,21 @@ pub(crate) async fn cache_update_loop<
                             .on_protocol_version(client.inner_client.as_ref(), *version)
                             .await;
                     }
+                    SidecarEvent::StagedProtocol(version) => {
+                        client
+                            .node_state_cache
+                            .future_chainspecs
+                            .observe(client.inner_client.as_ref(), *version)
+                            .await;
+                    }
+                    SidecarEvent::SseConnected => {
+                        client.node_state_cache.future_chainspecs.invalidate().await;
+                        let cache = client.node_state_cache.future_chainspecs.clone();
+                        let node = client.inner_client.clone();
+                        tokio::spawn(async move {
+                            cache.reconcile(node.as_ref()).await;
+                        });
+                    }
                     _ => {}
                 }
                 if let Some(handler) = client.binary_port_cache.clone()
@@ -293,6 +321,12 @@ pub(crate) async fn cache_update_loop<
                 }
                 tokio::sync::broadcast::error::RecvError::Lagged(_) => {
                     warn!("lag detected in cache_update_loop");
+                    client.node_state_cache.future_chainspecs.invalidate().await;
+                    let cache = client.node_state_cache.future_chainspecs.clone();
+                    let node = client.inner_client.clone();
+                    tokio::spawn(async move {
+                        cache.reconcile(node.as_ref()).await;
+                    });
                 }
             },
         }

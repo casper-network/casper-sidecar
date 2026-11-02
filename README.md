@@ -298,8 +298,12 @@ Casper does not provide those Ethereum-specific values. Disabled EVM configurati
 empty contract maps.
 
 The sidecar reads the node's current chainspec and staged protocol list through the binary port
-for each request, including when its SSE connection is disabled. A staged configuration that is
-missing, cannot be parsed, or fails EVM validation causes an RPC error rather than a partial result.
+for each request. It caches staged chainspec documents when the node announces a
+`StagedProtocol` event and reconciles them on startup, reconnect, and every 30 seconds. The
+periodic refresh also detects same-version edits and removals, which do not produce SSE events,
+and works when SSE is disabled. Cached documents expire after 30 seconds and an unavailable or
+failed cache falls back to the node. A staged configuration that is missing, cannot be parsed, or
+fails EVM validation causes an RPC error rather than a partial result.
 
 #### Prefetching blocks feature
 

@@ -1204,6 +1204,7 @@ fn prune_stale_era_keys(
 impl InFlightDataHandling for HeedBinaryPortCache {
     async fn handle_sidecar_event(self: Arc<Self>, event: SidecarEvent) -> Result<(), CacheError> {
         match event {
+            SidecarEvent::SseConnected | SidecarEvent::StagedProtocol(_) => Ok(()),
             SidecarEvent::BlockAdded { block } => {
                 cache_metrics::inc_handle_call("block_added");
                 self.handle_block_added(&block).await

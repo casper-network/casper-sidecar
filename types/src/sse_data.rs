@@ -5,6 +5,7 @@
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum EventFilter {
     ApiVersion,
+    StagedProtocol,
     BlockAdded,
     TransactionAccepted,
     TransactionProcessed,
@@ -60,6 +61,8 @@ pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     ApiVersion(ProtocolVersion),
+    /// A future protocol version has been discovered by the node.
+    StagedProtocol(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -102,6 +105,7 @@ impl SseData {
     pub fn type_label(&self) -> &str {
         match self {
             SseData::ApiVersion(_) => "ApiVersion",
+            SseData::StagedProtocol(_) => "StagedProtocol",
             SseData::BlockAdded { .. } => "BlockAdded",
             SseData::TransactionAccepted(_) => "TransactionAccepted",
             SseData::TransactionProcessed { .. } => "TransactionProcessed",
@@ -119,6 +123,7 @@ impl SseData {
             SseData::Shutdown => true,
             //Keeping the rest part as explicit match so that if a new variant is added, it will be caught by the compiler
             SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
+            SseData::StagedProtocol(_) => filter.contains(&EventFilter::StagedProtocol),
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::TransactionAccepted { .. } => {
                 filter.contains(&EventFilter::TransactionAccepted)
@@ -131,6 +136,25 @@ impl SseData {
             SseData::FinalitySignature(_) => filter.contains(&EventFilter::FinalitySignature),
             SseData::Step { .. } => filter.contains(&EventFilter::Step),
         }
+    }
+}
+
+#[cfg(test)]
+mod staged_protocol_tests {
+    use super::{EventFilter, SseData, deserialize};
+    use casper_types::ProtocolVersion;
+
+    #[test]
+    fn staged_protocol_matches_node_wire_format_and_filter() {
+        let version = ProtocolVersion::from_parts(2, 3, 4);
+        let event = deserialize(r#"{"StagedProtocol":"2.3.4"}"#).unwrap();
+        assert!(matches!(event, SseData::StagedProtocol(v) if v == version));
+        assert_eq!(
+            serde_json::to_string(&event).unwrap(),
+            r#"{"StagedProtocol":"2.3.4"}"#
+        );
+        assert!(event.should_include(&[EventFilter::StagedProtocol]));
+        assert!(!event.should_include(&[EventFilter::ApiVersion]));
     }
 }
 

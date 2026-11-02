@@ -197,18 +197,15 @@ async fn read_future(
     node: &dyn NodeClient,
     version: ProtocolVersion,
 ) -> Result<ConfigSnapshot, RpcError> {
-    let raw = read_chainspec(
-        node,
-        InformationRequest::FutureChainspec {
-            protocol_version: version,
-        },
-    )
-    .await?
-    .ok_or_else(|| {
-        internal_error(format!(
-            "staged protocol {version} disappeared; retry eth_config"
-        ))
-    })?;
+    let raw = node
+        .read_future_chainspec(version)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| {
+            internal_error(format!(
+                "staged protocol {version} disappeared; retry eth_config"
+            ))
+        })?;
     let document = ChainspecProjection::from_raw(&raw)?;
     if document.protocol.version != version {
         return Err(internal_error(format!(
@@ -227,20 +224,17 @@ impl RpcWithoutParams for Config {
     async fn do_handle_request(
         node: Arc<dyn NodeClient>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        // Query the binary port on each call: the node can stage, remove or edit
-        // future chainspecs without an SSE event for every change.
+        // The version list is always read from the node; future documents may be served
+        // from the SSE-fed, periodically reconciled cache.
         let raw = read_chainspec(node.as_ref(), InformationRequest::ChainspecRawBytes)
             .await?
             .ok_or_else(|| internal_error("current chainspec is unavailable"))?;
         let current = ChainspecProjection::from_raw(&raw)?;
         let current_version = current.protocol.version;
-        let response = node
-            .read_info(InformationRequest::StagedProtocolVersions)
+        let mut versions = node
+            .read_staged_protocol_versions()
             .await
             .map_err(internal_error)?;
-        let mut versions = crate::parse_response::<Vec<ProtocolVersion>>(&response.into())
-            .map_err(internal_error)?
-            .ok_or_else(|| internal_error("staged protocol versions are unavailable"))?;
         versions.retain(|version| *version > current_version);
         versions.sort_unstable();
         versions.dedup();
@@ -472,6 +466,65 @@ transaction_lanes = {lanes}
         assert_eq!(value["next"]["casper"]["protocolVersion"], "2.3.0");
         assert_eq!(value["next"]["precompiles"], json!({}));
         assert_eq!(value["next"]["systemContracts"], json!({}));
+    }
+
+    #[tokio::test]
+    async fn uses_cached_future_chainspec_and_reflects_reconciled_edits() {
+        use crate::{
+            binary_port_cache::HeedBinaryPortCache, caching_node_client::CachingNodeClient,
+            node_state_cache::NodeStateCache,
+        };
+
+        let node = Arc::new(BinaryPortMock::new());
+        let state = Arc::new(NodeStateCache::new_for_test(
+            true,
+            std::time::Duration::ZERO,
+        ));
+        let client = Arc::new(CachingNodeClient::new(
+            node.clone(),
+            None::<Arc<HeedBinaryPortCache>>,
+            state.clone(),
+        ));
+        let version = ProtocolVersion::from_parts(2, 3, 0);
+
+        future(&node, version, enabled("2.3.0", "20", 8)).await;
+        state
+            .future_chainspecs
+            .observe(node.as_ref(), version)
+            .await;
+        current_and_versions(&node, enabled("2.2.2", "10", 7), vec![version]).await;
+        let first = Config::do_handle_request(client.clone()).await.unwrap();
+        assert_eq!(first.next.unwrap().chain_id, EthU256::from(8u64));
+
+        respond(
+            &node,
+            InformationRequest::StagedProtocolVersions,
+            BinaryResponse::from_value(vec![version]),
+        )
+        .await;
+        future(&node, version, enabled("2.3.0", "25", 9)).await;
+        state.future_chainspecs.reconcile(node.as_ref()).await;
+        current_and_versions(&node, enabled("2.2.2", "10", 7), vec![version]).await;
+        let edited = Config::do_handle_request(client.clone())
+            .await
+            .unwrap()
+            .next
+            .unwrap();
+        assert_eq!(edited.chain_id, EthU256::from(9u64));
+        assert_eq!(
+            edited.casper.activation_point,
+            ActivationPoint::EraId(25.into())
+        );
+
+        current_and_versions(&node, enabled("2.2.2", "10", 7), vec![]).await;
+        assert!(
+            Config::do_handle_request(client)
+                .await
+                .unwrap()
+                .next
+                .is_none()
+        );
+        node.verify_no_lingering().await;
     }
 
     #[tokio::test]

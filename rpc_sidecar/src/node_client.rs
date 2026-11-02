@@ -15,8 +15,8 @@ use casper_binary_port::{
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
     BlockWithSignatures, Chainspec, ChainspecRawBytes, Digest, EvmTransaction,
-    GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey, StoredValue, Transaction,
-    TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, StoredValue,
+    Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
     execution::ExecutionResult,
@@ -265,6 +265,25 @@ pub trait NodeClient: Send + Sync {
             .read_info(InformationRequest::ChainspecRawBytes)
             .await?;
         parse_response::<ChainspecRawBytes>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Reads the node's current snapshot of installed future protocol versions.
+    async fn read_staged_protocol_versions(&self) -> Result<Vec<ProtocolVersion>, Error> {
+        let resp = self
+            .read_info(InformationRequest::StagedProtocolVersions)
+            .await?;
+        parse_response::<Vec<ProtocolVersion>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Reads the source documents for a future protocol, if it is still installed.
+    async fn read_future_chainspec(
+        &self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<ChainspecRawBytes>, Error> {
+        let resp = self
+            .read_info(InformationRequest::FutureChainspec { protocol_version })
+            .await?;
+        parse_response::<ChainspecRawBytes>(&resp.into())
     }
 
     /// Fetches the chainspec bytes and deserializes them into a [`Chainspec`]. Implementors backed
