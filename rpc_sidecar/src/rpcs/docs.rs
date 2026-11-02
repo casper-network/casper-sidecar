@@ -21,10 +21,11 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        ClientVersion as Web3ClientVersion, CreateAccessList as EthCreateAccessList,
-        EstimateGas as EthEstimateGas, FeeHistory as EthFeeHistory, GasPrice as EthGasPrice,
-        GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
-        GetBlockByNumber as EthGetBlockByNumber, GetBlockReceipts as EthGetBlockReceipts,
+        ClientVersion as Web3ClientVersion, Config as EthConfig,
+        CreateAccessList as EthCreateAccessList, EstimateGas as EthEstimateGas,
+        FeeHistory as EthFeeHistory, GasPrice as EthGasPrice, GetBalance as EthGetBalance,
+        GetBlockByHash as EthGetBlockByHash, GetBlockByNumber as EthGetBlockByNumber,
+        GetBlockReceipts as EthGetBlockReceipts,
         GetBlockTransactionCountByHash as EthGetBlockTransactionCountByHash,
         GetBlockTransactionCountByNumber as EthGetBlockTransactionCountByNumber,
         GetCode as EthGetCode, GetFilterChanges as EthGetFilterChanges,
@@ -128,6 +129,9 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema
         .push_without_params::<Web3ClientVersion>("returns the Casper RPC sidecar build identity");
     schema.push_without_params::<EthChainId>("returns the configured EVM chain ID");
+    schema.push_without_params::<EthConfig>(
+        "returns current and staged Casper EVM configuration snapshots (adapted EIP-7910)",
+    );
     schema.push_without_params::<EthNetVersion>(
         "returns the configured EVM network ID as a decimal string",
     );
@@ -804,6 +808,12 @@ mod tests {
                 .iter()
                 .any(|method| method.name == "eth_gasPrice")
         );
+        let eth_config = schema
+            .methods
+            .iter()
+            .find(|method| method.name == "eth_config")
+            .expect("eth_config should be documented");
+        assert!(eth_config.params.is_empty());
         assert!(
             schema
                 .methods

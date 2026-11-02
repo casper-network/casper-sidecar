@@ -20,10 +20,11 @@ use super::rpcs::{
     docs::RpcDiscover,
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        ClientVersion as Web3ClientVersion, CreateAccessList as EthCreateAccessList,
-        EstimateGas as EthEstimateGas, EthFilterState, FeeHistory as EthFeeHistory,
-        GasPrice as EthGasPrice, GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
-        GetBlockByNumber as EthGetBlockByNumber, GetBlockReceipts as EthGetBlockReceipts,
+        ClientVersion as Web3ClientVersion, Config as EthConfig,
+        CreateAccessList as EthCreateAccessList, EstimateGas as EthEstimateGas, EthFilterState,
+        FeeHistory as EthFeeHistory, GasPrice as EthGasPrice, GetBalance as EthGetBalance,
+        GetBlockByHash as EthGetBlockByHash, GetBlockByNumber as EthGetBlockByNumber,
+        GetBlockReceipts as EthGetBlockReceipts,
         GetBlockTransactionCountByHash as EthGetBlockTransactionCountByHash,
         GetBlockTransactionCountByNumber as EthGetBlockTransactionCountByNumber,
         GetCode as EthGetCode, GetFilterChanges as EthGetFilterChanges,
@@ -123,6 +124,7 @@ pub async fn run(
     register!(QueryBalanceDetails);
     register!(Web3ClientVersion);
     register!(EthChainId);
+    register!(EthConfig);
     register!(EthNetVersion);
     register!(EthGasPrice);
     register!(EthMaxPriorityFeePerGas);
