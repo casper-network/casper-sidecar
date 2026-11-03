@@ -286,6 +286,27 @@ still receives a response.
 Clients must omit `params` or send `params: []` for parameterless methods. The wire value
 `params: null` is rejected as an invalid request.
 
+### EVM configuration discovery
+
+`eth_config` provides Casper's adaptation of [EIP-7910](https://eips.ethereum.org/EIPS/eip-7910).
+It reports the current, nearest staged and furthest staged protocol configurations. Each includes
+the EVM chain ID, active precompiles and system contracts, along with the native protocol version,
+activation point and complete EVM configuration under `casper`. Osaka includes `P256VERIFY`.
+The `next` and `last` fields are null when no future protocol is staged. Era-based activations
+have a null `activationTime`; genesis uses zero. `forkId` and `blobSchedule` are null because
+Casper does not provide those Ethereum-specific values. Disabled EVM configurations advertise
+empty contract maps.
+
+The current chainspec is cached on startup and refreshed when a protocol version change is
+observed; if the cache is unavailable, the sidecar reads it from the node. Protocol changes are
+observed through SSE or, when SSE is disabled, a 60-second poll. The staged protocol list is read
+through the binary port for each request. The sidecar caches staged chainspec documents when the
+node announces a `StagedProtocol` event and reconciles them on startup, reconnect, and every 30
+seconds. The periodic refresh also detects same-version edits and removals, which do not produce
+SSE events, and works when SSE is disabled. Cached documents expire after 30 seconds and an
+unavailable or failed cache falls back to the node. A staged configuration that is missing,
+cannot be parsed, or fails EVM validation causes an RPC error rather than a partial result.
+
 #### Prefetching blocks feature
 
 The RPC server can be configured to prefetch highest block. To enable this feature set `rpc_server.main_server.enable_block_prefetch` to `true`. If this flag is set to true, the RPC server will observe `BlockAdded` events from the [sse feed](#SSE-server-setup). If a new `BlockAdded` event will be observed, and it's height is higher than any of the heights observed uptill this point in time - the RPC server will fetch the blocks data from binary port in the node. The obtained data will be cached in memory. If someone calls sidecars `chain_get_block` json RPC API requests without params (effectively asking for "newest" block) - the cached data will be served.

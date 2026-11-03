@@ -151,6 +151,7 @@ struct EventLatency {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum EventType {
     ApiVersion,
+    StagedProtocol,
     BlockAdded,
     TransactionAccepted,
     TransactionExpired,
@@ -165,6 +166,7 @@ impl From<SseData> for EventType {
     fn from(sse_data: SseData) -> Self {
         match sse_data {
             SseData::ApiVersion(_) => EventType::ApiVersion,
+            SseData::StagedProtocol(_) => EventType::StagedProtocol,
             SseData::BlockAdded { .. } => EventType::BlockAdded,
             SseData::TransactionAccepted { .. } => EventType::TransactionAccepted,
             SseData::TransactionProcessed { .. } => EventType::TransactionProcessed,
@@ -181,6 +183,7 @@ impl Display for EventType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             EventType::ApiVersion => "ApiVersion",
+            EventType::StagedProtocol => "StagedProtocol",
             EventType::BlockAdded => "BlockAdded",
             EventType::TransactionAccepted => "TransactionAccepted",
             EventType::TransactionExpired => "TransactionExpired",
@@ -202,6 +205,7 @@ impl TimestampedEvent {
     fn identifier(&self) -> String {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
+            SseData::StagedProtocol(version) => version.to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
             SseData::TransactionAccepted(transaction) => transaction.hash().to_string(),
             SseData::TransactionProcessed {
@@ -224,6 +228,7 @@ impl TimestampedEvent {
     fn matches(&self, other: &Self) -> bool {
         match (&self.event, &other.event) {
             (SseData::ApiVersion(_), SseData::ApiVersion(_))
+            | (SseData::StagedProtocol(_), SseData::StagedProtocol(_))
             | (SseData::BlockAdded { .. }, SseData::BlockAdded { .. })
             | (SseData::TransactionAccepted { .. }, SseData::TransactionAccepted { .. })
             | (SseData::TransactionProcessed { .. }, SseData::TransactionProcessed { .. })

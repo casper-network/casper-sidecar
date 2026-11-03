@@ -158,6 +158,42 @@ async fn should_allow_client_connection_to_sse_without_db_storage() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forwards_staged_protocol_and_continues_reading_node_events() {
+    let (
+        testing_config,
+        _temp_storage_dir,
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        event_stream_server_port,
+    ) = build_test_config();
+    let mut data = sse_server_example_2_0_0_data();
+    data.insert(
+        1,
+        (Some("0".into()), r#"{"StagedProtocol":"2.3.4"}"#.into()),
+    );
+    let mut node_mock = MockNodeBuilder::build_example_2_0_0_node_with_data(
+        node_port_for_sse_connection,
+        node_port_for_rest_connection,
+        data,
+    );
+    start_nodes_and_wait(vec![&mut node_mock]).await;
+    let sidecar = start_sidecar(testing_config).await;
+    let (stream, receiver) =
+        fetch_data_from_endpoint("/events?start_from=0", event_stream_server_port).await;
+    wait_for_n_messages(3, receiver, Duration::from_secs(30)).await;
+    stop_nodes_and_wait(vec![&mut node_mock]).await;
+
+    let events = stream.await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event == r#"{"StagedProtocol":"2.3.4"}"#)
+    );
+    assert!(events.iter().any(|event| event.contains("\"BlockAdded\"")));
+    let _ = sidecar.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn should_translate_events_on_main_endpoint() {
     let (
         testing_config,

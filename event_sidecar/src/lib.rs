@@ -329,6 +329,7 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
 ) {
     match &sse_event.data {
         SseData::ApiVersion(version) => {
+            event_handling_service.handle_sse_connected().await;
             handle_api_version(
                 version,
                 api_version_manager,
@@ -336,6 +337,11 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
                 sse_event.inbound_filter,
             )
             .await;
+        }
+        SseData::StagedProtocol(version) => {
+            event_handling_service
+                .handle_staged_protocol(*version, sse_event)
+                .await;
         }
         SseData::BlockAdded { block, block_hash } => {
             event_handling_service
@@ -528,5 +534,89 @@ async fn start_single_threaded_events_consumer<
         .await;
         #[cfg(feature = "additional-metrics")]
         let _ = metrics_sender.send(()).await;
+    }
+}
+
+#[cfg(test)]
+mod staged_protocol_tests {
+    use super::*;
+    use crate::testing::fake_database::FakeDatabase;
+    use tokio::sync::{broadcast, mpsc};
+
+    fn event(data: SseData) -> SseEvent {
+        SseEvent::new(
+            12,
+            data,
+            "http://127.0.0.1:18101/events".parse().unwrap(),
+            Filter::Events,
+            "2.0.0".into(),
+            "test".into(),
+        )
+    }
+
+    async fn check_event_forwarding<E: EventHandlingService + Clone + Send + Sync>(
+        service: E,
+        mut sidecar_events: broadcast::Receiver<SidecarEvent>,
+        mut outbound: mpsc::Receiver<(SseData, Option<Filter>)>,
+    ) {
+        let manager = ApiVersionManager::new();
+        let version = ProtocolVersion::from_parts(2, 3, 4);
+        handle_single_event(
+            event(SseData::ApiVersion(version)),
+            service.clone(),
+            manager.clone(),
+        )
+        .await;
+        assert!(matches!(
+            sidecar_events.recv().await.unwrap(),
+            SidecarEvent::SseConnected
+        ));
+        assert!(
+            matches!(sidecar_events.recv().await.unwrap(), SidecarEvent::ApiVersion(v) if v == version)
+        );
+        assert!(matches!(outbound.recv().await.unwrap().0, SseData::ApiVersion(v) if v == version));
+
+        // The version manager suppresses repeated ApiVersion events, but reconnects
+        // must still trigger a fresh snapshot of staged protocols.
+        handle_single_event(
+            event(SseData::ApiVersion(version)),
+            service.clone(),
+            manager.clone(),
+        )
+        .await;
+        assert!(matches!(
+            sidecar_events.recv().await.unwrap(),
+            SidecarEvent::SseConnected
+        ));
+        assert!(sidecar_events.try_recv().is_err());
+        assert!(outbound.try_recv().is_err());
+
+        let staged =
+            casper_event_types::sse_data::deserialize(r#"{"StagedProtocol":"2.3.4"}"#).unwrap();
+        handle_single_event(event(staged), service, manager).await;
+        assert!(
+            matches!(sidecar_events.recv().await.unwrap(), SidecarEvent::StagedProtocol(v) if v == version)
+        );
+        let (forwarded, filter) = outbound.recv().await.unwrap();
+        assert!(matches!(forwarded, SseData::StagedProtocol(v) if v == version));
+        assert_eq!(filter, Some(Filter::Events));
+    }
+
+    #[tokio::test]
+    async fn forwards_staged_protocol_with_and_without_database() {
+        let (outbound_tx, outbound_rx) = mpsc::channel(8);
+        let (sidecar_tx, sidecar_rx) = broadcast::channel(8);
+        let service = NoDbEventHandlingService::new(outbound_tx, false, Some(sidecar_tx));
+        check_event_forwarding(service, sidecar_rx, outbound_rx).await;
+
+        let (outbound_tx, outbound_rx) = mpsc::channel(8);
+        let (sidecar_tx, sidecar_rx) = broadcast::channel(8);
+        let service = DbSavingEventHandlingService::new(
+            outbound_tx,
+            FakeDatabase::new(),
+            false,
+            Some(sidecar_tx),
+        );
+        check_event_forwarding(service, sidecar_rx, outbound_rx).await;
     }
 }

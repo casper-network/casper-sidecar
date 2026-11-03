@@ -28,6 +28,28 @@ pub struct NoDbEventHandlingService {
 
 #[async_trait]
 impl EventHandlingService for NoDbEventHandlingService {
+    async fn handle_sse_connected(&self) {
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            let _ = sender.send(SidecarEvent::SseConnected);
+        }
+    }
+
+    async fn handle_staged_protocol(&self, version: ProtocolVersion, sse_event: SseEvent) {
+        if let Some(sender) = self.sidecar_event_sender.as_ref() {
+            let _ = sender.send(SidecarEvent::StagedProtocol(version));
+        }
+        if self.enable_event_logging {
+            info!(%version, "Staged protocol");
+        }
+        if let Err(error) = self
+            .outbound_sse_data_sender
+            .send((sse_event.data, Some(sse_event.inbound_filter)))
+            .await
+        {
+            debug!(%error, "Error sending staged protocol to outbound SSE");
+        }
+    }
+
     async fn handle_api_version(&self, version: ProtocolVersion, filter: Filter) {
         if let Some(sender) = self.sidecar_event_sender.as_ref() {
             // `send` will return error if there is no receiving party. But we treat this

@@ -81,8 +81,8 @@ impl LegacySseData {
     pub fn from(data: &SseData) -> Option<Self> {
         match data {
             SseData::ApiVersion(protocol_version) => Some(Self::ApiVersion(*protocol_version)),
-            // we don't translate steps
-            SseData::Shutdown | SseData::Step { .. } => None,
+            // These events have no representation in the legacy stream.
+            SseData::Shutdown | SseData::Step { .. } | SseData::StagedProtocol(_) => None,
             SseData::BlockAdded { block_hash, block } => {
                 build_default_block_added_translator().translate(block_hash, block)
             }

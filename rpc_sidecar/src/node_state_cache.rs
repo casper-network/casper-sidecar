@@ -23,7 +23,10 @@ use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, ProtocolVer
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
-use crate::{ClientError, NodeClient, rpcs::eth::syncing::SyncingResult};
+use crate::{
+    ClientError, NodeClient, future_chainspec_cache::FutureChainspecCache,
+    rpcs::eth::syncing::SyncingResult,
+};
 
 /// How often the SSE-disabled fallback poller asks the node for its protocol version.
 pub(crate) const PROTOCOL_VERSION_POLL_INTERVAL: Duration = Duration::from_secs(60);
@@ -38,6 +41,7 @@ struct ChainspecEntry {
 type ObservedAt<T> = Option<Mutex<Option<(Instant, T)>>>;
 
 pub struct NodeStateCache {
+    pub(crate) future_chainspecs: Arc<FutureChainspecCache>,
     node_syncing_status: Mutex<Option<SyncingResult>>,
     latest_block: ObservedAt<Arc<Block>>,
     latest_block_header: ObservedAt<BlockHeader>,
@@ -58,6 +62,7 @@ impl NodeStateCache {
 
     fn with_ttl(sse_enabled: bool, latest_block_ttl: Duration) -> Self {
         Self {
+            future_chainspecs: Arc::new(FutureChainspecCache::default()),
             node_syncing_status: Mutex::new(None),
             latest_block: sse_enabled.then(|| Mutex::new(None)),
             latest_block_header: sse_enabled.then(|| Mutex::new(None)),
@@ -146,6 +151,14 @@ impl NodeStateCache {
             .await
             .as_ref()
             .map(|entry| Arc::clone(&entry.raw))
+    }
+
+    pub(crate) async fn read_future_chainspec(
+        &self,
+        node: &dyn NodeClient,
+        version: ProtocolVersion,
+    ) -> Result<Option<ChainspecRawBytes>, ClientError> {
+        self.future_chainspecs.read(node, version).await
     }
 
     async fn cached_protocol_version(&self) -> Option<ProtocolVersion> {

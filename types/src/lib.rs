@@ -32,6 +32,9 @@ pub static SIDECAR_VERSION: LazyLock<ProtocolVersion> = LazyLock::new(|| {
 #[derive(Debug, Clone)]
 pub enum SidecarEvent {
     ApiVersion(ProtocolVersion),
+    /// An SSE stream connected or reconnected, independently of API version changes.
+    SseConnected,
+    StagedProtocol(ProtocolVersion),
     BlockAdded {
         block: Arc<Block>,
     },

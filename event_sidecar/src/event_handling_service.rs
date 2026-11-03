@@ -22,7 +22,11 @@ pub use {
 
 #[async_trait]
 pub trait EventHandlingService {
+    async fn handle_sse_connected(&self);
+
     async fn handle_api_version(&self, version: ProtocolVersion, filter: Filter);
+
+    async fn handle_staged_protocol(&self, version: ProtocolVersion, sse_event: SseEvent);
 
     async fn handle_block_added(
         &self,

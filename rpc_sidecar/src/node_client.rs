@@ -15,8 +15,8 @@ use casper_binary_port::{
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
     BlockWithSignatures, Chainspec, ChainspecRawBytes, Digest, EvmTransaction,
-    GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey, StoredValue, Transaction,
-    TransactionHash, Transfer,
+    GlobalStateIdentifier, Key, KeyTag, Package, Peers, ProtocolVersion, PublicKey, StoredValue,
+    Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
     execution::ExecutionResult,
@@ -265,6 +265,25 @@ pub trait NodeClient: Send + Sync {
             .read_info(InformationRequest::ChainspecRawBytes)
             .await?;
         parse_response::<ChainspecRawBytes>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Reads the node's current snapshot of installed future protocol versions.
+    async fn read_staged_protocol_versions(&self) -> Result<Vec<ProtocolVersion>, Error> {
+        let resp = self
+            .read_info(InformationRequest::StagedProtocolVersions)
+            .await?;
+        parse_response::<Vec<ProtocolVersion>>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    /// Reads the source documents for a future protocol, if it is still installed.
+    async fn read_future_chainspec(
+        &self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<ChainspecRawBytes>, Error> {
+        let resp = self
+            .read_info(InformationRequest::FutureChainspec { protocol_version })
+            .await?;
+        parse_response::<ChainspecRawBytes>(&resp.into())
     }
 
     /// Fetches the chainspec bytes and deserializes them into a [`Chainspec`]. Implementors backed
@@ -532,6 +551,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction gas limit is below its intrinsic gas requirement.
     #[error("The EVM transaction intrinsic gas exceeds its gas limit")]
     TransactionEvmIntrinsicGasExceedsGasLimit,
+    /// The EVM transaction gas limit exceeds the protocol transaction gas limit.
+    #[error("The EVM transaction gas limit exceeds the protocol transaction gas limit")]
+    TransactionEvmGasLimitExceedsTransactionGasLimit,
     /// The transaction initiator address is invalid.
     #[error("The transaction initiator address is invalid")]
     TransactionInvalidInitiatorAddr,
@@ -819,6 +841,9 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit => {
                 Self::TransactionEvmIntrinsicGasExceedsGasLimit
             }
+            ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit => {
+                Self::TransactionEvmGasLimitExceedsTransactionGasLimit
+            }
             ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
                 Self::TransactionInvalidInitiatorAddr
             }
@@ -996,6 +1021,8 @@ pub enum Error {
     BadRequest,
     #[error("unsupported request")]
     UnsupportedRequest,
+    #[error("response exceeds the binary message size limit")]
+    ResponseTooLarge,
     #[error("dictionary URef not found")]
     DictionaryURefNotFound,
     #[error("no complete blocks")]
@@ -1073,6 +1100,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
                 | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
                 | ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
+                | ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit
                 | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
@@ -1139,6 +1167,7 @@ impl Error {
             Ok(ErrorCode::InternalError) => Self::InternalNodeError,
             Ok(ErrorCode::BadRequest) => Self::BadRequest,
             Ok(ErrorCode::UnsupportedRequest) => Self::UnsupportedRequest,
+            Ok(ErrorCode::ResponseTooLarge) => Self::ResponseTooLarge,
             Ok(ErrorCode::DictionaryURefNotFound) => Self::DictionaryURefNotFound,
             Ok(ErrorCode::NoCompleteBlocks) => Self::NoCompleteBlocks,
             Ok(ErrorCode::GasPriceToleranceTooLow) => Self::GasPriceToleranceTooLow,
@@ -2007,6 +2036,18 @@ mod tests {
                 InvalidTransactionOrDeploy::TransactionEvmIntrinsicGasExceedsGasLimit
             )
         ));
+        assert!(matches!(
+            Error::from_error_code(
+                ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit as u16
+            ),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmGasLimitExceedsTransactionGasLimit
+            )
+        ));
+        assert_eq!(
+            Error::from_error_code(ErrorCode::ResponseTooLarge as u16),
+            Error::ResponseTooLarge
+        );
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionInvalidInitiatorAddr as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionInvalidInitiatorAddr)

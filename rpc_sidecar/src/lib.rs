@@ -2,6 +2,7 @@ mod binary_port_cache;
 mod build_info;
 mod caching_node_client;
 mod config;
+mod future_chainspec_cache;
 mod http_server;
 mod node_client;
 mod node_state_cache;
@@ -46,6 +47,9 @@ pub async fn build_rpc_server<'a>(
     sidecar_event_sender: Sender<SidecarEvent>,
     sse_enabled: bool,
 ) -> MaybeRpcServerReturn<'a> {
+    // Buffer events while startup hydrates the caches; the snapshot poll also
+    // recovers announcements emitted before this subscription was created.
+    let sidecar_event_receiver = sidecar_event_sender.subscribe();
     let (framed_node_client, reconnect_loop, keepalive_loop) =
         FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
     let mut futures = Vec::new();
@@ -78,7 +82,7 @@ pub async fn build_rpc_server<'a>(
         .transpose()?;
 
     let caching_client = Arc::new(CachingNodeClient::new(
-        framed_node_client,
+        framed_node_client.clone(),
         binary_port_store.clone(),
         node_state_cache.clone(),
     ));
@@ -86,7 +90,7 @@ pub async fn build_rpc_server<'a>(
 
     // Feed the node state cache (and, if enabled, the persistent binary port cache) from the SSE
     // event stream. No-ops harmlessly if the SSE server is disabled - the channel just stays quiet.
-    let cache_loop = cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
+    let cache_loop = cache_update_loop(caching_client.clone(), sidecar_event_receiver)
         .map(|q| {
             if let Err(e) = q {
                 error!("cache_update_loop finished with error: {e}");
@@ -95,6 +99,19 @@ pub async fn build_rpc_server<'a>(
         })
         .boxed();
     futures.push(cache_loop);
+
+    let future_refresh = future_chainspec_cache::refresh_loop(
+        framed_node_client,
+        node_state_cache.future_chainspecs.clone(),
+    )
+    .map(|q| {
+        if let Err(e) = q {
+            error!("future chainspec refresh loop finished with error: {e}");
+        }
+        Ok(ExitCode::from(CLIENT_SHUTDOWN_EXIT_CODE))
+    })
+    .boxed();
+    futures.push(future_refresh);
 
     if let Some(store) = binary_port_store {
         let prune_loop_future = prune_loop(store)

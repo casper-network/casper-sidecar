@@ -176,7 +176,7 @@ mod tests {
             state_identifier,
             Key::Evm(EvmAddr::ByteCode(code_hash)),
             Some(StoredValue::ByteCode(ByteCode::new(
-                ByteCodeKind::EvmPrague,
+                ByteCodeKind::EvmOsaka,
                 vec![0x60, 0x00],
             ))),
         )

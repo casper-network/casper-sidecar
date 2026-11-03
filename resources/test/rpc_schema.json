@@ -1865,6 +1865,111 @@
       ]
     },
     {
+      "name": "eth_config",
+      "summary": "returns current and staged Casper EVM configuration snapshots (adapted EIP-7910)",
+      "params": [],
+      "result": {
+        "name": "eth_config_result",
+        "schema": {
+          "description": "Current, next and last installed EVM configuration snapshots.",
+          "type": "object",
+          "required": [
+            "current"
+          ],
+          "properties": {
+            "current": {
+              "$ref": "#/components/schemas/ConfigSnapshot"
+            },
+            "next": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ConfigSnapshot"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "last": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ConfigSnapshot"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_config_example",
+          "params": [],
+          "result": {
+            "name": "eth_config_example_result",
+            "value": {
+              "current": {
+                "activationTime": 0,
+                "blobSchedule": null,
+                "chainId": "0x43535005",
+                "forkId": null,
+                "precompiles": {
+                  "BLAKE2F": "0x0000000000000000000000000000000000000009",
+                  "BLS12_G1ADD": "0x000000000000000000000000000000000000000b",
+                  "BLS12_G1MSM": "0x000000000000000000000000000000000000000c",
+                  "BLS12_G2ADD": "0x000000000000000000000000000000000000000d",
+                  "BLS12_G2MSM": "0x000000000000000000000000000000000000000e",
+                  "BLS12_MAP_FP2_TO_G2": "0x0000000000000000000000000000000000000011",
+                  "BLS12_MAP_FP_TO_G1": "0x0000000000000000000000000000000000000010",
+                  "BLS12_PAIRING_CHECK": "0x000000000000000000000000000000000000000f",
+                  "BN254_ADD": "0x0000000000000000000000000000000000000006",
+                  "BN254_MUL": "0x0000000000000000000000000000000000000007",
+                  "BN254_PAIRING": "0x0000000000000000000000000000000000000008",
+                  "ECREC": "0x0000000000000000000000000000000000000001",
+                  "ID": "0x0000000000000000000000000000000000000004",
+                  "KZG_POINT_EVALUATION": "0x000000000000000000000000000000000000000a",
+                  "MODEXP": "0x0000000000000000000000000000000000000005",
+                  "P256VERIFY": "0x0000000000000000000000000000000000000100",
+                  "RIPEMD160": "0x0000000000000000000000000000000000000003",
+                  "SHA256": "0x0000000000000000000000000000000000000002"
+                },
+                "systemContracts": {
+                  "BEACON_ROOTS_ADDRESS": "0x000f3df6d732807ef1319fb7b8bb8522d0beac02",
+                  "HISTORY_STORAGE_ADDRESS": "0x0000f90827f1c53a10cb7a02335b175320002935"
+                },
+                "casper": {
+                  "protocolVersion": "2.0.0",
+                  "activationPoint": "1970-01-01T00:00:00.000Z",
+                  "evmConfig": {
+                    "enabled": true,
+                    "chain_id": 1129533445,
+                    "spec": "osaka",
+                    "block_gas_limit": 30000000,
+                    "base_fee": 0,
+                    "wei_per_mote": 1000000000,
+                    "transaction_lanes": [
+                      [
+                        100,
+                        131072,
+                        1024,
+                        1000000,
+                        50
+                      ]
+                    ],
+                    "preinstalls": []
+                  }
+                }
+              },
+              "next": null,
+              "last": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "net_version",
       "summary": "returns the configured EVM network ID as a decimal string",
       "params": [],
@@ -8763,10 +8868,10 @@
             ]
           },
           {
-            "description": "Prague-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Prague EVM rules. When support for a future bytecode-affecting EVM spec is added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
+            "description": "Osaka-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Osaka EVM rules. When support for a future bytecode-affecting EVM spec is added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
             "type": "string",
             "enum": [
-              "EvmPrague"
+              "EvmOsaka"
             ]
           }
         ]
@@ -10830,9 +10935,191 @@
           }
         }
       },
+      "ConfigSnapshot": {
+        "description": "A configuration snapshot. Ethereum-only fields unavailable on Casper are null.",
+        "type": "object",
+        "required": [
+          "casper",
+          "chainId",
+          "precompiles",
+          "systemContracts"
+        ],
+        "properties": {
+          "activationTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "blobSchedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlobSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chainId": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "forkId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "precompiles": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "systemContracts": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "casper": {
+            "$ref": "#/components/schemas/CasperConfig"
+          }
+        }
+      },
+      "BlobSchedule": {
+        "description": "Ethereum blob parameters, unavailable on Casper.",
+        "type": "object",
+        "required": [
+          "baseFeeUpdateFraction",
+          "max",
+          "target"
+        ],
+        "properties": {
+          "baseFeeUpdateFraction": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "max": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "target": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        }
+      },
       "EthU256": {
         "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
         "type": "string"
+      },
+      "CasperConfig": {
+        "description": "The native protocol information and complete EVM configuration.",
+        "type": "object",
+        "required": [
+          "activationPoint",
+          "evmConfig",
+          "protocolVersion"
+        ],
+        "properties": {
+          "protocolVersion": {
+            "$ref": "#/components/schemas/ProtocolVersion"
+          },
+          "activationPoint": {
+            "$ref": "#/components/schemas/ActivationPoint"
+          },
+          "evmConfig": {
+            "$ref": "#/components/schemas/EvmConfigSchema"
+          }
+        }
+      },
+      "EvmConfigSchema": {
+        "type": "object",
+        "required": [
+          "base_fee",
+          "block_gas_limit",
+          "chain_id",
+          "enabled",
+          "preinstalls",
+          "spec",
+          "transaction_lanes",
+          "wei_per_mote"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "chain_id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "spec": {
+            "$ref": "#/components/schemas/EvmSpec"
+          },
+          "block_gas_limit": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "base_fee": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "wei_per_mote": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "transaction_lanes": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0.0
+              },
+              "maxItems": 5,
+              "minItems": 5
+            }
+          },
+          "preinstalls": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": [
+                {
+                  "$ref": "#/components/schemas/Address"
+                },
+                {
+                  "$ref": "#/components/schemas/EvmHash"
+                }
+              ],
+              "maxItems": 2,
+              "minItems": 2
+            }
+          }
+        }
+      },
+      "EvmSpec": {
+        "description": "Supported EVM hardfork specifications for chainspec configuration.\n\nVariants are ordered by fork chronology; feature gates use ordinal comparisons to apply functionality from a fork onward.",
+        "oneOf": [
+          {
+            "description": "Osaka.",
+            "type": "string",
+            "enum": [
+              "osaka"
+            ]
+          }
+        ]
       },
       "BlockNumberParam": {
         "description": "Ethereum block selector accepting either a named tag or a numeric height.",
