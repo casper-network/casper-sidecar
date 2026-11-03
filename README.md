@@ -297,13 +297,15 @@ have a null `activationTime`; genesis uses zero. `forkId` and `blobSchedule` are
 Casper does not provide those Ethereum-specific values. Disabled EVM configurations advertise
 empty contract maps.
 
-The sidecar reads the node's current chainspec and staged protocol list through the binary port
-for each request. It caches staged chainspec documents when the node announces a
-`StagedProtocol` event and reconciles them on startup, reconnect, and every 30 seconds. The
-periodic refresh also detects same-version edits and removals, which do not produce SSE events,
-and works when SSE is disabled. Cached documents expire after 30 seconds and an unavailable or
-failed cache falls back to the node. A staged configuration that is missing, cannot be parsed, or
-fails EVM validation causes an RPC error rather than a partial result.
+The current chainspec is cached on startup and refreshed when a protocol version change is
+observed; if the cache is unavailable, the sidecar reads it from the node. Protocol changes are
+observed through SSE or, when SSE is disabled, a 60-second poll. The staged protocol list is read
+through the binary port for each request. The sidecar caches staged chainspec documents when the
+node announces a `StagedProtocol` event and reconciles them on startup, reconnect, and every 30
+seconds. The periodic refresh also detects same-version edits and removals, which do not produce
+SSE events, and works when SSE is disabled. Cached documents expire after 30 seconds and an
+unavailable or failed cache falls back to the node. A staged configuration that is missing,
+cannot be parsed, or fails EVM validation causes an RPC error rather than a partial result.
 
 #### Prefetching blocks feature
 

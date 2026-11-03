@@ -6,7 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use casper_binary_port::InformationRequest;
 use casper_json_rpc::Error as RpcError;
 use casper_types::{
     AUCTION_LANE_ID, ActivationPoint, ChainspecRawBytes, EvmConfig, EvmSpec,
@@ -14,6 +13,8 @@ use casper_types::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::ClientError;
 
 use super::{
     super::{NodeClient, RpcWithoutParams, docs::DocExample},
@@ -185,14 +186,6 @@ impl ChainspecProjection {
     }
 }
 
-async fn read_chainspec(
-    node: &dyn NodeClient,
-    request: InformationRequest,
-) -> Result<Option<ChainspecRawBytes>, RpcError> {
-    let response = node.read_info(request).await.map_err(internal_error)?;
-    crate::parse_response::<ChainspecRawBytes>(&response.into()).map_err(internal_error)
-}
-
 async fn read_future(
     node: &dyn NodeClient,
     version: ProtocolVersion,
@@ -224,11 +217,15 @@ impl RpcWithoutParams for Config {
     async fn do_handle_request(
         node: Arc<dyn NodeClient>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        // The version list is always read from the node; future documents may be served
-        // from the SSE-fed, periodically reconciled cache.
-        let raw = read_chainspec(node.as_ref(), InformationRequest::ChainspecRawBytes)
-            .await?
-            .ok_or_else(|| internal_error("current chainspec is unavailable"))?;
+        // Current and future documents may be cached, but the version list is always
+        // read from the node.
+        let raw = node
+            .read_chainspec_bytes()
+            .await
+            .map_err(|error| match error {
+                ClientError::EmptyEnvelope => internal_error("current chainspec is unavailable"),
+                error => internal_error(error),
+            })?;
         let current = ChainspecProjection::from_raw(&raw)?;
         let current_version = current.protocol.version;
         let mut versions = node
@@ -290,7 +287,7 @@ impl DocExample for ConfigResult {
 
 #[cfg(test)]
 mod tests {
-    use casper_binary_port::{BinaryResponse, Command, ErrorCode};
+    use casper_binary_port::{BinaryResponse, Command, ErrorCode, InformationRequest};
     use casper_json_rpc::{ConfigLimit, JsonRpcOptions, RequestHandlersBuilder};
     use serde_json::{Value, json};
 
