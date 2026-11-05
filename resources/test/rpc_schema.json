@@ -1949,6 +1949,7 @@
                     "block_gas_limit": 30000000,
                     "base_fee": 0,
                     "wei_per_mote": 1000000000,
+                    "max_nonce_gap": 0,
                     "transaction_lanes": [
                       [
                         100,
@@ -11046,6 +11047,7 @@
           "block_gas_limit",
           "chain_id",
           "enabled",
+          "max_nonce_gap",
           "preinstalls",
           "spec",
           "transaction_lanes",
@@ -11074,6 +11076,11 @@
             "minimum": 0.0
           },
           "wei_per_mote": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "max_nonce_gap": {
             "type": "integer",
             "format": "uint64",
             "minimum": 0.0
