@@ -142,19 +142,26 @@ pub(crate) async fn project_transaction_receipt(
             "transaction hash did not resolve to EVM transaction",
         ));
     }
-    let Some(ExecutionResult::Evm(_)) = execution_info.execution_result else {
+    // A transaction can have a block location before its execution result is available.
+    // Until both the result and block can be read, there is no receipt to return yet.
+    let Some(execution_result) = execution_info.execution_result else {
+        return Ok(None);
+    };
+    if !matches!(execution_result, ExecutionResult::Evm(_)) {
         return Err(internal_error(
             "EVM transaction did not resolve to EVM execution result",
         ));
-    };
+    }
 
-    let block = project_block(
+    let Some(block) = project_block(
         node_client,
         Some(BlockIdentifier::Hash(execution_info.block_hash)),
         false,
     )
     .await?
-    .ok_or_else(|| internal_error("receipt block was not found"))?;
+    else {
+        return Ok(None);
+    };
     let receipt = block
         .receipt(hash)
         .cloned()
