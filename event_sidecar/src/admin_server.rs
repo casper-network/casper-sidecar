@@ -1,18 +1,18 @@
 use anyhow::Error;
-use hyper::Server;
 use metrics::metrics_summary;
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     process::ExitCode,
     time::Duration,
 };
-use tower::{ServiceBuilder, buffer::Buffer, make::Shared};
+use tokio::net::TcpListener;
+use tower::{ServiceBuilder, buffer::Buffer};
 use tracing::info;
 use warp::{Filter, Rejection, Reply};
 
 use crate::{
     types::config::AdminApiServerConfig,
-    utils::{Unexpected, root_filter},
+    utils::{Unexpected, root_filter, serve_http},
 };
 
 const BIND_ALL_INTERFACES: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
@@ -26,7 +26,7 @@ impl AdminServer {
     pub async fn start(&self) -> Result<(), Error> {
         let api = root_filter().or(metrics_filter());
         let address = SocketAddr::new(BIND_ALL_INTERFACES, self.port);
-        let listener = TcpListener::bind(address)?;
+        let listener = TcpListener::bind(address).await?;
 
         let warp_service = warp::service(api);
         let tower_service = ServiceBuilder::new()
@@ -37,9 +37,7 @@ impl AdminServer {
             )
             .service(warp_service);
         info!(address = %address, "started Admin API server");
-        Server::from_tcp(listener)?
-            .serve(Shared::new(Buffer::new(tower_service, 50)))
-            .await?;
+        serve_http(listener, Buffer::new(tower_service, 50)).await?;
 
         Err(Error::msg("Admin server shutting down"))
     }

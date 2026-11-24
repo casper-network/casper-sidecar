@@ -1,3 +1,9 @@
+use hyper::{Request, body::Incoming};
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::Builder,
+    service::TowerToHyperService,
+};
 #[cfg(feature = "additional-metrics")]
 use metrics::db::EVENTS_PROCESSED_PER_SECOND;
 #[cfg(feature = "additional-metrics")]
@@ -12,12 +18,53 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
 };
 use thiserror::Error;
+use tokio::net::TcpListener;
 #[cfg(feature = "additional-metrics")]
 use tokio::sync::{
     Mutex,
     mpsc::{Sender, channel},
 };
-use warp::{Filter, reject};
+use tower::{BoxError, Service};
+use warp::{Filter, reject, reply::Response};
+
+pub(crate) fn bind_tcp_listener(address: SocketAddr) -> io::Result<TcpListener> {
+    let listener = std::net::TcpListener::bind(address)?;
+    listener.set_nonblocking(true)?;
+    TcpListener::from_std(listener)
+}
+
+pub(crate) async fn serve_http<S>(listener: TcpListener, service: S) -> io::Result<()>
+where
+    S: Service<Request<Incoming>, Response = Response, Error = BoxError> + Clone + Send + 'static,
+    S::Future: Send + 'static,
+{
+    loop {
+        let (stream, address) = match listener.accept().await {
+            Ok(connection) => connection,
+            Err(error) => {
+                if !matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionRefused
+                        | io::ErrorKind::ConnectionAborted
+                        | io::ErrorKind::ConnectionReset
+                ) {
+                    tracing::error!(%error, "HTTP listener could not accept a connection");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                continue;
+            }
+        };
+        let service = TowerToHyperService::new(service.clone());
+        tokio::spawn(async move {
+            if let Err(error) = Builder::new(TokioExecutor::new())
+                .serve_connection(TokioIo::new(stream), service)
+                .await
+            {
+                tracing::debug!(%address, %error, "HTTP connection failed");
+            }
+        });
+    }
+}
 
 #[derive(Debug)]
 pub struct Unexpected(pub(super) anyhow::Error);

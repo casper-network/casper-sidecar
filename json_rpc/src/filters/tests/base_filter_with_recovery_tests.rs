@@ -1,4 +1,5 @@
 use http::StatusCode;
+use http_body_util::BodyExt;
 use warp::{Filter, Reply, filters::BoxedFilter, reply, test::RequestBuilder};
 
 use super::ResponseBodyOnRejection;
@@ -36,7 +37,7 @@ async fn should_accept_valid_request() {
         .into_response();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     assert!(body_bytes.is_empty());
 }
 
@@ -205,7 +206,7 @@ async fn should_handle_any_case_content_type() {
             .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
-        let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
         assert!(body_bytes.is_empty());
     }
 

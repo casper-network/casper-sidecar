@@ -1,3 +1,4 @@
+use http_body_util::BodyExt;
 mod base_filter_with_recovery_tests;
 mod main_filter_with_recovery_tests;
 
@@ -11,8 +12,8 @@ struct ResponseBodyOnRejection {
 }
 
 impl ResponseBodyOnRejection {
-    async fn from_response(response: http::Response<hyper::Body>) -> Self {
-        let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    async fn from_response(response: warp::reply::Response) -> Self {
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice(&body_bytes).unwrap()
     }
 }

@@ -27,7 +27,7 @@ mod http_server;
 mod sse_server;
 #[cfg(test)]
 mod tests;
-use crate::utils::{ListeningError, resolve_address};
+use crate::utils::{ListeningError, bind_tcp_listener, resolve_address};
 use casper_event_types::{Filter as SseFilter, sse_data::SseData};
 pub use config::Config;
 use event_indexer::{EventIndex, EventIndexer};
@@ -87,20 +87,22 @@ impl EventStreamServer {
             enable_legacy_filters,
         );
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-        let (listening_address, server_with_shutdown) =
-            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
-                .try_bind_with_graceful_shutdown(required_address, async {
-                    shutdown_receiver.await.ok();
-                })
-                .map_err(|error| ListeningError::Listen {
-                    address: required_address,
-                    error: Box::new(error),
-                })?;
+        let listen_error = |error| ListeningError::Listen {
+            address: required_address,
+            error: Box::new(error),
+        };
+        let listener = bind_tcp_listener(required_address).map_err(listen_error)?;
+        let listening_address = listener.local_addr().map_err(listen_error)?;
+        let server = warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
+            .incoming(listener)
+            .graceful(async {
+                shutdown_receiver.await.ok();
+            });
         info!(address=%listening_address, "started event stream server");
 
         tokio::spawn(http_server::run(
             config,
-            server_with_shutdown,
+            async move { server.run().await },
             shutdown_sender,
             sse_data_receiver,
             event_broadcaster,

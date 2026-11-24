@@ -5,14 +5,12 @@ use crate::{
     utils::Unexpected,
 };
 use anyhow::Error;
-use http::Response;
-use hyper::Body;
 use serde::Serialize;
-use warp::{Rejection, Reply, http::StatusCode};
+use warp::{Rejection, Reply, http::StatusCode, reply::Response};
 
 pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
     db: Db,
-) -> Result<Response<Body>, Rejection> {
+) -> Result<Response, Rejection> {
     let db_result = db.get_latest_block().await;
     format_or_reject_storage_result(db_result)
 }
@@ -20,7 +18,7 @@ pub(super) async fn get_latest_block<Db: DatabaseReader + Clone + Send>(
 pub(super) async fn get_block_by_hash<Db: DatabaseReader + Clone + Send>(
     hash: String,
     db: Db,
-) -> Result<Response<Body>, Rejection> {
+) -> Result<Response, Rejection> {
     check_hash_is_correct_format(&hash)?;
     let db_result = db.get_block_by_hash(&hash).await;
     format_or_reject_storage_result(db_result)
@@ -29,7 +27,7 @@ pub(super) async fn get_block_by_hash<Db: DatabaseReader + Clone + Send>(
 pub(super) async fn get_block_by_height<Db: DatabaseReader + Clone + Send>(
     height: u64,
     db: Db,
-) -> Result<Response<Body>, Rejection> {
+) -> Result<Response, Rejection> {
     let db_result = db.get_block_by_height(height).await;
     format_or_reject_storage_result(db_result)
 }
@@ -38,7 +36,7 @@ pub(super) async fn get_transaction_by_identifier<Db: DatabaseReader + Clone + S
     transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
-) -> Result<Response<Body>, Rejection> {
+) -> Result<Response, Rejection> {
     check_hash_is_correct_format(&hash)?;
     let db_result = db
         .get_transaction_aggregate_by_identifier(&transaction_type.into(), &hash)
@@ -50,7 +48,7 @@ pub(super) async fn get_transaction_accepted_by_hash<Db: DatabaseReader + Clone 
     transaction_type: TransactionTypeIdFilter,
     hash: String,
     db: Db,
-) -> Result<Response<Body>, Rejection> {
+) -> Result<Response, Rejection> {
     check_hash_is_correct_format(&hash)?;
     let db_result = db
         .get_transaction_accepted_by_hash(&transaction_type.into(), &hash)
@@ -118,7 +116,7 @@ pub(super) async fn get_finality_signatures_by_block<Db: DatabaseReader + Clone 
 
 fn format_or_reject_storage_result<T>(
     storage_result: Result<T, DatabaseReadError>,
-) -> Result<Response<Body>, Rejection>
+) -> Result<Response, Rejection>
 where
     T: Serialize,
 {

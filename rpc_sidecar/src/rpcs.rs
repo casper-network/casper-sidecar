@@ -356,17 +356,25 @@ async fn run_service(
         .with(warp::compression::gzip());
 
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-    let (address, server_with_shutdown) = warp::serve(
+    let address = std::net::SocketAddr::new(ip_address, port);
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .unwrap_or_else(|error| {
+            panic!("failed to bind {server_name} server to {address}: {error}")
+        });
+    let address = listener.local_addr().expect("bound RPC listener address");
+    let server = warp::serve(
         requrst_limit
             .and(service_routes_gzip.or(service_routes.clone()))
             .recover(handle_rejection),
     )
-    .bind_with_graceful_shutdown((ip_address, port), async {
+    .incoming(listener)
+    .graceful(async {
         shutdown_receiver.await.ok();
     });
     info!(address = %address, "started {server_name} server");
 
-    let _ = tokio::spawn(server_with_shutdown).await;
+    let _ = tokio::spawn(async move { server.run().await }).await;
     let _ = shutdown_sender.send(());
     info!("{server_name} server shut down");
 }
@@ -497,6 +505,7 @@ impl fmt::Display for ApiVersion {
 
 #[cfg(test)]
 mod tests {
+    use http_body_util::BodyExt;
     use warp::{Filter, Reply, filters::BoxedFilter};
 
     use casper_json_rpc::{Response, filters};
@@ -522,9 +531,12 @@ mod tests {
             .into_response();
 
         assert_eq!(http_response.status(), StatusCode::OK);
-        let body_bytes = hyper::body::to_bytes(http_response.into_body())
+        let body_bytes = http_response
+            .into_body()
+            .collect()
             .await
-            .unwrap();
+            .unwrap()
+            .to_bytes();
         serde_json::from_slice(&body_bytes).unwrap()
     }
 
@@ -556,7 +568,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["content-encoding"], "gzip");
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
         assert!(!body.is_empty());
     }
 

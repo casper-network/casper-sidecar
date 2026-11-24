@@ -433,12 +433,14 @@ pub mod tests {
         interval_in_seconds: u64,
         initial_delay_in_seconds: u64,
     ) {
-        let routes = warp::path("notifications").and(warp::get()).map(move || {
-            let event_stream = build_stream(interval_in_seconds, initial_delay_in_seconds);
-            // reply using server-sent events
-            // keep-alive is omitted intentionally so we can test scenarios in which the sse endpoint gives no traffic
-            warp::sse::reply(event_stream)
-        });
+        let routes = warp::path("notifications".to_owned())
+            .and(warp::get())
+            .map(move || {
+                let event_stream = build_stream(interval_in_seconds, initial_delay_in_seconds);
+                // reply using server-sent events
+                // keep-alive is omitted intentionally so we can test scenarios in which the sse endpoint gives no traffic
+                warp::sse::reply(event_stream)
+            });
         tokio::spawn(async move {
             warp::serve(routes).run(([127, 0, 0, 1], port)).await;
         });
@@ -452,7 +454,7 @@ pub mod tests {
                 Ok(SseEvent::default().data("msg 3")),
             ])
         }
-        let routes = warp::path("notifications")
+        let routes = warp::path("notifications".to_owned())
             .and(warp::get())
             .map(|| warp::sse::reply(warp::sse::keep_alive().stream(sse_events())));
         tokio::spawn(async move { warp::serve(routes).run(([127, 0, 0, 1], sse_port)).await });

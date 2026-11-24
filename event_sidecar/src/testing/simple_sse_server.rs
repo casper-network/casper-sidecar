@@ -2,15 +2,16 @@
 pub(crate) mod tests {
     use async_stream::stream;
     use futures::Stream;
-    use std::{collections::HashMap, convert::Infallible, sync::Arc};
+    use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
     use tokio::sync::{
         Mutex, broadcast,
         mpsc::{Receiver, Sender, channel},
+        oneshot,
     };
     use warp::filters::BoxedFilter;
-    use warp::{Filter, Rejection, Reply, path, sse::Event};
+    use warp::{Filter, Rejection, Reply, path, reply::Response, sse::Event};
 
-    use crate::testing::raw_sse_events_utils::tests::EventsWithIds;
+    use crate::{testing::raw_sse_events_utils::tests::EventsWithIds, utils::bind_tcp_listener};
 
     type BroadcastSender = broadcast::Sender<Option<(Option<String>, String)>>;
     type BroadcastReceiver = broadcast::Receiver<Option<(Option<String>, String)>>;
@@ -39,24 +40,27 @@ pub(crate) mod tests {
             let api = routes
                 .into_iter()
                 .fold(first, |e, r| e.or(r).unify().boxed());
-            let server_thread = tokio::spawn(async move {
-                let server = warp::serve(api)
-                    .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
-                        let _ = shutdown_rx.recv().await;
-                        let guard = shutdown_broadcasts.lock().await;
-                        for sender in guard.iter() {
-                            let _ = sender.send(None);
-                        }
-                        drop(guard);
-                    })
-                    .1;
-                server.await;
-                let _ = after_shutdown_tx.send(()).await;
-            });
+            let listener = bind_tcp_listener(SocketAddr::from(([127, 0, 0, 1], port)))
+                .expect("bind test SSE server");
+            let (stop_server, stop_signal) = oneshot::channel::<()>();
             tokio::spawn(async move {
-                let result = server_thread.await;
-                if result.is_err() {
-                    println!("simple_sse_server: {result:?}");
+                let _ = shutdown_rx.recv().await;
+                let guard = shutdown_broadcasts.lock().await;
+                for sender in guard.iter() {
+                    let _ = sender.send(None);
+                }
+                let _ = stop_server.send(());
+            });
+            let server = warp::serve(api).incoming(listener).graceful(async move {
+                let _ = stop_signal.await;
+            });
+            let server_thread = tokio::spawn(async move { server.run().await });
+            tokio::spawn(async move {
+                match server_thread.await {
+                    Ok(()) => {
+                        let _ = after_shutdown_tx.try_send(());
+                    }
+                    Err(error) => println!("simple_sse_server: {error:?}"),
                 }
             });
             (shutdown_tx, after_shutdown_rx)
@@ -65,8 +69,8 @@ pub(crate) mod tests {
         fn build_filter(
             &self,
             shutdown_broadcasts: ShutdownCallbacks,
-        ) -> Vec<BoxedFilter<(Box<dyn Reply>,)>> {
-            let routes: Vec<BoxedFilter<(Box<dyn Reply>,)>> = self
+        ) -> Vec<BoxedFilter<(Response,)>> {
+            let routes: Vec<BoxedFilter<(Response,)>> = self
                 .routes
                 .iter()
                 .collect::<Vec<_>>()
@@ -125,7 +129,7 @@ pub(crate) mod tests {
         mut cache_and_data: CacheAndData,
         sender: BroadcastSender,
         query: HashMap<String, String>,
-    ) -> Result<Box<dyn Reply>, Rejection> {
+    ) -> Result<Response, Rejection> {
         let maybe_start_from = query
             .get("start_from")
             .and_then(|id_str| id_str.parse::<u32>().ok());
@@ -151,7 +155,7 @@ pub(crate) mod tests {
         for el in effective_data.into_iter() {
             sender.send(Some(el)).unwrap();
         }
-        Ok(Box::new(reply) as Box<dyn Reply>)
+        Ok(reply.into_response())
     }
 
     fn with_data(

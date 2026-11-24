@@ -32,8 +32,9 @@ eventsource-stream = "0.2.3"
 futures = { workspace = true }
 hex = "0.4.3"
 hex_fmt = "0.3.0"
-http = "0.2.1"
-hyper = "0.14.4"
+http = "1"
+hyper = "1"
+hyper-util = { version = "0.1.20", features = ["server-auto", "service", "tokio"] }
 itertools = { workspace = true }
 metrics = { workspace = true }
 pin-project = "1.1"
@@ -67,6 +68,7 @@ casper-event-types = { workspace = true, features = ["sse-data-testing"] }
 casper-types = { workspace = true, features = ["testing"] }
 colored = "3.0"
 futures-util = { workspace = true }
+http-body-util = "0.1"
 portpicker = "0.1"
 postgresql_embedded = { version = "0.22", features = ["tokio"] }
 pretty_assertions = "1"
@@ -74,3 +76,4 @@ reqwest = { version = "0.13", features = ["stream"] }
 tabled = { version = "0.21", features = ["derive"] }
 tempfile = "3"
 tokio-util = "0.7"
+warp = { workspace = true, features = ["test"] }

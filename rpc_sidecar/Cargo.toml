@@ -27,8 +27,7 @@ governor = { workspace = true }
 # Pinned: 0.22.1 uses the unstable `unsigned_is_multiple_of` feature, requiring a newer rustc
 # than this workspace's MSRV.
 heed = { version = "=0.22.0", default-features = false }
-http = "0.2"
-hyper = "0.14"
+http = "1"
 metrics = { workspace = true }
 num-rational = { version = "0.4", default-features = false, features = ["serde"] }
 num-traits = { version = "0.2", default-features = false }
@@ -68,6 +67,8 @@ tokio = { workspace = true, features = ["test-util"] }
 jsonschema = { workspace = true }
 alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
 alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
+http-body-util = "0.1"
+warp = { workspace = true, features = ["test"] }
 
 [build-dependencies]
 anyhow = { workspace = true }

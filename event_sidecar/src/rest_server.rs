@@ -8,18 +8,21 @@ mod status;
 mod tests;
 
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
 };
 
 use anyhow::Error;
-use hyper::Server;
-use tower::{ServiceBuilder, buffer::Buffer, make::Shared};
+use tokio::net::TcpListener;
+use tower::{ServiceBuilder, buffer::Buffer};
 use tracing::info;
 use warp::Filter;
 
 use self::metrics_layer::MetricsLayer;
-use crate::types::{config::RestApiServerConfig, database::DatabaseReader};
+use crate::{
+    types::{config::RestApiServerConfig, database::DatabaseReader},
+    utils::serve_http,
+};
 
 pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
     config: RestApiServerConfig,
@@ -29,7 +32,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
     let address = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
     let socket_address = SocketAddr::new(address, config.port);
 
-    let listener = TcpListener::bind(socket_address)?;
+    let listener = TcpListener::bind(socket_address).await?;
 
     let warp_service = warp::service(api.with(warp::cors().allow_any_origin()));
     let tower_service = ServiceBuilder::new()
@@ -41,9 +44,7 @@ pub async fn run_server<Db: DatabaseReader + Clone + Send + Sync + 'static>(
         .layer(MetricsLayer::new(path_abstraction_for_metrics))
         .service(warp_service);
     info!(address = %address, "started REST API server");
-    Server::from_tcp(listener)?
-        .serve(Shared::new(Buffer::new(tower_service, 50)))
-        .await?;
+    serve_http(listener, Buffer::new(tower_service, 50)).await?;
 
     Err(Error::msg("REST server shutting down"))
 }

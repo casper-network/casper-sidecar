@@ -6,7 +6,7 @@ use crate::{
 };
 use http::StatusCode;
 #[cfg(test)]
-use hyper::body::HttpBody;
+use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use warp::{Rejection, Reply, reject};
@@ -93,10 +93,10 @@ async fn get_api_error_from_rejection(rejection: Rejection) -> ApiError {
 
     let err_bytes = response
         .into_body()
-        .data()
+        .collect()
         .await
-        .expect("Body was missing API Error")
-        .expect("Body contained an Err value instead of Ok(ApiError)");
+        .expect("Body contained an error")
+        .to_bytes();
 
     serde_json::from_slice::<ApiError>(&err_bytes)
         .expect("Error parsing ApiError from bytes of body")

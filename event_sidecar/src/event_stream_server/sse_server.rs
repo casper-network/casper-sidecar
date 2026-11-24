@@ -17,7 +17,6 @@ use casper_types::ProtocolVersion;
 use casper_types::Transaction;
 use futures::{Stream, StreamExt, future};
 use http::StatusCode;
-use hyper::Body;
 #[cfg(test)]
 use regex::Regex;
 #[cfg(test)]
@@ -369,7 +368,7 @@ fn create_404(enable_legacy_filters: bool) -> Response {
             main = SSE_API_MAIN_PATH,
         )
     };
-    let mut response = Response::new(Body::from(text));
+    let mut response = Response::new(text.into());
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
 }
@@ -377,9 +376,9 @@ fn create_404(enable_legacy_filters: bool) -> Response {
 /// Creates a 422 response with a useful error message in the body for use in case of a bad query
 /// string.
 fn create_422() -> Response {
-    let mut response = Response::new(Body::from(format!(
-        "invalid query: expected single field '{QUERY_FIELD}=<EVENT ID>'\n"
-    )));
+    let mut response = Response::new(
+        format!("invalid query: expected single field '{QUERY_FIELD}=<EVENT ID>'\n").into(),
+    );
     *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
     response
 }
@@ -387,7 +386,7 @@ fn create_422() -> Response {
 /// Creates a 503 response (Service Unavailable) to be returned if the server has too many
 /// subscribers.
 fn create_503() -> Response {
-    let mut response = Response::new(Body::from("server has reached limit of subscribers"));
+    let mut response = Response::new("server has reached limit of subscribers".into());
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     response
 }
@@ -406,7 +405,7 @@ fn serve_sse_response_handler(
     new_subscriber_info_sender: UnboundedSender<NewSubscriberInfo>,
     enable_legacy_filters: bool,
     #[cfg(feature = "additional-metrics")] metrics_sender: Sender<()>,
-) -> http::Response<Body> {
+) -> Response {
     if let Some(value) = validate(&cloned_broadcaster, max_concurrent_subscribers) {
         return value;
     }
@@ -452,7 +451,7 @@ fn parse_url_props(
     maybe_path_param: Option<String>,
     query: HashMap<String, String>,
     enable_legacy_filters: bool,
-) -> Result<UrlProps, Box<http::Response<Body>>> {
+) -> Result<UrlProps, Box<Response>> {
     let path_param = maybe_path_param.unwrap_or_else(|| SSE_API_ROOT_PATH.to_string());
     let Some((event_filter, is_legacy_filter)) =
         get_filter(path_param.as_str(), enable_legacy_filters)
@@ -469,7 +468,7 @@ fn parse_url_props(
 fn validate(
     cloned_broadcaster: &broadcast::Sender<BroadcastChannelMessage>,
     max_concurrent_subscribers: u32,
-) -> Option<http::Response<Body>> {
+) -> Option<Response> {
     // If we already have the maximum number of subscribers, reject this new one.
     if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
         info!(
@@ -574,8 +573,7 @@ fn stream_to_client(
                 }
             }
         })
-        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))))
-        .boxed();
+        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))));
 
     build_combined_events_stream(
         initial_events,
@@ -593,9 +591,7 @@ fn stream_to_client(
 fn build_combined_events_stream(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     initial_stream_ids: Arc<RwLock<HashSet<u32>>>,
-    ongoing_stream: std::pin::Pin<
-        Box<dyn Stream<Item = Result<ServerSentEvent, RecvError>> + Send>,
-    >,
+    ongoing_stream: impl Stream<Item = Result<ServerSentEvent, RecvError>> + Send + Sync + 'static,
     stream_filter: &'static Endpoint,
     event_filter: &'static [EventFilter],
     is_legacy_filter: bool,

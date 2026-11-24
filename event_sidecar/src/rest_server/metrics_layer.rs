@@ -1,7 +1,6 @@
 use derive_new::new;
 use futures::{Future, ready};
-use http::{Request, Response};
-use hyper::Body;
+use http::Request;
 use metrics::rest_api::{dec_connected_clients, inc_connected_clients, observe_response_time};
 use pin_project::{pin_project, pinned_drop};
 use std::{
@@ -11,11 +10,11 @@ use std::{
     time::Instant,
 };
 use tower::{Layer, Service};
+use warp::reply::Response;
 
 /// Warp layer that records metrics for each request.
 ///
-/// For now this supports only services that are bound by a Request<Body> as input and Response<Body> as output.
-/// This is due to the fact that we use the Request's `uri()` and Responses `status()` to give context to the observed metrics.
+/// Uses the request URI and response status to label each observation.
 #[derive(new, Debug, Clone)]
 pub struct MetricsLayer {
     metrics_abstractor: fn(&str) -> String,
@@ -46,9 +45,9 @@ impl<S> MetricsService<S> {
 
 impl<S, B> Service<Request<B>> for MetricsService<S>
 where
-    S: Service<Request<B>, Response = Response<Body>> + 'static,
+    S: Service<Request<B>, Response = Response> + 'static,
 {
-    type Response = Response<Body>;
+    type Response = Response;
     type Error = S::Error;
     type Future = MetricsFuture<S::Future, S::Error>;
 
@@ -66,7 +65,7 @@ where
 #[pin_project(PinnedDrop)]
 pub struct MetricsFuture<F, ErrorType>
 where
-    F: Future<Output = Result<Response<Body>, ErrorType>>,
+    F: Future<Output = Result<Response, ErrorType>>,
 {
     #[pin]
     inner: F,
@@ -79,7 +78,7 @@ where
 #[pinned_drop]
 impl<T, X> PinnedDrop for MetricsFuture<T, X>
 where
-    T: Future<Output = Result<Response<Body>, X>>,
+    T: Future<Output = Result<Response, X>>,
 {
     fn drop(self: Pin<&mut Self>) {
         self.observe_end();
@@ -88,7 +87,7 @@ where
 
 impl<T, X> MetricsFuture<T, X>
 where
-    T: Future<Output = Result<Response<Body>, X>>,
+    T: Future<Output = Result<Response, X>>,
 {
     pub fn new(inner: T, metrics_category: String) -> Self {
         let start = Instant::now();
@@ -117,9 +116,9 @@ where
 
 impl<F, E> Future for MetricsFuture<F, E>
 where
-    F: Future<Output = Result<Response<Body>, E>>,
+    F: Future<Output = Result<Response, E>>,
 {
-    type Output = Result<Response<Body>, E>;
+    type Output = Result<Response, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();

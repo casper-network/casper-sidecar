@@ -13,7 +13,6 @@
 //!
 //! ```no_run
 //! use casper_json_rpc::{ConfigLimit, Error, JsonRpcOptions, Params, RequestHandlersBuilder};
-//! use std::{convert::Infallible};
 //!
 //! # #[allow(unused)]
 //! async fn get(params: Option<Params>) -> Result<String, Error> {
@@ -43,16 +42,7 @@
 //!     let options = JsonRpcOptions::default();
 //!     let route = casper_json_rpc::route(path, max_body_bytes, handlers, options);
 //!
-//!     // Convert it into a `Service` and run it.
-//!     let make_svc = hyper::service::make_service_fn(move |_| {
-//!         let svc = warp::service(route.clone());
-//!         async move { Ok::<_, Infallible>(svc.clone()) }
-//!     });
-//!
-//!     hyper::Server::bind(&([127, 0, 0, 1], 3030).into())
-//!         .serve(make_svc)
-//!         .await
-//!         .unwrap();
+//!     warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
 //! }
 //! ```
 //!

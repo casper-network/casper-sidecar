@@ -617,11 +617,12 @@ pub async fn setup_mock_build_version_server_with_version(
         .and(end());
     let server_thread = tokio::spawn(async move {
         let server = warp::serve(api)
-            .bind_with_graceful_shutdown(([127, 0, 0, 1], port), async move {
+            .bind(([127, 0, 0, 1], port))
+            .await
+            .graceful(async move {
                 let _ = shutdown_rx.recv().await;
-            })
-            .1;
-        server.await;
+            });
+        server.run().await;
         let _ = after_shutdown_tx.send(()).await;
     });
 

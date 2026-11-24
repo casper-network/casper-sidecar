@@ -16,7 +16,7 @@ casper-types = { workspace = true, features = ["datasize"] }
 datasize = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
-http = "0.2"
+http = "1"
 itertools = { workspace = true }
 metrics = { workspace = true }
 serde = { workspace = true, default-features = true, features = ["derive"] }
@@ -26,9 +26,10 @@ warp = { workspace = true }
 
 [dev-dependencies]
 env_logger = "0.11"
-hyper = "0.14"
+http-body-util = "0.1"
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
     "test-util",
 ] }
+warp = { workspace = true, features = ["test"] }

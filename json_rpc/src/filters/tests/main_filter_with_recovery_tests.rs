@@ -1,4 +1,5 @@
 use http::StatusCode;
+use http_body_util::BodyExt;
 use serde::{
     Deserialize, Serialize,
     ser::{Error as _, Serializer},
@@ -48,8 +49,8 @@ async fn get_throttled_thing(_params: Option<Params>) -> Result<GoodThing, Error
         .with_http_status_override(StatusCode::TOO_MANY_REQUESTS.as_u16()))
 }
 
-async fn from_http_response(response: http::Response<hyper::Body>) -> Response {
-    let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+async fn from_http_response(response: warp::reply::Response) -> Response {
+    let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body_bytes).unwrap()
 }
 
@@ -221,9 +222,12 @@ async fn should_handle_request_with_no_id() {
         .into_response();
 
     assert_eq!(http_response.status(), StatusCode::NO_CONTENT);
-    let body = hyper::body::to_bytes(http_response.into_body())
+    let body = http_response
+        .into_body()
+        .collect()
         .await
-        .unwrap();
+        .unwrap()
+        .to_bytes();
     assert!(body.is_empty());
 }
 
@@ -380,9 +384,12 @@ async fn should_use_http_status_from_any_entry_in_a_batch() {
         .into_response();
 
     assert_eq!(http_response.status(), StatusCode::TOO_MANY_REQUESTS);
-    let body = hyper::body::to_bytes(http_response.into_body())
+    let body = http_response
+        .into_body()
+        .collect()
         .await
-        .unwrap();
+        .unwrap()
+        .to_bytes();
     let responses: Vec<Response> = serde_json::from_slice(&body).unwrap();
     assert_eq!(responses.len(), 2);
 }
@@ -405,9 +412,12 @@ async fn should_return_an_array_for_a_mixed_batch() {
         .into_response();
 
     assert_eq!(http_response.status(), StatusCode::OK);
-    let body = hyper::body::to_bytes(http_response.into_body())
+    let body = http_response
+        .into_body()
+        .collect()
         .await
-        .unwrap();
+        .unwrap()
+        .to_bytes();
     let responses: Vec<Response> = serde_json::from_slice(&body).unwrap();
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[0].id(), 1);
@@ -432,8 +442,11 @@ async fn should_return_no_content_for_an_all_notification_batch() {
         .into_response();
 
     assert_eq!(http_response.status(), StatusCode::NO_CONTENT);
-    let body = hyper::body::to_bytes(http_response.into_body())
+    let body = http_response
+        .into_body()
+        .collect()
         .await
-        .unwrap();
+        .unwrap()
+        .to_bytes();
     assert!(body.is_empty());
 }
