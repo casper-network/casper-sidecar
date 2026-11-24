@@ -61,7 +61,18 @@ jobs:
           --ignore RUSTSEC-2026-0542
           --ignore RUSTSEC-2024-0436
 
+      - name: install PostgreSQL 17 for tests
+        # The embedded archive requires a newer glibc than Ubuntu 22.04 provides.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          printf '%s\n' 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-17
+
       - name: test
+        env:
+          CASPER_TEST_POSTGRESQL_DIR: /usr/lib/postgresql/17
         run: cargo test
 
       - name: install cargo packaging tools

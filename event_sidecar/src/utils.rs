@@ -399,7 +399,7 @@ pub mod tests {
             max_connections_in_pool: 30,
             ..PostgresqlConfig::test_default()
         };
-        let settings = Settings {
+        let mut settings = Settings {
             version: V17.clone(),
             port,
             host: config.host.clone(),
@@ -408,6 +408,15 @@ pub mod tests {
             timeout: Some(Duration::from_secs(120)),
             ..Settings::default()
         };
+        if let Some(installation_dir) = std::env::var_os("CASPER_TEST_POSTGRESQL_DIR") {
+            settings.installation_dir = installation_dir.into();
+            settings.trust_installation_dir = true;
+            #[cfg(unix)]
+            {
+                // System packages may default to a socket directory owned by postgres.
+                settings.socket_dir = Some(settings.data_dir.clone());
+            }
+        }
         let mut postgres = PostgreSQL::new(settings);
         {
             // Tests share the installation but each starts its own database.
