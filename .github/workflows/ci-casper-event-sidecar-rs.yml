@@ -45,7 +45,14 @@ jobs:
         # RUSTSEC-2025-0141 - bincode is unmaintained but it's the nodes dependency
         # RUSTSEC-2023-0071 - there is a transitive audit issue via sqlx. There is no fix for that yet, we should update dependencies once a fix is presented
         # RUSTSEC-2026-0173 - proc-macro-error2 is unmainteined
-        run: cargo audit --deny warnings --ignore RUSTSEC-2026-0173 --ignore RUSTSEC-2025-0141 --ignore RUSTSEC-2023-0071
+        # RUSTSEC-2026-0387 - Casper types and Alloy pin k256 0.13, which needs
+        # crypto-bigint 0.5. Remove when the node and Alloy use crypto-bigint >=0.7.6.
+        run: >-
+          cargo audit --deny warnings
+          --ignore RUSTSEC-2026-0173
+          --ignore RUSTSEC-2025-0141
+          --ignore RUSTSEC-2023-0071
+          --ignore RUSTSEC-2026-0387
 
       - name: test
         run: cargo test
