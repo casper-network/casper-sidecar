@@ -165,15 +165,11 @@ pub mod tests {
         },
     };
     use anyhow::Error as AnyhowError;
-    use pg_embed::{
-        pg_enums::PgAuthMethod,
-        pg_fetch::{PG_V17, PgFetchSettings},
-        postgres::{PgEmbed, PgSettings},
-    };
-    use std::{path::PathBuf, process::ExitCode, time::Duration};
+    use postgresql_embedded::{PostgreSQL, Settings, V17};
+    use std::{process::ExitCode, time::Duration};
     use tempfile::{TempDir, tempdir};
     use tokio::{
-        sync::{broadcast, mpsc::Receiver},
+        sync::{Mutex, broadcast, mpsc::Receiver},
         time::timeout,
     };
 
@@ -341,77 +337,43 @@ pub mod tests {
         )
     }
     pub struct PostgresTestContext {
-        pub pg: PgEmbed,
-        pub _temp_dir: TempDir,
         pub db: PostgreSqlDatabase,
         pub port: u16,
-    }
-    impl Drop for PostgresTestContext {
-        fn drop(&mut self) {
-            let _ = self.pg.stop_db_sync();
-        }
-    }
-    async fn spin_up_postgres(
-        pg_settings: PgSettings,
-        temp_dir: TempDir,
-    ) -> Result<(PgEmbed, TempDir), AnyhowError> {
-        let fetch_settings = PgFetchSettings {
-            version: PG_V17,
-            ..PgFetchSettings::default()
-        };
-        let pg_res = PgEmbed::new(pg_settings, fetch_settings).await;
-        if let Err(e) = pg_res {
-            drop(temp_dir);
-            return Err(anyhow::Error::from(e));
-        }
-        let mut pg = pg_res.unwrap();
-        let res = pg.setup().await;
-        if let Err(e) = res {
-            let _ = pg.stop_db().await;
-            drop(temp_dir);
-            return Err(anyhow::Error::from(e));
-        }
-        let res = pg.start_db().await;
-        if let Err(e) = res {
-            let _ = pg.stop_db().await;
-            drop(temp_dir);
-            return Err(anyhow::Error::from(e));
-        }
-        Ok((pg, temp_dir))
-    }
-    async fn start_embedded_postgres() -> (PgEmbed, TempDir, u16) {
-        let port = get_port();
-        let temp_storage_path =
-            tempdir().expect("Should have created a temporary storage directory");
-        let path = temp_storage_path.path().to_string_lossy().to_string();
-        let pg_settings = PgSettings {
-            database_dir: PathBuf::from(path),
-            port,
-            user: "postgres".to_string(),
-            password: "p@$$w0rd".to_string(),
-            auth_method: PgAuthMethod::Plain,
-            persistent: false,
-            timeout: Some(Duration::from_secs(120)),
-            migration_dir: None,
-        };
-        let (db, folder) = spin_up_postgres(pg_settings, temp_storage_path)
-            .await
-            .unwrap();
-        (db, folder, port)
+        _postgres: PostgreSQL,
     }
     pub async fn build_postgres_database() -> Result<PostgresTestContext, AnyhowError> {
-        let (pg, temp_dir, port) = start_embedded_postgres().await;
-        let database_name = "event_sidecar";
-        pg.create_database(database_name).await?;
-        let pg_db_uri: String = pg.full_db_uri(database_name);
-        let db = PostgreSqlDatabase::new_from_postgres_uri(pg_db_uri)
-            .await
-            .unwrap();
+        use crate::types::config::PostgresqlConfig;
+
+        static POSTGRES_SETUP: Mutex<()> = Mutex::const_new(());
+
+        let port = get_port();
+        let config = PostgresqlConfig {
+            port,
+            max_connections_in_pool: 30,
+            ..PostgresqlConfig::test_default()
+        };
+        let settings = Settings {
+            version: V17.clone(),
+            port,
+            host: config.host.clone(),
+            username: config.database_username.clone(),
+            password: config.database_password.clone(),
+            timeout: Some(Duration::from_secs(120)),
+            ..Settings::default()
+        };
+        let mut postgres = PostgreSQL::new(settings);
+        {
+            // Tests share the installation but each starts its own database.
+            let _setup = POSTGRES_SETUP.lock().await;
+            postgres.setup().await?;
+        }
+        postgres.start().await?;
+        postgres.create_database(&config.database_name).await?;
+        let db = PostgreSqlDatabase::new(config).await?;
         Ok(PostgresTestContext {
-            pg,
-            _temp_dir: temp_dir,
             db,
             port,
+            _postgres: postgres,
         })
     }
     pub async fn build_postgres_based_test_config(

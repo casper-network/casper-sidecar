@@ -23,17 +23,6 @@ pub struct PostgreSqlDatabase {
 }
 
 impl PostgreSqlDatabase {
-    #[cfg(test)]
-    pub async fn new_from_postgres_uri(uri: String) -> Result<PostgreSqlDatabase, Error> {
-        let connection_pool = PgPoolOptions::new()
-            .max_connections(30)
-            .connect(uri.as_str())
-            .await?;
-        let db = PostgreSqlDatabase { connection_pool };
-        MigrationManager::apply_all_migrations(db.clone()).await?;
-        Ok(db)
-    }
-
     pub async fn new(config: PostgresqlConfig) -> Result<PostgreSqlDatabase, Error> {
         let host = config.host;
         let database_name = config.database_name;
