@@ -47,12 +47,15 @@ jobs:
         # RUSTSEC-2026-0173 - proc-macro-error2 is unmainteined
         # RUSTSEC-2026-0387 - Casper types and Alloy pin k256 0.13, which needs
         # crypto-bigint 0.5. Remove when the node and Alloy use crypto-bigint >=0.7.6.
+        # RUSTSEC-2026-0542 - Casper types uses humantime for timestamps and durations.
+        # Remove when Casper types migrates to maintained parsers.
         run: >-
           cargo audit --deny warnings
           --ignore RUSTSEC-2026-0173
           --ignore RUSTSEC-2025-0141
           --ignore RUSTSEC-2023-0071
           --ignore RUSTSEC-2026-0387
+          --ignore RUSTSEC-2026-0542
 
       - name: test
         run: cargo test
