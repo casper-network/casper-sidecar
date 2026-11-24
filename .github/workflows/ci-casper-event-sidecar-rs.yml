@@ -49,6 +49,8 @@ jobs:
         # crypto-bigint 0.5. Remove when the node and Alloy use crypto-bigint >=0.7.6.
         # RUSTSEC-2026-0542 - Casper types uses humantime for timestamps and durations.
         # Remove when Casper types migrates to maintained parsers.
+        # RUSTSEC-2024-0436 - Casper types pins Alloy primitives 1.6.0, which uses paste.
+        # Remove when the node and sidecar adopt an Alloy release without paste.
         run: >-
           cargo audit --deny warnings
           --ignore RUSTSEC-2026-0173
@@ -56,6 +58,7 @@ jobs:
           --ignore RUSTSEC-2023-0071
           --ignore RUSTSEC-2026-0387
           --ignore RUSTSEC-2026-0542
+          --ignore RUSTSEC-2024-0436
 
       - name: test
         run: cargo test
