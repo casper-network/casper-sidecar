@@ -545,6 +545,12 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction nonce is beyond the configured admission window.
     #[error("The EVM transaction nonce is too far ahead of the account nonce")]
     TransactionEvmNonceTooFarAhead,
+    /// The EVM transaction gas price is below the base fee.
+    #[error("The EVM transaction gas price is below the base fee")]
+    TransactionEvmGasPriceBelowBaseFee,
+    /// The EVM transaction is missing a chain ID.
+    #[error("The EVM transaction is missing a chain ID")]
+    TransactionEvmMissingChainId,
     /// The EVM transaction has a positive effective priority fee per gas.
     #[error("The EVM transaction effective priority fee per gas is unsupported")]
     TransactionEvmPositiveEffectivePriorityFeePerGas,
@@ -838,6 +844,10 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEvmNonceTooFarAhead => {
                 Self::TransactionEvmNonceTooFarAhead
             }
+            ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee => {
+                Self::TransactionEvmGasPriceBelowBaseFee
+            }
+            ErrorCode::InvalidTransactionEvmMissingChainId => Self::TransactionEvmMissingChainId,
             ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas => {
                 Self::TransactionEvmPositiveEffectivePriorityFeePerGas
             }
@@ -1104,6 +1114,8 @@ impl Error {
                 | ErrorCode::InvalidTransactionPricingMode
                 | ErrorCode::InvalidTransactionEvmInvalidNonce
                 | ErrorCode::InvalidTransactionEvmNonceTooFarAhead
+                | ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee
+                | ErrorCode::InvalidTransactionEvmMissingChainId
                 | ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
                 | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
                 | ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
@@ -2023,6 +2035,16 @@ mod tests {
             Error::from_error_code(ErrorCode::InvalidTransactionEvmNonceTooFarAhead as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionEvmNonceTooFarAhead)
         ));
+        assert_eq!(
+            Error::from_error_code(ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee as u16),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmGasPriceBelowBaseFee
+            )
+        );
+        assert_eq!(
+            Error::from_error_code(ErrorCode::InvalidTransactionEvmMissingChainId as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionEvmMissingChainId)
+        );
         assert!(matches!(
             Error::from_error_code(
                 ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas as u16
