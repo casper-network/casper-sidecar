@@ -18,6 +18,7 @@ use crate::ClientError;
 
 use super::{
     super::{NodeClient, RpcWithoutParams, docs::DocExample},
+    config::deserialize_evm_config,
     eth_u256::EthU256,
     types::internal_error,
 };
@@ -84,6 +85,7 @@ struct EvmConfigSchema {
 #[derive(Deserialize)]
 struct ChainspecProjection {
     protocol: ProtocolProjection,
+    #[serde(deserialize_with = "deserialize_evm_config")]
     evm: EvmConfig,
     #[serde(default)]
     transactions: Option<TransactionsProjection>,
@@ -399,6 +401,10 @@ transaction_lanes = {lanes}
         assert_eq!(value["current"]["casper"]["protocolVersion"], "2.2.2");
         assert_eq!(value["current"]["casper"]["evmConfig"]["spec"], "osaka");
         assert_eq!(value["current"]["casper"]["evmConfig"]["max_nonce_gap"], 16);
+        assert_eq!(
+            value["current"]["casper"]["evmConfig"]["preinstalls"],
+            json!([])
+        );
         assert_eq!(
             value["current"]["casper"]["evmConfig"]["transaction_lanes"],
             json!([[100, 131072, 1024, 1000000, 50]])

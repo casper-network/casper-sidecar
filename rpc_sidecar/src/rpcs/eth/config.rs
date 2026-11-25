@@ -1,6 +1,6 @@
 use casper_json_rpc::Error as RpcError;
 use casper_types::{Chainspec, EvmConfig};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use super::{super::NodeClient, types::internal_error};
 
@@ -8,7 +8,20 @@ use super::{super::NodeClient, types::internal_error};
 /// `Chainspec` fails to deserialize (e.g. sidecar / node version skew).
 #[derive(Deserialize)]
 struct ChainspecEvmConfig {
+    #[serde(deserialize_with = "deserialize_evm_config")]
     evm: EvmConfig,
+}
+
+pub(super) fn deserialize_evm_config<'de, D>(deserializer: D) -> Result<EvmConfig, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut config = toml::Table::deserialize(deserializer)?;
+    // Older node chainspecs omitted the preinstall list when it was empty.
+    config
+        .entry("preinstalls")
+        .or_insert_with(|| toml::Value::Array(Vec::new()));
+    config.try_into().map_err(serde::de::Error::custom)
 }
 
 pub(super) async fn read_evm_config(node_client: &dyn NodeClient) -> Result<EvmConfig, RpcError> {
