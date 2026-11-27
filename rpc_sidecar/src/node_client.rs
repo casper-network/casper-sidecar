@@ -563,6 +563,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction gas limit exceeds the protocol transaction gas limit.
     #[error("The EVM transaction gas limit exceeds the protocol transaction gas limit")]
     TransactionEvmGasLimitExceedsTransactionGasLimit,
+    /// The EVM transaction value cannot be represented in whole motes.
+    #[error("The EVM transaction value must be a whole number of motes")]
+    TransactionEvmValueNotRepresentable,
     /// The transaction initiator address is invalid.
     #[error("The transaction initiator address is invalid")]
     TransactionInvalidInitiatorAddr,
@@ -860,6 +863,9 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit => {
                 Self::TransactionEvmGasLimitExceedsTransactionGasLimit
             }
+            ErrorCode::InvalidTransactionEvmValueNotRepresentable => {
+                Self::TransactionEvmValueNotRepresentable
+            }
             ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
                 Self::TransactionInvalidInitiatorAddr
             }
@@ -1120,6 +1126,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
                 | ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
                 | ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit
+                | ErrorCode::InvalidTransactionEvmValueNotRepresentable
                 | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
