@@ -136,6 +136,10 @@ mod tests {
                 "The EVM transaction gas limit exceeds the protocol transaction gas limit",
             ),
             (
+                ErrorCode::InvalidTransactionEvmValueNotRepresentable,
+                "The EVM transaction value must be a whole number of motes",
+            ),
+            (
                 ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee,
                 "The EVM transaction gas price is below the base fee",
             ),
