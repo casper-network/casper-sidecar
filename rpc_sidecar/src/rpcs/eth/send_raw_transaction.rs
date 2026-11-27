@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
-    types::{HexData, internal_error, invalid_params, parse_positional_params},
+    types::{EthApiErrorCode, HexData, internal_error, invalid_params, parse_positional_params},
 };
-use crate::rpcs::docs::DocExample;
+use crate::{ClientError, rpcs::docs::DocExample};
 
 const DEFAULT_EVM_TX_TTL: TimeDiff = TimeDiff::from_seconds(300);
 
@@ -66,7 +66,12 @@ impl RpcWithParams for SendRawTransaction {
         node_client
             .try_accept_transaction(Transaction::from(evm_transaction))
             .await
-            .map_err(internal_error)?;
+            .map_err(|error| match error {
+                ClientError::InvalidTransaction(reason) => {
+                    RpcError::new(EthApiErrorCode::TransactionRejected, reason.to_string())
+                }
+                other => internal_error(other),
+            })?;
         Ok(hash.hash())
     }
 }
@@ -80,7 +85,7 @@ mod tests {
         eip7702::Authorization,
     };
     use alloy_primitives::{Address as AlloyAddress, B256, Bytes as AlloyBytes, U256 as AlloyU256};
-    use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command};
+    use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command, ErrorCode};
     use casper_types::{
         EvmTransactionKind,
         bytesrepr::{self, Bytes, ToBytes},
@@ -92,7 +97,6 @@ mod tests {
         TransactionLocation, project_transaction, tests::fixture_transactions_with_access_list,
     };
     use super::*;
-    use crate::ClientError;
 
     const SIGNING_SECRET: [u8; 32] = [7; 32];
     const AUTHORIZATION_SECRET: [u8; 32] = [8; 32];
@@ -100,6 +104,7 @@ mod tests {
     #[derive(Default)]
     struct ClientMock {
         accepted: Mutex<Option<Transaction>>,
+        error_code: Option<ErrorCode>,
     }
 
     #[async_trait]
@@ -112,11 +117,71 @@ mod tests {
                 panic!("unexpected request: {req:?}");
             };
             *self.accepted.lock().await = Some(transaction);
-            Ok(BinaryResponseAndRequest::new(
-                BinaryResponse::new_empty(),
-                Bytes::new(),
-            ))
+            let response = self
+                .error_code
+                .map_or_else(BinaryResponse::new_empty, BinaryResponse::new_error);
+            Ok(BinaryResponseAndRequest::new(response, Bytes::new()))
         }
+    }
+
+    #[tokio::test]
+    async fn reports_node_transaction_rejections_without_masking_the_reason() {
+        for (code, expected_reason) in [
+            (
+                ErrorCode::InvalidTransactionNoLaneMatches,
+                "couldn't associate a transaction lane with the transaction",
+            ),
+            (
+                ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit,
+                "The EVM transaction gas limit exceeds the protocol transaction gas limit",
+            ),
+            (
+                ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee,
+                "The EVM transaction gas price is below the base fee",
+            ),
+            (
+                ErrorCode::InvalidTransactionEvmMissingChainId,
+                "The EVM transaction is missing a chain ID",
+            ),
+            (
+                ErrorCode::InvalidTransactionEvmNonceTooFarAhead,
+                "The EVM transaction nonce is too far ahead of the account nonce",
+            ),
+        ] {
+            let node_client = Arc::new(ClientMock {
+                error_code: Some(code),
+                ..Default::default()
+            });
+            let error = SendRawTransaction::do_handle_request(
+                node_client,
+                SendRawTransactionParams {
+                    raw_transaction: HexData::from(signed_eip7702_raw_transaction()),
+                },
+            )
+            .await
+            .expect_err("node should reject the transaction");
+            let error = serde_json::to_value(error).unwrap();
+            assert_eq!(error["code"], -32003);
+            assert_eq!(error["message"], "Transaction rejected");
+            assert_eq!(error["data"], expected_reason);
+        }
+    }
+
+    #[tokio::test]
+    async fn node_internal_failure_is_still_an_internal_error() {
+        let node_client = Arc::new(ClientMock {
+            error_code: Some(ErrorCode::InternalError),
+            ..Default::default()
+        });
+        let error = SendRawTransaction::do_handle_request(
+            node_client,
+            SendRawTransactionParams {
+                raw_transaction: HexData::from(signed_eip7702_raw_transaction()),
+            },
+        )
+        .await
+        .expect_err("node request should fail");
+        assert_eq!(error.code(), -32603);
     }
 
     #[tokio::test]

@@ -438,17 +438,13 @@ pub(super) fn internal_error(message: impl ToString) -> RpcError {
     RpcError::new(ReservedErrorCode::InternalError, message.to_string())
 }
 
-/// JSON-RPC error code for an `eth_*` method that this server's API recognizes but does not
-/// implement.
-///
-/// EIP-1474's non-standard error-code table assigns "method not supported" to `-32004`. This is
-/// a distinct concept from [`ReservedErrorCode::MethodNotFound`] (`-32601`), which means the
-/// method is not part of the API at all. `-32004` is outside the JSON-RPC pre-defined range
-/// (`-32768..=-32100`), so a non-reserved code type carrying it is passed through verbatim by
-/// [`RpcError::new`], message text included.
+/// EIP-1474 error codes used by `eth_*` methods. These are outside the JSON-RPC pre-defined
+/// range (`-32768..=-32100`), so [`RpcError::new`] passes them through unchanged.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
 #[repr(i64)]
 pub(super) enum EthApiErrorCode {
+    /// Transaction rejected.
+    TransactionRejected = -32003,
     /// Method not supported.
     MethodNotSupported = -32004,
 }
@@ -456,6 +452,7 @@ pub(super) enum EthApiErrorCode {
 impl From<EthApiErrorCode> for (i64, &'static str) {
     fn from(error_code: EthApiErrorCode) -> Self {
         match error_code {
+            EthApiErrorCode::TransactionRejected => (error_code as i64, "Transaction rejected"),
             EthApiErrorCode::MethodNotSupported => (error_code as i64, "method not supported"),
         }
     }
